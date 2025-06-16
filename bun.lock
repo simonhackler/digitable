@@ -3,10 +3,14 @@
   "workspaces": {
     "": {
       "name": "svg-table",
+      "dependencies": {
+        "jspreadsheet-ce": "5",
+      },
       "devDependencies": {
         "@chromatic-com/storybook": "^4",
         "@eslint/compat": "^1.2.5",
         "@eslint/js": "^9.18.0",
+        "@internationalized/date": "^3.8.1",
         "@lucide/svelte": "^0.515.0",
         "@playwright/test": "^1.49.1",
         "@storybook/addon-a11y": "^9.0.10",
@@ -21,7 +25,7 @@
         "@types/node": "^20",
         "@vitest/browser": "latest",
         "@vitest/coverage-v8": "latest",
-        "bits-ui": "^2.6.2",
+        "bits-ui": "^2.7.0",
         "clsx": "^2.1.1",
         "eslint": "^9.18.0",
         "eslint-config-prettier": "^10.0.1",
@@ -167,6 +171,8 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.0", "", {}, "sha512-gv3ZRaISU3fjPAgNsriBRqGWQL6quFx04YMPW/zD8XMLsU32mhCCbfbO6KZFLjvYpCZ8zyDEgqsgf+PwPaM7GQ=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.25", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-vNk6aEwybGtawWmy/PzwnGDOjCkLWSD2wqvjGGAgOAwCGWySYXfYoxt00IJkTF+8Lb57DwOb3Aa0o9CApepiYQ=="],
+
+    "@jspreadsheet/formula": ["@jspreadsheet/formula@2.0.2", "", {}, "sha512-PDQYf9REQA53I7tVYkvkeyQxrd5jcjUeHgItYnRpjN2QiIQwawSqBDtGGEVQTSboTG+JwgGCuhvOpj7FxeKwew=="],
 
     "@lucide/svelte": ["@lucide/svelte@0.515.0", "", { "peerDependencies": { "svelte": "^5" } }, "sha512-CEAyqcZmNBfYzVgaRmK2RFJP5tnbXxekRyDk0XX/eZQRfsJmkDvmQwXNX8C869BgNeryzmrRyjHhUL6g9ZOHNA=="],
 
@@ -585,6 +591,10 @@
     "json-stable-stringify-without-jsonify": ["json-stable-stringify-without-jsonify@1.0.1", "", {}, "sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw=="],
 
     "jsonfile": ["jsonfile@6.1.0", "", { "dependencies": { "universalify": "^2.0.0" }, "optionalDependencies": { "graceful-fs": "^4.1.6" } }, "sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ=="],
+
+    "jspreadsheet-ce": ["jspreadsheet-ce@5.0.2", "", { "dependencies": { "@jspreadsheet/formula": "^2.0.2", "jsuites": "^5.8.5" } }, "sha512-Xhz/6PNe3LnxS/sp02pWN6DTn8ARW2nka6Hwe1aOpvvXXilzGYGlrMUWWjjC5ktVbbBEGl3moUQfCxBsE0scrg=="],
+
+    "jsuites": ["jsuites@5.10.0", "", {}, "sha512-s5GCJkl+LVtuPPOBUgqEA6zJf39+hGorsaw07UTkLjTFs3CmrfRTdUfN82izP266lB81hGQKRvLysIRKw+gggQ=="],
 
     "keyv": ["keyv@4.5.4", "", { "dependencies": { "json-buffer": "3.0.1" } }, "sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw=="],
 

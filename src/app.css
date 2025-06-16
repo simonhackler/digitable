@@ -1,6 +1,7 @@
 @import "tailwindcss";
-
 @import "tw-animate-css";
+@import "jsuites/dist/jsuites.css";
+@import "jspreadsheet-ce/dist/jspreadsheet.css";
 
 @custom-variant dark (&:is(.dark *));
 

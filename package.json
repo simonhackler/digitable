@@ -5,6 +5,7 @@
 		"@chromatic-com/storybook": "^4",
 		"@eslint/compat": "^1.2.5",
 		"@eslint/js": "^9.18.0",
+		"@internationalized/date": "^3.8.1",
 		"@lucide/svelte": "^0.515.0",
 		"@playwright/test": "^1.49.1",
 		"@storybook/addon-a11y": "^9.0.10",
@@ -19,7 +20,7 @@
 		"@types/node": "^20",
 		"@vitest/browser": "latest",
 		"@vitest/coverage-v8": "latest",
-		"bits-ui": "^2.6.2",
+		"bits-ui": "^2.7.0",
 		"clsx": "^2.1.1",
 		"eslint": "^9.18.0",
 		"eslint-config-prettier": "^10.0.1",
@@ -56,5 +57,8 @@
 		"storybook": "storybook dev -p 6006",
 		"build-storybook": "storybook build"
 	},
-	"type": "module"
+	"type": "module",
+	"dependencies": {
+		"jspreadsheet-ce": "5"
+	}
 }
