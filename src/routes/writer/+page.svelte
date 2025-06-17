@@ -3,28 +3,9 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 
 	import { onMount } from 'svelte';
-	import jspreadsheet from 'jspreadsheet-ce';
+	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
 
-	interface column {
-		type:
-			| 'text'
-			| 'numeric'
-			| 'hidden'
-			| 'dropdown'
-			| 'autocomplete'
-			| 'checkbox'
-			| 'radio'
-			| 'calendar'
-			| 'image'
-			| 'color'
-			| 'html'
-			| CustomEditor
-			| undefined;
-		title: string;
-		width: number;
-	}
-
-	let columns: column[] = $state([]);
+	let columns: Column[] = $state([]);
 	let data: string[][] = $state([[]]);
 	let spreadsheet = $state(null);
 	let svgTemplate: SVGSVGElement;
@@ -39,7 +20,7 @@
 		const textColumns = texts.map((t) => {
 			return {
 				title: t.id,
-				type: 'text',
+				type: 'text' as Column['type'],
 				width: 100
 			};
 		});
