@@ -4,7 +4,9 @@
     "": {
       "name": "svg-table",
       "dependencies": {
+        "@types/jspreadsheet-ce": "^4.7.9",
         "jspreadsheet-ce": "5",
+        "runed": "^0.28.0",
       },
       "devDependencies": {
         "@chromatic-com/storybook": "^4",
@@ -317,6 +319,8 @@
     "@types/estree": ["@types/estree@1.0.8", "", {}, "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w=="],
 
     "@types/json-schema": ["@types/json-schema@7.0.15", "", {}, "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA=="],
+
+    "@types/jspreadsheet-ce": ["@types/jspreadsheet-ce@4.7.9", "", {}, "sha512-hUK1zZIova7WAABlj1zV+EHMw70h/UergJy6ps+tJBfZ1kvzqNNe2L6RrXts1txyFDWvBxZ7byQ+MkeL+7W4Wg=="],
 
     "@types/mdx": ["@types/mdx@2.0.13", "", {}, "sha512-+OWZQfAYyio6YkJb3HLxDrvnx6SWWDbC0zVPfBRzUk0/nqoDyf6dNxQi3eArPe8rJ473nobTMQ/8Zk+LxJ+Yuw=="],
 

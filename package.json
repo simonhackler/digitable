@@ -59,6 +59,8 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"jspreadsheet-ce": "5"
+		"@types/jspreadsheet-ce": "^4.7.9",
+		"jspreadsheet-ce": "5",
+		"runed": "^0.28.0"
 	}
 }
