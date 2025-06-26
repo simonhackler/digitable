@@ -1,6 +1,6 @@
 {
 	"$schema": "https://unpkg.com/jsrepo@2.4.0/schemas/project-config.json",
-	"repos": ["@ieedan/shadcn-svelte-extras"],
+	"repos": ["https://github.com/simonhackler/svelte-file-explorer", "@ieedan/shadcn-svelte-extras"],
 	"includeTests": false,
 	"includeDocs": false,
 	"watermark": true,
@@ -13,6 +13,7 @@
 		"ui": "$lib/components/ui",
 		"actions": "$lib/actions",
 		"hooks": "$lib/hooks",
-		"utils": "$lib/utils"
+		"utils": "$lib/utils",
+		"file-browser": "$lib/components/file-browser"
 	}
 }

@@ -1,11 +1,15 @@
+<!--
+	Installed from github/simonhackler/svelte-file-explorer
+-->
+
 <script lang="ts">
-	import { ScrollArea as ScrollAreaPrimitive } from "bits-ui";
-	import { cn, type WithoutChild } from "$lib/utils/utils.js";
+	import { ScrollArea as ScrollAreaPrimitive } from 'bits-ui';
+	import { cn, type WithoutChild } from '$lib/utils/utils.js';
 
 	let {
 		ref = $bindable(null),
 		class: className,
-		orientation = "vertical",
+		orientation = 'vertical',
 		children,
 		...restProps
 	}: WithoutChild<ScrollAreaPrimitive.ScrollbarProps> = $props();
@@ -16,9 +20,9 @@
 	data-slot="scroll-area-scrollbar"
 	{orientation}
 	class={cn(
-		"flex touch-none select-none p-px transition-colors",
-		orientation === "vertical" && "h-full w-2.5 border-l border-l-transparent",
-		orientation === "horizontal" && "h-2.5 flex-col border-t border-t-transparent",
+		'flex touch-none p-px transition-colors select-none',
+		orientation === 'vertical' && 'h-full w-2.5 border-l border-l-transparent',
+		orientation === 'horizontal' && 'h-2.5 flex-col border-t border-t-transparent',
 		className
 	)}
 	{...restProps}

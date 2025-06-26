@@ -3,12 +3,15 @@
 	import { onMount, tick } from 'svelte';
 	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
 	import { ScrollState } from 'runed';
+	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+	import PickFolder from './pick-folder.svelte';
 
 	let el = $state<HTMLElement>();
 	const scroll = new ScrollState({
 		element: () => el
 	});
 
+	let fileSystem: Adapter | null = $state(null);
 	let columns: Column[] = $state([]);
 	let data: string[][] = $state([[]]);
 	let svgs: SVGSVGElement[] = $state([]);
@@ -30,7 +33,7 @@
 			};
 		});
 		const imageColumns = images.map((im) => {
-			return { title: im.id, type: 'image' as Column['type'] };
+			return { title: im.id, type: 'text' as Column['type'] };
 		});
 		columns = textColumns.concat(imageColumns);
 		data = [texts.map((t) => t.textContent || '')];
@@ -46,7 +49,7 @@
 		}
 		await tick();
 		columns.forEach((col, idx) => {
-			appendForeignObjectById(svg!, col.title, data[0][idx] || '');
+			appendForeignObjectByIdForText(svg!, col.title, data[0][idx] || '');
 		});
 	}
 
@@ -97,21 +100,34 @@
 		layer.append(rect);
 	}
 
-	function updateSvgText(svg: SVGSVGElement, textId: string, newText: string) {
+	async function updateSvg(svg: SVGSVGElement, textId: string, newText: string) {
 		const el = svg.getElementById(textId) as SVGGraphicsElement | null;
 		if (!el) {
 			throw new Error(`element with id ${textId} not found`);
 		}
-		const div = el.querySelector('div');
-		if (!div) {
-			throw new Error('div not found');
+		if (el.tagName == 'foreignObject') {
+			const div = el.querySelector('div');
+			if (!div) {
+				throw new Error('div not found');
+			}
+			div.textContent = newText;
+		} else if (el.tagName == 'image') {
+			const fileResults = await fileSystem!.download([newText]);
+            const {result, error} = fileResults[0];
+			if (error) {
+                console.error(error);
+			} else {
+				const blob = result.data;
+				const url = URL.createObjectURL(blob);
+				el.setAttribute('href', url);
+				el.setAttribute('xlink:href', url);
+			}
 		}
-		div.textContent = newText;
 	}
 
-	function appendForeignObjectById(svg: SVGSVGElement, elementId: string, html: string) {
+	function appendForeignObjectByIdForText(svg: SVGSVGElement, elementId: string, html: string) {
 		const el = svg.getElementById(elementId) as SVGGraphicsElement | null;
-		if (!el) return null;
+		if (!el || el.tagName !== 'text') return null;
 
 		const { x, y, width, height } = el.getBBox();
 		const fo = document.createElementNS(svg.namespaceURI, 'foreignObject');
@@ -168,7 +184,6 @@
 			) {
 				const width = 480;
 				let scrollTo = 0;
-				console.log(borderTopIndex);
 				if (borderTopIndex == 1) {
 					scrollTo = width / 2;
 				} else if (borderTopIndex > 1) {
@@ -199,15 +214,13 @@
 			oneditionstart(worksheet, cell, x, y) {
 				cell.oninput = (e) => {
 					if (e.target != null) {
-						updateSvgText(svgs[y], columns[x].title, e.target.value);
-						console.log(columns[x]);
-						console.log(e.target.value);
+						updateSvg(svgs[y], columns[x].title, e.target.value);
 					}
 				};
 			},
 			onchange(instance, cell, colIndex, rowIndex, newValue, oldValue) {
 				cell.oninput = null;
-				updateSvgText(svgs[rowIndex], columns[colIndex].title, newValue.toString());
+				updateSvg(svgs[rowIndex], columns[colIndex].title, newValue.toString());
 				//svgs[rowIndex].getElementById(columns[colIndex].title).textContent = newValue.toString();
 			},
 			onsort(instance, colIndex, order, newOrderValues) {
@@ -220,8 +233,14 @@
 		});
 	}
 
-	onMount(() => {
-		parse();
+	// onMount(() => {
+	// 	parse();
+	// });
+
+	$effect(() => {
+		if (fileSystem) {
+			parse();
+		}
 	});
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
@@ -245,45 +264,49 @@
 	let hoverItemIndex: number | null = $state(null);
 </script>
 
-{#if data && data.length}
-	<div
-		bind:this={el}
-		class="flex w-screen flex-nowrap overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
-	>
-		{#each svgs as svg, i (svg)}
-			{#if hoverItemIndex === i}{/if}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<!-- ignore for now, should this then just be a button? -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				onclick={(e) => {
-					let node: EventTarget | null = e.target;
-					let id: string | null = null;
-					while (node && node !== e.currentTarget) {
-						if (node instanceof Element && node.id) {
-							if (columns.some((c) => c.title === node.id)) {
-								id = node.id;
-								break;
+{#if fileSystem}
+	{#if data && data.length}
+		<div
+			bind:this={el}
+			class="flex w-screen flex-nowrap overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
+		>
+			{#each svgs as svg, i (svg)}
+				{#if hoverItemIndex === i}{/if}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- ignore for now, should this then just be a button? -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<div
+					onclick={(e) => {
+						let node: EventTarget | null = e.target;
+						let id: string | null = null;
+						while (node && node !== e.currentTarget) {
+							if (node instanceof Element && node.id) {
+								if (columns.some((c) => c.title === node.id)) {
+									id = node.id;
+									break;
+								}
 							}
+							node = (node as Element).parentElement;
 						}
-						node = (node as Element).parentElement;
-					}
-					let index = -1;
-					if (id) {
-						index = columns.findIndex((c) => c.title === id);
-					}
-					if (index !== -1) {
-						spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
-						const cell = spreadsheet[0].getCellFromCoords(index, i);
-						spreadsheet[0].openEditor(cell, false, e);
-					} else {
-						spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
-					}
-				}}
-				class="h-full w-[480px] flex-shrink-0"
-				{@attach attachSVG(svg)}
-			></div>
-		{/each}
-	</div>
+						let index = -1;
+						if (id) {
+							index = columns.findIndex((c) => c.title === id);
+						}
+						if (index !== -1) {
+							spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
+							const cell = spreadsheet[0].getCellFromCoords(index, i);
+							spreadsheet[0].openEditor(cell, false, e);
+						} else {
+							spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
+						}
+					}}
+					class="h-full w-[480px] flex-shrink-0"
+					{@attach attachSVG(svg)}
+				></div>
+			{/each}
+		</div>
+	{/if}
+	<div id="spreadsheet"></div>
+{:else}
+	<PickFolder bind:opfsAdapter={fileSystem} />
 {/if}
-<div id="spreadsheet"></div>

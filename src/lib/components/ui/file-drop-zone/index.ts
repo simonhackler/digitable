@@ -1,9 +1,15 @@
 /*
+	Installed from github/simonhackler/svelte-file-explorer
+*/
+
+/*
 	Installed from @ieedan/shadcn-svelte-extras
 */
 
-import FileDropZone from './file-drop-zone.svelte';
-import { type FileRejectedReason, type FileDropZoneProps } from './types';
+import FileDropZone, {
+	type FileRejectedReason,
+	type FileDropZoneProps
+} from './file-drop-zone.svelte';
 
 export const displaySize = (bytes: number): string => {
 	if (bytes < KILOBYTE) return `${bytes.toFixed(0)} B`;

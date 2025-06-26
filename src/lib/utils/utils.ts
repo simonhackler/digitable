@@ -1,4 +1,8 @@
 /*
+	Installed from github/simonhackler/svelte-file-explorer
+*/
+
+/*
 	Installed from @ieedan/shadcn-svelte-extras
 */
 
