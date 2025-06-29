@@ -64,6 +64,7 @@
 		"@types/jspreadsheet-ce": "^4.7.9",
 		"@types/wicg-file-system-access": "^2023.10.6",
 		"client-zip": "^2.5.0",
+		"html-to-image": "^1.11.13",
 		"idb-keyval": "^6.2.2",
 		"jspreadsheet-ce": "5",
 		"runed": "^0.28.0",

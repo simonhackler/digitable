@@ -7,9 +7,11 @@ import {
 	buildTreeFromLocalStorage,
 	parseStoredFileData
 } from '$lib/components/file-browser/browser-utils/file-tree.svelte';
+import type { Folder } from '$lib/components/file-browser/browser-utils/types.svelte';
 
 export class LocalStorageAdapter implements Adapter {
 	private homePath: string;
+	private rootFolder: Folder | null = null;
 
 	constructor(homePath: string) {
 		this.homePath = homePath;
@@ -118,9 +120,13 @@ export class LocalStorageAdapter implements Adapter {
 		}
 	}
 
-	async getFolder() {
+	async getRootFolder() {
+		if (this.rootFolder) {
+			return { result: this.rootFolder, error: null };
+		}
 		try {
 			const tree = await buildTreeFromLocalStorage(this.homePath);
+			this.rootFolder = tree;
 			return { result: tree, error: null };
 		} catch (error) {
 			return { result: null, error: error as Error };

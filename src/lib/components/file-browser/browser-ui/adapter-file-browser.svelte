@@ -37,7 +37,7 @@
 	}
 
 	onMount(async () => {
-		const { result, error } = await adapter.getFolder();
+		const { result, error } = await adapter.getRootFolder();
 		if (error) {
 			console.error(error);
 		} else if (result) {

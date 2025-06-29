@@ -6,10 +6,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Adapter } from '../adapter';
 import { buildFileTree } from '$lib/components/file-browser/browser-utils/file-tree.svelte';
 import { getAllFilesMetadata } from './helper';
+import type { Folder } from '$lib/components/file-browser/browser-utils/types.svelte';
 
 export class SupabaseAdapter implements Adapter {
 	private supabase: SupabaseClient;
 	private homePath: string;
+	private rootFolder: Folder | null = null;
 	constructor(supabase: SupabaseClient, homePath: string) {
 		this.supabase = supabase;
 		this.homePath = homePath;
@@ -81,12 +83,16 @@ export class SupabaseAdapter implements Adapter {
 		return error;
 	}
 
-	async getFolder() {
+	async getRootFolder() {
+		if (this.rootFolder) {
+			return { result: this.rootFolder, error: null };
+		}
 		const { data, error } = await getAllFilesMetadata(this.supabase, 'folders');
 		if (error) {
 			return { error: error, result: null };
 		} else {
-			return { result: buildFileTree(data), error: null };
+			this.rootFolder = buildFileTree(data);
+			return { result: this.rootFolder, error: null };
 		}
 	}
 }

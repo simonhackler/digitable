@@ -4,8 +4,14 @@
 	import { get, set } from 'idb-keyval';
 	import { Button } from '$lib/components/ui/button';
 
-	let { opfsAdapter = $bindable() }: { opfsAdapter: OPFSAdapter } = $props();
+	let { onSetOpfsAdapter }: { onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } = $props();
 
+	let opfsAdapter: OPFSAdapter | null = $state(null);
+    $effect(() => {
+        if(opfsAdapter) {
+            onSetOpfsAdapter(opfsAdapter);
+        }
+    })
 	let permissions = $state(false);
 	let dirPicker = $state(false);
 
@@ -14,7 +20,6 @@
 		await saveFolder(folderHandle);
 		opfsAdapter = new OPFSAdapter(folderHandle);
 	}
-
 
 	onMount(async () => {
 		dirPicker = 'showDirectoryPicker' in window;

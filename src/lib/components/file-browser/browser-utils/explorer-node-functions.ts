@@ -21,7 +21,7 @@ export class ExplorerNodeFunctions {
 		this.homeFolderPath = homeFolderPath;
 	}
 
-	private getPath(node: ExplorerNode): string[] {
+	public static getPath(node: ExplorerNode): string[] {
 		const path = [node.name];
 		let parent = node.parent;
 		while (parent !== null) {
@@ -34,7 +34,7 @@ export class ExplorerNodeFunctions {
 	public async onUpload(file: File, uploadTo: Folder, overwrite?: boolean) {
 		const error = await this.fileFunctions.upload(
 			file,
-			this.getPath(uploadTo).slice(1).join('/'),
+			ExplorerNodeFunctions.getPath(uploadTo).slice(1).join('/'),
 			overwrite
 		);
 		if (error) {
@@ -54,11 +54,11 @@ export class ExplorerNodeFunctions {
 		return null;
 	}
 
-	private getAllFiles(node: ExplorerNode, currentPath: string): string[] {
+	public static getAllFiles(node: ExplorerNode, currentPath: string): string[] {
 		if (isFolder(node)) {
 			const paths: string[] = [];
 			for (const child of node.children) {
-				const childPaths = this.getAllFiles(child, currentPath + '/' + child.name);
+				const childPaths = ExplorerNodeFunctions.getAllFiles(child, currentPath + '/' + child.name);
 				paths.push(...childPaths);
 			}
 			return paths;
@@ -68,17 +68,12 @@ export class ExplorerNodeFunctions {
 	}
 
 	public async deleteNodes(nodes: ExplorerNode[]) {
-		console.log(nodes);
-		console.log('home folder path: ');
-		console.log(this.homeFolderPath);
 		const allFilesToDelete: string[] = [];
-
 		for (const node of nodes) {
-			const path = this.homeFolderPath + this.getPath(node).slice(1).join('/');
-			const filePaths = this.getAllFiles(node, path);
+			const path = this.homeFolderPath + ExplorerNodeFunctions.getPath(node).slice(1).join('/');
+			const filePaths = ExplorerNodeFunctions.getAllFiles(node, path);
 			allFilesToDelete.push(...filePaths);
 		}
-
 		const error = await this.fileFunctions.delete(allFilesToDelete);
 		if (error) {
 			console.error(error);
@@ -95,14 +90,14 @@ export class ExplorerNodeFunctions {
 	}
 
 	private getFullPath(node: ExplorerNode): string {
-		return this.homeFolderPath + this.getPath(node).slice(1).join('/');
+		return this.homeFolderPath + ExplorerNodeFunctions.getPath(node).slice(1).join('/');
 	}
 
 	public async downloadNodes(nodes: ExplorerNode[]) {
 		const allFilesToDownload: string[] = [];
 
 		for (const node of nodes) {
-			const filePaths = this.getAllFiles(node, this.getFullPath(node));
+			const filePaths = ExplorerNodeFunctions.getAllFiles(node, this.getFullPath(node));
 			allFilesToDownload.push(...filePaths);
 		}
 

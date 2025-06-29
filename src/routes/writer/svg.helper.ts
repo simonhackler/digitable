@@ -1,22 +1,39 @@
-async function svgToPng(svg: SVGSVGElement, scale = 1): Promise<Blob> {
-  const xml = new XMLSerializer().serializeToString(svg);   // keeps XHTML ns
-  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+export async function svgToPng(svg: SVGElement | string, dpi = 300): Promise<Blob> {
+    const xml = typeof svg === 'string'
+        ? svg
+        : new XMLSerializer().serializeToString(svg);
 
-  const url = URL.createObjectURL(blob);
+    const svgString = `<?xml version="1.0" encoding="utf-8"?>${xml}`;
+    const svgBase64 = btoa(unescape(encodeURIComponent(svgString)));
+    const url = `data:image/svg+xml;base64,${svgBase64}`;
 
-  const img = new Image();
-  img.decoding = 'async';          // avoids layout jank
-  img.src = url;
-  await img.decode();
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
 
-  const canvas = document.createElement('canvas');
-  canvas.width  = svg.width.baseVal.value * scale;
-  canvas.height = svg.height.baseVal.value * scale;
+    await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('SVG load failed'));
+        img.src = url;
+    });
 
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  URL.revokeObjectURL(url);
+    const CSS_DPI = 96;                        // 1 CSS pixel ≈ 1/96 inch
+    const scale = dpi / CSS_DPI;               // e.g. 300 / 96 ≈ 3.125
 
-  return await new Promise<Blob>((res) => canvas.toBlob(res, 'image/png')!);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(img.width * scale);
+    canvas.height = Math.ceil(img.height * scale);
+
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(scale, scale);                   // logical view stays the same size
+    ctx.drawImage(img, 0, 0);
+
+    const blob = await new Promise<Blob>((res, rej) => {
+        canvas.toBlob(
+            (b) => b ? res(b) : rej(new Error('Canvas toBlob failed')),
+            'image/png'
+        );
+    });
+
+    return blob;
 }
 

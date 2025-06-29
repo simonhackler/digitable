@@ -1,10 +1,15 @@
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
+	import { toPng } from 'html-to-image';
 	import { onMount, tick } from 'svelte';
 	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
 	import { ScrollState } from 'runed';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 	import PickFolder from './pick-folder.svelte';
+	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
+	import { svgToPng } from './svg.helper';
+	import { Button } from '$lib/components/ui/button';
+	import ImageGrid from './image-grid.svelte';
 
 	let el = $state<HTMLElement>();
 	const scroll = new ScrollState({
@@ -46,11 +51,13 @@
 		const svg = generateSvg(row);
 		if (svg) {
 			svgs.splice(pos, 0, svg);
+			await tick();
+			columns.forEach((col, idx) => {
+				appendForeignObjectByIdForText(svg, col.title, data[0][idx] || '');
+			});
+			await tick();
+			//const img = await svgToPng(svg);
 		}
-		await tick();
-		columns.forEach((col, idx) => {
-			appendForeignObjectByIdForText(svg!, col.title, data[0][idx] || '');
-		});
 	}
 
 	function clearSelectionRects() {
@@ -113,9 +120,9 @@
 			div.textContent = newText;
 		} else if (el.tagName == 'image') {
 			const fileResults = await fileSystem!.download([newText]);
-            const {result, error} = fileResults[0];
+			const { result, error } = fileResults[0];
 			if (error) {
-                console.error(error);
+				console.error(error);
 			} else {
 				const blob = result.data;
 				const url = URL.createObjectURL(blob);
@@ -233,15 +240,20 @@
 		});
 	}
 
-	// onMount(() => {
-	// 	parse();
-	// });
-
 	$effect(() => {
 		if (fileSystem) {
 			parse();
+			logFiles();
 		}
 	});
+
+	async function logFiles() {
+		const root = await fileSystem!.getRootFolder();
+		if (root.result) {
+			const files = ExplorerNodeFunctions.getAllFiles(root.result, '/');
+			console.log(files);
+		}
+	}
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
 		return (element) => {
@@ -262,9 +274,55 @@
 	}
 
 	let hoverItemIndex: number | null = $state(null);
+	async function exportSvgs() {
+		const pngs = await Promise.all(svgs.map((svg) => svgToPng(svg)));
+
+		const uploads = pngs.map((png, i) => {
+			const fileName = `gen_${i + 1}.png`;
+			const file = new File([png], fileName, {
+				type: 'image/png',
+				lastModified: Date.now()
+			});
+			return fileSystem!.upload(file, `system`, true).then((res) => {
+				if (res) throw new Error(`Upload failed for ${fileName}: ${res.message}`);
+			});
+		});
+
+		await Promise.all(uploads);
+		images = pngs.map((png) => URL.createObjectURL(png));
+		w = svgs[0].getBoundingClientRect().width;
+		h = svgs[0].getBoundingClientRect().height;
+		await tick();
+		const imgElements = Array.from(sheetEl.querySelectorAll('img'));
+		await Promise.all(imgElements.map((img) => img.decode()));
+
+		const dataUrl = await toPng(sheetEl, {
+			width: 4096,
+			height: 676,
+			pixelRatio: 2,
+			skipFonts: true
+		});
+		const blob = await (await fetch(dataUrl)).blob();
+		const file = new File([blob], 'sheet.png', {
+			type: 'image/png',
+			lastModified: Date.now()
+		});
+		//images = [];
+
+		await fileSystem!.upload(file, `system`, true).then((res) => {
+			if (res) throw new Error(`Upload failed for sheet.png: ${res.message}`);
+		});
+	}
+
+	let sheetEl: HTMLDivElement;
+	let images: string[] = $state([]);
+
+	let w = $state(0);
+	let h = $state(0);
 </script>
 
 {#if fileSystem}
+	<Button onclick={() => exportSvgs()}>Export</Button>
 	{#if data && data.length}
 		<div
 			bind:this={el}
@@ -308,5 +366,19 @@
 	{/if}
 	<div id="spreadsheet"></div>
 {:else}
-	<PickFolder bind:opfsAdapter={fileSystem} />
+	<PickFolder
+		onSetOpfsAdapter={(adapter) => {
+			fileSystem = adapter;
+		}}
+	/>
+{/if}
+{#if images}
+	<div class="">
+		<div
+			bind:this={sheetEl}
+			class="pointer-events-none absolute top-0 left-0"
+		>
+			<ImageGrid {images} {w} {h} />
+		</div>
+	</div>
 {/if}
