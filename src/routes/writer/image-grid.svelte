@@ -1,14 +1,17 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils/utils';
 	import { toPng } from 'html-to-image';
+	import { tick } from 'svelte';
 
-	let { images, w, h }: { images: string[]; w: number; h: number } = $props();
+	let { images, w, h, onTakeScreenshot }: { images: string[]; w: number; h: number } = $props();
 	let sheetEl: HTMLDivElement;
 
 	const SHEET = 4096;
-
 	const dims = $derived(getGridDims(images.length, w, h));
 	const colClass = $derived('grid-cols-' + dims.cols);
+
+	let cellH = 0;
 
 	function getGridDims(cards: number, w: number, h: number) {
 		let cols = Math.max(1, Math.floor(SHEET / w));
@@ -17,21 +20,50 @@
 	}
 
 	async function takeImage() {
+        const height = cellH * dims.rows;
+        console.log(height);
 		const dataUrl = await toPng(sheetEl, {
 			width: 4096,
-			height: 676,
+			height,
 			pixelRatio: 2,
 			skipFonts: true
 		});
 		const blob = await (await fetch(dataUrl)).blob();
+
+		const file = new File([blob], 'sheet.png', {
+			type: 'image/png',
+			lastModified: Date.now()
+		});
+
+        onTakeScreenshot(file);
 	}
+
+	async function measure() {
+		await tick();
+		const imgElements = Array.from(sheetEl.querySelectorAll('img'));
+		await Promise.all(imgElements.map((img) => img.decode()));
+		const cell = sheetEl?.querySelector('img');
+		if (cell) {
+			const { width, height } = cell.getBoundingClientRect();
+			cellH = height;
+		}
+	}
+
+	$effect(async () => {
+		if (images.length > 0) {
+			await measure();
+            takeImage();
+		}
+	});
 </script>
 
-<div class={cn('sheet grid ', colClass)} bind:this={sheetEl}>
-	{#each images as image (image)}
-		<img src={image} alt="" class="object-contain" />
-	{/each}
-</div>
+{#if images}
+	<div class={cn('sheet grid ', colClass)} bind:this={sheetEl}>
+		{#each images as image (image)}
+			<img src={image} alt="" class="object-contain" />
+		{/each}
+	</div>
+{/if}
 
 <style>
 	.sheet {

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
-	import { toPng } from 'html-to-image';
-	import { onMount, tick } from 'svelte';
+	import { tick } from 'svelte';
 	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
 	import { ScrollState } from 'runed';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
@@ -23,9 +22,17 @@
 	let svgTemplate: SVGSVGElement;
 	let selectionRects: SVGRectElement[] = [];
 	let spreadsheet: jspreadsheet.WorksheetInstance[];
+    let currentProject = 'pnp-dungeon';
+    let currentCard = 'card_0';
 
 	async function parse() {
-		const svgText = await fetch('image.svg').then((i) => i.text());
+        const filePath = `/${currentProject}/system/${currentCard}/image.svg`;
+		const [{ result, error }] = await fileSystem!.download([filePath]);
+		if (error) {
+			console.error(`Could not load ${filePath}:`, error);
+			return;
+		}
+        const svgText = await result.data.text();
 		const parser = new DOMParser();
 		const doc = parser.parseFromString(svgText, 'image/svg+xml');
 		svgTemplate = doc.documentElement as SVGSVGElement;
@@ -56,7 +63,6 @@
 				appendForeignObjectByIdForText(svg, col.title, data[0][idx] || '');
 			});
 			await tick();
-			//const img = await svgToPng(svg);
 		}
 	}
 
@@ -119,7 +125,7 @@
 			}
 			div.textContent = newText;
 		} else if (el.tagName == 'image') {
-			const fileResults = await fileSystem!.download([newText]);
+			const fileResults = await fileSystem!.download([`/${currentProject}/files/${newText}`]);
 			const { result, error } = fileResults[0];
 			if (error) {
 				console.error(error);
@@ -242,17 +248,19 @@
 
 	$effect(() => {
 		if (fileSystem) {
-			parse();
 			logFiles();
+			parse();
 		}
 	});
 
 	async function logFiles() {
 		const root = await fileSystem!.getRootFolder();
 		if (root.result) {
-			const files = ExplorerNodeFunctions.getAllFiles(root.result, '/');
+			const files = ExplorerNodeFunctions.getAllFiles(root.result, '');
 			console.log(files);
-		}
+		} else {
+            console.error(root.error);
+        }
 	}
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
@@ -292,23 +300,10 @@
 		images = pngs.map((png) => URL.createObjectURL(png));
 		w = svgs[0].getBoundingClientRect().width;
 		h = svgs[0].getBoundingClientRect().height;
-		await tick();
-		const imgElements = Array.from(sheetEl.querySelectorAll('img'));
-		await Promise.all(imgElements.map((img) => img.decode()));
+	}
 
-		const dataUrl = await toPng(sheetEl, {
-			width: 4096,
-			height: 676,
-			pixelRatio: 2,
-			skipFonts: true
-		});
-		const blob = await (await fetch(dataUrl)).blob();
-		const file = new File([blob], 'sheet.png', {
-			type: 'image/png',
-			lastModified: Date.now()
-		});
-		//images = [];
-
+	async function onTakeScreenshot(file: File) {
+		console.log(file);
 		await fileSystem!.upload(file, `system`, true).then((res) => {
 			if (res) throw new Error(`Upload failed for sheet.png: ${res.message}`);
 		});
@@ -374,11 +369,8 @@
 {/if}
 {#if images}
 	<div class="">
-		<div
-			bind:this={sheetEl}
-			class="pointer-events-none absolute top-0 left-0"
-		>
-			<ImageGrid {images} {w} {h} />
+		<div bind:this={sheetEl} class="pointer-events-none absolute top-0 left-0">
+			<ImageGrid {images} {w} {h} {onTakeScreenshot} />
 		</div>
 	</div>
 {/if}
