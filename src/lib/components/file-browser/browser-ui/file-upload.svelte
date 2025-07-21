@@ -28,6 +28,7 @@
 		await Promise.allSettled(files.map((file) => uploadFile(file)));
 	};
 	const onFileRejected: FileDropZoneProps['onFileRejected'] = async ({ reason, file }) => {
+        console.error(`File upload failed: ${file.name}`, reason);
 		toast.error(`${file.name} failed to upload!`, { description: reason });
 	};
 	const uploadFile = (file: File) => {
@@ -100,7 +101,7 @@
 				<FileDropZone
 					{onUpload}
 					{onFileRejected}
-					maxFileSize={6 * MEGABYTE}
+					maxFileSize={12 * MEGABYTE}
 					maxFiles={4}
 					fileCount={files.length}
 				/>

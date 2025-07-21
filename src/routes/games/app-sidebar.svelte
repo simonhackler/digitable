@@ -3,12 +3,17 @@
 	import CreateMenu from './create-menu.svelte';
 	import ProjectSwitcher from './project-switcher.svelte';
 	import type { Game } from './types.js';
+	import { page } from '$app/state';
 
     let { games } : { games: Game[] } = $props();
-    
+
     // We'll need to track the active project to get its decks
-    let activeProject = $derived(games.length > 0 ? games[0] : null);
-    
+    let activeProject = $derived.by(() => {
+        const game = games.find((game) => game.name === page.params.gameName);
+        if (game) return game;
+        return games.length > 0 ? games[0] : null
+    });
+
     function onProjectChange(project: Game) {
         activeProject = project;
     }
