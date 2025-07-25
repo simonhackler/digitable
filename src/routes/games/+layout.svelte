@@ -12,7 +12,9 @@
 	let games: Game[] = $state([]);
 
 	setFileSystemContext(fileSystemState);
+
 	async function onSetOpfsAdapter(adapter: Adapter) {
+        console.log('Setting OPFS adapter', adapter);
         fileSystemState.adapter = adapter;
 
 		const folder = await fileSystem.getRootFolder();
