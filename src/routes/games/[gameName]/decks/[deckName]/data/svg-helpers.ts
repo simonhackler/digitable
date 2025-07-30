@@ -46,9 +46,6 @@ export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, da
     }
     if (el.tagName !== 'text') return null;
 
-    // TODO: get shape inside property inside style property
-
-
     const styleAttr = el.getAttribute('style') ?? '';
     const shapeMatch = /shape-inside\s*:\s*url\(\s*#([^)]+)\)/i.exec(styleAttr);
     console.log(el.getAttribute('style'));
@@ -65,7 +62,6 @@ export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, da
             console.warn(`shape-inside target #${shapeId} not found; using glyph bbox`);
         }
     }
-
 
     const fo = document.createElementNS(svg.namespaceURI, 'foreignObject') as SVGForeignObjectElement;
     fo.setAttribute('x', x.toString());

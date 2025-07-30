@@ -15,7 +15,9 @@ import {
   MessageSquareX,
   ArrowUpCircle,
   ArrowDown,
-  ArrowDownCircle
+  ArrowDownCircle,
+  ArrowLeftCircle,
+  ArrowRightCircle
 } from '@lucide/svelte';
 
 export interface SheetContextMenuItem {
@@ -34,7 +36,7 @@ export const defaultContextMenuItems = function(worksheet: jspreadsheet.Workshee
         if (worksheet.options.allowInsertColumn != false) {
             items.push({
                 title: jSuites.translate('Insert a new column before'),
-                icon: Plus,
+                icon: ArrowLeftCircle,
                 onclick: function() {
                     worksheet.insertColumn(1, parseInt(x), 1);
                 }
@@ -44,7 +46,7 @@ export const defaultContextMenuItems = function(worksheet: jspreadsheet.Workshee
         if (worksheet.options.allowInsertColumn != false) {
             items.push({
                 title: jSuites.translate('Insert a new column after'),
-                icon: Plus,
+                icon: ArrowRightCircle,
                 onclick: function() {
                     worksheet.insertColumn(1, parseInt(x), 0);
                 }

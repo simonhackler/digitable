@@ -4,8 +4,15 @@
 
 	let {
 		deletedSvgColumns,
-		onAddColumn
-	}: { deletedSvgColumns: string[]; onAddColumn: (col: string) => void } = $props();
+		onAddColumn,
+		onHover,
+		onExitHover
+	}: {
+		deletedSvgColumns: string[];
+		onAddColumn: (col: string) => void;
+		onHover: (col: string) => void;
+		onExitHover: (col: string) => void;
+	} = $props();
 </script>
 
 <div class="flex w-full items-center gap-2">
@@ -15,10 +22,18 @@
 			{#if deletedSvgColumns.length === 0}
 				<div class="text-muted-foreground p-2 text-center">No deleted SVG columns</div>
 			{:else}
-				<div class="text-muted-foreground p-2 text-center">Add the following columns to the spreadsheet</div>
+				<div class="text-muted-foreground p-2 text-center">
+					Add the following columns to the spreadsheet
+				</div>
 				{#each deletedSvgColumns as column (column)}
 					<div class="flex gap-2">
-						<Button variant="default" class="w-full" onclick={() => onAddColumn(column)}
+						<Button
+							variant="default"
+							class="w-full"
+							onclick={() => onAddColumn(column)}
+							onmouseover={() => onHover(column)}
+							onmouseleave={() => onExitHover(column)}
+						>
 							>Add <b>{column}</b> to spreadsheet</Button
 						>
 					</div>

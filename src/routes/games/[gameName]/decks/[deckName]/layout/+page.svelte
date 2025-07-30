@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getLoadSvgsContext } from '../svg-context.svelte';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
@@ -7,22 +8,15 @@
 	import { Button } from '$lib/components/ui/button';
 	import { MEGABYTE } from '$lib/components/ui/file-drop-zone';
 	import FileDropZone from '$lib/components/ui/file-drop-zone/file-drop-zone.svelte';
-	import { getFileSystemContext } from '../../../../context';
 	import { Input } from '$lib/components/ui/input';
 	import { z } from 'zod';
 	import { superForm, defaults } from 'sveltekit-superforms';
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { PlusIcon } from '@lucide/svelte';
+	import { getFileSystemContext } from '../../../../context';
 
-	let {
-		onUpload,
-		templateFront,
-		templateBack
-	}: {
-		onUpload?: (files: File) => void;
-		templateFront?: SVGSVGElement;
-		templateBack?: SVGSVGElement;
-	} = $props();
+	const loadSvgsContext = getLoadSvgsContext();
+	let { front: templateFront, back: templateBack } = $derived(await loadSvgsContext.loadTemplates);
 
 	const emptyCardSchema = z.object({
 		side: z.enum(['front', 'back']),
@@ -69,8 +63,8 @@
 		const onUploadSvg = async (files: File[]) => {
 			const file = files[0];
 			const renamedFile = new File([file], `${type}.svg`, { type: file.type });
+			console.log(`Uploading ${renamedFile.name} to ${fullFolderPath}`);
 			await fileSystem.upload(renamedFile, fullFolderPath, true);
-			onUpload?.(renamedFile);
 		};
 		return onUploadSvg;
 	}
@@ -154,16 +148,25 @@
 				<div class="text-center">
 					<div {@attach attachSVG(svgFile)} class="w-full max-w-sm border"></div>
 					<div class="mt-2 flex items-center justify-between">
-						<FileUpload {uploadToAdapter} filesInFolder={[]}></FileUpload>
 						{#if width && height}
+							<Popover.Root>
+								<Popover.Trigger class="w-full">
+									<Button class="w-full">Upload</Button>
+								</Popover.Trigger>
+								<Popover.Content>
+									<FileDropZone
+										onUpload={buildUploadFunction(side)}
+										{onFileRejected}
+										maxFileSize={12 * MEGABYTE}
+										maxFiles={1}
+										fileCount={0}
+										class="mb-4 h-full"
+									/>
+								</Popover.Content>
+							</Popover.Root>
 							<Button onclick={() => createEmptySvg(side, width, height)}
 								>Overwrite with empty</Button
 							>
-						{:else}
-							<Popover.Root>
-								<Popover.Trigger>Create empty</Popover.Trigger>
-								<Popover.Content>Place content for the popover here.</Popover.Content>
-							</Popover.Root>
 						{/if}
 					</div>
 				</div>

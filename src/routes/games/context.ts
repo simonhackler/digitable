@@ -4,7 +4,6 @@ import { getContext, setContext } from 'svelte';
 const key = 'filesystem';
 
 export function setFileSystemContext(fileSystem: { adapter: Adapter | null }) {
-    console.log('Setting file system context', fileSystem);
     setContext(key, fileSystem);
 }
 

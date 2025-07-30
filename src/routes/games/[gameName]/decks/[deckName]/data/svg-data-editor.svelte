@@ -21,9 +21,9 @@
 	} from './svg-helpers';
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
-	import { CellValue } from 'jspreadsheet-ce';
+	import { type CellValue } from 'jspreadsheet-ce';
 
-	const { svgFileText }: { svgFileText: string } = $props();
+	const { svgTemplate }: { svgTemplate: SVGSVGElement } = $props();
 
 	let el = $state<HTMLElement>(null);
 	const scroll = new ScrollState({
@@ -37,7 +37,6 @@
 	let svgs: SVGSVGElement[] = $state([]);
 	const fileSystem = getFileSystemContext();
 
-	const svgTemplate = $derived(loadSvgTemplate(svgFileText));
 	const svgData = $derived(parseSvg(svgTemplate));
 	const spreadsheetData = $state(svgData);
 
@@ -68,18 +67,19 @@
 	async function saveCsv(): Promise<void> {
 		const rows = spreadsheet[0]?.getData() ?? [];
 		if (!rows.length) return;
-
-		// Header row comes from the worksheet instance:
 		const header = spreadsheet[0].getHeaders(true) as string[];
-		const csvText = Papa.unparse([header, ...rows]);
+        await saveDataToCsv([header, ...rows]);
+	}
 
-		const file = new File([csvText], 'data.csv', {
+	async function saveDataToCsv(csvData: CellValue[][]) {
+		const csvText = Papa.unparse(csvData);
+		const csvFile = new File([csvText], 'data.csv', {
 			type: 'text/csv',
 			lastModified: Date.now()
 		});
+		const res = await fileSystem.upload(csvFile, `/${currentProject}/system/${currentCard}`, true);
 
-		const err = await fileSystem.upload(file, `/${currentProject}/system/${currentCard}`, true);
-		if (err) throw new Error(`Upload failed for data.csv: ${err.message}`);
+		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
 	}
 
 	if (csvFile) {
@@ -103,16 +103,7 @@
 	} else {
 		const header = spreadsheetData.cols.map((c) => c.title as string);
 		const csvData = [header].concat(spreadsheetData.data);
-		const csv = Papa.unparse(csvData);
-		const csvFile = new File([csv], 'data.csv', {
-			type: 'text/csv',
-			lastModified: Date.now()
-		});
-		const res = await fileSystem
-			.upload(csvFile, `/${currentProject}/system/${currentCard}`, true)
-			.then((res) => {
-				if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
-			});
+        await saveDataToCsv(csvData);
 	}
 
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = [];
@@ -142,18 +133,12 @@
 					const data = rows[i][idx] || '';
 					initialSetupForSvgItem(svg, col, data, currentProject, fileSystem);
 				});
-				await tick();
-				svg.querySelectorAll('foreignObject > *').forEach((el) => {
-					// el.style.fontSize = `${12 / scale}px`;
-				});
 			}
 		}
 
 		// Remove the newly added svgs from the end and insert them at the correct position
 		if (newSvgs.length > 0) {
-			// Remove the newly added SVGs from the end
 			svgs.splice(svgs.length - newSvgs.length, newSvgs.length);
-			// Insert them at the correct position (minRow)
 			svgs.splice(minRow, 0, ...newSvgs);
 		}
 	}
@@ -184,7 +169,7 @@
 
 	function initSpreadsheet(data: string[][], columns: Column[] = []) {
 		if (!spreadsheetEl) return;
-		
+
 		spreadsheet = jspreadsheet(spreadsheetEl, {
 			worksheets: [
 				{
@@ -251,7 +236,6 @@
 							for (const svg of svgs) {
 								updateSvg(svg, col, svgData.data[0][svgCol], fileSystem, currentProject);
 							}
-							// TODO reset the svg data for this column for all rows
 						}
 					}
 				}
@@ -363,37 +347,44 @@
 	let w = $state(0);
 	let h = $state(0);
 
-	function addColumn(col: string) {
-		// TODO get element by id then check what type it is
-		// spreadsheetData.cols.push({ title: col, type: 'text' });
-		//Get cols index
-		console.log('Adding column', col);
+	function highlightColumn(col: string) {
 		const colI = svgData.cols.findIndex((c) => c.title === col);
 		if (colI === -1) {
 			throw new Error(`Column ${col} not found in svgData.cols`);
 		}
-		// deletedSvgColumns = deletedSvgColumns.filter((c) => c !== col);
-		console.log(spreadsheet);
+		for (const svg of svgs) {
+			highlight(svg.getElementById(col)!, svg);
+		}
+	}
+
+	function addColumn(col: string) {
+		clearSelectionRects();
+		const colI = svgData.cols.findIndex((c) => c.title === col);
+		if (colI === -1) {
+			throw new Error(`Column ${col} not found in svgData.cols`);
+		}
+		deletedSvgColumns = deletedSvgColumns.filter((c) => c !== col);
 		const data = Array(svgs.length).fill((svgData.data[0][colI] as CellValue) || '');
 		const result = spreadsheet[0].insertColumn(
-
-		1,
-  spreadsheet[0].getHeaders(true).length,    // how many columns
-  false,// insert *after* column 1
-  [{
-    title: col,
-    type: 'text',
-    width: 120
-  }]
-);
+			1,
+			spreadsheet[0].getHeaders(true).length, // how many columns
+			false, // insert *after* column 1
+			[
+				{
+					title: col,
+					type: 'text',
+					width: 120
+				}
+			]
+		);
 		spreadsheet[0].setColumnData(
-		    spreadsheet[0].getHeaders(true).length - 1,
-		    Array(svgs.length).fill(
-		        (svgData.data[0][colI] as CellValue) || ''
-		    )
+			spreadsheet[0].getHeaders(true).length - 1,
+			Array(svgs.length).fill((svgData.data[0][colI] as CellValue) || '')
 		);
 
-		// TODO init all svgs properly with foreignObject!
+		for (const svg of svgs) {
+			initialSetupForSvgItem(svg, col, data[0], currentProject, fileSystem);
+		}
 	}
 </script>
 
@@ -438,7 +429,12 @@
 	{/each}
 </div>
 <div class="px-2 py-2">
-	<Toolbar {deletedSvgColumns} onAddColumn={addColumn}></Toolbar>
+	<Toolbar
+		{deletedSvgColumns}
+		onAddColumn={addColumn}
+		onHover={highlightColumn}
+		onExitHover={(x) => clearSelectionRects()}
+	></Toolbar>
 </div>
 <ContextMenu.Root>
 	<ContextMenu.Trigger>
