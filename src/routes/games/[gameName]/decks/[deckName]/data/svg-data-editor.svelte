@@ -17,13 +17,12 @@
 		updateSvg,
 		createHighlightRect,
 		appendHighlightToSvg,
-
 		type SvgParseResult
-
 	} from './svg-helpers';
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';
+	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
 	const { svgTemplate }: { svgTemplate: SVGSVGElement } = $props();
 
@@ -35,16 +34,36 @@
 	const currentProject = $derived(page.params.gameName);
 	const currentCard = $derived(page.params.deckName);
 	const fileSystem = getFileSystemContext();
-
-	let svgs: SVGSVGElement[] = $state([]);
-
 	const svgData = $derived(parseSvg(svgTemplate));
 
 	const csvPath = $derived(`/${currentProject}/system/${currentCard}/data.csv`);
 	const csvFileResult = $derived(fileSystem.download([csvPath]));
 	let csvFile = $derived((await csvFileResult)[0].result?.data);
+    let csvData = $derived(csvFile ? parseCsvFile(csvFile) : null);
+
+	const spreadsheetData = $derived(await loadSpreadsheetData(svgData, await csvData));
+	let deletedSvgColumns = $derived(
+		svgData.cols
+			.filter((col) => !spreadsheetData.cols.some((c) => c.title === col.title))
+			.map((c) => c.title as string)
+	);
+
+	const imagePaths = $derived(
+		await loadImagePaths(svgData, spreadsheetData, deletedSvgColumns, fileSystem)
+	);
+	let svgs: SVGSVGElement[] = $state(
+		spreadsheetData.data.map((row) =>
+			generateSvg(
+				svgTemplate,
+				spreadsheetData.cols.map((c) => c.title as string),
+				row,
+				imagePaths
+			)
+		)
+	);
 
 	function parseCsvFile(file: File): Promise<{ header: string[]; data: string[][] }> {
+        console.log('Parsing CSV file:', file);
 		return new Promise((resolve, reject) => {
 			Papa.parse<string[]>(file, {
 				complete: (result) => {
@@ -53,6 +72,7 @@
 					}
 					const rows = result.data.filter((r) => r.length > 0);
 					const header = rows.shift()!;
+                    console.log('CSV header:', header);
 					resolve({ header, data: rows });
 				},
 				error: (err) => reject(err),
@@ -81,42 +101,71 @@
 		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
 	}
 
-	const spreadsheetData = $derived(await loadSpreadsheetData(svgData));
-	let deletedSvgColumns: string[] = $derived(
-		svgData.cols.map((col) => {
-			if (!spreadsheetData.cols.some((c) => c.title === col.title)) {
-				return col.title as string;
+
+	async function loadImagePaths(
+		svgData: SvgParseResult,
+		spreadsheetData: { cols: Column[]; data: string[][] },
+		deletedSvgColumns: string[],
+		fileSystem: Adapter
+	) {
+		const imagesInSpreadsheet = svgData.cols.filter(
+			(c) => !deletedSvgColumns.includes(c.title as string) && c.type === 'image'
+		);
+		const imageColumnIndices = imagesInSpreadsheet
+			.map((imgCol) => spreadsheetData.cols.findIndex((col) => col.title === imgCol.title))
+			.filter((idx) => idx !== -1);
+		const imageStrings = Array.from(
+			new Set(
+				spreadsheetData.data.flatMap(
+					(row) =>
+						imageColumnIndices
+							.map((i) => row[i]) // grab the value at each target index
+							.filter(Boolean) // drop undefined / empty cells
+				)
+			)
+		);
+		// The download and files api is really bad
+		const files = await fileSystem.download(
+			imageStrings.map((img) => `/${currentProject}/files/${img}`)
+		);
+		// create a map of image paths to their URLs
+		const imagePaths = new Map<string, string>();
+		imageStrings.forEach((img, i) => {
+			const file = files[i];
+			if (file.result) {
+				imagePaths.set(img, URL.createObjectURL(file.result.data));
+			} else {
+				console.warn(`File ${img} is not a Blob, skipping.`);
 			}
-		})
-	);
-	async function loadSpreadsheetData(svgData: SvgParseResult) {
-		if (csvFile) {
-			const csvData = await parseCsvFile(csvFile);
+		});
+		return imagePaths;
+	}
+
+	async function loadSpreadsheetData(svgData: SvgParseResult, csvData: { header: string[]; data: string[][] } | null) {
+		const svgCols: Column[] = svgData.cols.map((c) => {
+			return { ...c, type: 'text' };
+		});
+		if (csvData) {
 			const newCols: Column[] = [];
 			for (const header of csvData.header) {
-				const existingCol = svgData.cols.find((c) => c.title === header);
+				const existingCol = svgCols.find((c) => c.title === header);
 				if (existingCol) {
 					newCols.push(existingCol);
 				} else {
 					newCols.push({ title: header, type: 'text' });
 				}
 			}
-			// This can be in a derived outside
-			// for (const col of svgData.cols) {
-			// 	if (!newCols.some((c) => c.title === col.title)) {
-			// 		deletedSvgColumns.push(col.title);
-			// 	}
-			// }
+            console.log('New columns:', newCols);
 			return {
 				cols: newCols,
 				data: csvData.data
 			};
 		} else {
-			const header = svgData.cols.map((c) => c.title as string);
+			const header = svgCols.map((c) => c.title as string);
 			const csvData = [header].concat(svgData.data);
 			await saveDataToCsv(csvData);
 			return {
-				cols: svgData.cols,
+				cols: svgCols,
 				data: svgData.data
 			};
 		}
@@ -127,37 +176,18 @@
 	let spreadsheetEl: HTMLDivElement;
 
 	onMount(async () => {
-        console.log('Mounting SVG Data Editor');
-		await generateSvgsAndRenderText(
-			spreadsheetData.data,
-			spreadsheetData.cols.map((c) => c.title)
-		);
+		await tick(); // Don't understand why this is needed, the div should be initialized already
 		initSpreadsheet(spreadsheetData.data, spreadsheetData.cols);
 	});
 
-	async function generateSvgsAndRenderText(rows: string[][], headers: string[], minRow = 0) {
-		const newSvgs: SVGSVGElement[] = [];
-
-		for (let i = 0; i < rows.length; i++) {
-			const svg = generateSvg(svgTemplate);
-			if (svg) {
-				svgs.push(svg);
-				newSvgs.push(svg);
-				// await tick();
-				const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
-				headers.forEach((col, idx) => {
-					const el = svg.getElementById(col) as SVGGraphicsElement | null;
-					const data = rows[i][idx] || '';
-					initialSetupForSvgItem(svg, col, data, currentProject, fileSystem);
-				});
-			}
-		}
-
-		// Remove the newly added svgs from the end and insert them at the correct position
-		if (newSvgs.length > 0) {
-			svgs.splice(svgs.length - newSvgs.length, newSvgs.length);
-			svgs.splice(minRow, 0, ...newSvgs);
-		}
+	function generateSvgsAndRenderText(
+		rows: string[][],
+		headers: string[],
+		imagePaths: Map<string, string>,
+		minRow = 0
+	) {
+		const newSvgs = rows.map((row) => generateSvg(svgTemplate, headers, row, imagePaths));
+		svgs.splice(minRow, 0, ...newSvgs);
 	}
 
 	function clearSelectionRects() {
@@ -251,7 +281,7 @@
 						if (svgCol !== -1) {
 							deletedSvgColumns.push(svgData.cols[svgCol].title);
 							for (const svg of svgs) {
-								updateSvg(svg, col, svgData.data[0][svgCol], fileSystem, currentProject);
+								updateSvg(svg, col, svgData.data[0][svgCol], imagePaths);
 							}
 						}
 					}
@@ -262,7 +292,7 @@
 				const rowsData = rows.map((row) => row.data.map((x) => x.toString()));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
 
-				generateSvgsAndRenderText(rowsData, headers, minRow);
+				generateSvgsAndRenderText(rowsData, headers, imagePaths, minRow);
 			},
 			onafterchanges(worksheet: object, records: Array) {
 				saveDebounced();
@@ -277,21 +307,16 @@
 			oneditionstart(worksheet, cell, x, y) {
 				cell.oninput = (e) => {
 					const headers = spreadsheet[0].getHeaders(true) as string[];
+                    console.log(spreadsheet[0].headers);
 					if (e.target != null) {
-						updateSvg(svgs[y], headers[x], e.target.value, fileSystem, currentProject);
+						updateSvg(svgs[y], headers[x], e.target.value, imagePaths);
 					}
 				};
 			},
 			onchange(instance, cell, colIndex, rowIndex, newValue, oldValue) {
 				const headers = spreadsheet[0].getHeaders(true) as string[];
 				cell.oninput = null;
-				updateSvg(
-					svgs[rowIndex],
-					headers[colIndex],
-					newValue.toString(),
-					fileSystem,
-					currentProject
-				);
+				updateSvg(svgs[rowIndex], headers[colIndex], newValue.toString(), imagePaths);
 			},
 			onsort(instance, colIndex, order, newOrderValues) {
 				//TODO
@@ -306,8 +331,6 @@
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
 		return (element) => {
 			if (svg instanceof Node) {
-				// svg.removeAttribute('width');
-				// svg.removeAttribute('height');
 				element.appendChild(svg);
 				svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 				Object.assign(svg.style, {
@@ -409,7 +432,7 @@
 	bind:this={el}
 	class="flex w-screen flex-nowrap gap-2 overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
 >
-	{#each svgs as svg, i (svg)}
+	{#each svgs as svg, i (svg.id)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- ignore for now, should this then just be a button? -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->

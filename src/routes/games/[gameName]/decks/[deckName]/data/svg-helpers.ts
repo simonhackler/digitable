@@ -2,7 +2,7 @@ import type { Column } from 'jspreadsheet-ce';
 import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
 export interface SvgParseResult {
-    cols: Column[];
+    cols: { title: string, type: 'text' | 'image' }[];
     data: string[][];
 }
 
@@ -19,11 +19,11 @@ export function parseSvg(svg: SVGSVGElement): SvgParseResult {
     const textColumns = texts.map((t) => {
         return {
             title: t.id,
-            type: 'text' as Column['type']
+            type: 'text'
         };
     });
     const imageColumns = images.map((im) => {
-        return { title: im.id, type: 'text' as Column['type'] };
+        return { title: im.id, type: 'image' };
     });
     const cols = textColumns.concat(imageColumns);
     const data = [texts.map((t) => t.textContent || '')];
@@ -31,18 +31,24 @@ export function parseSvg(svg: SVGSVGElement): SvgParseResult {
     return { cols, data };
 }
 
-export function generateSvg(svgTemplate: SVGSVGElement): SVGSVGElement {
+export function generateSvg(svgTemplate: SVGSVGElement, headers: string[], row: string[], imagePaths: Map<string, string>): SVGSVGElement {
     const svg = svgTemplate.cloneNode(true) as SVGSVGElement;
+    // add a random id after date
+    svg.id = `generated-svg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    headers.forEach((col, idx) => {
+        const data = row[idx] || '';
+        initialSetupForSvgItem(svg, col, data, imagePaths);
+    });
     return svg;
 }
 
-export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, data: string, currentProject: string, fileSystem: Adapter): SVGForeignObjectElement | null {
+export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, data: string, imagePaths: Map<string, string>): SVGForeignObjectElement | null {
     const el = svg.getElementById(elementId) as SVGGraphicsElement | null;
     if (!el) {
         console.warn(`Element with id ${elementId} not found in SVG.`);
         return null;
     } else if (el.tagName === 'image') {
-        updateSvgImage(el, fileSystem, `/${currentProject}/files/${data}`);
+        updateSvgImageLink(el, imagePaths.get(data));
     }
     if (el.tagName !== 'text') return null;
 
@@ -51,7 +57,6 @@ export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, da
 
     // Let's see if this works without bbox. Would be incredible
     // let { x, y, width, height } = el.getBBox();
-    console.log(el)
     let x = el.getAttribute('x');
     let y = el.getAttribute('y');
     let width = el.getAttribute('width');
@@ -65,7 +70,6 @@ export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, da
             y = shapeEl.getAttribute('y');
             width = shapeEl.getAttribute('width');
             height = shapeEl.getAttribute('height');
-            console.log(`x: ${x}, y: ${y}, width: ${width}, height: ${height} from shape-inside target #${shapeId}`);
         } else {
             console.warn(`shape-inside target #${shapeId} not found; using glyph bbox`);
         }
@@ -145,8 +149,7 @@ export async function updateSvg(
     svg: SVGSVGElement,
     textId: string,
     newText: string,
-    fileSystem: Adapter,
-    currentProject: string
+    imagePaths: Map<string, string>
 ): Promise<void> {
     const el = svg.getElementById(textId) as SVGGraphicsElement | null;
     if (!el) {
@@ -159,21 +162,13 @@ export async function updateSvg(
         }
         div.textContent = newText;
     } else if (el.tagName == 'image') {
-        updateSvgImage(el, fileSystem, `/${currentProject}/files/${newText}`);
+        updateSvgImageLink(el, imagePaths.get(newText));
     }
 }
 
-async function updateSvgImage(el: SVGGraphicsElement, fileSystem: Adapter, path: string): Promise<void> {
-    const fileResults = await fileSystem.download([path]);
-    const { result, error } = fileResults[0];
-    if (error) {
-        console.error(`Error downloading image from ${path}:`, error);
-    } else {
-        const blob = result!.data;
-        const url = URL.createObjectURL(blob);
-        el.setAttribute('href', url);
-        el.setAttribute('xlink:href', url);
-    }
+function updateSvgImageLink(el: SVGGraphicsElement, url: string) {
+    el.setAttribute('href', url);
+    el.setAttribute('xlink:href', url);
 }
 
 export function createHighlightRect(el: SVGGraphicsElement, svg: SVGSVGElement, scale = 1, pad = 4): SVGRectElement | null {
