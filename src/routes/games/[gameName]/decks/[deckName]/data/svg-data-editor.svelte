@@ -11,13 +11,15 @@
 	import { toBlob } from 'html-to-image';
 	import { getFileSystemContext } from '../../../../context';
 	import {
-		loadSvgTemplate,
 		parseSvg,
 		generateSvg,
 		initialSetupForSvgItem,
 		updateSvg,
 		createHighlightRect,
-		appendHighlightToSvg
+		appendHighlightToSvg,
+
+		type SvgParseResult
+
 	} from './svg-helpers';
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
@@ -32,17 +34,14 @@
 
 	const currentProject = $derived(page.params.gameName);
 	const currentCard = $derived(page.params.deckName);
-	const fullFolderPath = $derived(`/${currentProject}/system/${currentCard}/image.svg`);
-
-	let svgs: SVGSVGElement[] = $state([]);
 	const fileSystem = getFileSystemContext();
 
+	let svgs: SVGSVGElement[] = $state([]);
+
 	const svgData = $derived(parseSvg(svgTemplate));
-	const spreadsheetData = $state(svgData);
 
 	const csvPath = $derived(`/${currentProject}/system/${currentCard}/data.csv`);
 	const csvFileResult = $derived(fileSystem.download([csvPath]));
-	let deletedSvgColumns: string[] = $state([]);
 	let csvFile = $derived((await csvFileResult)[0].result?.data);
 
 	function parseCsvFile(file: File): Promise<{ header: string[]; data: string[][] }> {
@@ -68,7 +67,7 @@
 		const rows = spreadsheet[0]?.getData() ?? [];
 		if (!rows.length) return;
 		const header = spreadsheet[0].getHeaders(true) as string[];
-        await saveDataToCsv([header, ...rows]);
+		await saveDataToCsv([header, ...rows]);
 	}
 
 	async function saveDataToCsv(csvData: CellValue[][]) {
@@ -82,28 +81,45 @@
 		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
 	}
 
-	if (csvFile) {
-		const csvData = await parseCsvFile(csvFile);
-		const newCols: Column[] = [];
-		for (const header of csvData.header) {
-			const existingCol = spreadsheetData.cols.find((c) => c.title === header);
-			if (existingCol) {
-				newCols.push(existingCol);
-			} else {
-				newCols.push({ title: header, type: 'text' });
+	const spreadsheetData = $derived(await loadSpreadsheetData(svgData));
+	let deletedSvgColumns: string[] = $derived(
+		svgData.cols.map((col) => {
+			if (!spreadsheetData.cols.some((c) => c.title === col.title)) {
+				return col.title as string;
 			}
-		}
-		spreadsheetData.cols = newCols;
-		spreadsheetData.data = csvData.data;
-		for (const col of svgData.cols) {
-			if (!newCols.some((c) => c.title === col.title)) {
-				deletedSvgColumns.push(col.title);
+		})
+	);
+	async function loadSpreadsheetData(svgData: SvgParseResult) {
+		if (csvFile) {
+			const csvData = await parseCsvFile(csvFile);
+			const newCols: Column[] = [];
+			for (const header of csvData.header) {
+				const existingCol = svgData.cols.find((c) => c.title === header);
+				if (existingCol) {
+					newCols.push(existingCol);
+				} else {
+					newCols.push({ title: header, type: 'text' });
+				}
 			}
+			// This can be in a derived outside
+			// for (const col of svgData.cols) {
+			// 	if (!newCols.some((c) => c.title === col.title)) {
+			// 		deletedSvgColumns.push(col.title);
+			// 	}
+			// }
+			return {
+				cols: newCols,
+				data: csvData.data
+			};
+		} else {
+			const header = svgData.cols.map((c) => c.title as string);
+			const csvData = [header].concat(svgData.data);
+			await saveDataToCsv(csvData);
+			return {
+				cols: svgData.cols,
+				data: svgData.data
+			};
 		}
-	} else {
-		const header = spreadsheetData.cols.map((c) => c.title as string);
-		const csvData = [header].concat(spreadsheetData.data);
-        await saveDataToCsv(csvData);
 	}
 
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = [];
@@ -111,6 +127,7 @@
 	let spreadsheetEl: HTMLDivElement;
 
 	onMount(async () => {
+        console.log('Mounting SVG Data Editor');
 		await generateSvgsAndRenderText(
 			spreadsheetData.data,
 			spreadsheetData.cols.map((c) => c.title)
@@ -126,7 +143,7 @@
 			if (svg) {
 				svgs.push(svg);
 				newSvgs.push(svg);
-				await tick();
+				// await tick();
 				const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
 				headers.forEach((col, idx) => {
 					const el = svg.getElementById(col) as SVGGraphicsElement | null;
@@ -248,7 +265,6 @@
 				generateSvgsAndRenderText(rowsData, headers, minRow);
 			},
 			onafterchanges(worksheet: object, records: Array) {
-				console.log('onafterchanges', worksheet, records);
 				saveDebounced();
 			},
 			ondeleterow(instance, removedRows) {

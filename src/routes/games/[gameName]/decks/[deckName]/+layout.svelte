@@ -22,15 +22,15 @@
     }
 
     const svgsProm = $derived(loadSvgTemplates(fileSystem, fullFolderPath));
-    const loadSvgs = $derived(new LoadSvgs(svgsProm));
+    const loadSvgs = new LoadSvgs(svgsProm);
     setLoadSvgsContext(() => loadSvgs);
+    $effect(async () => {
+        loadSvgs.loadTemplates = svgsProm;
+    });
+    // TODO all this might be related to a bug in svelte
+    await loadSvgs.loadTemplates;
 
-    const { front: templateFront, back: templateBack } = $derived(await loadSvgs.loadTemplates);
 
-
-    if (!templateFront && !templateBack) {
-        goto(`/games/${currentProject}/decks/${currentCard}/layout`);
-    }
 </script>
 
 {@render children()}

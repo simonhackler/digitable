@@ -6,7 +6,7 @@ const key = "svgs";
 export class LoadSvgs {
 
     loadTemplates: Promise<{ front: SVGSVGElement | null; back: SVGSVGElement | null }>;
-    constructor(loadTemplates: Promise<{ front: SVGSVGElement | null; back: SVGSVGElement | null }>) {
+    constructor(loadTemplates:  Promise<{ front: SVGSVGElement | null; back: SVGSVGElement | null }>) {
         this.loadTemplates = $derived(loadTemplates);
     }
 }

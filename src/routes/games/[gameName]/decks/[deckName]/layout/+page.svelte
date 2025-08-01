@@ -63,7 +63,6 @@
 		const onUploadSvg = async (files: File[]) => {
 			const file = files[0];
 			const renamedFile = new File([file], `${type}.svg`, { type: file.type });
-			console.log(`Uploading ${renamedFile.name} to ${fullFolderPath}`);
 			await fileSystem.upload(renamedFile, fullFolderPath, true);
 		};
 		return onUploadSvg;
@@ -106,14 +105,7 @@
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
 
 		// Upload the file
-		fileSystem
-			.upload(svgFile, fullFolderPath, true)
-			.then(() => {
-				onUpload?.(svgFile);
-			})
-			.catch((error) => {
-				console.error(`Failed to upload ${side}.svg:`, error);
-			});
+		fileSystem.upload(svgFile, fullFolderPath, true)
 	}
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {

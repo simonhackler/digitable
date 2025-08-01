@@ -48,16 +48,24 @@ export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, da
 
     const styleAttr = el.getAttribute('style') ?? '';
     const shapeMatch = /shape-inside\s*:\s*url\(\s*#([^)]+)\)/i.exec(styleAttr);
-    console.log(el.getAttribute('style'));
 
-    let { x, y, width, height } = el.getBBox();
+    // Let's see if this works without bbox. Would be incredible
+    // let { x, y, width, height } = el.getBBox();
+    console.log(el)
+    let x = el.getAttribute('x');
+    let y = el.getAttribute('y');
+    let width = el.getAttribute('width');
+    let height = el.getAttribute('height');
+
     if (shapeMatch) {
         const shapeId = shapeMatch[1];
         const shapeEl = svg.getElementById(shapeId) as SVGGraphicsElement | null;
-        console.log('shapeEl', shapeEl);
-
         if (shapeEl) {
-            ({ x, y, width, height } = shapeEl.getBBox());
+            x = shapeEl.getAttribute('x');
+            y = shapeEl.getAttribute('y');
+            width = shapeEl.getAttribute('width');
+            height = shapeEl.getAttribute('height');
+            console.log(`x: ${x}, y: ${y}, width: ${width}, height: ${height} from shape-inside target #${shapeId}`);
         } else {
             console.warn(`shape-inside target #${shapeId} not found; using glyph bbox`);
         }
@@ -159,7 +167,7 @@ async function updateSvgImage(el: SVGGraphicsElement, fileSystem: Adapter, path:
     const fileResults = await fileSystem.download([path]);
     const { result, error } = fileResults[0];
     if (error) {
-        console.error(error);
+        console.error(`Error downloading image from ${path}:`, error);
     } else {
         const blob = result!.data;
         const url = URL.createObjectURL(blob);
