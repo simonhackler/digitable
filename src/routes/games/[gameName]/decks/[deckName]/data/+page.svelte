@@ -45,5 +45,5 @@
 </script>
 
 {#if templateFront && templateBack }
-    <SvgDataEditor svgTemplate={templateFront}></SvgDataEditor>
+    <SvgDataEditor svgTemplateFront={templateFront} svgTemplateBack={templateBack} ></SvgDataEditor>
 {/if}

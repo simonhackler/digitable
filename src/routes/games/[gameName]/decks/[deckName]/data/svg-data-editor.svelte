@@ -17,14 +17,19 @@
 		updateSvg,
 		createHighlightRect,
 		appendHighlightToSvg,
-		type SvgParseResult
+		type SvgParseResult,
+		type ColumnWithData
 	} from './svg-helpers';
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+	import AlertDialogDescription from '$lib/components/ui/alert-dialog/alert-dialog-description.svelte';
 
-	const { svgTemplate }: { svgTemplate: SVGSVGElement } = $props();
+	const {
+		svgTemplateFront,
+		svgTemplateBack
+	}: { svgTemplateFront: SVGSVGElement; svgTemplateBack: SVGSVGElement } = $props();
 
 	let el = $state<HTMLElement>(null);
 	const scroll = new ScrollState({
@@ -34,16 +39,20 @@
 	const currentProject = $derived(page.params.gameName);
 	const currentCard = $derived(page.params.deckName);
 	const fileSystem = getFileSystemContext();
-	const svgData = $derived(parseSvg(svgTemplate));
+
+	const backPrefix = 'back_';
+	const svgDataFront = $derived(parseSvg(svgTemplateFront));
+	const svgDataBack = $derived(parseSvg(svgTemplateBack, backPrefix));
+	const svgData = $derived(svgDataFront.concat(svgDataBack));
+	$inspect(svgData, 'svgData');
 
 	const csvPath = $derived(`/${currentProject}/system/${currentCard}/data.csv`);
 	const csvFileResult = $derived(fileSystem.download([csvPath]));
 	let csvFile = $derived((await csvFileResult)[0].result?.data);
-    let csvData = $derived(csvFile ? parseCsvFile(csvFile) : null);
-
-	const spreadsheetData = $derived(await loadSpreadsheetData(svgData, await csvData));
+	let csvData = $derived(csvFile ? parseCsvFile(csvFile) : null);
+	const spreadsheetData = $derived(loadSpreadsheetData(svgData, await csvData));
 	let deletedSvgColumns = $derived(
-		svgData.cols
+		svgData
 			.filter((col) => !spreadsheetData.cols.some((c) => c.title === col.title))
 			.map((c) => c.title as string)
 	);
@@ -51,19 +60,34 @@
 	const imagePaths = $derived(
 		await loadImagePaths(svgData, spreadsheetData, deletedSvgColumns, fileSystem)
 	);
-	let svgs: SVGSVGElement[] = $state(
+	// TODO: I want these to be derived but there is something i don't understand about derived, reactivity and the object references
+	let svgsFront: SVGSVGElement[] = $state(
 		spreadsheetData.data.map((row) =>
 			generateSvg(
-				svgTemplate,
+				svgTemplateFront,
 				spreadsheetData.cols.map((c) => c.title as string),
 				row,
 				imagePaths
 			)
 		)
 	);
+	let svgsBack: SVGSVGElement[] = $state(
+		spreadsheetData.data.map((row) =>
+			generateSvg(
+				svgTemplateBack,
+				spreadsheetData.cols.map((c) => c.title as string).map((c) => c),
+				row,
+				imagePaths
+			)
+		)
+	);
+	let svgs = $state(svgsFront);
+
+	function flip() {
+		svgs = svgs === svgsFront ? svgsBack : svgsFront;
+	}
 
 	function parseCsvFile(file: File): Promise<{ header: string[]; data: string[][] }> {
-        console.log('Parsing CSV file:', file);
 		return new Promise((resolve, reject) => {
 			Papa.parse<string[]>(file, {
 				complete: (result) => {
@@ -72,7 +96,7 @@
 					}
 					const rows = result.data.filter((r) => r.length > 0);
 					const header = rows.shift()!;
-                    console.log('CSV header:', header);
+					console.log('CSV header:', header);
 					resolve({ header, data: rows });
 				},
 				error: (err) => reject(err),
@@ -87,28 +111,23 @@
 		const rows = spreadsheet[0]?.getData() ?? [];
 		if (!rows.length) return;
 		const header = spreadsheet[0].getHeaders(true) as string[];
-		await saveDataToCsv([header, ...rows]);
-	}
 
-	async function saveDataToCsv(csvData: CellValue[][]) {
-		const csvText = Papa.unparse(csvData);
+		const csvText = Papa.unparse([header, ...rows]);
 		const csvFile = new File([csvText], 'data.csv', {
 			type: 'text/csv',
 			lastModified: Date.now()
 		});
 		const res = await fileSystem.upload(csvFile, `/${currentProject}/system/${currentCard}`, true);
-
 		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
 	}
 
-
 	async function loadImagePaths(
-		svgData: SvgParseResult,
+		svgData: ColumnWithData[],
 		spreadsheetData: { cols: Column[]; data: string[][] },
 		deletedSvgColumns: string[],
 		fileSystem: Adapter
 	) {
-		const imagesInSpreadsheet = svgData.cols.filter(
+		const imagesInSpreadsheet = svgData.filter(
 			(c) => !deletedSvgColumns.includes(c.title as string) && c.type === 'image'
 		);
 		const imageColumnIndices = imagesInSpreadsheet
@@ -141,10 +160,14 @@
 		return imagePaths;
 	}
 
-	async function loadSpreadsheetData(svgData: SvgParseResult, csvData: { header: string[]; data: string[][] } | null) {
-		const svgCols: Column[] = svgData.cols.map((c) => {
-			return { ...c, type: 'text' };
+	function loadSpreadsheetData(
+		svgData: ColumnWithData[],
+		csvData: { header: string[]; data: string[][] } | null
+	) {
+		const svgCols: Column[] = svgData.map((c) => {
+			return { title: c.title, type: 'text' };
 		});
+        svgCols.unshift({ title: 'Copies', type: 'text' }); // Add ID column at the start
 		if (csvData) {
 			const newCols: Column[] = [];
 			for (const header of csvData.header) {
@@ -155,18 +178,14 @@
 					newCols.push({ title: header, type: 'text' });
 				}
 			}
-            console.log('New columns:', newCols);
 			return {
 				cols: newCols,
 				data: csvData.data
 			};
 		} else {
-			const header = svgCols.map((c) => c.title as string);
-			const csvData = [header].concat(svgData.data);
-			await saveDataToCsv(csvData);
 			return {
 				cols: svgCols,
-				data: svgData.data
+				data: svgData.map((row) => row.data) // Maybe I don't want this, could also be empty
 			};
 		}
 	}
@@ -180,16 +199,6 @@
 		initSpreadsheet(spreadsheetData.data, spreadsheetData.cols);
 	});
 
-	function generateSvgsAndRenderText(
-		rows: string[][],
-		headers: string[],
-		imagePaths: Map<string, string>,
-		minRow = 0
-	) {
-		const newSvgs = rows.map((row) => generateSvg(svgTemplate, headers, row, imagePaths));
-		svgs.splice(minRow, 0, ...newSvgs);
-	}
-
 	function clearSelectionRects() {
 		for (const rect of selectionRects) rect.remove();
 		selectionRects = [];
@@ -202,14 +211,6 @@
 			selectionRects.push(rect);
 			appendHighlightToSvg(rect, svg);
 		}
-	}
-
-	function getSvgElementFromTable(
-		colIndex: number,
-		rowIndex: number,
-		headers: string[]
-	): Element | null {
-		return svgs[rowIndex].getElementById(headers[colIndex]);
 	}
 
 	let contextItems: SheetContextMenuItem[] = $state([]);
@@ -253,7 +254,7 @@
 				borderBottomIndex,
 				origin
 			) {
-				const width = 480;
+				const width = svgs[0]?.getBoundingClientRect().width || 480;
 				let scrollTo = 0;
 				if (borderTopIndex == 1) {
 					scrollTo = width / 2;
@@ -265,11 +266,10 @@
 				const headers = spreadsheet[0].getHeaders(true) as string[];
 				for (let x = borderLeftIndex; x <= borderRightIndex; x++) {
 					for (let y = borderTopIndex; y <= borderBottomIndex; y++) {
-						const target = getSvgElementFromTable(x, y, headers);
-						if (!target) {
-							return;
+						const target = svgs[y].getElementById(headers[x]);
+						if (target) {
+							highlight(target, svgs[y]);
 						}
-						highlight(target, svgs[y]);
 					}
 				}
 			},
@@ -277,11 +277,14 @@
 				for (const colI of removedColumns) {
 					const col = spreadsheet[0].getHeaders(true)[colI];
 					if (col) {
-						const svgCol = svgData.cols.findIndex((c) => c.title === col);
+						const svgCol = svgData.findIndex((c) => c.title === col);
 						if (svgCol !== -1) {
-							deletedSvgColumns.push(svgData.cols[svgCol].title);
-							for (const svg of svgs) {
-								updateSvg(svg, col, svgData.data[0][svgCol], imagePaths);
+							deletedSvgColumns.push(svgData[svgCol].title);
+							for (const svg of svgsFront) {
+								updateSvg(svg, col, svgData[svgCol].data[0], imagePaths);
+							}
+							for (const svg of svgsBack) {
+								updateSvg(svg, col, svgData[svgCol].data[0], imagePaths);
 							}
 						}
 					}
@@ -292,31 +295,43 @@
 				const rowsData = rows.map((row) => row.data.map((x) => x.toString()));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
 
-				generateSvgsAndRenderText(rowsData, headers, imagePaths, minRow);
+				const newSvgsFront = rowsData.map((row) =>
+					generateSvg(svgTemplateFront, headers, row, imagePaths)
+				);
+				const newSvgsBack = rowsData.map((row) =>
+					generateSvg(svgTemplateBack, headers, row, imagePaths)
+				);
+				svgsFront.splice(minRow, 0, ...newSvgsFront);
+				svgsBack.splice(minRow, 0, ...newSvgsBack);
 			},
 			onafterchanges(worksheet: object, records: Array) {
 				saveDebounced();
 			},
 			ondeleterow(instance, removedRows) {
 				let removedCounter = 0;
+				const filterOutFront = [];
+				const filterOutBack = [];
 				for (const row of removedRows.sort()) {
-					svgs[row - removedCounter].remove();
+					svgsFront[row - removedCounter].remove();
+					filterOutFront.push(svgsFront[row - removedCounter]);
+					svgsBack[row - removedCounter].remove();
+					filterOutBack.push(svgsBack[row - removedCounter]);
 					removedCounter += 1;
 				}
+				svgsFront = svgsFront.filter((svg) => !filterOutFront.includes(svg));
+				svgsBack = svgsBack.filter((svg) => !filterOutBack.includes(svg));
+				svgs = svgs.filter((svg) => !filterOutFront.includes(svg) && !filterOutBack.includes(svg));
 			},
 			oneditionstart(worksheet, cell, x, y) {
 				cell.oninput = (e) => {
-					const headers = spreadsheet[0].getHeaders(true) as string[];
-                    console.log(spreadsheet[0].headers);
 					if (e.target != null) {
-						updateSvg(svgs[y], headers[x], e.target.value, imagePaths);
+                        addImageAndUpdateSvg(x, y, e.target.value.toString());
 					}
 				};
 			},
 			onchange(instance, cell, colIndex, rowIndex, newValue, oldValue) {
-				const headers = spreadsheet[0].getHeaders(true) as string[];
 				cell.oninput = null;
-				updateSvg(svgs[rowIndex], headers[colIndex], newValue.toString(), imagePaths);
+                addImageAndUpdateSvg(colIndex, rowIndex, newValue.toString());
 			},
 			onsort(instance, colIndex, order, newOrderValues) {
 				//TODO
@@ -326,6 +341,20 @@
 				clearSelectionRects();
 			}
 		});
+	}
+
+	async function addImageAndUpdateSvg(x: number, y: number, value: string) {
+		const headers = spreadsheet[0].getHeaders(true) as string[];
+        if (!imagePaths.has(value)) {
+            const file = await fileSystem.download([`/${currentProject}/files/${value}`]);
+            if (file[0].result) {
+                imagePaths.set(value, URL.createObjectURL(file[0].result.data));
+            } else {
+                imagePaths.set(value, '');
+            }
+        }
+		updateSvg(svgsFront[y], headers[x], value, imagePaths);
+		updateSvg(svgsBack[y], headers[x], value, imagePaths);
 	}
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
@@ -348,7 +377,7 @@
 
 	async function exportSvgs() {
 		const pngs = await Promise.all(
-			svgs.map((svg) =>
+			svgsFront.map((svg) =>
 				toBlob(svg, {
 					cacheBust: true,
 					pixelRatio: 5
@@ -369,8 +398,8 @@
 
 		await Promise.all(uploads);
 		gridImages = pngs.map((png) => URL.createObjectURL(png));
-		w = svgs[0].getBoundingClientRect().width;
-		h = svgs[0].getBoundingClientRect().height;
+		w = svgsFront[0].getBoundingClientRect().width;
+		h = svgsFront[0].getBoundingClientRect().height;
 	}
 
 	async function onTakeScreenshot(file: File) {
@@ -387,7 +416,7 @@
 	let h = $state(0);
 
 	function highlightColumn(col: string) {
-		const colI = svgData.cols.findIndex((c) => c.title === col);
+		const colI = svgData.findIndex((c) => c.title === col);
 		if (colI === -1) {
 			throw new Error(`Column ${col} not found in svgData.cols`);
 		}
@@ -398,12 +427,12 @@
 
 	function addColumn(col: string) {
 		clearSelectionRects();
-		const colI = svgData.cols.findIndex((c) => c.title === col);
+		const colI = svgData.findIndex((c) => c.title === col);
 		if (colI === -1) {
 			throw new Error(`Column ${col} not found in svgData.cols`);
 		}
 		deletedSvgColumns = deletedSvgColumns.filter((c) => c !== col);
-		const data = Array(svgs.length).fill((svgData.data[0][colI] as CellValue) || '');
+		const data = Array(svgsFront.length).fill((svgData[colI].data[0] as CellValue) || '');
 		const result = spreadsheet[0].insertColumn(
 			1,
 			spreadsheet[0].getHeaders(true).length, // how many columns
@@ -418,10 +447,13 @@
 		);
 		spreadsheet[0].setColumnData(
 			spreadsheet[0].getHeaders(true).length - 1,
-			Array(svgs.length).fill((svgData.data[0][colI] as CellValue) || '')
+			Array(svgsFront.length).fill((svgData[colI].data[0] as CellValue) || '')
 		);
 
-		for (const svg of svgs) {
+		for (const svg of svgsFront) {
+			initialSetupForSvgItem(svg, col, data[0], currentProject, fileSystem);
+		}
+		for (const svg of svgsBack) {
 			initialSetupForSvgItem(svg, col, data[0], currentProject, fileSystem);
 		}
 	}
@@ -462,7 +494,7 @@
 					spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
 				}
 			}}
-			class="h-full flex-shrink-0"
+			class="h-full flex-shrink-0 rounded-lg border-8 border-zinc-950"
 			{@attach attachSVG(svg)}
 		></div>
 	{/each}
@@ -473,6 +505,7 @@
 		onAddColumn={addColumn}
 		onHover={highlightColumn}
 		onExitHover={(x) => clearSelectionRects()}
+		{flip}
 	></Toolbar>
 </div>
 <ContextMenu.Root>

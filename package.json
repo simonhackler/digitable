@@ -21,7 +21,7 @@
 		"@types/node": "^20.19.9",
 		"@vitest/browser": "latest",
 		"@vitest/coverage-v8": "latest",
-		"bits-ui": "^2.9.0",
+		"bits-ui": "^2.9.1",
 		"clsx": "^2.1.1",
 		"eslint": "^9.32.0",
 		"eslint-config-prettier": "^10.1.8",

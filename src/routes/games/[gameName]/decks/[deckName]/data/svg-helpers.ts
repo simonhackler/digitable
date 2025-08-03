@@ -1,9 +1,12 @@
-import type { Column } from 'jspreadsheet-ce';
-import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
-
 export interface SvgParseResult {
     cols: { title: string, type: 'text' | 'image' }[];
     data: string[][];
+}
+
+export interface ColumnWithData {
+    title: string;
+    type: 'text' | 'image';
+    data: string[];
 }
 
 export function loadSvgTemplate(svgText: string) {
@@ -12,23 +15,29 @@ export function loadSvgTemplate(svgText: string) {
     return doc.documentElement as unknown as SVGSVGElement;
 }
 
-export function parseSvg(svg: SVGSVGElement): SvgParseResult {
+export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
     const doc = svg;
     const texts = Array.from(doc.querySelectorAll('text'));
     const images = Array.from(doc.querySelectorAll('image'));
+    // Probably easiest to directly modify the ids instead of always parsing with prefix.
+    // If this leads to issues, I can change it later.
+    for (const el of texts) {
+        if (el.id) el.id = `${prefix}${el.id}`;
+    }
+    for (const el of images) {
+        if (el.id) el.id = `${prefix}${el.id}`;
+    }
     const textColumns = texts.map((t) => {
         return {
             title: t.id,
-            type: 'text'
-        };
+            type: 'text',
+            data: [t.textContent || '']
+        } as ColumnWithData;
     });
     const imageColumns = images.map((im) => {
-        return { title: im.id, type: 'image' };
+        return { title: im.id, type: 'image', data: [im.getAttribute('href') || im.getAttribute('xlink:href') || ''] } as ColumnWithData;
     });
-    const cols = textColumns.concat(imageColumns);
-    const data = [texts.map((t) => t.textContent || '')];
-
-    return { cols, data };
+    return textColumns.concat(imageColumns);
 }
 
 export function generateSvg(svgTemplate: SVGSVGElement, headers: string[], row: string[], imagePaths: Map<string, string>): SVGSVGElement {

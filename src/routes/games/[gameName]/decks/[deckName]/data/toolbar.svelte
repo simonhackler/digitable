@@ -6,12 +6,14 @@
 		deletedSvgColumns,
 		onAddColumn,
 		onHover,
-		onExitHover
+		onExitHover,
+        flip
 	}: {
 		deletedSvgColumns: string[];
 		onAddColumn: (col: string) => void;
 		onHover: (col: string) => void;
 		onExitHover: (col: string) => void;
+        flip: () => void;
 	} = $props();
 </script>
 
@@ -41,4 +43,7 @@
 			{/if}
 		</Popover.Content>
 	</Popover.Root>
+    <Button variant="outline" onclick={() => flip()}>
+        Flip cards
+    </Button>
 </div>
