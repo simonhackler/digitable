@@ -40,6 +40,22 @@ export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
     return textColumns.concat(imageColumns);
 }
 
+export function getSvgDataMap(frontSvg: SVGSVGElement, backSvg: SVGSVGElement): Map<string, ColumnWithData> {
+    const frontData = parseSvg(frontSvg);
+    const backData = parseSvg(backSvg, 'back_');
+    const dataMap = new Map<string, ColumnWithData>();
+
+    frontData.forEach(col => {
+        dataMap.set(col.title, col);
+    });
+    backData.forEach(col => {
+        dataMap.set(col.title, col);
+    });
+
+    return dataMap;
+}
+
+
 export function generateSvg(svgTemplate: SVGSVGElement, headers: string[], row: string[], imagePaths: Map<string, string>): SVGSVGElement {
     const svg = svgTemplate.cloneNode(true) as SVGSVGElement;
     // add a random id after date
@@ -54,7 +70,6 @@ export function generateSvg(svgTemplate: SVGSVGElement, headers: string[], row: 
 export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, data: string, imagePaths: Map<string, string>): SVGForeignObjectElement | null {
     const el = svg.getElementById(elementId) as SVGGraphicsElement | null;
     if (!el) {
-        console.warn(`Element with id ${elementId} not found in SVG.`);
         return null;
     } else if (el.tagName === 'image') {
         updateSvgImageLink(el, imagePaths.get(data));

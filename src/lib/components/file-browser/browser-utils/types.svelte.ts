@@ -49,6 +49,7 @@ export class Folder extends ExplorerNodeBase {
 		super(name, parent);
 		this.children = children;
 	}
+
 }
 
 export type ExplorerNode = Folder | FileLeaf;

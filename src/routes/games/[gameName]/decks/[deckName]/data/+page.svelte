@@ -4,9 +4,7 @@
 	import Papa from 'papaparse';
 	import { getFileSystemContext } from '../../../../context';
 	import { getLoadSvgsContext } from '../svg-context.svelte';
-	import NewDeck from './new-deck.svelte';
 	import SvgDataEditor from './svg-data-editor.svelte';
-	import { loadSvgTemplate } from './svg-helpers';
 
 	const currentProject = $derived(page.params.gameName);
 	const currentCard = $derived(page.params.deckName);
