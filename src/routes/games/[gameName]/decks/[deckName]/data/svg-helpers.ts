@@ -177,7 +177,7 @@ export async function updateSvg(
 ): Promise<void> {
     const el = svg.getElementById(textId) as SVGGraphicsElement | null;
     if (!el) {
-        throw new Error(`element with id ${textId} not found`);
+        return;
     }
     if (el.tagName == 'foreignObject') {
         const div = el.querySelector('div');

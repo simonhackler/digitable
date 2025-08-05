@@ -28,6 +28,11 @@
 	import BulkExport from './bulk-export.svelte';
 	import { parseCsvFile } from './csv-helper';
 
+	interface SvgCard {
+		front: SVGSVGElement;
+		back: SVGSVGElement;
+	}
+
 	const {
 		svgTemplateFront,
 		svgTemplateBack
@@ -41,18 +46,10 @@
 	const currentProject = $derived(page.params.gameName);
 	const currentCard = $derived(page.params.deckName);
 	const fileSystem = getFileSystemContext();
-	const svgData = $derived(getSvgDataMap(svgTemplateFront, svgTemplateBack));
 
-	// const csvPath = $derived(`/${currentProject}/system/${currentCard}/data.csv`);
-	// const csvFileResult = $derived(fileSystem.download([csvPath]));
-	// const csvFile = $derived((await csvFileResult)[0].result?.data);
-	// const csvData = $derived(csvFile ? parseCsvFile(csvFile) : null);
-	// const spreadsheetData = $derived(loadSpreadsheetData(svgData, await csvData));
-	const spreadsheetData = await setSpreadsheetData(
-		svgData,
-		currentProject,
-		currentCard,
-		fileSystem
+	const svgData = $derived(getSvgDataMap(svgTemplateFront, svgTemplateBack));
+	const spreadsheetData = $derived(
+		await setSpreadsheetData(svgData, currentProject, currentCard, fileSystem)
 	);
 
 	async function setSpreadsheetData(
@@ -87,48 +84,47 @@
 		}
 	}
 
+	const imagePaths = $derived(await loadImagePaths(spreadsheetData, fileSystem));
+
+	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references
+	// Maybe it works now
+	let cards: SvgCard[] = $derived(
+		spreadsheetData.data.map((row) => ({
+			front: generateSvg(
+				svgTemplateFront,
+				spreadsheetData.cols.map((c) => c.title as string),
+				row,
+				imagePaths
+			),
+			back: generateSvg(
+				svgTemplateBack,
+				spreadsheetData.cols.map((c) => c.title as string).map((c) => c),
+				row,
+				imagePaths
+			)
+		}))
+	);
+
+	// Ideally this would be set directly from a reactive value from the spreadsheet
 	let deletedSvgColumns = $derived(
 		Array.from(svgData.values())
 			.filter((col) => !spreadsheetData.cols.some((c) => c.title === col.title))
 			.map((c) => c.title as string)
 	);
 
-	const imagePaths = $derived(
-		await loadImagePaths(
-			Array.from(svgData.values()),
-			spreadsheetData,
-			deletedSvgColumns,
-			fileSystem
-		)
-	);
-	// TODO: I want these to be derived but there is something i don't understand about derived, reactivity and the object references
-	let svgsFront: SVGSVGElement[] = $state(
-		spreadsheetData.data.map((row) =>
-			generateSvg(
-				svgTemplateFront,
-				spreadsheetData.cols.map((c) => c.title as string),
-				row,
-				imagePaths
-			)
-		)
-	);
-	let svgsBack: SVGSVGElement[] = $state(
-		spreadsheetData.data.map((row) =>
-			generateSvg(
-				svgTemplateBack,
-				spreadsheetData.cols.map((c) => c.title as string).map((c) => c),
-				row,
-				imagePaths
-			)
-		)
-	);
-	let svgs = $state(svgsFront);
 
-	function flip() {
-		svgs = svgs === svgsFront ? svgsBack : svgsFront;
-	}
+	let showFront = $state(true);
+	const svgsToShow = $derived(showFront ? cards.map((c) => c.front) : cards.map((c) => c.back));
 
 	const saveDebounced = useDebounce(saveCsv, 1000);
+
+	let spreadsheet: jspreadsheet.WorksheetInstance[] = [];
+	let selectionRects: SVGRectElement[] = [];
+	let spreadsheetEl: HTMLDivElement;
+
+	function flip() {
+		showFront = !showFront;
+	}
 
 	async function saveCsv(): Promise<void> {
 		const rows = spreadsheet[0]?.getData() ?? [];
@@ -145,72 +141,25 @@
 	}
 
 	async function loadImagePaths(
-		svgData: ColumnWithData[],
 		spreadsheetData: { cols: Column[]; data: string[][] },
-		deletedSvgColumns: string[],
 		fileSystem: Adapter
 	) {
-		const imagesInSpreadsheet = svgData.filter(
-			(c) => !deletedSvgColumns.includes(c.title as string) && c.type === 'image'
-		);
-		const imageColumnIndices = imagesInSpreadsheet
-			.map((imgCol) => spreadsheetData.cols.findIndex((col) => col.title === imgCol.title))
-			.filter((idx) => idx !== -1);
-		const imageStrings = Array.from(
-			new Set(
-				spreadsheetData.data.flatMap(
-					(row) =>
-						imageColumnIndices
-							.map((i) => row[i]) // grab the value at each target index
-							.filter(Boolean) // drop undefined / empty cells
-				)
-			)
-		);
+		const imageStrings = Array.from(new Set(spreadsheetData.data.flatMap((row) => row)));
 		// The download and files api is really bad
 		const files = await fileSystem.download(
 			imageStrings.map((img) => `/${currentProject}/files/${img}`)
 		);
-		// create a map of image paths to their URLs
 		const imagePaths = new Map<string, string>();
 		imageStrings.forEach((img, i) => {
 			const file = files[i];
 			if (file.result) {
 				imagePaths.set(img, URL.createObjectURL(file.result.data));
 			} else {
-				console.warn(`File ${img} is not a Blob, skipping.`);
+				imagePaths.set(img, '');
 			}
 		});
 		return imagePaths;
 	}
-
-	function loadSpreadsheetData(
-		svgData: Map<string, ColumnWithData>,
-		csvData: { header: string[]; data: string[][] } | null
-	) {
-		if (csvData) {
-			const newCols: Column[] = csvData.header.map((header) => {
-				return svgData.get(header)
-					? { ...svgData.get(header), type: 'text' }
-					: { title: header, type: 'text' }; // TODO custom column
-			});
-			return {
-				cols: newCols,
-				data: csvData.data
-			};
-		} else {
-			return {
-				cols: Array.from(svgData.values()).map((c) => ({
-					title: c.title,
-					type: c.type
-				})),
-				data: []
-			};
-		}
-	}
-
-	let spreadsheet: jspreadsheet.WorksheetInstance[] = [];
-	let selectionRects: SVGRectElement[] = [];
-	let spreadsheetEl: HTMLDivElement;
 
 	onMount(async () => {
 		await tick(); // Don't understand why this is needed, the div should be initialized already
@@ -272,7 +221,8 @@
 				borderBottomIndex,
 				origin
 			) {
-				const width = svgs[0]?.getBoundingClientRect().width || 480;
+				// This could be nicer
+				const width = svgsToShow[0]?.getBoundingClientRect().width || 480;
 				let scrollTo = 0;
 				if (borderTopIndex == 1) {
 					scrollTo = width / 2;
@@ -284,25 +234,23 @@
 				const headers = spreadsheet[0].getHeaders(true) as string[];
 				for (let x = borderLeftIndex; x <= borderRightIndex; x++) {
 					for (let y = borderTopIndex; y <= borderBottomIndex; y++) {
-						const target = svgs[y].getElementById(headers[x]);
+						const target = svgsToShow[y].getElementById(headers[x]);
 						if (target) {
-							highlight(target, svgs[y]);
+							highlight(target, svgsToShow[y]);
 						}
 					}
 				}
 			},
-			onbeforedeletecolumn(instance, removedColumns) {
+			onbeforedeletecolumn(_instance, removedColumns) {
 				for (const colI of removedColumns) {
 					const col = spreadsheet[0].getHeaders(true)[colI];
 					if (col) {
 						const svgCol = svgData.get(col);
 						if (svgCol) {
 							deletedSvgColumns.push(svgCol.title);
-							for (const svg of svgsFront) {
-								updateSvg(svg, col, svgCol.data[0], imagePaths);
-							}
-							for (const svg of svgsBack) {
-								updateSvg(svg, col, svgCol.data[0], imagePaths);
+							for (const card of cards) {
+								updateSvg(card.front, col, svgCol.data[0], imagePaths);
+								updateSvg(card.back, col, svgCol.data[0], imagePaths);
 							}
 						}
 					}
@@ -313,32 +261,18 @@
 				const rowsData = rows.map((row) => row.data.map((x) => x.toString()));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
 
-				const newSvgsFront = rowsData.map((row) =>
-					generateSvg(svgTemplateFront, headers, row, imagePaths)
-				);
-				const newSvgsBack = rowsData.map((row) =>
-					generateSvg(svgTemplateBack, headers, row, imagePaths)
-				);
-				svgsFront.splice(minRow, 0, ...newSvgsFront);
-				svgsBack.splice(minRow, 0, ...newSvgsBack);
+				const newCards: SvgCard[] = rowsData.map((row) => ({
+					front: generateSvg(svgTemplateFront, headers, row, imagePaths),
+					back: generateSvg(svgTemplateBack, headers, row, imagePaths)
+				}));
+				cards.splice(minRow, 0, ...newCards);
 			},
-			onafterchanges(worksheet: object, records: Array) {
+			onafterchanges(worksheet, records) {
 				saveDebounced();
 			},
 			ondeleterow(instance, removedRows) {
-				let removedCounter = 0;
-				const filterOutFront = [];
-				const filterOutBack = [];
-				for (const row of removedRows.sort()) {
-					svgsFront[row - removedCounter].remove();
-					filterOutFront.push(svgsFront[row - removedCounter]);
-					svgsBack[row - removedCounter].remove();
-					filterOutBack.push(svgsBack[row - removedCounter]);
-					removedCounter += 1;
-				}
-				svgsFront = svgsFront.filter((svg) => !filterOutFront.includes(svg));
-				svgsBack = svgsBack.filter((svg) => !filterOutBack.includes(svg));
-				svgs = svgs.filter((svg) => !filterOutFront.includes(svg) && !filterOutBack.includes(svg));
+				const filteredOutCards = removedRows.map((row) => cards[row]);
+				cards = cards.filter((card) => !filteredOutCards.includes(card));
 			},
 			oneditionstart(worksheet, cell, x, y) {
 				cell.oninput = (e) => {
@@ -367,8 +301,8 @@
 			const [file] = await fileSystem.download([`/${currentProject}/files/${value}`]);
 			imagePaths.set(value, file.result ? URL.createObjectURL(file.result.data) : '');
 		}
-		updateSvg(svgsFront[y], headers[x], value, imagePaths);
-		updateSvg(svgsBack[y], headers[x], value, imagePaths);
+		updateSvg(cards[y].front, headers[x], value, imagePaths);
+		updateSvg(cards[y].back, headers[x], value, imagePaths);
 	}
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
@@ -389,52 +323,12 @@
 		};
 	}
 
-	async function exportSvgs() {
-		const pngs = await Promise.all(
-			svgsFront.map((svg) =>
-				toBlob(svg, {
-					cacheBust: true,
-					pixelRatio: 5
-				})
-			)
-		);
-
-		const uploads = pngs.map((png, i) => {
-			const fileName = `gen_${i + 1}.png`;
-			const file = new File([png], fileName, {
-				type: 'image/png',
-				lastModified: Date.now()
-			});
-			return fileSystem!.upload(file, `system`, true).then((res) => {
-				if (res) throw new Error(`Upload failed for ${fileName}: ${res.message}`);
-			});
-		});
-
-		await Promise.all(uploads);
-		gridImages = pngs.map((png) => URL.createObjectURL(png));
-		w = svgsFront[0].getBoundingClientRect().width;
-		h = svgsFront[0].getBoundingClientRect().height;
-	}
-
-	async function onTakeScreenshot(file: File) {
-		await fileSystem!.upload(file, `${currentProject}/system/${currentCard}`, true).then((res) => {
-			if (res) throw new Error(`Upload failed for sheet.png: ${res.message}`);
-		});
-		gridImages = [];
-	}
-
-	let sheetEl: HTMLDivElement;
-	let gridImages: string[] = $state([]);
-
-	let w = $state(0);
-	let h = $state(0);
-
 	function highlightColumn(col: string) {
 		const column = svgData.get(col);
 		if (!column) {
 			throw new Error(`Column ${col} not found in svgData.cols`);
 		}
-		for (const svg of svgs) {
+		for (const svg of svgsToShow) {
 			highlight(svg.getElementById(col)!, svg);
 		}
 	}
@@ -446,7 +340,7 @@
 			throw new Error(`Column ${col} not found in svgData.cols`);
 		}
 		deletedSvgColumns = deletedSvgColumns.filter((c) => c !== col);
-		const data = Array(svgsFront.length).fill((column.data[0] as CellValue) || '');
+		const data = Array(cards.length).fill((column.data[0] as CellValue) || '');
 		const result = spreadsheet[0].insertColumn(
 			1,
 			spreadsheet[0].getHeaders(true).length, // how many columns
@@ -461,14 +355,12 @@
 		);
 		spreadsheet[0].setColumnData(
 			spreadsheet[0].getHeaders(true).length - 1,
-			Array(svgsFront.length).fill((column.data[0] as CellValue) || '')
+			Array(cards.length).fill((column.data[0] as CellValue) || '')
 		);
 
-		for (const svg of svgsFront) {
-			initialSetupForSvgItem(svg, col, data[0], currentProject, fileSystem);
-		}
-		for (const svg of svgsBack) {
-			initialSetupForSvgItem(svg, col, data[0], currentProject, fileSystem);
+		for (const card of cards) {
+			initialSetupForSvgItem(card.front, col, data[0], currentProject, fileSystem);
+			initialSetupForSvgItem(card.back, col, data[0], currentProject, fileSystem);
 		}
 	}
 </script>
@@ -478,7 +370,7 @@
 	bind:this={el}
 	class="flex w-screen flex-nowrap gap-2 overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
 >
-	{#each svgs as svg, i (svg.id)}
+	{#each svgsToShow as svg, i (svg.id)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- ignore for now, should this then just be a button? -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -548,10 +440,3 @@
 		{/each}
 	</ContextMenu.Content>
 </ContextMenu.Root>
-{#if gridImages != null}
-	<div class="">
-		<div bind:this={sheetEl} class="pointer-events-none absolute top-0 left-0">
-			<ImageGrid images={gridImages} {w} {h} {onTakeScreenshot} />
-		</div>
-	</div>
-{/if}
