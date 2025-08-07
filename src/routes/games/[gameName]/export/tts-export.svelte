@@ -1,14 +1,22 @@
 <script lang="ts">
-	import { toPng } from 'html-to-image';
+	import { toBlob } from 'html-to-image';
 	import { tick } from 'svelte';
-	import { getFileSystemContext } from '../../../../context';
+	import { getFileSystemContext } from '../../context';
 
 	export interface Sheet {
 		name: string;
 		svgs: SVGSVGElement[];
 	}
 
-	let { sheets, currentGame }: { sheets: Sheet[]; currentGame: string } = $props();
+	let {
+		sheets,
+		gameName,
+		onExported
+	}: {
+		sheets: Sheet[];
+		gameName: string;
+        onExported: (sheet: Sheet) => void;
+	} = $props();
 
 	let index = $state(0);
 	let svgs: SVGSVGElement[] = $state(sheets[0].svgs);
@@ -38,29 +46,35 @@
 				`Taking image for sheet: ${sheets[index].name}, height: ${height} shetEl:`,
 				sheetEl
 			);
-			const dataUrl = await toPng(sheetEl, {
-				width: 4096,
-				height,
-				pixelRatio: 2,
-				skipFonts: true
-			});
-			const blob = await (await fetch(dataUrl)).blob();
+
+            // TODO: snapdom?
+            const blob = await toBlob(sheetEl, {
+                width: 4096,
+                height,
+                pixelRatio: 1,
+                skipFonts: true,
+                skipAutoScale: true
+            });
+            if (!blob) {
+                throw new Error('Failed to convert sheet to blob');
+            }
 
 			const file = new File([blob], `${sheets[index].name}_sheet.png`, {
 				type: 'image/png',
 				lastModified: Date.now()
 			});
 
-			await fileSytem.upload(file, `${currentGame}/tts-export`, true);
+			await fileSytem.upload(file, `${gameName}/tts-export`, true);
 			if (index < sheets.length - 1) {
 				index += 1;
 				svgs = sheets[index].svgs;
 			}
+            onExported(sheets[index]);
 		} catch (error) {
 			console.error('Error taking image:', error);
-            // console.error(error.target);
-            // Parent
-            console.error(error.target.parentNode);
+			// console.error(error.target);
+			// Parent
+			console.error(error.target.parentNode);
 		}
 	}
 

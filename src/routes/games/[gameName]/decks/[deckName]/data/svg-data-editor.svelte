@@ -6,9 +6,7 @@
 	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
 	import { ScrollState } from 'runed';
 	import { Button } from '$lib/components/ui/button';
-	import ImageGrid from './image-grid.svelte';
 	import { page } from '$app/state';
-	import { toBlob } from 'html-to-image';
 	import { getFileSystemContext } from '../../../../context';
 	import {
 		generateSvg,
@@ -16,22 +14,13 @@
 		updateSvg,
 		createHighlightRect,
 		appendHighlightToSvg,
-		type ColumnWithData,
 		getSvgDataMap
 	} from './svg-helpers';
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
-	import AlertDialogDescription from '$lib/components/ui/alert-dialog/alert-dialog-description.svelte';
-	import TtsExport from './tts-export.svelte';
-	import BulkExport from './bulk-export.svelte';
-	import { parseCsvFile } from './csv-helper';
-
-	interface SvgCard {
-		front: SVGSVGElement;
-		back: SVGSVGElement;
-	}
+	import { loadSvgsAndData } from '../../../data-loader';
 
 	const {
 		svgTemplateFront,
@@ -43,52 +32,16 @@
 		element: () => el
 	});
 
-	const currentProject = $derived(page.params.gameName);
-	const currentCard = $derived(page.params.deckName);
+	const projectName = $derived(page.params.gameName);
+	const cardName = $derived(page.params.deckName);
 	const fileSystem = getFileSystemContext();
 
-	const svgData = $derived(getSvgDataMap(svgTemplateFront, svgTemplateBack));
-	const spreadsheetData = $derived(
-		await setSpreadsheetData(svgData, currentProject, currentCard, fileSystem)
+	const { svgData, spreadsheetData, imagePaths } = $derived(
+		await loadSvgsAndData(projectName, cardName, fileSystem, svgTemplateFront, svgTemplateBack)
 	);
 
-	async function setSpreadsheetData(
-		svgData: Map<string, ColumnWithData>,
-		currentProject: string,
-		currentCard: string,
-		fileSystem: Adapter
-	) {
-		const csvFileResult = await fileSystem.download([
-			`/${currentProject}/system/${currentCard}/data.csv`
-		]);
-		const csvFile = csvFileResult[0].result?.data;
-		const csvData = csvFile ? await parseCsvFile(csvFile) : null;
-		if (csvData) {
-			const newCols: Column[] = csvData.header.map((header) => {
-				return svgData.get(header)
-					? { ...svgData.get(header), type: 'text' }
-					: { title: header, type: 'text' }; // TODO custom column
-			});
-			return {
-				cols: newCols,
-				data: csvData.data
-			};
-		} else {
-			return {
-				cols: Array.from(svgData.values()).map((c) => ({
-					title: c.title,
-					type: c.type
-				})),
-				data: []
-			};
-		}
-	}
-
-	const imagePaths = $derived(await loadImagePaths(spreadsheetData, fileSystem));
-
 	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references
-	// Maybe it works now
-	let cards: SvgCard[] = $derived(
+	let cards: SvgCard[] = $state(
 		spreadsheetData.data.map((row) => ({
 			front: generateSvg(
 				svgTemplateFront,
@@ -111,7 +64,6 @@
 			.filter((col) => !spreadsheetData.cols.some((c) => c.title === col.title))
 			.map((c) => c.title as string)
 	);
-
 
 	let showFront = $state(true);
 	const svgsToShow = $derived(showFront ? cards.map((c) => c.front) : cards.map((c) => c.back));
@@ -136,29 +88,8 @@
 			type: 'text/csv',
 			lastModified: Date.now()
 		});
-		const res = await fileSystem.upload(csvFile, `/${currentProject}/system/${currentCard}`, true);
+		const res = await fileSystem.upload(csvFile, `/${projectName}/system/${cardName}`, true);
 		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
-	}
-
-	async function loadImagePaths(
-		spreadsheetData: { cols: Column[]; data: string[][] },
-		fileSystem: Adapter
-	) {
-		const imageStrings = Array.from(new Set(spreadsheetData.data.flatMap((row) => row)));
-		// The download and files api is really bad
-		const files = await fileSystem.download(
-			imageStrings.map((img) => `/${currentProject}/files/${img}`)
-		);
-		const imagePaths = new Map<string, string>();
-		imageStrings.forEach((img, i) => {
-			const file = files[i];
-			if (file.result) {
-				imagePaths.set(img, URL.createObjectURL(file.result.data));
-			} else {
-				imagePaths.set(img, '');
-			}
-		});
-		return imagePaths;
 	}
 
 	onMount(async () => {
@@ -298,7 +229,7 @@
 	async function addImageAndUpdateSvg(x: number, y: number, value: string) {
 		const headers = spreadsheet[0].getHeaders(true) as string[];
 		if (!imagePaths.has(value)) {
-			const [file] = await fileSystem.download([`/${currentProject}/files/${value}`]);
+			const [file] = await fileSystem.download([`/${projectName}/files/${value}`]);
 			imagePaths.set(value, file.result ? URL.createObjectURL(file.result.data) : '');
 		}
 		updateSvg(cards[y].front, headers[x], value, imagePaths);
@@ -359,13 +290,13 @@
 		);
 
 		for (const card of cards) {
-			initialSetupForSvgItem(card.front, col, data[0], currentProject, fileSystem);
-			initialSetupForSvgItem(card.back, col, data[0], currentProject, fileSystem);
+			initialSetupForSvgItem(card.front, col, data[0], imagePaths);
+			initialSetupForSvgItem(card.back, col, data[0], imagePaths);
 		}
 	}
 </script>
 
-<Button onclick={() => exportSvgs()}>Export</Button>
+<Button >Export</Button>
 <div
 	bind:this={el}
 	class="flex w-screen flex-nowrap gap-2 overflow-auto scroll-smooth rounded-md border whitespace-nowrap"

@@ -1,13 +1,4 @@
-export interface SvgParseResult {
-    cols: { title: string, type: 'text' | 'image' }[];
-    data: string[][];
-}
-
-export interface ColumnWithData {
-    title: string;
-    type: 'text' | 'image';
-    data: string[];
-}
+import type { ColumnWithData } from "./types";
 
 export function loadSvgTemplate(svgText: string) {
     const parser = new DOMParser();
