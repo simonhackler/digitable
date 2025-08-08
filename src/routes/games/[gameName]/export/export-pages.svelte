@@ -1,123 +1,263 @@
 <script lang="ts">
-	import { page } from "$app/state";
-	import { onMount } from "svelte";
+	import { page } from '$app/state';
+	import { onMount } from 'svelte';
+	import PrintConfigurationBar from './print-configuration-bar.svelte';
+	import type { Attachment } from 'svelte/attachments';
+	import type { Project } from './types';
+	import { Button } from '$lib/components/ui/button';
+	import ClubIcon from '@lucide/svelte/icons/club';
+	import HeartIcon from '@lucide/svelte/icons/heart';
+	import SpadeIcon from '@lucide/svelte/icons/spade';
+	import DiamondIcon from '@lucide/svelte/icons/diamond';
 
-	export interface Sheet {
-		name: string;
+	export type PaperSize = 'A3' | 'A4' | 'A5' | 'US Letter' | 'US Legal';
+	export type Orientation = 'Portrait' | 'Landscape';
+
+	interface PageInfo {
 		svgs: SVGSVGElement[];
+		width: string;
+		height: string;
+		fitCalculation: {
+			horizontal: number;
+			vertical: number;
+			total: number;
+		};
 	}
 
 	let {
-		sheets,
+		projects,
 		gameName
 	}: {
-		sheets: Sheet[];
+		projects: Project[];
 		gameName: string;
 	} = $props();
 
-	let svgs: SVGSVGElement[] = $state(sheets[0].svgs);
 	let sheetEl: HTMLDivElement;
 
-	$effect(() => {
-		svgs.forEach((svg) => {
-			//svg.removeAttribute('width');
-			//svg.removeAttribute('height');
+	let paperSize: PaperSize = $state('A4');
+	let orientation: Orientation = $state('Portrait');
+	let fronts = $state(true);
+	let backs = $state(false);
+	let margin = $state(10);
+
+	const paperSizes = {
+		A3: { width: 297, height: 420 },
+		A4: { width: 210, height: 297 },
+		A5: { width: 148, height: 210 },
+		'US Letter': { width: 216, height: 279 },
+		'US Legal': { width: 216, height: 356 }
+	};
+
+	const pageDimensions = $derived(() => {
+		const size = paperSizes[paperSize];
+		return orientation === 'Portrait'
+			? { width: `${size.width}mm`, height: `${size.height}mm` }
+			: { width: `${size.height}mm`, height: `${size.width}mm` };
+	});
+
+	function calculateFitForSize(cardWidth: string, cardHeight: string) {
+		const size = paperSizes[paperSize];
+		const pageWidth = orientation === 'Portrait' ? size.width : size.height;
+		const pageHeight = orientation === 'Portrait' ? size.height : size.width;
+
+		// Account for margin on both sides (left/right for width, top/bottom for height)
+		const availableWidth = pageWidth - margin * 2;
+		const availableHeight = pageHeight - margin * 2;
+
+		// Convert SVG dimensions from string to number (assuming they're in mm)
+		const svgWidth = parseFloat(cardWidth.replace('mm', ''));
+		const svgHeight = parseFloat(cardHeight.replace('mm', ''));
+
+		const horizontalFit = Math.floor(availableWidth / svgWidth);
+		const verticalFit = Math.floor(availableHeight / svgHeight);
+
+		return {
+			horizontal: horizontalFit,
+			vertical: verticalFit,
+			total: horizontalFit * verticalFit
+		};
+	}
+
+	const pages = $derived((): PageInfo[] => {
+		const allPages: PageInfo[] = [];
+
+		projects.forEach((project) => {
+			// Get card dimensions from this project
+			const cardWidth = project.svgsFront[0]?.width.baseVal.valueAsString || '63mm';
+			const cardHeight = project.svgsFront[0]?.height.baseVal.valueAsString || '89mm';
+			const fitCalculation = calculateFitForSize(cardWidth, cardHeight);
+			const svgsPerPage = fitCalculation.total;
+
+			if (fronts && backs) {
+				// Alternate between front and back pages for this project
+				const frontSvgs = project.svgsFront;
+				const backSvgs = project.svgsBack;
+
+				const frontPageCount = Math.ceil(frontSvgs.length / svgsPerPage);
+				const backPageCount = Math.ceil(backSvgs.length / svgsPerPage);
+				const totalPages = frontPageCount + backPageCount;
+
+				const projectPages = Array.from({ length: totalPages }, (_, pageIndex) => {
+					const isFrontPage = pageIndex % 2 === 0;
+					const pageTypeIndex = Math.floor(pageIndex / 2);
+
+					if (isFrontPage) {
+						const startIndex = pageTypeIndex * svgsPerPage;
+						const endIndex = Math.min(startIndex + svgsPerPage, frontSvgs.length);
+						return {
+							svgs: frontSvgs.slice(startIndex, endIndex),
+							width: cardWidth,
+							height: cardHeight,
+							fitCalculation
+						};
+					} else {
+						const startIndex = pageTypeIndex * svgsPerPage;
+						const endIndex = Math.min(startIndex + svgsPerPage, backSvgs.length);
+						return {
+							svgs: backSvgs.slice(startIndex, endIndex),
+							width: cardWidth,
+							height: cardHeight,
+							fitCalculation
+						};
+					}
+				});
+
+				allPages.push(...projectPages);
+			} else if (fronts) {
+				// Only front SVGs from this project
+				const frontSvgs = project.svgsFront;
+				const pageCount = Math.ceil(frontSvgs.length / svgsPerPage);
+
+				const projectPages = Array.from({ length: pageCount }, (_, pageIndex) => {
+					const startIndex = pageIndex * svgsPerPage;
+					const endIndex = Math.min(startIndex + svgsPerPage, frontSvgs.length);
+					return {
+						svgs: frontSvgs.slice(startIndex, endIndex),
+						width: cardWidth,
+						height: cardHeight,
+						fitCalculation
+					};
+				});
+
+				allPages.push(...projectPages);
+			} else if (backs) {
+				// Only back SVGs from this project
+				const backSvgs = project.svgsBack;
+				const pageCount = Math.ceil(backSvgs.length / svgsPerPage);
+
+				const projectPages = Array.from({ length: pageCount }, (_, pageIndex) => {
+					const startIndex = pageIndex * svgsPerPage;
+					const endIndex = Math.min(startIndex + svgsPerPage, backSvgs.length);
+					return {
+						svgs: backSvgs.slice(startIndex, endIndex),
+						width: cardWidth,
+						height: cardHeight,
+						fitCalculation
+					};
+				});
+
+				allPages.push(...projectPages);
+			}
 		});
+
+		return allPages;
+	});
+	let pageStyleEl: HTMLStyleElement;
+
+	$effect(() => {
+		updatePageRule(paperSize, orientation, margin);
 	});
 
-	function attachSVGs(): Attachment {
+	function updatePageRule(paperSize: PaperSize, orientation: Orientation, margin: number) {
+		if (!pageStyleEl) return;
+		pageStyleEl.textContent = `
+			@page {
+				size: ${paperSize} ${orientation.toLowerCase()};
+                margin: ${0}mm;
+			}
+		`;
+	}
+
+	function attachSVGs(pageSvgs: SVGSVGElement[]): Attachment {
 		return (element) => {
-			svgs.forEach((svg) => element.appendChild(svg));
-			return () => svgs.forEach((svg) => element.removeChild(svg));
+			pageSvgs.forEach((svg) => element.appendChild(svg));
+			return () => pageSvgs.forEach((svg) => element.removeChild(svg));
 		};
 	}
 
-	const width = $derived(svgs[0].width.baseVal.valueAsString);
-	const height = $derived(svgs[0].height.baseVal.valueAsString);
-	// calculate the amount of svgs that can fit on a single page. Get page width and height from browser
-    let pageSize = $state({ w: window.innerWidth, h: window.innerHeight });
-
-	/* ———————————————————————————————————————————
-	   2.  Helper that refreshes the numbers
-	———————————————————————————————————————————*/
-	function updateSize() {
-		pageSize = { w: window.innerWidth, h: window.innerHeight };
-	}
-
-	/* ———————————————————————————————————————————
-	   3.  Register listeners once, tear them down
-	———————————————————————————————————————————*/
 	onMount(() => {
-		// normal resizes while on-screen
-		window.addEventListener('resize', updateSize);
-
-		// print-preview ↔︎ screen toggles (Chrome/Edge/Firefox)
-		const mql = window.matchMedia('print');
-		mql.addEventListener('change', updateSize);
-
-		// back-stop for Safari & old engines
-		window.addEventListener('beforeprint', updateSize);
-		window.addEventListener('afterprint',  updateSize);
-
-		// first call
-		updateSize();
-
-		return () => {
-			window.removeEventListener('resize', updateSize);
-			mql.removeEventListener('change', updateSize);
-			window.removeEventListener('beforeprint', updateSize);
-			window.removeEventListener('afterprint',  updateSize);
-		};
+		pageStyleEl = document.createElement('style');
+		pageStyleEl.media = 'print';
+		document.head.appendChild(pageStyleEl);
+		updatePageRule(paperSize, orientation, margin);
+		return () => pageStyleEl.remove();
 	});
-
-	/* ———————————————————————————————————————————
-	   4.  Derived runes for convenience
-	———————————————————————————————————————————*/
-	const pageWidth  = $derived(pageSize.w);
-	const pageHeight = $derived(pageSize.h);
-
-
 </script>
 
-<div class="dims">Heloo:  {pageWidth} × {pageHeight} {document.documentElement.clientWidth}</div>
-<!-- ---------- markup ---------- -->
-<div
-	id="con"
-	style:grid-template-columns={`repeat(auto-fill, ${width})`}
-	style:--svg-w={width}
-	style:--svg-h={height}
-	bind:this={sheetEl}
-	{@attach attachSVGs()}
-></div>
-<div id="print-grid" style:--col={width} style:--row={height} aria-hidden="true"></div>
+<div class="mx-4 flex flex-col gap-4">
+	<PrintConfigurationBar bind:paperSize bind:orientation bind:fronts bind:backs bind:margin />
+	{#if !fronts && !backs}
+		<!-- Empty state when neither front nor back are selected -->
+		<div class="flex flex-col items-center justify-center px-4 py-16 text-center">
+			<div class="mb-6 flex items-center gap-2">
+				<ClubIcon class="h-8 w-8 fill-gray-800 text-gray-800" />
+				<HeartIcon class="h-8 w-8 fill-red-500 text-red-500" />
+				<SpadeIcon class="h-8 w-8 fill-gray-800 text-gray-800" />
+				<DiamondIcon class="h-8 w-8 fill-red-500 text-red-500" />
+			</div>
+
+			<h3 class="mb-3 text-2xl font-semibold">Select cards to print</h3>
+			<p class="text-muted-foreground mb-8 max-w-md text-lg">
+				Choose which sides of your cards you'd like to include in the print layout.
+			</p>
+
+			<div class="flex gap-3">
+				<Button variant={fronts ? 'default' : 'outline'} onclick={() => (fronts = !fronts)}>
+					Print Front Sides
+				</Button>
+				<Button variant={backs ? 'default' : 'outline'} onclick={() => (backs = !backs)}>
+					Print Back Sides
+				</Button>
+			</div>
+		</div>
+	{:else}
+		<!-- Existing sheets rendering -->
+		<div class="sheets">
+			{#each pages() as page, pageIndex (pageIndex)}
+				<div
+					class="sheet border border-gray-300"
+					id="con-{pageIndex}"
+					style:width={pageDimensions().width}
+					style:height={pageDimensions().height}
+					style:grid-template-columns={`repeat(${page.fitCalculation.horizontal}, ${page.width})`}
+					style:--svg-w={page.width}
+					style:--svg-h={page.height}
+					style:padding={`${margin}mm`}
+					{@attach attachSVGs(page.svgs)}
+				></div>
+			{/each}
+		</div>
+	{/if}
+</div>
+
+<!-- <div id="print-grid" style:--col={width} style:--row={height} aria-hidden="true"></div> -->
+<!-- </div> -->
 
 <!-- ---------- print-aware layout ---------- -->
 <style>
-	@page {
-		marks: crop;
-	}
-
-	#sheet {
-		margin-inline: auto;
-		width: 100%;
-		height: 100%;
-
+	.sheet {
+		visibility: visible;
 		display: grid;
-
-		/* never stretch the items */
 		grid-auto-rows: max-content;
-		grid-auto-columns: max-content;
-		grid-auto-flow: row dense;
-
+		grid-auto-flow: row;
 		position: relative;
+		top: 0;
+		left: 0;
+		margin: auto;
+		justify-content: start;
+		align-content: start;
+		box-sizing: border-box;
 	}
-            #con {
-                display: flex;
-                flex-wrap: wrap;
-            }
-            #con > * {
-                flex: 0 0 auto;
-            }
 
 	:global {
 		#sheet svg {
@@ -125,56 +265,37 @@
 		}
 		@media print {
 			/* Start by hiding everything… */
-            .dims {
-                visibility: visible;
-            }
-            #con {
-                /* position: absolute; */
-                top: 0;
-                left: 0;
-                width: 100%;
-                display: flex;
-                flex-wrap: wrap;
-            }
-            #con > * {
-                flex: 0 0 auto;
-            }
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+			}
 			body * {
 				visibility: hidden;
 			}
-            #con * {
-                visibility: visible;
-                z-index: 1000;
-            }
-			#sheet * {
-				visibility: visible;
-                z-index: 1000; /* ensure the sheet is on top */
-			}
-			#sheet {
-				visibility: visible;
-				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(max-content, 1fr));
-				position: relative;
+			.sheets {
 				top: 0;
 				left: 0;
-                width: max-content;
-                height: max-content;
-                margin: auto;
-                justify-content: center;
-                align-content: center;
+				position: absolute;
+			}
+			.sheet * {
+				visibility: visible;
+				z-index: 1000; /* ensure the sheet is on top */
+			}
+			.sheet {
+				visibility: visible;
+				position: relative;
 			}
 
-
 			#print-grid {
-
-                visibility: visible; /* show the grid */
+				visibility: visible; /* show the grid */
 				display: block;
 				position: fixed; /* anchors to the page box, not the long element */
 				top: 0;
 				left: 0;
 				width: 100vw; /* Chrome & Edge map 100vw × 100vh to page size */
 				height: 100vh;
-				z-index: -1000, yet… */
+				z-index: -1000;
 				pointer-events: none; /* …never blocks clicks in print preview  */
 
 				/* ---- customise here ---- */

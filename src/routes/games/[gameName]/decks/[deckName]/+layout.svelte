@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 	import { getFileSystemContext } from '../../../context';
-	import { loadSvgTemplate } from './data/svg-helpers';
+	import { loadSvgTemplate } from '../../svg-helpers';
 	import { LoadSvgs, setLoadSvgsContext, setSvgContext, Svgs } from './svg-context.svelte';
 
 	let { children } = $props();

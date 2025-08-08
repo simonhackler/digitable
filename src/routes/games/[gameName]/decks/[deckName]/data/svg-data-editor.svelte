@@ -15,7 +15,7 @@
 		createHighlightRect,
 		appendHighlightToSvg,
 		getSvgDataMap
-	} from './svg-helpers';
+	} from '../../../svg-helpers';
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';

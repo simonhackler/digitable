@@ -9,12 +9,7 @@
 	import TtsExport, { type Sheet } from './tts-export.svelte';
 	import { Tween } from 'svelte/motion';
 	import ExportPages from './export-pages.svelte';
-
-	interface Project {
-		name: string;
-		svgsFront: SVGSVGElement[];
-		svgsBack: SVGSVGElement[];
-	}
+	import type { Project } from './types';
 
 	const projectName = $derived(page.params.gameName);
 	const fileSystem = getFileSystemContext();
@@ -211,7 +206,7 @@
 </div>
 
 
-<ExportPages {sheets} gameName={projectName} />
+<ExportPages {projects} gameName={projectName} />
 <!-- <div class="hide"> -->
 <!-- <div > -->
 <!-- 	<div> -->
