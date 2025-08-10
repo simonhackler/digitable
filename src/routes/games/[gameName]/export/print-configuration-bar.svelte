@@ -12,6 +12,7 @@
 		fronts: boolean;
 		backs: boolean;
 		margin: number;
+		cropMarks: boolean;
 	}
 
 	let {
@@ -19,7 +20,8 @@
 		orientation = $bindable('Portrait'),
 		fronts = $bindable(true),
 		backs = $bindable(false),
-		margin = $bindable(10)
+		margin = $bindable(10),
+		cropMarks = $bindable(false)
 	}: Props = $props();
 
 	const paperSizes: PaperSize[] = ['A3', 'A4', 'A5', 'US Letter', 'US Legal'];
@@ -73,6 +75,12 @@
 	<div class="flex items-center gap-2">
 		<Checkbox bind:checked={backs} />
 		<label class="text-sm font-medium">Backs</label>
+	</div>
+
+	<!-- Crop marks checkbox -->
+	<div class="flex items-center gap-2">
+		<Checkbox bind:checked={cropMarks} />
+		<label class="text-sm font-medium">Crop marks</label>
 	</div>
 
 	<!-- Margin input -->

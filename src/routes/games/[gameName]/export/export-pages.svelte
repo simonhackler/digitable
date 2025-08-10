@@ -39,6 +39,7 @@
 	let fronts = $state(true);
 	let backs = $state(false);
 	let margin = $state(10);
+	let cropMarks = $state(false);
 
 	const paperSizes = {
 		A3: { width: 297, height: 420 },
@@ -195,7 +196,14 @@
 </script>
 
 <div class="mx-4 flex flex-col gap-4">
-	<PrintConfigurationBar bind:paperSize bind:orientation bind:fronts bind:backs bind:margin />
+	<PrintConfigurationBar
+		bind:paperSize
+		bind:orientation
+		bind:fronts
+		bind:backs
+		bind:margin
+		bind:cropMarks
+	/>
 	{#if !fronts && !backs}
 		<!-- Empty state when neither front nor back are selected -->
 		<div class="flex flex-col items-center justify-center px-4 py-16 text-center">
@@ -226,6 +234,7 @@
 			{#each pages() as page, pageIndex (pageIndex)}
 				<div
 					class="sheet border border-gray-300"
+					class:crop-marks={cropMarks}
 					id="con-{pageIndex}"
 					style:width={pageDimensions().width}
 					style:height={pageDimensions().height}
@@ -233,6 +242,7 @@
 					style:--svg-w={page.width}
 					style:--svg-h={page.height}
 					style:padding={`${margin}mm`}
+					style:--margin={`${margin}mm`}
 					{@attach attachSVGs(page.svgs)}
 				></div>
 			{/each}
@@ -259,6 +269,50 @@
 		box-sizing: border-box;
 	}
 
+	.crop-marks::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		z-index: 10;
+		background-image:
+			/* Vertical crop marks */
+			repeating-linear-gradient(
+				to right,
+				transparent 0,
+				transparent calc(var(--svg-w) - 0.5mm),
+				black calc(var(--svg-w) - 0.5mm),
+				black calc(var(--svg-w) - 0mm),
+				transparent calc(var(--svg-w) - 0mm),
+				transparent calc(var(--svg-w) + 0mm),
+				black calc(var(--svg-w) + 0mm),
+				black calc(var(--svg-w) + 0.5mm),
+				transparent calc(var(--svg-w) + 0.5mm),
+				transparent var(--svg-w)
+			),
+			/* Horizontal crop marks */
+				repeating-linear-gradient(
+					to bottom,
+					transparent 0,
+					transparent calc(var(--svg-h) - 0.5mm),
+					black calc(var(--svg-h) - 0.5mm),
+					black calc(var(--svg-h) - 0mm),
+					transparent calc(var(--svg-h) - 0mm),
+					transparent calc(var(--svg-h) + 0mm),
+					black calc(var(--svg-h) + 0mm),
+					black calc(var(--svg-h) + 0.5mm),
+					transparent calc(var(--svg-h) + 0.5mm),
+					transparent var(--svg-h)
+				);
+		background-size:
+			var(--svg-w) 0.5mm,
+			0.5mm var(--svg-h);
+		background-position: var(--margin, 10mm) var(--margin, 10mm);
+	}
+
 	:global {
 		#sheet svg {
 			display: block;
@@ -270,6 +324,10 @@
 				margin: 0;
 				padding: 0;
 			}
+			* {
+				print-color-adjust: exact; /* modern */
+				-webkit-print-color-adjust: exact; /* legacy WebKit/Blink */
+			}
 			body * {
 				visibility: hidden;
 			}
@@ -280,50 +338,16 @@
 			}
 			.sheet * {
 				visibility: visible;
-				z-index: 1000; /* ensure the sheet is on top */
 			}
 			.sheet {
 				visibility: visible;
 				position: relative;
+                margin: 0!important; /* override any padding */
+                width: 100vw !important; /* Chrome & Edge map 100vw × 100vh to page size */
+                height: 100vh !important; /* Firefox maps 100vw × 100vh to page size */
 			}
-
-			#print-grid {
-				visibility: visible; /* show the grid */
-				display: block;
-				position: fixed; /* anchors to the page box, not the long element */
-				top: 0;
-				left: 0;
-				width: 100vw; /* Chrome & Edge map 100vw × 100vh to page size */
-				height: 100vh;
-				z-index: -1000;
-				pointer-events: none; /* …never blocks clicks in print preview  */
-
-				/* ---- customise here ---- */
-				--g-col: #000; /* line colour  */
-				--g-thick: 1px; /* line weight */
-
-				/* you can inject these numbers from JS exactly like you did before: */
-				--col: 63mm; /* SVG width  */
-				--row: 89mm; /* SVG height */
-
-				background-image:
-					repeating-linear-gradient(
-						to right,
-						var(--g-col) 0 var(--g-thick),
-						transparent var(--g-thick) calc(var(--col))
-					),
-					repeating-linear-gradient(
-						to bottom,
-						var(--g-col) 0 var(--g-thick),
-						transparent var(--g-thick) calc(var(--row))
-					);
-
-				outline: var(--g-thick) solid var(--g-col); /* outer frame */
-				box-sizing: border-box;
-
-				/* make sure colours actually print */
-				-webkit-print-color-adjust: exact; /* Chrome / Edge */
-				print-color-adjust: exact; /* Firefox */
+			.crop-marks::before {
+				visibility: visible;
 			}
 		}
 	}
