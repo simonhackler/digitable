@@ -8,30 +8,34 @@
 	import { setFileSystemContext } from './context';
 
 	let fileSystemState: { adapter: Adapter | null } = $state({ adapter: null });
-    const fileSystem = $derived(fileSystemState.adapter);
+	const fileSystem = $derived(fileSystemState.adapter);
 	let games: Game[] = $state([]);
 
 	setFileSystemContext(fileSystemState);
 
 	async function onSetOpfsAdapter(adapter: Adapter) {
-        fileSystemState.adapter = adapter;
+		fileSystemState.adapter = adapter;
 
 		const folder = await fileSystem.getRootFolder();
 		if (folder.result) {
-			games = folder.result.children.map((f) => {
-				if (!isFolder(f)) return { name: f.name, decks: [] };
+			games = folder.result.children
+				.filter(isFolder)
+				.filter((f) => f.children.find((file) => file.name == 'game.json'))
+				.map((f) => {
+					const systemFolder = f.children.find((child) => child.name === 'system');
+					if (!systemFolder || !isFolder(systemFolder)) {
+						return { name: f.name, decks: [] };
+					}
 
-				const systemFolder = f.children.find((child) => child.name === 'system');
-				if (!systemFolder || !isFolder(systemFolder)) {
-					return { name: f.name, decks: [] };
-				}
+					const decks = systemFolder.children
+						.filter((f) => isFolder(f))
+						.map((deck) => ({ name: deck.name }));
 
-				const decks = systemFolder.children.map((deck) => ({ name: deck.name }));
-				return {
-					name: f.name,
-					decks
-				};
-			});
+					return {
+						name: f.name,
+						decks
+					};
+				});
 		}
 	}
 

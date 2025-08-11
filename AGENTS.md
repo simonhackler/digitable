@@ -7,6 +7,7 @@ This file contains essential information for AI coding agents working in this re
 - Svelte 5 with runes (`$state`, `$derived`, `$props`, `$bindable`)
 - Use `$lib/` imports for internal modules
 - Use Tailwind CSS
+- Use Top Level await, which is supported now in svelte 5
 
 ## IMPORTANT
 - Try to keep things in one function unless composable or reusable

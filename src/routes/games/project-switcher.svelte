@@ -7,12 +7,12 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import type { Game } from './types.js';
 
-	let { games, activeProject, onProjectChange } : { 
-		games: Game[], 
+	let { games, activeProject, onProjectChange } : {
+		games: Game[],
 		activeProject: Game | null,
-		onProjectChange: (project: Game) => void 
+		onProjectChange: (project: Game) => void
 	} = $props();
-	
+
 	const sidebar = useSidebar();
 </script>
 

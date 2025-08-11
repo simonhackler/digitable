@@ -4,6 +4,7 @@
 	import ProjectSwitcher from './project-switcher.svelte';
 	import type { Game } from './types.js';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 
     let { games } : { games: Game[] } = $props();
 
@@ -16,6 +17,7 @@
 
     function onProjectChange(project: Game) {
         activeProject = project;
+        goto(`/games/${project.name}`);
     }
 </script>
 

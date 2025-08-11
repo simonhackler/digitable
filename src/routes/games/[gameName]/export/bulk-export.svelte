@@ -100,24 +100,24 @@
 	]);
 
 	let exportIndex = $state(0);
-    let finished = $state(false);
-    let progressValue = $derived.by(() => exportIndex + (finished ? 1 : 0));
-    let tweenedValue = $derived.by(() => {
-        const tween = new Tween(progressValue, { duration: 5000 });
-        tween.target = progressValue + 1;
-        return tween;
-    });
+	let finished = $state(false);
+	let progressValue = $derived.by(() => exportIndex + (finished ? 1 : 0));
+	let tweenedValue = $derived.by(() => {
+		const tween = new Tween(progressValue, { duration: 5000 });
+		tween.target = progressValue + 1;
+		return tween;
+	});
 
 	const exportingSheet = $derived(sheets[exportIndex]);
-    const message = $derived.by(() => {
-        if (finished) {
-            return 'TTS export finished successfully!';
-        }
-        if (exportIndex >= sheets.length) {
-            return 'generating TTS export…';
-        }
-        return `Exporting sheet ${exportIndex + 1} of ${sheets.length}: ${exportingSheet.name}`;
-    });
+	const message = $derived.by(() => {
+		if (finished) {
+			return 'TTS export finished successfully!';
+		}
+		if (exportIndex >= sheets.length) {
+			return 'generating TTS export…';
+		}
+		return `Exporting sheet ${exportIndex + 1} of ${sheets.length}: ${exportingSheet.name}`;
+	});
 
 	async function onFinish(success: boolean) {
 		if (!success) {
@@ -187,7 +187,7 @@
 		// convert to file
 		const jsonFile = new File([jsonBlob], `${projectName}.json`);
 		await fileSystem.upload(jsonFile, path, true);
-        finished = true;
+		finished = true;
 	}
 
 	async function onExported(sheet: Sheet) {
@@ -197,16 +197,16 @@
 		}
 	}
 
-    $inspect(exportIndex, 'exportIndex');
+	$inspect(exportIndex, 'exportIndex');
 </script>
 
 <div class="m-4 flex flex-col items-center justify-center">
 	<Progress value={tweenedValue.current} max={sheets.length + 1} class="w-[60%]" />
-	<p>{message}</p>
+	<p class="text-lg">{message}</p>
 </div>
 
-
 <ExportPages {projects} gameName={projectName} />
+
 <!-- <div class="hide"> -->
 <!-- <div > -->
 <!-- 	<div> -->

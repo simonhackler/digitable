@@ -4,12 +4,13 @@ import { getContext, setContext } from 'svelte';
 const key = 'filesystem';
 
 export function setFileSystemContext(fileSystem: { adapter: Adapter | null }) {
-    setContext(key, fileSystem);
+	setContext(key, fileSystem);
 }
 
-export function getFileSystemContext() {
-    if (!getContext(key)) {
-        throw new Error('File system context not set');
-    }
-    return getContext(key).adapter as Adapter;
+export function getFileSystemContext(): Adapter {
+	const context = getContext(key) as { adapter: Adapter | null } | undefined;
+	if (!context?.adapter) {
+		throw new Error('File system context not set');
+	}
+	return context.adapter;
 }
