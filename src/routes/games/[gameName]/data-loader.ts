@@ -15,6 +15,7 @@ export async function loadSpreadsheetData(
     ]);
     const csvFile = csvFileResult[0].result?.data;
     const csvData = csvFile ? await parseCsvFile(csvFile) : null;
+    console.log('svgData', svgData);
     if (csvData) {
         const newCols: Column[] = csvData.header.map((header) => {
             return svgData.get(header)
@@ -31,7 +32,9 @@ export async function loadSpreadsheetData(
                 title: c.title,
                 type: c.type
             })),
-            data: []
+            data: [
+                Array.from(svgData.keys()).map((key) => svgData.get(key)?.data || '')
+            ]
         };
     }
 }

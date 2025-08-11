@@ -15,6 +15,7 @@
 	let { front: templateFront, back: templateBack } = $derived(await loadSvgsContext.loadTemplates);
 
 
+    $inspect(templateFront, templateBack);
     $effect(() => {
         if (!templateFront || !templateBack) {
             goto(`/games/${currentProject}/decks/${currentCard}/layout`);

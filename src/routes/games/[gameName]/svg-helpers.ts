@@ -9,11 +9,16 @@ export function loadSvgTemplate(svgText: string) {
 export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
     const doc = svg;
     const texts = Array.from(doc.querySelectorAll('text'));
+    console.log('texts', texts);
     const images = Array.from(doc.querySelectorAll('image'));
     // Probably easiest to directly modify the ids instead of always parsing with prefix.
     // If this leads to issues, I can change it later.
     for (const el of texts) {
-        if (el.id) el.id = `${prefix}${el.id}`;
+        if (el.id) {
+            el.id = `${prefix}${el.id}`;
+        } else {
+            el.id = `${prefix}${el.textContent?.replace(/\s+/g, '_') || 'text'}`;
+        }
     }
     for (const el of images) {
         if (el.id) el.id = `${prefix}${el.id}`;
@@ -25,6 +30,7 @@ export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
             data: [t.textContent || '']
         } as ColumnWithData;
     });
+    console.log(textColumns);
     const imageColumns = images.map((im) => {
         return { title: im.id, type: 'image', data: [im.getAttribute('href') || im.getAttribute('xlink:href') || ''] } as ColumnWithData;
     });
@@ -88,6 +94,13 @@ export function initialSetupForSvgItem(svg: SVGSVGElement, elementId: string, da
         } else {
             console.warn(`shape-inside target #${shapeId} not found; using glyph bbox`);
         }
+    }
+
+    if (width === null || height === null) {
+        const bbox = el.getBBox();
+        width = bbox.width.toString();
+        height = bbox.height.toString();
+        console.log(width, height, x, y);
     }
 
     const fo = document.createElementNS(svg.namespaceURI, 'foreignObject') as SVGForeignObjectElement;

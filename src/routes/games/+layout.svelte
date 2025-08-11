@@ -6,6 +6,7 @@
 	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import type { Game } from './types';
 	import { setFileSystemContext } from './context';
+	import { generateAgentFiles } from '$lib/utils/agent-generator.js';
 
 	let fileSystemState: { adapter: Adapter | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
@@ -16,8 +17,10 @@
 	async function onSetOpfsAdapter(adapter: Adapter) {
 		fileSystemState.adapter = adapter;
 
-		const folder = await fileSystem.getRootFolder();
-		if (folder.result) {
+		await generateAgentFiles(adapter);
+
+		const folder = await fileSystem?.getRootFolder();
+		if (folder?.result) {
 			games = folder.result.children
 				.filter(isFolder)
 				.filter((f) => f.children.find((file) => file.name == 'game.json'))
