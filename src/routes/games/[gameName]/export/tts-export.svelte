@@ -19,7 +19,10 @@
 	} = $props();
 
 	let index = $state(0);
-	let svgs: SVGSVGElement[] = $state(sheets[0].svgs);
+	let svgs: SVGSVGElement[] = $state(sheets[0].svgs.map((svg) => {
+        const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+        return clonedSvg;
+    }));
 	let sheetEl: HTMLDivElement;
 	const fileSytem = getFileSystemContext();
 
@@ -67,7 +70,10 @@
 			await fileSytem.upload(file, `${gameName}/tts-export`, true);
 			if (index < sheets.length - 1) {
 				index += 1;
-				svgs = sheets[index].svgs;
+				svgs = sheets[index].svgs.map((svg) => {
+                    const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+                    return clonedSvg;
+                });
 			}
             onExported(sheets[index]);
 		} catch (error) {
