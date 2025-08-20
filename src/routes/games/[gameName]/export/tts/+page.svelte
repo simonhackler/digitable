@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import TtsExport, { type Sheet } from '../tts-export.svelte';
+	import TtsPreview from '../tts-preview.svelte';
 	import { Tween } from 'svelte/motion';
 	import { getExportContext } from '../export-context.svelte';
 	import { getFileSystemContext } from '../../../context';
@@ -121,6 +122,10 @@
 <div class="m-4 flex flex-col items-center justify-center">
 	<Progress value={tweenedValue.current} max={sheets.length + 1} class="w-[60%]" />
 	<p class="text-lg">{message}</p>
+</div>
+
+<div class="m-4 flex justify-center">
+	<TtsPreview sheet={exportingSheet} isVisible={exportIndex < sheets.length && !finished} />
 </div>
 
 <div class="hide">
