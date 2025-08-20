@@ -297,7 +297,6 @@
 	}
 </script>
 
-<Button >Export</Button>
 <div
 	bind:this={el}
 	class="flex w-screen flex-nowrap gap-2 overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
