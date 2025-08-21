@@ -130,15 +130,16 @@
 	}
 </script>
 
-{#snippet svgOrUpload(svgFile: SVGSVGElement | undefined, side: 'front' | 'back')}
+{#snippet svgOrUpload(svgFile: SVGSVGElement | null, side: 'front' | 'back')}
 	<Card.Root class="w-full max-w-sm">
 		<Card.Header>
 			<Card.Title class="text-center text-2xl">{side} svg</Card.Title>
 		</Card.Header>
 		<Card.Content class="flex h-full items-center justify-center">
 			{#if svgFile}
+                {@const svg = svgFile.cloneNode(true) as SVGSVGElement}
 				<div class="text-center">
-					<div {@attach attachSVG(svgFile)} class="w-full max-w-sm border"></div>
+					<div {@attach attachSVG(svg)} class="w-full max-w-sm border"></div>
 					<div class="mt-2 flex items-center justify-between">
 						{#if width && height}
 							<Popover.Root>

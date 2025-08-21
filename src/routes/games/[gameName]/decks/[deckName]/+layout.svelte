@@ -22,13 +22,17 @@
     }
 
     const svgsProm = $derived(loadSvgTemplates(fileSystem, fullFolderPath));
-    const loadSvgs = new LoadSvgs(svgsProm);
+    const loadSvgs = (new LoadSvgs(svgsProm));
     setLoadSvgsContext(() => loadSvgs);
+
     $effect(async () => {
         loadSvgs.loadTemplates = svgsProm;
+        await loadSvgs.loadTemplates;
+        console.log('currentProject', currentProject, 'currentCard', currentCard, 'fullFolderPath', fullFolderPath);
     });
+
     // TODO all this might be related to a bug in svelte
-    await loadSvgs.loadTemplates;
+    // await loadSvgs.loadTemplates;
 
 
 </script>
