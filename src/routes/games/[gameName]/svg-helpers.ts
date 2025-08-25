@@ -1,3 +1,4 @@
+import { ImageEditor } from "./decks/[deckName]/data/custom-image";
 import type { ColumnWithData } from "./types";
 
 export function loadSvgTemplate(svgText: string) {
@@ -9,7 +10,6 @@ export function loadSvgTemplate(svgText: string) {
 export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
     const doc = svg;
     const texts = Array.from(doc.querySelectorAll('text'));
-    console.log('texts', texts);
     const images = Array.from(doc.querySelectorAll('image'));
     // Probably easiest to directly modify the ids instead of always parsing with prefix.
     // If this leads to issues, I can change it later.
@@ -32,7 +32,7 @@ export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
     });
     console.log(textColumns);
     const imageColumns = images.map((im) => {
-        return { title: im.id, type: 'image', data: [im.getAttribute('href') || im.getAttribute('xlink:href') || ''] } as ColumnWithData;
+        return { title: im.id, type: ImageEditor, data: [im.getAttribute('href') || im.getAttribute('xlink:href') || ''] } as ColumnWithData;
     });
     return textColumns.concat(imageColumns);
 }

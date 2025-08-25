@@ -1,20 +1,39 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import type jspreadsheet from 'jspreadsheet-ce';
+	import GenerateImagesModal from './generate-images-modal.svelte';
+	import type { ImageGenResponse } from './image-generator.js';
 
 	let {
 		deletedSvgColumns,
 		onAddColumn,
 		onHover,
 		onExitHover,
-        flip
+		flip,
+		selection = null,
+		spreadsheet,
+		svgTemplate
 	}: {
 		deletedSvgColumns: string[];
 		onAddColumn: (col: string) => void;
 		onHover: (col: string) => void;
 		onExitHover: (col: string) => void;
-        flip: () => void;
+		flip: () => void;
+		selection?: {
+			borderLeftIndex: number;
+			borderTopIndex: number;
+			borderRightIndex: number;
+			borderBottomIndex: number;
+		} | null;
+		spreadsheet: jspreadsheet.WorksheetInstance;
+		svgTemplate: SVGSVGElement;
 	} = $props();
+
+	function handleGenerateImages(images: ImageGenResponse) {
+
+	}
+
 </script>
 
 <div class="flex w-full items-center gap-2">
@@ -36,14 +55,18 @@
 							onmouseover={() => onHover(column)}
 							onmouseleave={() => onExitHover(column)}
 						>
-							>Add <b>{column}</b> to spreadsheet</Button
-						>
+							Add <b>{column}</b> to spreadsheet
+						</Button>
 					</div>
 				{/each}
 			{/if}
 		</Popover.Content>
 	</Popover.Root>
-    <Button variant="outline" onclick={() => flip()}>
-        Flip cards
-    </Button>
+	<Button variant="outline" onclick={() => flip()}>Flip cards</Button>
+	<GenerateImagesModal
+		{selection}
+		{spreadsheet}
+		{svgTemplate}
+		onGenerateImages={handleGenerateImages}
+	/>
 </div>

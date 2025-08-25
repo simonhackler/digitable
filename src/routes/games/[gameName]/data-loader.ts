@@ -3,6 +3,7 @@ import type { Column } from "jspreadsheet-ce";
 import { parseCsvFile } from "./csv-helper";
 import { getSvgDataMap } from "./svg-helpers";
 import type { ColumnWithData } from "./types";
+import { ImageEditor } from "./decks/[deckName]/data/custom-image";
 
 export async function loadSpreadsheetData(
     svgData: Map<string, ColumnWithData>,
@@ -18,8 +19,8 @@ export async function loadSpreadsheetData(
     console.log('svgData', svgData);
     if (csvData) {
         const newCols: Column[] = csvData.header.map((header) => {
-            return svgData.get(header)
-                ? { ...svgData.get(header), type: 'text' }
+            return svgData.get(header) // WTF am I even doing here? This is wrong
+                ? { ...svgData.get(header) }
                 : { title: header, type: 'text' }; // TODO custom column
         });
         return {
