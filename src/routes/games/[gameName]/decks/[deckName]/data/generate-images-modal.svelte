@@ -95,6 +95,7 @@
 			rowIndex++
 		) {
 			const rowData = spreadsheet.getRowData(rowIndex) as string[];
+			const rowId = rowData[0]; // ID is always in the first column
 
 			for (const imageColumn of selectionData.imageColumns) {
 				// Extract dimensions from SVG template
@@ -107,6 +108,7 @@
 						columnName: imageColumn.name,
 						prompt: '',
 						rowIndex: rowIndex,
+						rowId: rowId,
 						aspectRatio: dimensions.aspectRatio
 					});
 					continue;
@@ -124,6 +126,7 @@
 					columnName: imageColumn.name,
 					prompt,
 					rowIndex: rowIndex,
+					rowId: rowId,
 					aspectRatio: dimensions.aspectRatio
 				});
 			}
@@ -145,6 +148,7 @@
 
 		open = false;
 		if (images) {
+            console.log('Generated images:', images);
 			onGenerateImages(images);
 		}
 	}

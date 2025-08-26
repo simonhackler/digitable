@@ -28,10 +28,25 @@ export function extractImageDimensions(
 		}
 	}
 
-	// Calculate aspect ratio
-	const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-	const divisor = gcd(width, height);
-	const aspectRatio = `${width / divisor}:${height / divisor}`;
+	// Map to closest standard aspect ratio supported by Flux
+	const ratio = width / height;
+	let aspectRatio: string;
+
+	if (ratio >= 1.7) {
+		aspectRatio = '16:9'; // Wide landscape
+	} else if (ratio >= 1.4) {
+		aspectRatio = '3:2'; // Standard landscape
+	} else if (ratio >= 1.2) {
+		aspectRatio = '4:3'; // Classic landscape
+	} else if (ratio >= 0.8) {
+		aspectRatio = '1:1'; // Square
+	} else if (ratio >= 0.7) {
+		aspectRatio = '3:4'; // Portrait
+	} else if (ratio >= 0.6) {
+		aspectRatio = '2:3'; // Standard portrait
+	} else {
+		aspectRatio = '9:16'; // Tall portrait
+	}
 
 	return { width, height, aspectRatio };
 }

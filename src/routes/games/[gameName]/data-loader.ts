@@ -16,25 +16,46 @@ export async function loadSpreadsheetData(
     ]);
     const csvFile = csvFileResult[0].result?.data;
     const csvData = csvFile ? await parseCsvFile(csvFile) : null;
+    const idCol = { type: 'hidden', title: 'id' };
     console.log('svgData', svgData);
     if (csvData) {
-        const newCols: Column[] = csvData.header.map((header) => {
-            return svgData.get(header) // WTF am I even doing here? This is wrong
-                ? { ...svgData.get(header) }
-                : { title: header, type: 'text' }; // TODO custom column
+
+        const newCols = csvData.header.filter(x => x !== 'id').map((header) => {
+            return svgData.get(header)
+                ? { ...svgData.get(header) } // Exists in svgData
+                : { title: header, type: 'text' }; // Column not in svgData
         });
+        newCols.unshift(idCol);
+
+        const idIndexInCsv = csvData.header.indexOf('id');
+
+        const data = csvData.data.map((row) => {
+            const idValue =
+                idIndexInCsv >= 0 && row[idIndexInCsv] != null && String(row[idIndexInCsv]).trim() !== ''
+                    ? row[idIndexInCsv]
+                    : crypto.randomUUID();
+
+            const rest = newCols.slice(1).map((h) => {
+                const idx = newCols.indexOf(h);
+                return idx >= 0 ? row[idx] : '';
+            });
+
+            return [idValue, ...rest];
+        });
+
+
         return {
             cols: newCols,
-            data: csvData.data
+            data
         };
     } else {
         return {
-            cols: Array.from(svgData.values()).map((c) => ({
+            cols: [idCol, ...Array.from(svgData.values()).map((c) => ({
                 title: c.title,
                 type: c.type
-            })),
+            }))],
             data: [
-                Array.from(svgData.keys()).map((key) => svgData.get(key)?.data || '')
+                [crypto.randomUUID(), ...Array.from(svgData.keys()).map((key) => svgData.get(key)?.data || '')]
             ]
         };
     }

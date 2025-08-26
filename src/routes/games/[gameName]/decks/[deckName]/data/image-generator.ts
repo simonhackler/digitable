@@ -2,6 +2,7 @@ export interface ImagePrompt {
 	columnName: string;
 	prompt: string;
 	rowIndex: number;
+	rowId: string;
 	aspectRatio: string;
 }
 
@@ -38,7 +39,7 @@ export async function generateImages(prompts: ImagePrompt[]) {
 			return;
 		}
 
-        return result;
+		return result;
 	} catch (error) {
 		console.error('Failed to generate images:', error);
 	}

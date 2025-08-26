@@ -4,6 +4,8 @@
 	import type jspreadsheet from 'jspreadsheet-ce';
 	import GenerateImagesModal from './generate-images-modal.svelte';
 	import type { ImageGenResponse } from './image-generator.js';
+	import { getFileSystemContext } from '../../../../context';
+	import { page } from '$app/state';
 
 	let {
 		deletedSvgColumns,
@@ -30,10 +32,30 @@
 		svgTemplate: SVGSVGElement;
 	} = $props();
 
-	function handleGenerateImages(images: ImageGenResponse) {
+	const gameName = $derived(page.params.gameName);
+	const cardName = $derived(page.params.deckName);
+	const filesystem = getFileSystemContext();
 
+	async function handleGenerateImages(images: ImageGenResponse) {
+		console.log('Generated images:', images);
+		for (const image of images.results) {
+			const response = await fetch(image.imageUrl);
+			const blob = await response.blob();
+			const filename = `${image.columnName}_${image.rowId}.png`;
+			const file = new File([blob], filename, { type: blob.type });
+			await filesystem.upload(file, `${gameName}/files/generated`);
+
+			const headers = spreadsheet.getHeaders(true) as string[];
+			const columnIndex = headers.findIndex((header) => header === image.columnName);
+			if (columnIndex !== -1) {
+                // TODO: get rowIndex from image.rowId
+				const currentValue = spreadsheet.getValueFromCoords(columnIndex, image.rowIndex);
+				if (!currentValue || currentValue.toString().trim() === '') {
+					spreadsheet.setValueFromCoords(columnIndex, image.rowIndex, `generated/${filename}`);
+				}
+			}
+		}
 	}
-
 </script>
 
 <div class="flex w-full items-center gap-2">

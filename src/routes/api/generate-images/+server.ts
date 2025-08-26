@@ -6,6 +6,7 @@ export interface ImagePrompt {
 	columnName: string;
 	prompt: string;
 	rowIndex: number;
+	rowId: string;
 	aspectRatio: string;
 }
 
@@ -52,6 +53,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 
 			if (!response.ok) {
+				const errorText = await response.text();
+				console.error(`HTTP error! status: ${response.status}, body: ${errorText}`);
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
 
