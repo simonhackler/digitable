@@ -359,6 +359,7 @@
 		{selection}
 		spreadsheet={spreadsheet[0]}
 		svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
+		{imagePaths}
 		onGenerateImages={() => console.log('Generate images clicked')}
 	></Toolbar>
 </div>

@@ -3,6 +3,7 @@
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import type jspreadsheet from 'jspreadsheet-ce';
 	import GenerateImagesModal from './generate-images-modal.svelte';
+	import ImageSelectionModal from './image-selection-modal.svelte';
 	import type { ImageGenResponse } from './image-generator.js';
 	import { getFileSystemContext } from '../../../../context';
 	import { page } from '$app/state';
@@ -15,7 +16,8 @@
 		flip,
 		selection = null,
 		spreadsheet,
-		svgTemplate
+		svgTemplate,
+		imagePaths
 	}: {
 		deletedSvgColumns: string[];
 		onAddColumn: (col: string) => void;
@@ -30,6 +32,7 @@
 		} | null;
 		spreadsheet: jspreadsheet.WorksheetInstance;
 		svgTemplate: SVGSVGElement;
+		imagePaths: Map<string, string>;
 	} = $props();
 
 	const gameName = $derived(page.params.gameName);
@@ -38,23 +41,47 @@
 
 	async function handleGenerateImages(images: ImageGenResponse) {
 		console.log('Generated images:', images);
+		const timestamp = Date.now();
 		for (const image of images.results) {
 			const response = await fetch(image.imageUrl);
 			const blob = await response.blob();
-			const filename = `${image.columnName}_${image.rowId}.png`;
+			const filename = `${image.rowId}_${timestamp}_${image.columnName}.png`;
 			const file = new File([blob], filename, { type: blob.type });
 			await filesystem.upload(file, `${gameName}/files/generated`);
 
 			const headers = spreadsheet.getHeaders(true) as string[];
 			const columnIndex = headers.findIndex((header) => header === image.columnName);
 			if (columnIndex !== -1) {
-                // TODO: get rowIndex from image.rowId
-				const currentValue = spreadsheet.getValueFromCoords(columnIndex, image.rowIndex);
-				if (!currentValue || currentValue.toString().trim() === '') {
-					spreadsheet.setValueFromCoords(columnIndex, image.rowIndex, `generated/${filename}`);
+				// Find row index by matching rowId in first column
+				const data = spreadsheet.getConfig()?.data;
+				let rowIndex = -1;
+				if (data) {
+					for (let i = 0; i < data.length; i++) {
+						const rowData = spreadsheet.getRowData(i) as string[];
+						if (rowData[0] === image.rowId) {
+							rowIndex = i;
+							break;
+						}
+					}
+				}
+				if (rowIndex !== -1) {
+					const currentValue = spreadsheet.getValueFromCoords(columnIndex, rowIndex);
+					if (!currentValue || currentValue.toString().trim() === '') {
+						spreadsheet.setValueFromCoords(columnIndex, rowIndex, `generated/${filename}`);
+					}
 				}
 			}
 		}
+	}
+
+	function handleImageSelection(selection: {
+		cardIndex: number;
+		columnName: string;
+		imageUrl: string;
+	}) {
+		console.log('Image selection changed:', selection);
+		// The spreadsheet update is handled directly in the modal component
+		// This callback can be used for additional logic if needed
 	}
 </script>
 
@@ -90,5 +117,12 @@
 		{spreadsheet}
 		{svgTemplate}
 		onGenerateImages={handleGenerateImages}
+	/>
+	<ImageSelectionModal
+		{selection}
+		{spreadsheet}
+		{svgTemplate}
+		{imagePaths}
+		onSelectionChange={handleImageSelection}
 	/>
 </div>
