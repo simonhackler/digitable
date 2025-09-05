@@ -17,14 +17,16 @@
 		selection = null,
 		spreadsheet,
 		svgTemplate,
-		imagePaths
+		imagePaths,
+		cards,
+		showFront
 	}: {
 		deletedSvgColumns: string[];
 		onAddColumn: (col: string) => void;
 		onHover: (col: string) => void;
 		onExitHover: (col: string) => void;
 		flip: () => void;
-		selection?: {
+		selection: {
 			borderLeftIndex: number;
 			borderTopIndex: number;
 			borderRightIndex: number;
@@ -33,6 +35,8 @@
 		spreadsheet: jspreadsheet.WorksheetInstance;
 		svgTemplate: SVGSVGElement;
 		imagePaths: Map<string, string>;
+		cards: import('../../../types').SvgCard[];
+		showFront: boolean;
 	} = $props();
 
 	const gameName = $derived(page.params.gameName);
@@ -73,16 +77,6 @@
 			}
 		}
 	}
-
-	function handleImageSelection(selection: {
-		cardIndex: number;
-		columnName: string;
-		imageUrl: string;
-	}) {
-		console.log('Image selection changed:', selection);
-		// The spreadsheet update is handled directly in the modal component
-		// This callback can be used for additional logic if needed
-	}
 </script>
 
 <div class="flex w-full items-center gap-2">
@@ -118,11 +112,5 @@
 		{svgTemplate}
 		onGenerateImages={handleGenerateImages}
 	/>
-	<ImageSelectionModal
-		{selection}
-		{spreadsheet}
-		{svgTemplate}
-		{imagePaths}
-		onSelectionChange={handleImageSelection}
-	/>
+	<ImageSelectionModal {selection} {spreadsheet} {imagePaths} {cards} {showFront} />
 </div>

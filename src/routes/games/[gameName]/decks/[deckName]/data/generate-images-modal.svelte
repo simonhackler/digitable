@@ -182,7 +182,7 @@
 {#snippet quickInsertButtons(targetColumnName: string)}
 	<div class="flex flex-wrap gap-1">
 		<span class="text-muted-foreground mr-2 text-xs">Quick insert:</span>
-		{#each selectionData.availableColumns.slice(0, 8) as availableColumn (availableColumn.index)}
+		{#each selectionData.availableColumns as availableColumn (availableColumn.index)}
 			<Button
 				variant="outline"
 				size="sm"

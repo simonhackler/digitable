@@ -58,6 +58,8 @@
 		}))
 	);
 
+    $inspect(cards);
+
 	// Ideally this would be set directly from a reactive value from the spreadsheet
 	let deletedSvgColumns = $derived(
 		Array.from(svgData.values())
@@ -302,12 +304,15 @@
 			initialSetupForSvgItem(card.back, col, data[0], imagePaths);
 		}
 	}
+
 	let selection: {
 		borderLeftIndex: number;
 		borderTopIndex: number;
 		borderRightIndex: number;
 		borderBottomIndex: number;
 	} | null = $state(null);
+
+	$inspect(selection);
 </script>
 
 <div
@@ -360,7 +365,8 @@
 		spreadsheet={spreadsheet[0]}
 		svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
 		{imagePaths}
-		onGenerateImages={() => console.log('Generate images clicked')}
+		{cards}
+		{showFront}
 	></Toolbar>
 </div>
 <ContextMenu.Root>

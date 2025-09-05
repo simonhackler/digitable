@@ -4,16 +4,20 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type jspreadsheet from 'jspreadsheet-ce';
 	import { ImageEditor } from './custom-image';
-	import { generateSvg } from '../../../svg-helpers';
 	import { getFileSystemContext } from '../../../../context';
 	import { page } from '$app/state';
+	import type { SvgCard } from '../../../types';
+	import type {
+		Folder,
+		ExplorerNode
+	} from '$lib/components/file-browser/browser-utils/types.svelte.ts';
 
 	let {
 		selection = null,
 		spreadsheet,
-		svgTemplate,
 		imagePaths,
-		onSelectionChange = () => {}
+		cards,
+		showFront
 	}: {
 		selection?: {
 			borderLeftIndex: number;
@@ -22,13 +26,9 @@
 			borderBottomIndex: number;
 		} | null;
 		spreadsheet: jspreadsheet.WorksheetInstance;
-		svgTemplate: SVGSVGElement;
 		imagePaths: Map<string, string>;
-		onSelectionChange?: (selection: {
-			cardIndex: number;
-			columnName: string;
-			imageUrl: string;
-		}) => void;
+		cards: SvgCard[];
+		showFront: boolean;
 	} = $props();
 
 	let open = $state(false);
@@ -37,16 +37,10 @@
 	const gameName = $derived(page.params.gameName);
 	const filesystem = getFileSystemContext();
 
-	// Selected images map: columnName -> imageUrl
 	let selectedImages = $state<Record<string, string>>({});
-
-	// Available images map: columnName -> imageUrl[]
 	let availableImages = $state<Record<string, string[]>>({});
-
-	// Current image indices for each column
 	let imageIndices = $state<Record<string, number>>({});
 
-	// Get selection data for image selection
 	const selectionData = $derived.by(() => {
 		if (!selection)
 			return { hasImageColumns: false, imageColumns: [], totalRows: 0, availableColumns: [] };
@@ -94,29 +88,19 @@
 		};
 	});
 
-	// Current SVG with selected images
+	// Current SVG from the cards array
 	const currentSvg = $derived.by(() => {
-		if (!currentCardData || !imagePaths) return null;
+		if (!currentCardData || !cards.length) return null;
 
-		try {
-			// Get current row data and merge with selected images
-			const headers = spreadsheet.getHeaders(true) as string[];
-			const mergedRowData = currentCardData.rowData.slice();
+		const cardIndex = currentCardData.rowIndex;
+		if (cardIndex >= cards.length) return null;
 
-			// Update the row data with selected images
-			for (const column of selectionData.imageColumns) {
-				const selectedImage = selectedImages[column.name];
-				if (selectedImage) {
-					mergedRowData[column.index] = selectedImage;
-				}
-			}
-
-			return generateSvg(svgTemplate, headers, mergedRowData, imagePaths);
-		} catch (error) {
-			console.error('Error generating SVG:', error);
-			return null;
-		}
+		// Get the appropriate SVG based on showFront
+		const card = cards[cardIndex];
+		return showFront ? card.front.cloneNode(false) : card.back;
 	});
+
+    $inspect(cards);
 
 	// Get available images for a specific rowId and column
 	async function getAvailableImagesForColumn(rowId: string, columnName: string): Promise<string[]> {
@@ -125,21 +109,26 @@
 			if (!rootFolder.result) return [];
 
 			// Navigate to the generated folder
-			const generatedFolder = findFolderInTree(rootFolder.result, gameName, 'files', 'generated');
+			const generatedFolder = findFolderInTree(
+				rootFolder.result,
+				gameName || '',
+				'files',
+				'generated'
+			);
 			if (!generatedFolder) return [];
 
 			// Filter files that match the pattern: rowId_*_columnName.*
 			const matchingFiles = generatedFolder.children
-				.filter((child) => !('children' in child)) // Only files, not folders
-				.map((file) => file.name)
-				.filter((filename) => {
+				.filter((child: ExplorerNode) => !('children' in child)) // Only files, not folders
+				.map((file: any) => file.name)
+				.filter((filename: string) => {
 					// Match pattern: rowId_timestamp_columnName.extension
 					const regex = new RegExp(`^${rowId}_\\d+_${columnName}\\.[^.]+$`);
 					return regex.test(filename);
 				});
 
 			// Convert to full paths for the imagePaths lookup
-			return matchingFiles.map((filename) => `generated/${filename}`);
+			return matchingFiles.map((filename: string) => `generated/${filename}`);
 		} catch (error) {
 			console.error('Error getting available images:', error);
 			return [];
@@ -147,43 +136,49 @@
 	}
 
 	// Helper function to find a folder in the tree by path segments
-	function findFolderInTree(folder: any, ...pathSegments: string[]): any {
-		let current = folder;
+	function findFolderInTree(folder: Folder, ...pathSegments: string[]): Folder | null {
+		let current: ExplorerNode | undefined = folder;
 		for (const segment of pathSegments) {
 			if (!current || !('children' in current)) return null;
-			current = current.children.find((child: any) => child.name === segment);
+			current = current.children.find((child) => child.name === segment);
 		}
 		return current && 'children' in current ? current : null;
 	}
 
 	// Initialize available images and indices when card changes
-	$effect(async () => {
-		if (currentCardData && selectionData.imageColumns.length > 0) {
-			for (const column of selectionData.imageColumns) {
-				const availableImagesForColumn = await getAvailableImagesForColumn(
-					currentCardData.rowId,
-					column.name
-				);
-				availableImages[column.name] = availableImagesForColumn;
+	$effect(() => {
+		if (currentCardData) {
+			// Use an async IIFE to handle the async operations
+			(async () => {
+				for (const column of selectionData.imageColumns) {
+					const availableImagesForColumn = await getAvailableImagesForColumn(
+						currentCardData.rowId,
+						column.name
+					);
+					availableImages[column.name] = availableImagesForColumn;
 
-				// Initialize index to 0 or find current image index
-				const currentValue = spreadsheet.getValueFromCoords(column.index, currentCardData.rowIndex);
-				if (currentValue && currentValue.toString().trim()) {
-					const currentImagePath = currentValue.toString();
-					const currentIndex = availableImagesForColumn.indexOf(currentImagePath);
-					imageIndices[column.name] = Math.max(0, currentIndex);
-					selectedImages[column.name] = currentImagePath;
-				} else {
-					imageIndices[column.name] = 0;
-					selectedImages[column.name] = availableImagesForColumn[0] || '';
+					// Initialize index to 0 or find current image index
+					const currentValue = spreadsheet.getValueFromCoords(
+						column.index,
+						currentCardData.rowIndex
+					);
+					if (currentValue && currentValue.toString().trim()) {
+						const currentImagePath = currentValue.toString();
+						const currentIndex = availableImagesForColumn.indexOf(currentImagePath);
+						imageIndices[column.name] = Math.max(0, currentIndex);
+						selectedImages[column.name] = currentImagePath;
+					} else {
+						imageIndices[column.name] = 0;
+						selectedImages[column.name] = availableImagesForColumn[0] || '';
+					}
 				}
-			}
+			})();
 		}
 	});
 
 	// Initialize selected images when card changes
 	$effect(() => {
-		if (currentCardData && selectionData.imageColumns.length > 0) {
+		if (currentCardData) {
 			for (const column of selectionData.imageColumns) {
 				const currentValue = spreadsheet.getValueFromCoords(column.index, currentCardData.rowIndex);
 				if (currentValue && currentValue.toString().trim()) {
@@ -195,35 +190,25 @@
 		}
 	});
 
-	function switchCard(direction: 'prev' | 'next') {
+	function switchCard(direction: -1 | 1) {
 		if (!selection) return;
-
 		const maxIndex = selection.borderBottomIndex - selection.borderTopIndex;
-		if (direction === 'prev') {
-			currentCardIndex = Math.max(0, currentCardIndex - 1);
-		} else {
-			currentCardIndex = Math.min(maxIndex, currentCardIndex + 1);
-		}
+		currentCardIndex = Math.max(0, Math.min(maxIndex, currentCardIndex + direction));
 	}
 
-	function switchImage(columnName: string, direction: 'prev' | 'next') {
+	function switchImage(columnName: string, step: -1 | 1) {
 		const availableImagesForColumn = availableImages[columnName] || [];
-		if (availableImagesForColumn.length <= 1) return;
+		const len = availableImagesForColumn.length;
 
-		const currentIndex = imageIndices[columnName] || 0;
-		let newIndex;
+		if (len <= 1) return;
 
-		if (direction === 'prev') {
-			newIndex = currentIndex <= 0 ? availableImagesForColumn.length - 1 : currentIndex - 1;
-		} else {
-			newIndex = currentIndex >= availableImagesForColumn.length - 1 ? 0 : currentIndex + 1;
-		}
+		const cur = imageIndices[columnName] || 0;
+		const next = (cur + step + len) % len;
 
-		imageIndices[columnName] = newIndex;
-		const newImageUrl = availableImagesForColumn[newIndex];
+		imageIndices[columnName] = next;
+		const newImageUrl = availableImagesForColumn[next];
 		selectedImages[columnName] = newImageUrl;
 
-		// Update the spreadsheet immediately
 		handleImageSelection(columnName, newImageUrl);
 	}
 
@@ -233,11 +218,6 @@
 			const column = selectionData.imageColumns.find((col) => col.name === columnName);
 			if (column) {
 				spreadsheet.setValueFromCoords(column.index, currentCardData.rowIndex, imageUrl);
-				onSelectionChange({
-					cardIndex: currentCardIndex,
-					columnName,
-					imageUrl
-				});
 			}
 		}
 	}
@@ -246,13 +226,6 @@
 		return (element: HTMLElement) => {
 			if (svg instanceof Node) {
 				element.appendChild(svg);
-				svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-				Object.assign(svg.style, {
-					display: 'block',
-					width: 'auto',
-					height: 'auto',
-					maxWidth: '100%'
-				});
 			}
 			return () => {
 				if (svg && element.contains(svg)) {
@@ -316,7 +289,7 @@
 					<Button
 						variant="outline"
 						size="sm"
-						onclick={() => switchCard('prev')}
+						onclick={() => switchCard(-1)}
 						disabled={currentCardIndex === 0}
 					>
 						Previous Card
@@ -330,7 +303,7 @@
 					<Button
 						variant="outline"
 						size="sm"
-						onclick={() => switchCard('next')}
+						onclick={() => switchCard(1)}
 						disabled={currentCardIndex >= selectionData.totalRows - 1}
 					>
 						Next Card
@@ -358,7 +331,7 @@
 								<Button
 									variant="outline"
 									size="sm"
-									onclick={() => switchImage(column.name, 'prev')}
+									onclick={() => switchImage(column.name, -1)}
 									disabled={!availableImages[column.name] ||
 										availableImages[column.name].length <= 1}
 								>
@@ -379,7 +352,7 @@
 								<Button
 									variant="outline"
 									size="sm"
-									onclick={() => switchImage(column.name, 'next')}
+									onclick={() => switchImage(column.name, +1)}
 									disabled={!availableImages[column.name] ||
 										availableImages[column.name].length <= 1}
 								>
