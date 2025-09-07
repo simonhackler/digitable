@@ -4,6 +4,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import { Loader2, Check } from '@lucide/svelte';
 	import type jspreadsheet from 'jspreadsheet-ce';
 	import { ImageEditor } from './custom-image';
 	import { generateImages, type ImagePrompt, type ImageGenResponse } from './image-generator.js';
@@ -27,6 +28,8 @@
 	} = $props();
 
 	let open = $state(false);
+	let isGenerating = $state(false);
+	let generationComplete = $state(false);
 
 	// Individual prompts for each image column
 	let columnPrompts = $state<Record<string, string>>({});
@@ -142,15 +145,23 @@
 	async function handleGenerate() {
 		if (!isValidPrompt) return;
 
+		isGenerating = true;
+		generationComplete = false;
+
 		// Convert prompts to the expected format and call generateImages
 		const imagePrompts: ImagePrompt[] = previewPrompts.filter((p) => p.prompt.trim().length > 0);
-		const images = await generateImages(imagePrompts);
 
-		open = false;
+		const images = await generateImages(imagePrompts);
 		if (images) {
-            console.log('Generated images:', images);
 			onGenerateImages(images);
+			generationComplete = true;
+			setTimeout(() => {
+				generationComplete = false;
+			}, 2000); // Reset after 2 seconds
 		}
+
+		isGenerating = false;
+		open = false;
 	}
 </script>
 
@@ -198,9 +209,17 @@
 <Dialog.Root bind:open>
 	<Dialog.Trigger
 		class={buttonVariants({ variant: 'outline' })}
-		disabled={!selectionData.hasImageColumns}
+		disabled={!selectionData.hasImageColumns || isGenerating}
 	>
-		Generate Images
+		{#if isGenerating}
+			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+			Generating...
+		{:else if generationComplete}
+			<Check class="mr-2 h-4 w-4" />
+			Generated!
+		{:else}
+			Generate Images
+		{/if}
 	</Dialog.Trigger>
 	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-[900px]">
 		<Dialog.Header>
