@@ -150,18 +150,17 @@
 
 		// Convert prompts to the expected format and call generateImages
 		const imagePrompts: ImagePrompt[] = previewPrompts.filter((p) => p.prompt.trim().length > 0);
-
-		const images = await generateImages(imagePrompts);
-		if (images) {
-			onGenerateImages(images);
-			generationComplete = true;
-			setTimeout(() => {
-				generationComplete = false;
-			}, 2000); // Reset after 2 seconds
-		}
-
-		isGenerating = false;
-		open = false;
+        generateImages(imagePrompts).then(images => {
+            if (images) {
+                onGenerateImages(images);
+                generationComplete = true;
+                setTimeout(() => {
+                    generationComplete = false;
+                }, 2000); // Reset after 2 seconds
+            }
+            isGenerating = false;
+            open = false;
+        });
 	}
 </script>
 
