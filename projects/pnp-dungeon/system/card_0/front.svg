@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+  <rect width="300" height="400" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  <text id="name" x="150" y="50" text-anchor="middle" font-size="18" fill="#333">Card Name</text>
+  <text id="description" x="150" y="200" text-anchor="middle" font-size="12" fill="#666">Description</text>
+  <image id="image" x="50" y="100" width="200" height="100" href=""/>
+</svg>

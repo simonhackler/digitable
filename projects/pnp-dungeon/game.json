@@ -1,0 +1,7 @@
+{
+	"name": "PnP Dungeon",
+	"minPlayers": 1,
+	"maxPlayers": 4,
+	"description": "A print and play dungeon crawler game",
+	"tags": ["dungeon", "adventure", "pnp"]
+}

@@ -77,6 +77,9 @@ export class OPFSAdapter implements Adapter {
 			const writable = await handle.createWritable();
 			await writable.write(file);
 			await writable.close();
+
+            // This is really bad
+            this.folder = null; // Invalidate cached folder structure
 			return null;
 		} catch (error) {
 			return error as Error;

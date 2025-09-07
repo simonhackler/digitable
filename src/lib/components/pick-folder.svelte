@@ -71,7 +71,7 @@
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={(e) => useOpfs()}>Use Browser</AlertDialog.Action>
+			<AlertDialog.Action onclick={(e) => useOpfs()}>Use Browser storage</AlertDialog.Action>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 

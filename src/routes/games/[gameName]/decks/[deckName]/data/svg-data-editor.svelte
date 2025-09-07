@@ -13,14 +13,13 @@
 		initialSetupForSvgItem,
 		updateSvg,
 		createHighlightRect,
-		appendHighlightToSvg,
-		getSvgDataMap
+		appendHighlightToSvg
 	} from '../../../svg-helpers';
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';
-	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 	import { loadSvgsAndData } from '../../../data-loader';
+	import type { SvgCard } from '../../../types';
 
 	const {
 		svgTemplateFront,
@@ -39,7 +38,7 @@
 	const { svgData, spreadsheetData, imagePaths } = $derived(
 		await loadSvgsAndData(projectName, cardName, fileSystem, svgTemplateFront, svgTemplateBack)
 	);
-    $inspect(spreadsheetData);
+	$inspect(spreadsheetData);
 
 	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references
 	let cards: SvgCard[] = $state(
@@ -58,6 +57,8 @@
 			)
 		}))
 	);
+
+    $inspect(cards);
 
 	// Ideally this would be set directly from a reactive value from the spreadsheet
 	let deletedSvgColumns = $derived(
@@ -172,6 +173,12 @@
 						}
 					}
 				}
+				selection = {
+					borderLeftIndex,
+					borderTopIndex,
+					borderRightIndex,
+					borderBottomIndex
+				};
 			},
 			onbeforedeletecolumn(_instance, removedColumns) {
 				for (const colI of removedColumns) {
@@ -235,6 +242,7 @@
 		}
 		updateSvg(cards[y].front, headers[x], value, imagePaths);
 		updateSvg(cards[y].back, headers[x], value, imagePaths);
+        cards = [...cards]; //TODO FORCE update for imageSelectionModal, very hacky.
 	}
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
@@ -280,7 +288,9 @@
 			[
 				{
 					title: col,
-					type: 'text',
+					//type: 'text',
+					// TODO choose correct type, text or ImageEditor
+					//type: ImageEditor,
 					width: 120
 				}
 			]
@@ -295,6 +305,15 @@
 			initialSetupForSvgItem(card.back, col, data[0], imagePaths);
 		}
 	}
+
+	let selection: {
+		borderLeftIndex: number;
+		borderTopIndex: number;
+		borderRightIndex: number;
+		borderBottomIndex: number;
+	} | null = $state(null);
+
+	$inspect(selection);
 </script>
 
 <div
@@ -336,8 +355,6 @@
 		></div>
 	{/each}
 </div>
-<!-- <TtsExport sheets={forTtsExport} currentGame={currentProject as string}/> -->
-<!-- <BulkExport /> -->
 <div class="px-2 py-2">
 	<Toolbar
 		{deletedSvgColumns}
@@ -345,6 +362,12 @@
 		onHover={highlightColumn}
 		onExitHover={(x) => clearSelectionRects()}
 		{flip}
+		{selection}
+		spreadsheet={spreadsheet[0]}
+		svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
+		{imagePaths}
+		{cards}
+		{showFront}
 	></Toolbar>
 </div>
 <ContextMenu.Root>

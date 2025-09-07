@@ -1,4 +1,2 @@
-text33,text34,text33-3,text40,text36,text37,text38,text39,image1-6,image1,image1-7
-2 Same   ♠ ♣,Destroy left most open card,2 Same ♥  ♦,"Deal 5 Damage                      ",1.,2.,3.,Do another action,,,
-fda,,,,,,,,,,
-fsda,fadfa,fdsa,fdafdas,d,fdasfdas,d,d,fdas,,
+id,name,description
+1,Sample Card,A sample card for testing
