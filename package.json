@@ -76,6 +76,7 @@
 		"pagedjs": "^0.4.3",
 		"papaparse": "^5.5.3",
 		"runed": "^0.28.0",
-		"svelte-sonner": "^1.0.5"
+		"svelte-sonner": "^1.0.5",
+		"wellcrafted": "^0.22.0"
 	}
 }

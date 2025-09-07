@@ -1,3 +1,5 @@
+import { Result, Ok, tryAsync, Err } from "wellcrafted/result";
+
 export interface ImagePrompt {
 	columnName: string;
 	prompt: string;
@@ -36,11 +38,12 @@ export async function generateImages(prompts: ImagePrompt[]) {
 
 		if (!result.success) {
 			console.error('Image generation failed:', result.error);
-			return;
+			return Err(result.error);
 		}
 
-		return result;
+		return Ok(result);
 	} catch (error) {
 		console.error('Failed to generate images:', error);
+        return Err(error instanceof Error ? error.message : String(error));
 	}
 }

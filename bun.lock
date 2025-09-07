@@ -18,6 +18,7 @@
         "papaparse": "^5.5.3",
         "runed": "^0.28.0",
         "svelte-sonner": "^1.0.5",
+        "wellcrafted": "^0.22.0",
       },
       "devDependencies": {
         "@chromatic-com/storybook": "^4.1.1",
@@ -1062,6 +1063,8 @@
     "webidl-conversions": ["webidl-conversions@3.0.1", "", {}, "sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ=="],
 
     "webpack-virtual-modules": ["webpack-virtual-modules@0.6.2", "", {}, "sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ=="],
+
+    "wellcrafted": ["wellcrafted@0.22.0", "", {}, "sha512-qlAZ8NYJf+kOpqu+LHW3byMuy80yDex/B0fe4GoI5ou6v+20Jaj0R1jrvCF77edrHVgoXaK1774vni3ZPxH8HA=="],
 
     "whatwg-url": ["whatwg-url@5.0.0", "", { "dependencies": { "tr46": "~0.0.3", "webidl-conversions": "^3.0.0" } }, "sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw=="],
 
