@@ -3,7 +3,6 @@ import type { Column } from "jspreadsheet-ce";
 import { parseCsvFile } from "./csv-helper";
 import { getSvgDataMap } from "./svg-helpers";
 import type { ColumnWithData } from "./types";
-import { ImageEditor } from "./decks/[deckName]/data/custom-image";
 
 export async function loadSpreadsheetData(
     svgData: Map<string, ColumnWithData>,
@@ -17,9 +16,7 @@ export async function loadSpreadsheetData(
     const csvFile = csvFileResult[0].result?.data;
     const csvData = csvFile ? await parseCsvFile(csvFile) : null;
     const idCol = { type: 'hidden', title: 'id' };
-    console.log('svgData', svgData);
     if (csvData) {
-
         const newCols = csvData.header.filter(x => x !== 'id').map((header) => {
             return svgData.get(header)
                 ? { ...svgData.get(header) } // Exists in svgData
@@ -43,7 +40,6 @@ export async function loadSpreadsheetData(
             return [idValue, ...rest];
         });
 
-
         return {
             cols: newCols,
             data
@@ -55,7 +51,7 @@ export async function loadSpreadsheetData(
                 type: c.type
             }))],
             data: [
-                [crypto.randomUUID(), ...Array.from(svgData.keys()).map((key) => svgData.get(key)?.data || '')]
+                [crypto.randomUUID(), ...Array.from(svgData.keys()).map((key) => svgData.get(key)?.data[0] || '')]
             ]
         };
     }

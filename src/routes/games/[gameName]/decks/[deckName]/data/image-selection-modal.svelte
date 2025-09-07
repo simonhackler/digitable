@@ -97,10 +97,8 @@
 
 		// Get the appropriate SVG based on showFront
 		const card = cards[cardIndex];
-		return showFront ? card.front.cloneNode(false) : card.back;
+		return showFront ? card.front.cloneNode(true) : card.back;
 	});
-
-    $inspect(cards);
 
 	// Get available images for a specific rowId and column
 	async function getAvailableImagesForColumn(rowId: string, columnName: string): Promise<string[]> {
@@ -147,14 +145,14 @@
 
 	// Initialize available images and indices when card changes
 	$effect(() => {
-		if (currentCardData) {
-			// Use an async IIFE to handle the async operations
+		if (open) {
 			(async () => {
 				for (const column of selectionData.imageColumns) {
 					const availableImagesForColumn = await getAvailableImagesForColumn(
 						currentCardData.rowId,
 						column.name
 					);
+                    console.log('Available images for column', column.name, ':', availableImagesForColumn);
 					availableImages[column.name] = availableImagesForColumn;
 
 					// Initialize index to 0 or find current image index

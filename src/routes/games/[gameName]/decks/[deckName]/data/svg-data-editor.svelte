@@ -242,6 +242,7 @@
 		}
 		updateSvg(cards[y].front, headers[x], value, imagePaths);
 		updateSvg(cards[y].back, headers[x], value, imagePaths);
+        cards = [...cards]; //TODO FORCE update for imageSelectionModal, very hacky.
 	}
 
 	function attachSVG(svg: SVGSVGElement | null): Attachment {
