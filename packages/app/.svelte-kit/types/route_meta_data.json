@@ -1,0 +1,16 @@
+{
+	"/": [],
+	"/api/generate-images": [
+		"src/routes/api/generate-images/+server.ts"
+	],
+	"/games": [],
+	"/games/[gameName]": [],
+	"/games/[gameName]/decks/[deckName]": [],
+	"/games/[gameName]/decks/[deckName]/data": [
+		"src/routes/games/[gameName]/decks/[deckName]/data/+page.ts"
+	],
+	"/games/[gameName]/decks/[deckName]/layout": [],
+	"/games/[gameName]/export": [],
+	"/games/[gameName]/export/paper": [],
+	"/games/[gameName]/export/tts": []
+}

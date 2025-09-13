@@ -1,0 +1,1 @@
+import"../chunks/f00okDMd.js";import{p,c as a,g as m,h as s}from"../chunks/CcupEzEf.js";import{p as g}from"../chunks/D8ieNkJn.js";import{E as c}from"../chunks/DCEgXnoJ.js";import{g as n}from"../chunks/D-MmFdiD.js";function E(t,e){p(e,!0);const r=s(()=>g.params.gameName),o=n();c(t,{get projects(){return o.projects},get gameName(){return m(r)}}),a()}export{E as component};

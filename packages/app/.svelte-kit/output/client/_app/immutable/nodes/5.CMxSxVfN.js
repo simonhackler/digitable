@@ -1,0 +1,1 @@
+import"../chunks/f00okDMd.js";import"../chunks/D7zXso-X.js";import{f as o,b as a,n as r}from"../chunks/CcupEzEf.js";var p=o('<h1>Welcome to SvelteKit</h1> <p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>',1);function s(t){var e=p();r(2),a(t,e)}export{s as component};

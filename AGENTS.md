@@ -20,6 +20,7 @@ This file contains essential information for AI coding agents working in this re
 - AVOID using any type
 - AVOID let statements
 - PREFER single word variable names where possible
+- ALWAYS use bun
 
 ## Component Guidelines
 

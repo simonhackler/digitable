@@ -1,0 +1,1 @@
+export { default as component } from "../../../../src/routes/games/[gameName]/decks/[deckName]/layout/+page.svelte";
