@@ -6,6 +6,7 @@
 	import type { Game } from './types.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import PlayMenu from './play-menu.svelte';
 
 	let { games }: { games: Game[] } = $props();
 
@@ -29,6 +30,7 @@
 	<Sidebar.Content>
 		<CreateMenu activeGame={activeProject} />
 		<ExportMenu activeGame={activeProject} />
+        <PlayMenu activeGame={activeProject} />
 		<Sidebar.Group />
 	</Sidebar.Content>
 	<Sidebar.Footer />

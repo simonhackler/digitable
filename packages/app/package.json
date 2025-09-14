@@ -18,18 +18,21 @@
 		"build-storybook": "storybook build"
 	},
 	"dependencies": {
+		"boardgame-server": "workspace:*",
 		"@supabase/supabase-js": "^2.55.0",
 		"@types/jspreadsheet-ce": "^4.7.9",
 		"@types/papaparse": "^5.3.16",
 		"@types/wicg-file-system-access": "^2023.10.6",
 		"@zumer/snapdom": "^1.9.9",
 		"client-zip": "^2.5.0",
+		"colyseus.js": "^0.16.19",
 		"html-to-image": "^1.11.13",
 		"idb-keyval": "^6.2.2",
 		"jspreadsheet-ce": "^5.0.3",
 		"jsuites": "^5.12.0",
 		"pagedjs": "^0.4.3",
 		"papaparse": "^5.5.3",
+		"pixi.js": "^8.13.2",
 		"runed": "^0.28.0",
 		"svelte-sonner": "^1.0.5",
 		"wellcrafted": "^0.22.0"

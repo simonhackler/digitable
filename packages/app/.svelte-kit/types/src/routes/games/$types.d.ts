@@ -12,7 +12,7 @@ type EnsureDefined<T> = T extends null | undefined ? {} : T;
 type OptionalUnion<U extends Record<string, any>, A extends keyof U = U extends U ? keyof U : never> = U extends unknown ? { [P in Exclude<A, keyof U>]?: never } & U : never;
 export type Snapshot<T = any> = Kit.Snapshot<T>;
 type PageParentData = Omit<EnsureDefined<import('../$types.js').LayoutData>, keyof LayoutData> & EnsureDefined<LayoutData>;
-type LayoutRouteId = RouteId | "/games" | "/games/[gameName]" | "/games/[gameName]/decks/[deckName]/data" | "/games/[gameName]/decks/[deckName]/layout" | "/games/[gameName]/export" | "/games/[gameName]/export/paper" | "/games/[gameName]/export/tts"
+type LayoutRouteId = RouteId | "/games" | "/games/[gameName]" | "/games/[gameName]/decks/[deckName]/data" | "/games/[gameName]/decks/[deckName]/layout" | "/games/[gameName]/export" | "/games/[gameName]/export/paper" | "/games/[gameName]/export/tts" | "/games/[gameName]/play"
 type LayoutParams = RouteParams & { gameName?: string; deckName?: string }
 type LayoutParentData = EnsureDefined<import('../$types.js').LayoutData>;
 

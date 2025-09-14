@@ -12,5 +12,6 @@
 	"/games/[gameName]/decks/[deckName]/layout": [],
 	"/games/[gameName]/export": [],
 	"/games/[gameName]/export/paper": [],
-	"/games/[gameName]/export/tts": []
+	"/games/[gameName]/export/tts": [],
+	"/games/[gameName]/play": []
 }

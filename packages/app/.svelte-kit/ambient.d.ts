@@ -48,6 +48,7 @@ declare module '$env/static/private' {
 	export const LOGNAME: string;
 	export const XDG_SESSION_TYPE: string;
 	export const PNPM_HOME: string;
+	export const _: string;
 	export const XAUTHORITY: string;
 	export const RAWWAVE_PATH: string;
 	export const TERMINAL: string;
@@ -56,6 +57,7 @@ declare module '$env/static/private' {
 	export const HOME: string;
 	export const LANG: string;
 	export const npm_package_version: string;
+	export const FORCE_COLOR: string;
 	export const npm_lifecycle_script: string;
 	export const NVM_DIR: string;
 	export const HF_HOME: string;
@@ -71,8 +73,8 @@ declare module '$env/static/private' {
 	export const CONDA_SHLVL: string;
 	export const CSSTRNGS: string;
 	export const DISPLAY: string;
-	export const GSK_RENDERER: string;
 	export const npm_lifecycle_event: string;
+	export const GSK_RENDERER: string;
 	export const SHLVL: string;
 	export const NVM_CD_FLAGS: string;
 	export const XDG_VTNR: string;
@@ -81,19 +83,18 @@ declare module '$env/static/private' {
 	export const npm_execpath: string;
 	export const CONDA_PYTHON_EXE: string;
 	export const XDG_RUNTIME_DIR: string;
-	export const NVCC_CCBIN: string;
 	export const DEBUGINFOD_URLS: string;
+	export const NVCC_CCBIN: string;
 	export const npm_package_json: string;
 	export const QT_AUTO_SCREEN_SCALE_FACTOR: string;
 	export const PATH: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
-	export const NVM_BIN: string;
 	export const MAIL: string;
+	export const NVM_BIN: string;
 	export const npm_node_execpath: string;
 	export const LOCKSCREEN: string;
 	export const OLDPWD: string;
 	export const TERM_PROGRAM: string;
-	export const _: string;
 	export const NODE_ENV: string;
 }
 
@@ -146,6 +147,7 @@ declare module '$env/dynamic/private' {
 		LOGNAME: string;
 		XDG_SESSION_TYPE: string;
 		PNPM_HOME: string;
+		_: string;
 		XAUTHORITY: string;
 		RAWWAVE_PATH: string;
 		TERMINAL: string;
@@ -154,6 +156,7 @@ declare module '$env/dynamic/private' {
 		HOME: string;
 		LANG: string;
 		npm_package_version: string;
+		FORCE_COLOR: string;
 		npm_lifecycle_script: string;
 		NVM_DIR: string;
 		HF_HOME: string;
@@ -169,8 +172,8 @@ declare module '$env/dynamic/private' {
 		CONDA_SHLVL: string;
 		CSSTRNGS: string;
 		DISPLAY: string;
-		GSK_RENDERER: string;
 		npm_lifecycle_event: string;
+		GSK_RENDERER: string;
 		SHLVL: string;
 		NVM_CD_FLAGS: string;
 		XDG_VTNR: string;
@@ -179,19 +182,18 @@ declare module '$env/dynamic/private' {
 		npm_execpath: string;
 		CONDA_PYTHON_EXE: string;
 		XDG_RUNTIME_DIR: string;
-		NVCC_CCBIN: string;
 		DEBUGINFOD_URLS: string;
+		NVCC_CCBIN: string;
 		npm_package_json: string;
 		QT_AUTO_SCREEN_SCALE_FACTOR: string;
 		PATH: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
-		NVM_BIN: string;
 		MAIL: string;
+		NVM_BIN: string;
 		npm_node_execpath: string;
 		LOCKSCREEN: string;
 		OLDPWD: string;
 		TERM_PROGRAM: string;
-		_: string;
 		NODE_ENV: string;
 		[key: `PUBLIC_${string}`]: undefined;
 		[key: `${string}`]: string | undefined;

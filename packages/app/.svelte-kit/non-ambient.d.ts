@@ -27,7 +27,7 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/" | "/api" | "/api/generate-images" | "/games" | "/games/[gameName]" | "/games/[gameName]/decks" | "/games/[gameName]/decks/[deckName]" | "/games/[gameName]/decks/[deckName]/data" | "/games/[gameName]/decks/[deckName]/layout" | "/games/[gameName]/export" | "/games/[gameName]/export/paper" | "/games/[gameName]/export/tts";
+		RouteId(): "/" | "/api" | "/api/generate-images" | "/games" | "/games/[gameName]" | "/games/[gameName]/decks" | "/games/[gameName]/decks/[deckName]" | "/games/[gameName]/decks/[deckName]/data" | "/games/[gameName]/decks/[deckName]/layout" | "/games/[gameName]/export" | "/games/[gameName]/export/paper" | "/games/[gameName]/export/tts" | "/games/[gameName]/play";
 		RouteParams(): {
 			"/games/[gameName]": { gameName: string };
 			"/games/[gameName]/decks": { gameName: string };
@@ -36,7 +36,8 @@ declare module "$app/types" {
 			"/games/[gameName]/decks/[deckName]/layout": { gameName: string; deckName: string };
 			"/games/[gameName]/export": { gameName: string };
 			"/games/[gameName]/export/paper": { gameName: string };
-			"/games/[gameName]/export/tts": { gameName: string }
+			"/games/[gameName]/export/tts": { gameName: string };
+			"/games/[gameName]/play": { gameName: string }
 		};
 		LayoutParams(): {
 			"/": { gameName?: string; deckName?: string };
@@ -50,9 +51,10 @@ declare module "$app/types" {
 			"/games/[gameName]/decks/[deckName]/layout": { gameName: string; deckName: string };
 			"/games/[gameName]/export": { gameName: string };
 			"/games/[gameName]/export/paper": { gameName: string };
-			"/games/[gameName]/export/tts": { gameName: string }
+			"/games/[gameName]/export/tts": { gameName: string };
+			"/games/[gameName]/play": { gameName: string }
 		};
-		Pathname(): "/" | "/api" | "/api/generate-images" | "/games" | `/games/${string}` & {} | `/games/${string}/decks` & {} | `/games/${string}/decks/${string}` & {} | `/games/${string}/decks/${string}/data` & {} | `/games/${string}/decks/${string}/layout` & {} | `/games/${string}/export` & {} | `/games/${string}/export/paper` & {} | `/games/${string}/export/tts` & {};
+		Pathname(): "/" | "/api" | "/api/generate-images" | "/games" | `/games/${string}` & {} | `/games/${string}/decks` & {} | `/games/${string}/decks/${string}` & {} | `/games/${string}/decks/${string}/data` & {} | `/games/${string}/decks/${string}/layout` & {} | `/games/${string}/export` & {} | `/games/${string}/export/paper` & {} | `/games/${string}/export/tts` & {} | `/games/${string}/play` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): "/favicon.png" | "/image1.svg" | "/placeholder.svg" | string & {};
 	}
