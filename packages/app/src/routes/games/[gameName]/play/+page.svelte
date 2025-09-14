@@ -60,10 +60,14 @@
 				if (syncCards[index]) {
 					syncCards[index].x = card.x;
 					syncCards[index].y = card.y;
+					const sprite = syncCards[index];
 
-                    const sprite = syncCards[index];
-				    sprite.texture = card.isFaceUp ? sprite.frontTexture : spritebackTexture;
-				    (sprite as any).showingFront = card.isFaceUp;
+					if (card.isFaceUp != sprite.showingFront) {
+                        console.log('Flipping card', index, 'to', card.isFaceUp ? 'front' : 'back');
+                        console.log(sprite);
+						sprite.texture = card.isFaceUp ? sprite.frontTexture : sprite.spritebackTexture;
+						(sprite as any).showingFront = card.isFaceUp;
+					}
 				}
 			});
 		});
@@ -127,7 +131,7 @@
 					cardIndex,
 					x: sprite.x,
 					y: sprite.y,
-                    isFaceUp: (sprite as any).showingFront
+					isFaceUp: (sprite as any).showingFront
 				});
 			}
 		}
