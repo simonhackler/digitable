@@ -1,30 +1,37 @@
 import { z } from 'zod';
 import { createGameSchema } from '../../routes/games/schemas.js';
 import type { Adapter } from '$lib/components/file-browser/adapters/adapter.js';
-import agentTemplate from '$lib/templates/create-game-agent.md?raw';
+import agentTemplate from '$lib/templates/agents/boardgame-discovery-agent.md?raw';
+import createGameCommand from '$lib/templates/commands/create-game.md?raw';
+import createSvgCommand from '$lib/templates/commands/create-svg.md?raw';
+import placeholderFrontSvg from '../../../static/placeholder_front.svg?raw';
 
 export async function generateAgentFiles(adapter: Adapter) {
-	await generateCreateGameAgent(adapter);
-}
-
-async function generateCreateGameAgent(adapter: Adapter) {
-	const agentMarkdown = generateAgentMarkdown();
 	const schemaJson = generateSchemaJson();
 
-	const mdFile = new File([agentMarkdown], 'create-game.md', { type: 'text/markdown' });
-	const jsonFile = new File([schemaJson], 'create-game-schema.json', { type: 'application/json' });
+	const files = [
+		{ content: agentTemplate, name: 'create-game.md', path: '/.opencode/agent/' },
+		{ content: schemaJson, name: 'create-game-schema.json', path: '/.opencode/schemas/' },
+		{ content: createGameCommand, name: 'create-game.md', path: '/.opencode/command/' },
+		{ content: createSvgCommand, name: 'create-svg.md', path: '/.opencode/command/' },
+		{ content: placeholderFrontSvg, name: 'placeholder_front.svg', path: '/.opencode/assets/' }
+	];
 
-	const res = await adapter.upload(mdFile, '/.opencode/agent/', true);
-	if (res) {
-		console.error('Failed to upload agent markdown:', res);
-	}
-	const res2 = await adapter.upload(jsonFile, '/.opencode/schemas/', true);
-	if (res2) {
-		console.error('Failed to upload agent schema:', res2);
-	}
-}
-function generateAgentMarkdown(): string {
-	return agentTemplate;
+	const uploadPromises = files.map(async ({ content, name, path }) => {
+		const file = new File([content], name, {
+			type: name.endsWith('.json')
+				? 'application/json'
+				: name.endsWith('.svg')
+					? 'image/svg+xml'
+					: 'text/markdown'
+		});
+		const result = await adapter.upload(file, path, true);
+		if (result) {
+			console.error(`Failed to upload ${name}:`, result);
+		}
+	});
+
+	await Promise.all(uploadPromises);
 }
 
 function generateSchemaJson(): string {
