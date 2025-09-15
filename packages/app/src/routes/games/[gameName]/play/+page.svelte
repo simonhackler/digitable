@@ -63,8 +63,8 @@
 					const sprite = syncCards[index];
 
 					if (card.isFaceUp != sprite.showingFront) {
-                        console.log('Flipping card', index, 'to', card.isFaceUp ? 'front' : 'back');
-                        console.log(sprite);
+						console.log('Flipping card', index, 'to', card.isFaceUp ? 'front' : 'back');
+						console.log(sprite);
 						sprite.texture = card.isFaceUp ? sprite.frontTexture : sprite.spritebackTexture;
 						(sprite as any).showingFront = card.isFaceUp;
 					}
@@ -91,7 +91,7 @@
 
 		// ---- robust drag state managed at stage level ----
 		type DragState = {
-			sprite: Sprite;
+			container: Container;
 			startGlobalX: number;
 			startGlobalY: number;
 			startX: number;
@@ -110,7 +110,7 @@
 			const dy = e.globalY - drag.startGlobalY;
 			const dist = Math.hypot(dx, dy);
 
-			const { sprite, frontTexture, backTexture } = drag;
+			const { container: sprite, frontTexture, backTexture } = drag;
 			drag = null;
 			sprite.cursor = 'pointer';
 
@@ -140,12 +140,12 @@
 			if (!drag) return;
 			const dx = e.globalX - drag.startGlobalX;
 			const dy = e.globalY - drag.startGlobalY;
-			drag.sprite.x = drag.startX + dx;
-			drag.sprite.y = drag.startY + dy;
+			drag.container.x = drag.startX + dx;
+			drag.container.y = drag.startY + dy;
 			room.send('updateCard', {
 				cardIndex: drag.index,
-				x: drag.sprite.x,
-				y: drag.sprite.y
+				x: drag.container.x,
+				y: drag.container.y
 			});
 		});
 
@@ -197,55 +197,57 @@
 			const cardSpacing = 220;
 
 			// Load all textures in parallel
-			const texturePromises = cards.flatMap((card) => [
-				svgToTexture(card.front),
-				svgToTexture(card.back)
-			]);
+			const texturePromises = cards.map((card) =>
+				Promise.all([
+					svgToTexture(card.front),
+					svgToTexture(card.back)
+				])
+			);
 			const textures = await Promise.all(texturePromises);
 
 			// Create sprites with loaded textures
 			for (let i = 0; i < 2; i++) {
-				const frontTexture = textures[i * 2];
-				const backTexture = textures[i * 2 + 1];
+				const [frontTexture, backTexture] = textures[i];
 
-				const sprite = new Sprite(frontTexture);
-				sprite.x = x;
-				sprite.y = y;
+                const cardContainer = new Container();
+				const frontSprite = new Sprite(frontTexture);
+                const backSprite = new Sprite(backTexture);
+                cardContainer.addChild(backSprite);
+                cardContainer.addChild(frontSprite);
+                backSprite.visible = false;
 
-				// Store flip state and textures on the sprite
-				(sprite as any).showingFront = true;
-				(sprite as any).frontTexture = frontTexture;
-				(sprite as any).backTexture = backTexture;
+				cardContainer.x = x;
+				cardContainer.y = y;
 
-				syncCards.push(sprite);
+				syncCards.push(cardContainer);
 
-				sprite.scale.set(0.5);
+				cardContainer.scale.set(0.5);
 
-				sprite.eventMode = 'static';
-				sprite.cursor = 'pointer';
+				cardContainer.eventMode = 'static';
+				cardContainer.cursor = 'pointer';
 
-				sprite.on('pointerover', () => {
-					if (!drag) sprite.tint = 0xcccccc;
+				cardContainer.on('pointerover', () => {
+					if (!drag) cardContainer.tint = 0xcccccc;
 				});
-				sprite.on('pointerout', () => {
-					sprite.tint = 0xffffff;
+				cardContainer.on('pointerout', () => {
+					cardContainer.tint = 0xffffff;
 				});
-				sprite.on('pointerdown', (e: any) => {
+				cardContainer.on('pointerdown', (e: any) => {
 					drag = {
-						sprite,
+						cardContainer,
 						startGlobalX: e.globalX,
 						startGlobalY: e.globalY,
-						startX: sprite.x,
-						startY: sprite.y,
+						startX: cardContainer.x,
+						startY: cardContainer.y,
 						clickThreshold: 10,
 						frontTexture,
 						backTexture,
 						index: i
 					};
-					sprite.cursor = 'grabbing';
+					cardContainer.cursor = 'grabbing';
 				});
 
-				container.addChild(sprite);
+				container.addChild(cardContainer);
 				x += cardSpacing;
 			}
 
