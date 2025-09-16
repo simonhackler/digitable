@@ -31,6 +31,8 @@ declare module '$env/static/private' {
 	export const WINDOWID: string;
 	export const COLORTERM: string;
 	export const NVM_INC: string;
+	export const TERM_PROGRAM_VERSION: string;
+	export const TMUX: string;
 	export const NODE: string;
 	export const DOTNET_ROOT: string;
 	export const SSH_AUTH_SOCK: string;
@@ -61,6 +63,7 @@ declare module '$env/static/private' {
 	export const TERM: string;
 	export const npm_package_name: string;
 	export const USER: string;
+	export const TMUX_PANE: string;
 	export const COLORFGBG: string;
 	export const VIRTUALENVWRAPPER_PROJECT_FILENAME: string;
 	export const DISPLAY: string;
@@ -84,6 +87,7 @@ declare module '$env/static/private' {
 	export const npm_node_execpath: string;
 	export const LOCKSCREEN: string;
 	export const OLDPWD: string;
+	export const TERM_PROGRAM: string;
 	export const NODE_ENV: string;
 }
 
@@ -119,6 +123,8 @@ declare module '$env/dynamic/private' {
 		WINDOWID: string;
 		COLORTERM: string;
 		NVM_INC: string;
+		TERM_PROGRAM_VERSION: string;
+		TMUX: string;
 		NODE: string;
 		DOTNET_ROOT: string;
 		SSH_AUTH_SOCK: string;
@@ -149,6 +155,7 @@ declare module '$env/dynamic/private' {
 		TERM: string;
 		npm_package_name: string;
 		USER: string;
+		TMUX_PANE: string;
 		COLORFGBG: string;
 		VIRTUALENVWRAPPER_PROJECT_FILENAME: string;
 		DISPLAY: string;
@@ -172,6 +179,7 @@ declare module '$env/dynamic/private' {
 		npm_node_execpath: string;
 		LOCKSCREEN: string;
 		OLDPWD: string;
+		TERM_PROGRAM: string;
 		NODE_ENV: string;
 		[key: `PUBLIC_${string}`]: undefined;
 		[key: `${string}`]: string | undefined;

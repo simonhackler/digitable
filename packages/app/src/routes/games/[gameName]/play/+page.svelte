@@ -100,19 +100,21 @@
 		const imageSprites = await createImageSprites(imageInfos);
 
 		const container = new Container();
+		const svgSprite = new Sprite(svgTexture);
 
-		// Add the SVG (without images) as the base layer
-		const svgSprite = new Sprite(svgTexture.texture);
-		container.addChild(svgSprite);
-
-		// Add image sprites on top
+        const imageContainer = new Container();
 		imageSprites.forEach(sprite => {
-			container.addChild(sprite);
+			imageContainer.addChild(sprite);
 		});
+        // WARN! This is hacky. It assumes all text is layed above all images. This should be mostly true
+        container.addChild(imageContainer);
+		container.addChild(svgSprite);
+        imageContainer.width = svgSprite.width;
+        imageContainer.height = svgSprite.height;
 
 		return {
 			container,
-			svgTexture: svgTexture.texture,
+			svgTexture: svgTexture,
 			imageSprites
 		};
 	}
@@ -126,39 +128,17 @@
 	async function svgToTexture(
 		svg: SVGSVGElement,
 		cardIndex?: number
-	): Promise<{
-		texture: Texture;
-		timings: { serialize: number; blob: number; load: number; total: number };
-	}> {
-		console.log(`Starting svgToTexture for card ${cardIndex}`);
-		const start = performance.now();
-
+	)
+	{
 		const svgClone = svg.cloneNode(true) as SVGSVGElement;
-		const serializeStart = performance.now();
 		const svgData = new XMLSerializer().serializeToString(svgClone);
-		const serializeTime = performance.now() - serializeStart;
-
-		const blobStart = performance.now();
 		const objectUrl = URL.createObjectURL(new Blob([svgData], { type: 'image/svg+xml' }));
-		const blobTime = performance.now() - blobStart;
-
-		const loadStart = performance.now();
 		const texture = (await Assets.load({
 			src: objectUrl,
 			format: 'svg',
 			parser: 'svg',
 			resolution: 1
 		})) as Texture;
-		const loadTime = performance.now() - loadStart;
-
-		const totalTime = performance.now() - start;
-
-		const timings = {
-			serialize: serializeTime,
-			blob: blobTime,
-			load: loadTime,
-			total: totalTime
-		};
 
 		if (cardIndex !== undefined) {
 			console.log(`Card ${cardIndex} texture timing:`, timings);
@@ -166,7 +146,7 @@
 
 		URL.revokeObjectURL(objectUrl);
 
-		return { texture, timings };
+		return texture;
 	}
 
 	async function createOrJoinRoom(client: Client, roomName: string) {
@@ -247,8 +227,6 @@
 			startX: number;
 			startY: number;
 			clickThreshold: number;
-			frontTexture: Texture;
-			backTexture: Texture;
 			index: number;
 		} | null;
 
@@ -266,19 +244,18 @@
 
 			// tiny move counts as a click -> flip
 			if (dist < 10) {
-				const currentShowingFront = (cardContainer as any).showingFront;
-				const newShowingFront = !currentShowingFront;
+                // TODO probably create a card container class
 				const frontContainer = (cardContainer as any).frontContainer;
 				const backContainer = (cardContainer as any).backContainer;
+                const isShowingFront = frontContainer.visible;
 
-				if (newShowingFront) {
+				if (isShowingFront) {
 					frontContainer.visible = true;
 					backContainer.visible = false;
 				} else {
 					frontContainer.visible = false;
 					backContainer.visible = true;
 				}
-				(cardContainer as any).showingFront = newShowingFront;
 			}
 
 			const cardIndex = syncCards.indexOf(cardContainer);
@@ -353,9 +330,6 @@
 			const y = 50;
 			const cardSpacing = 220;
 
-			// Load hybrid containers (SVG + separate image sprites)
-			console.log('Starting hybrid container creation...');
-			const batchStart = performance.now();
 			const hybridPromises = cards.map(async (card, index) => {
 				const [frontContainer, backContainer] = await Promise.all([
 					createHybridContainer(card.front),
@@ -364,9 +338,7 @@
 				return { front: frontContainer, back: backContainer, index };
 			});
 			const hybridResults = await Promise.all(hybridPromises);
-			const batchTime = performance.now() - batchStart;
 
-			console.log(`Hybrid container creation completed in ${batchTime.toFixed(2)}ms`);
 
 			// Create card containers with hybrid rendering
 			for (let i = 0; i < hybridResults.length; i++) {
@@ -389,8 +361,6 @@
 				// Store references to front/back containers and textures for flipping
 				(cardContainer as any).frontContainer = front.container;
 				(cardContainer as any).backContainer = back.container;
-				(cardContainer as any).frontTexture = front.svgTexture;
-				(cardContainer as any).spritebackTexture = back.svgTexture;
 				(cardContainer as any).showingFront = true;
 
 				cardContainer.scale.set(0.5);
@@ -412,8 +382,6 @@
 						startX: cardContainer.x,
 						startY: cardContainer.y,
 						clickThreshold: 10,
-						frontTexture: front.svgTexture,
-						backTexture: back.svgTexture,
 						index: i
 					};
 					cardContainer.cursor = 'grabbing';
