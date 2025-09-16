@@ -9,22 +9,164 @@
 	import { error } from '@sveltejs/kit';
 	import { BoardgameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 
+	interface ImageInfo {
+		element: SVGImageElement;
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		href: string;
+		transform?: string;
+	}
+
+	function extractImagesFromSvg(svg: SVGSVGElement): ImageInfo[] {
+		const images = svg.querySelectorAll('image');
+		const imageInfos: ImageInfo[] = [];
+
+		images.forEach(img => {
+			const x = parseFloat(img.getAttribute('x') || '0');
+			const y = parseFloat(img.getAttribute('y') || '0');
+			const width = parseFloat(img.getAttribute('width') || '0');
+			const height = parseFloat(img.getAttribute('height') || '0');
+			const href = img.getAttribute('href') || img.getAttribute('xlink:href') || '';
+			const transform = img.getAttribute('transform') || undefined;
+
+			imageInfos.push({
+				element: img,
+				x,
+				y,
+				width,
+				height,
+				href,
+				transform
+			});
+		});
+
+		return imageInfos;
+	}
+
+	function stripImagesFromSvg(svg: SVGSVGElement): SVGSVGElement {
+		const svgClone = svg.cloneNode(true) as SVGSVGElement;
+		const images = svgClone.querySelectorAll('image');
+		images.forEach(img => img.remove());
+		return svgClone;
+	}
+
+	async function createImageSprites(imageInfos: ImageInfo[]): Promise<Sprite[]> {
+		const sprites: Sprite[] = [];
+
+		for (const imageInfo of imageInfos) {
+			try {
+				const texture = await Assets.load(imageInfo.href);
+				const sprite = new Sprite(texture);
+
+                console.log(imageInfo);
+				sprite.x = imageInfo.x;
+				sprite.y = imageInfo.y;
+				sprite.width = imageInfo.width;
+				sprite.height = imageInfo.height;
+
+				if (imageInfo.transform) {
+					// Apply transform if present (basic support)
+					// You might need to extend this for complex transforms
+					const transformMatch = imageInfo.transform.match(/translate\(([^)]+)\)/);
+					if (transformMatch) {
+						const [tx, ty] = transformMatch[1].split(',').map(v => parseFloat(v.trim()));
+						sprite.x += tx;
+						sprite.y += ty;
+					}
+				}
+
+				sprites.push(sprite);
+			} catch (error) {
+				console.warn('Failed to load image:', imageInfo.href, error);
+			}
+		}
+
+		return sprites;
+	}
+
+	async function createHybridContainer(
+		svg: SVGSVGElement
+	): Promise<{
+		container: Container;
+		svgTexture: Texture;
+		imageSprites: Sprite[];
+	}> {
+		const imageInfos = extractImagesFromSvg(svg);
+		const strippedSvg = stripImagesFromSvg(svg);
+
+		const svgTexture = await svgToTexture(strippedSvg);
+		const imageSprites = await createImageSprites(imageInfos);
+
+		const container = new Container();
+
+		// Add the SVG (without images) as the base layer
+		const svgSprite = new Sprite(svgTexture.texture);
+		container.addChild(svgSprite);
+
+		// Add image sprites on top
+		imageSprites.forEach(sprite => {
+			container.addChild(sprite);
+		});
+
+		return {
+			container,
+			svgTexture: svgTexture.texture,
+			imageSprites
+		};
+	}
+
 	let canvasContainer: HTMLDivElement;
 
 	const projectName = $derived(page.params.gameName);
 	const cardName = $derived(page.params.deckName || 'western');
 	const fileSystem = getFileSystemContext();
 
-	async function svgToTexture(svg: SVGSVGElement): Promise<Texture> {
+	async function svgToTexture(
+		svg: SVGSVGElement,
+		cardIndex?: number
+	): Promise<{
+		texture: Texture;
+		timings: { serialize: number; blob: number; load: number; total: number };
+	}> {
+		console.log(`Starting svgToTexture for card ${cardIndex}`);
+		const start = performance.now();
+
 		const svgClone = svg.cloneNode(true) as SVGSVGElement;
+		const serializeStart = performance.now();
 		const svgData = new XMLSerializer().serializeToString(svgClone);
+		const serializeTime = performance.now() - serializeStart;
+
+		const blobStart = performance.now();
 		const objectUrl = URL.createObjectURL(new Blob([svgData], { type: 'image/svg+xml' }));
-		return (await Assets.load({
+		const blobTime = performance.now() - blobStart;
+
+		const loadStart = performance.now();
+		const texture = (await Assets.load({
 			src: objectUrl,
 			format: 'svg',
 			parser: 'svg',
-			resolution: 3
+			resolution: 1
 		})) as Texture;
+		const loadTime = performance.now() - loadStart;
+
+		const totalTime = performance.now() - start;
+
+		const timings = {
+			serialize: serializeTime,
+			blob: blobTime,
+			load: loadTime,
+			total: totalTime
+		};
+
+		if (cardIndex !== undefined) {
+			console.log(`Card ${cardIndex} texture timing:`, timings);
+		}
+
+		URL.revokeObjectURL(objectUrl);
+
+		return { texture, timings };
 	}
 
 	async function createOrJoinRoom(client: Client, roomName: string) {
@@ -60,13 +202,21 @@
 				if (syncCards[index]) {
 					syncCards[index].x = card.x;
 					syncCards[index].y = card.y;
-					const sprite = syncCards[index];
+					const cardContainer = syncCards[index];
 
-					if (card.isFaceUp != sprite.showingFront) {
+					if (card.isFaceUp != (cardContainer as any).showingFront) {
 						console.log('Flipping card', index, 'to', card.isFaceUp ? 'front' : 'back');
-						console.log(sprite);
-						sprite.texture = card.isFaceUp ? sprite.frontTexture : sprite.spritebackTexture;
-						(sprite as any).showingFront = card.isFaceUp;
+						const frontContainer = (cardContainer as any).frontContainer;
+						const backContainer = (cardContainer as any).backContainer;
+
+						if (card.isFaceUp) {
+							frontContainer.visible = true;
+							backContainer.visible = false;
+						} else {
+							frontContainer.visible = false;
+							backContainer.visible = true;
+						}
+						(cardContainer as any).showingFront = card.isFaceUp;
 					}
 				}
 			});
@@ -110,28 +260,35 @@
 			const dy = e.globalY - drag.startGlobalY;
 			const dist = Math.hypot(dx, dy);
 
-			const { container: sprite, frontTexture, backTexture } = drag;
+			const { container: cardContainer } = drag;
 			drag = null;
-			sprite.cursor = 'pointer';
-
-			// Send position update to server for any synced card
+			cardContainer.cursor = 'pointer';
 
 			// tiny move counts as a click -> flip
 			if (dist < 10) {
-				const currentShowingFront = (sprite as any).showingFront;
+				const currentShowingFront = (cardContainer as any).showingFront;
 				const newShowingFront = !currentShowingFront;
-				sprite.texture = newShowingFront ? frontTexture : backTexture;
-				(sprite as any).showingFront = newShowingFront;
+				const frontContainer = (cardContainer as any).frontContainer;
+				const backContainer = (cardContainer as any).backContainer;
+
+				if (newShowingFront) {
+					frontContainer.visible = true;
+					backContainer.visible = false;
+				} else {
+					frontContainer.visible = false;
+					backContainer.visible = true;
+				}
+				(cardContainer as any).showingFront = newShowingFront;
 			}
 
-			const cardIndex = syncCards.indexOf(sprite);
+			const cardIndex = syncCards.indexOf(cardContainer);
 			if (cardIndex !== -1) {
-				console.log(`Sending updated position for card ${cardIndex}:`, sprite.x, sprite.y);
+				console.log(`Sending updated position for card ${cardIndex}:`, cardContainer.x, cardContainer.y);
 				room.send('updateCard', {
 					cardIndex,
-					x: sprite.x,
-					y: sprite.y,
-					isFaceUp: (sprite as any).showingFront
+					x: cardContainer.x,
+					y: cardContainer.y,
+					isFaceUp: (cardContainer as any).showingFront
 				});
 			}
 		}
@@ -196,30 +353,45 @@
 			const y = 50;
 			const cardSpacing = 220;
 
-			// Load all textures in parallel
-			const texturePromises = cards.map((card) =>
-				Promise.all([
-					svgToTexture(card.front),
-					svgToTexture(card.back)
-				])
-			);
-			const textures = await Promise.all(texturePromises);
+			// Load hybrid containers (SVG + separate image sprites)
+			console.log('Starting hybrid container creation...');
+			const batchStart = performance.now();
+			const hybridPromises = cards.map(async (card, index) => {
+				const [frontContainer, backContainer] = await Promise.all([
+					createHybridContainer(card.front),
+					createHybridContainer(card.back)
+				]);
+				return { front: frontContainer, back: backContainer, index };
+			});
+			const hybridResults = await Promise.all(hybridPromises);
+			const batchTime = performance.now() - batchStart;
 
-			// Create sprites with loaded textures
-			for (let i = 0; i < 2; i++) {
-				const [frontTexture, backTexture] = textures[i];
+			console.log(`Hybrid container creation completed in ${batchTime.toFixed(2)}ms`);
 
-                const cardContainer = new Container();
-				const frontSprite = new Sprite(frontTexture);
-                const backSprite = new Sprite(backTexture);
-                cardContainer.addChild(backSprite);
-                cardContainer.addChild(frontSprite);
-                backSprite.visible = false;
+			// Create card containers with hybrid rendering
+			for (let i = 0; i < hybridResults.length; i++) {
+				const { front, back } = hybridResults[i];
+
+				const cardContainer = new Container();
+
+				// Add front and back hybrid containers
+				cardContainer.addChild(back.container);
+				cardContainer.addChild(front.container);
+
+				// Initially show front, hide back
+				back.container.visible = false;
 
 				cardContainer.x = x;
 				cardContainer.y = y;
 
 				syncCards.push(cardContainer);
+
+				// Store references to front/back containers and textures for flipping
+				(cardContainer as any).frontContainer = front.container;
+				(cardContainer as any).backContainer = back.container;
+				(cardContainer as any).frontTexture = front.svgTexture;
+				(cardContainer as any).spritebackTexture = back.svgTexture;
+				(cardContainer as any).showingFront = true;
 
 				cardContainer.scale.set(0.5);
 
@@ -234,14 +406,14 @@
 				});
 				cardContainer.on('pointerdown', (e: any) => {
 					drag = {
-						cardContainer,
+						container: cardContainer,
 						startGlobalX: e.globalX,
 						startGlobalY: e.globalY,
 						startX: cardContainer.x,
 						startY: cardContainer.y,
 						clickThreshold: 10,
-						frontTexture,
-						backTexture,
+						frontTexture: front.svgTexture,
+						backTexture: back.svgTexture,
 						index: i
 					};
 					cardContainer.cursor = 'grabbing';

@@ -25,5 +25,8 @@
     "@types/node": "^20.19.11",
     "concurrently": "^9.2.1",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@pixi/devtools": "^2.0.1"
   }
 }
