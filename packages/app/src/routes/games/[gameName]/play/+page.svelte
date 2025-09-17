@@ -8,6 +8,17 @@
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import { error } from '@sveltejs/kit';
 	import { BoardgameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
+	import { BoardGameItem } from '$lib/pixi/item';
+
+
+    // TODO: Simple data driven design. Server should sync the data to the clients.
+    // Then clients update components based on the data.
+    // How to send updates to the server?
+    // Players probably need to "own" components so they will not be updated by the server, except if the owner changes
+    // Is this correct? How is this normally handled? How to make sure the server does not "sync" old changes to the client in e.g. movement
+    // But how does it also make sure that the client data is correct?
+    // Client functions will have to update data on the client and send the changes to the server
+    // Create a small query based system. Server is authorative.
 
 	interface ImageInfo {
 		element: SVGImageElement;
@@ -60,7 +71,6 @@
 				const texture = await Assets.load(imageInfo.href);
 				const sprite = new Sprite(texture);
 
-                console.log(imageInfo);
 				sprite.x = imageInfo.x;
 				sprite.y = imageInfo.y;
 				sprite.width = imageInfo.width;
@@ -109,8 +119,7 @@
         // WARN! This is hacky. It assumes all text is layed above all images. This should be mostly true
         container.addChild(imageContainer);
 		container.addChild(svgSprite);
-        imageContainer.width = svgSprite.width;
-        imageContainer.height = svgSprite.height;
+        imageContainer.scale = svgSprite.width / imageContainer.width;
 
 		return {
 			container,
@@ -162,10 +171,9 @@
 	const room = await createOrJoinRoom(client, 'my_room');
 	const s = getStateCallbacks(room);
 
-	let syncCards: Sprite[] = [];
+	let syncCards: BoardGameItem[] = [];
 
 	console.log('Joined room:', room.name, 'with session ID:', room.sessionId);
-	console.log(s);
 
 	onMount(async () => {
 		// Listen for card array changes
@@ -178,25 +186,13 @@
 
 			// Listen to individual card changes
 			s(card).onChange(() => {
-				console.log(`Card ${index} position updated:`, card.x, card.y);
+                const cardContainer = syncCards[index];
 				if (syncCards[index]) {
-					syncCards[index].x = card.x;
-					syncCards[index].y = card.y;
-					const cardContainer = syncCards[index];
+					cardContainer.x = card.x;
+					cardContainer.y = card.y;
 
-					if (card.isFaceUp != (cardContainer as any).showingFront) {
-						console.log('Flipping card', index, 'to', card.isFaceUp ? 'front' : 'back');
-						const frontContainer = (cardContainer as any).frontContainer;
-						const backContainer = (cardContainer as any).backContainer;
-
-						if (card.isFaceUp) {
-							frontContainer.visible = true;
-							backContainer.visible = false;
-						} else {
-							frontContainer.visible = false;
-							backContainer.visible = true;
-						}
-						(cardContainer as any).showingFront = card.isFaceUp;
+					if (cardContainer.isFrontShowing() !== card.isFaceUp) {
+                        cardContainer.flip();
 					}
 				}
 			});
@@ -221,7 +217,7 @@
 
 		// ---- robust drag state managed at stage level ----
 		type DragState = {
-			container: Container;
+			container: BoardGameItem;
 			startGlobalX: number;
 			startGlobalY: number;
 			startX: number;
@@ -242,20 +238,9 @@
 			drag = null;
 			cardContainer.cursor = 'pointer';
 
-			// tiny move counts as a click -> flip
+			// This is ugly and does not work properly
 			if (dist < 10) {
-                // TODO probably create a card container class
-				const frontContainer = (cardContainer as any).frontContainer;
-				const backContainer = (cardContainer as any).backContainer;
-                const isShowingFront = frontContainer.visible;
-
-				if (isShowingFront) {
-					frontContainer.visible = true;
-					backContainer.visible = false;
-				} else {
-					frontContainer.visible = false;
-					backContainer.visible = true;
-				}
+                cardContainer.flip();
 			}
 
 			const cardIndex = syncCards.indexOf(cardContainer);
@@ -265,7 +250,7 @@
 					cardIndex,
 					x: cardContainer.x,
 					y: cardContainer.y,
-					isFaceUp: (cardContainer as any).showingFront
+					isFaceUp: cardContainer.isFrontShowing()
 				});
 			}
 		}
@@ -328,7 +313,7 @@
 
 			let x = 50;
 			const y = 50;
-			const cardSpacing = 220;
+			const cardSpacing = 150;
 
 			const hybridPromises = cards.map(async (card, index) => {
 				const [frontContainer, backContainer] = await Promise.all([
@@ -344,24 +329,12 @@
 			for (let i = 0; i < hybridResults.length; i++) {
 				const { front, back } = hybridResults[i];
 
-				const cardContainer = new Container();
-
-				// Add front and back hybrid containers
-				cardContainer.addChild(back.container);
-				cardContainer.addChild(front.container);
-
-				// Initially show front, hide back
-				back.container.visible = false;
+				const cardContainer = new BoardGameItem(front.container, back.container);
 
 				cardContainer.x = x;
 				cardContainer.y = y;
 
 				syncCards.push(cardContainer);
-
-				// Store references to front/back containers and textures for flipping
-				(cardContainer as any).frontContainer = front.container;
-				(cardContainer as any).backContainer = back.container;
-				(cardContainer as any).showingFront = true;
 
 				cardContainer.scale.set(0.5);
 
@@ -395,7 +368,7 @@
 				cardCount: cards.length
 			});
 		} catch (error) {
-			console.error('Failed to load SVG data, showing demo instead:', error);
+			console.error('Failed to load SVG data:', error);
 		}
 
 		return () => {
@@ -407,3 +380,4 @@
 <div class="absolute inset-0">
 	<div bind:this={canvasContainer} class="h-full w-full" style="pointer-events: auto;"></div>
 </div>
+
