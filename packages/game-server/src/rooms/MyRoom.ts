@@ -32,10 +32,17 @@ export class MyRoom extends Room<BoardgameRoomState> {
     }
 
     onJoin(client: Client, options: any) {
+        this.state.players.add(client.sessionId);
         console.log(client.sessionId, "joined!");
     }
 
     onLeave(client: Client, consented: boolean) {
+        this.state.players.delete(client.sessionId);
+        for (const card of this.state.cards) {
+            if (card.owner === client.sessionId) {
+                card.owner = "";
+            }
+        }
         console.log(client.sessionId, "left!");
     }
 

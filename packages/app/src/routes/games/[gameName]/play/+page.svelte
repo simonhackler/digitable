@@ -15,10 +15,14 @@
     // Then clients update components based on the data.
     // How to send updates to the server?
     // Players probably need to "own" components so they will not be updated by the server, except if the owner changes
-    // Is this correct? How is this normally handled? How to make sure the server does not "sync" old changes to the client in e.g. movement
-    // But how does it also make sure that the client data is correct?
     // Client functions will have to update data on the client and send the changes to the server
     // Create a small query based system. Server is authorative.
+
+    // The data layout is tricky here. Players can have cards in hand, moving or on their own board, where they should not be interactable
+    // Should this all be maps, each player has a map of their own cards? What about cards that might be owned by 2 players? Then they
+    // would have to be moved from array to array etc. How to handle timeouts? E.g locks for cards that are on the board
+    // should be released. However locks for cards in hand should not be released.
+
 
 	interface ImageInfo {
 		element: SVGImageElement;
@@ -150,7 +154,7 @@
 		})) as Texture;
 
 		if (cardIndex !== undefined) {
-			console.log(`Card ${cardIndex} texture timing:`, timings);
+			console.log(`Card ${cardIndex} texture timing:`);
 		}
 
 		URL.revokeObjectURL(objectUrl);
@@ -168,7 +172,10 @@
 	}
 
 	const client = new Client('ws://localhost:2567');
+    console.log(client);
 	const room = await createOrJoinRoom(client, 'my_room');
+    console.log(room);
+
 	const s = getStateCallbacks(room);
 
 	let syncCards: BoardGameItem[] = [];
@@ -197,6 +204,8 @@
 				}
 			});
 		});
+        //s(room.state).Players
+        console.log(room)
 		const app = new Application();
 		await app.init({
 			background: '#2c3e50',
