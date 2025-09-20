@@ -13,5 +13,7 @@
 	"/games/[gameName]/export": [],
 	"/games/[gameName]/export/paper": [],
 	"/games/[gameName]/export/tts": [],
-	"/games/[gameName]/play": []
+	"/games/[gameName]/play": [
+		"src/routes/games/[gameName]/play/+page.ts"
+	]
 }

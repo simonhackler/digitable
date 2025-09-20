@@ -19,7 +19,32 @@ export class MyRoom extends Room<BoardgameRoomState> {
             }
         });
 
-        this.onMessage("updateCard", (client, message) => {
+        this.onMessage("flip", (client, message) => {
+            if (message.cardIndex < 0 || message.cardIndex >= this.state.cards.length) {
+                console.error("Invalid card index:", message.cardIndex);
+                return;
+            }
+            const card = this.state.cards[message.cardIndex];
+            card.isFaceUp = message.isFaceUp;
+            console.log(`Card ${message.cardIndex} flipped to ${message.isFaceUp ? 'face up' : 'face down'}`);
+        });
+
+        this.onMessage("move", (client, message) => {
+            if (message.cardIndex < 0 || message.cardIndex >= this.state.cards.length) {
+                console.error("Invalid card index:", message.cardIndex);
+                return;
+            }
+            const card = this.state.cards[message.cardIndex];
+            if (card.owner !== "" && card.owner !== client.sessionId) {
+                console.warn(`Card ${message.cardIndex} is currently owned by another player.`);
+                return;
+            }
+            card.x = message.x;
+            card.y = message.y;
+            card.owner = client.sessionId;
+        });
+
+        this.onMessage("moveend", (client, message) => {
             if (message.cardIndex < 0 || message.cardIndex >= this.state.cards.length) {
                 console.error("Invalid card index:", message.cardIndex);
                 return;
@@ -27,7 +52,8 @@ export class MyRoom extends Room<BoardgameRoomState> {
             const card = this.state.cards[message.cardIndex];
             card.x = message.x;
             card.y = message.y;
-            card.isFaceUp = message.isFaceUp;
+            card.owner = "";
+            console.log(`Card ${message.cardIndex} move ended at (${message.x}, ${message.y})`);
         });
     }
 

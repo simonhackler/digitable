@@ -27,6 +27,9 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@pixi/devtools": "^2.0.1"
+    "@pixi/devtools": "^2.0.1",
+    "@pixi/layout": "^3.1.0",
+    "pixi-viewport": "^6.0.3",
+    "pixi.js": "^8.13.2"
   }
 }

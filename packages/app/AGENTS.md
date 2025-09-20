@@ -11,6 +11,7 @@ This file contains essential information for AI coding agents working in this re
 - Use keyed each blocks `{#each expression as name (key)}...{/each}`
 
 ## IMPORTANT
+
 - Try to keep things in one function unless composable or reusable
 - DO NOT do unnecessary destructuring of variables
 - DO NOT use else statements unless necessary
