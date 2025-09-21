@@ -12,6 +12,8 @@
 	import { createHybridContainer } from './pixi-card-loader';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
+	import { LayoutContainer } from '@pixi/layout/components';
+	import { initDevtools } from '@pixi/devtools';
 
 	// TODO: Simple data driven design. Server should sync the data to the clients.
 	// Then clients update components based on the data.
@@ -137,11 +139,18 @@
 		app = new Application();
 		await app.init({
 			background: '#2c3e50',
+			// width: 1920,
+			// height: 1080,
 			resizeTo: window,
 			antialias: true,
 			resolution: window.devicePixelRatio || 1,
 			autoDensity: true
 		});
+		initDevtools({ app });
+		window.__PIXI_DEVTOOLS__ = {
+			app
+		};
+		console.log('App renderer size:', app.renderer.width, app.renderer.height);
 		const viewport = new Viewport({
 			screenWidth: window.innerWidth,
 			screenHeight: window.innerHeight,
@@ -154,7 +163,7 @@
 		viewport.drag({
 			mouseButtons: 'right'
 		});
-        viewport.moveCenter(viewport.worldWidth / 2, viewport.worldHeight / 2);
+		viewport.moveCenter(viewport.worldWidth / 2, viewport.worldHeight / 2);
 		viewport.clamp({
 			left: 0,
 			right: viewport.worldWidth,
@@ -175,35 +184,45 @@
 		boardContainer = new Container();
 		viewport.addChild(boardContainer);
 
-
-
-        const screenContainer = new Container({
-            layout: {
-                width: app.screen.width,
-                height: app.screen.height,
-                flexDirection: 'column',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-            }
-        });
-
-        app.stage.addChild(screenContainer);
-
-		handContainer = new Container({
+		const screenContainer = new Container({
 			layout: {
-				width: '50%',
-				height: '20%',
+				width: app.screen.width,
+				height: app.screen.height,
+				flexDirection: 'column',
+				justifyContent: 'flex-end',
+				alignItems: 'center'
+			}
+		});
+
+		app.stage.addChild(screenContainer);
+
+		handContainer = new LayoutContainer({
+			layout: {
+				width: '70%',
+				height: '30%',
 				justifyContent: 'center',
 				flexDirection: 'row',
+				alignItems: 'flex-end',
 				alignContent: 'center',
-				gap: 4
+				gap: 4,
+				backgroundColor: 'red'
+			}
+		});
+		const handContainer2 = new LayoutContainer({
+			layout: {
+				width: '70%',
+				height: '30%',
+				justifyContent: 'center',
+				flexDirection: 'row',
+				alignItems: 'flex-end',
+				gap: 4,
+				backgroundColor: 'blue'
 			}
 		});
 		handContainer.zIndex = 10; // always above the board
-        handContainer.localColor = 0xffffff;
-        console.log('Hand container:', handContainer.width, handContainer.height);
 
 		screenContainer.addChild(handContainer);
+		screenContainer.addChild(handContainer2);
 
 		// ---- robust drag state managed at stage level ----
 		type DragState = {
@@ -346,27 +365,70 @@
 		app?.destroy(true, { children: true, texture: true });
 	});
 
+	function handleDrawCardd(selectedCardIndex: number) {
+		const card = syncCards[selectedCardIndex];
+		if (!card) return;
+
+		// 1) Remove from board
+		boardContainer.removeChild(card);
+
+		// 2) Reset transforms so layout has a clean slate
+		card.scale.set(1);
+		card.rotation = 0;
+		card.pivot.set(0, 0);
+		// If BoardGameItem exposes anchors for its sprites, force top-left:
+		// card.setAnchors?.(0, 0); // or card.front.anchor.set(0); card.back.anchor.set(0);
+
+		// 3) Optional but safest: put the card inside a layout wrapper so anchor/flip logic
+		//    inside the card never confuses the layout engine.
+		const wrapper = new LayoutContainer({
+			layout: {
+				// Fill the hand row vertically; width is derived from aspectRatio.
+				height: '100%',
+				aspectRatio: card.width / card.height, // ratio is scale-independent
+				objectFit: 'contain',
+				objectPosition: 'center'
+			}
+		});
+
+		// Place the visual at (0,0) inside the wrapper.
+		card.x = 0;
+		card.y = 0;
+		wrapper.addChild(card);
+
+		handContainer.addChild(wrapper);
+	}
+
 	function handleDrawCard(selectedCardIndex: number) {
 		console.log('Drawing card index:', selectedCardIndex);
 		const card = syncCards[selectedCardIndex];
+		if (!card) return;
+
+		boardContainer.removeChild(card);
+
+		// Reset transforms so layout sizing is predictable inside the hand row.
+		card.scale.set(1);
+		card.rotation = 0;
+		card.pivot.set(0, 0);
 		card.x = 0;
 		card.y = 0;
-		card.layout = true;
-		card.layout = {
-			width: card.width,
-			height: card.height
-		};
-		boardContainer.removeChild(syncCards[selectedCardIndex]);
-		handContainer.addChild(syncCards[selectedCardIndex]);
+
+		const wrapper = new LayoutContainer({
+			layout: {
+				height: '100%',
+				aspectRatio: card.width / card.height,
+				objectFit: 'contain',
+				objectPosition: 'center'
+			}
+		});
+
+		wrapper.addChild(card);
+		handContainer.addChild(wrapper);
 	}
 </script>
 
 <div class="absolute inset-0">
-	<div
-		bind:this={canvasContainer}
-		class="relative h-full w-full"
-		style="pointer-events: auto;"
-	></div>
+	<div bind:this={canvasContainer} class="full relative w-full" style="pointer-events: auto;"></div>
 
 	<ContextMenu.Root bind:open={showContextMenu}>
 		<ContextMenu.Trigger
