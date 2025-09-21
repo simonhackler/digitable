@@ -1,4 +1,4 @@
-import { ArraySchema, Schema, SetSchema, type } from "@colyseus/schema";
+import { ArraySchema, MapSchema, Schema, SetSchema, type } from "@colyseus/schema";
 
 export class Card extends Schema {
     @type("number") x: number;
@@ -7,8 +7,12 @@ export class Card extends Schema {
     @type("string") owner: string = "";
 }
 
+export class Player extends Schema {
+    @type("string") id: string
+    @type([Card]) hand = new ArraySchema<Card>();
+}
 
 export class BoardgameRoomState extends Schema {
-    @type([Card]) cards = new ArraySchema<Card>();
-    @type({ set: "string" }) players = new SetSchema<string>();
+    @type({map: Card}) cards = new MapSchema<Card>();
+    @type({ map: Player }) players = new MapSchema<Player>();
 }

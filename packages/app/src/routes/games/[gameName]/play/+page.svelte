@@ -9,7 +9,6 @@
 	import { error } from '@sveltejs/kit';
 	import { BoardgameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
-	import { createHybridContainer } from './pixi-card-loader';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
 	import { LayoutContainer } from '@pixi/layout/components';
@@ -44,25 +43,23 @@
 	}
 
 	const client = new Client('ws://localhost:2567');
-	console.log(client);
 	const room = await createOrJoinRoom(client, 'my_room');
-	console.log(room);
 
 	const s = getStateCallbacks(room);
 
-	let syncCards: BoardGameItem[] = [];
+	let syncCards: Map<string, BoardGameItem> = new Map();
 
 	// Context menu state
 	let showContextMenu = $state(false);
 	let contextMenuPosition = $state({ x: 0, y: 0 });
-	let selectedCardIndex = $state(-1);
+	let selectedCardId = $state('');
 
-	function handleRightClick(e: any, cardIndex: number) {
+	function handleRightClick(e: any, cardId: string) {
 		e.preventDefault();
 		e.stopPropagation();
 
-		console.log('Right click on card index:', cardIndex);
-		selectedCardIndex = cardIndex;
+		console.log('Right click on card index:', cardId);
+		selectedCardId = cardId;
 
 		// Convert PIXI coordinates to CSS coordinates
 		const cssPosition = pixiToCSSCoordinates(e.globalX, e.globalY);
@@ -96,15 +93,15 @@
 
 	function closeContextMenu() {
 		showContextMenu = false;
-		selectedCardIndex = -1;
+		selectedCardId = '';
 	}
 
-	function handleFlipCard(cardIndex: number) {
-		const cardContainer = syncCards[cardIndex];
+	function handleFlipCard(cardId: string) {
+		const cardContainer = syncCards.get(cardId);
 		if (cardContainer) {
 			cardContainer.flip();
 			room.send('flip', {
-				cardIndex,
+				cardId,
 				isFaceUp: cardContainer.isFrontShowing()
 			});
 		}
@@ -113,8 +110,24 @@
 
 	let boardContainer: Container;
 	let handContainer: Container;
+	let hybridResults: {
+		front: LayoutContainer;
+		back: LayoutContainer;
+		index: number;
+	}[];
+
+	// Context menu prevention handler
+	function handleContextMenu(e: Event) {
+		e.preventDefault();
+	}
 
 	onMount(async () => {
+		// Disable native context menu on the entire page
+		const handleContextMenu = (e: Event) => {
+			e.preventDefault();
+		};
+		document.addEventListener('contextmenu', handleContextMenu);
+
 		// Listen for card array changes
 		s(room.state).cards.onAdd((card, index) => {
 			if (syncCards[index]) {
@@ -146,6 +159,7 @@
 			resolution: window.devicePixelRatio || 1,
 			autoDensity: true
 		});
+		hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
 		initDevtools({ app });
 		window.__PIXI_DEVTOOLS__ = {
 			app
@@ -208,21 +222,9 @@
 				backgroundColor: 'red'
 			}
 		});
-		const handContainer2 = new LayoutContainer({
-			layout: {
-				width: '70%',
-				height: '30%',
-				justifyContent: 'center',
-				flexDirection: 'row',
-				alignItems: 'flex-end',
-				gap: 4,
-				backgroundColor: 'blue'
-			}
-		});
 		handContainer.zIndex = 10; // always above the board
 
 		screenContainer.addChild(handContainer);
-		screenContainer.addChild(handContainer2);
 
 		// ---- robust drag state managed at stage level ----
 		type DragState = {
@@ -232,13 +234,19 @@
 			startX: number;
 			startY: number;
 			clickThreshold: number;
-			index: number;
+			cardId: string;
 		} | null;
 
 		let drag: DragState = null;
 
 		function endDragAndMaybeFlip(e: any) {
 			if (!drag) return;
+
+			// Don't flip on right-click (button 2)
+			if (e.button === 2) {
+				drag = null;
+				return;
+			}
 
 			// Convert screen coordinates to world coordinates for distance calculation
 			const worldPos = viewport.toWorld(e.globalX, e.globalY);
@@ -249,25 +257,25 @@
 			const dist = Math.hypot(dx, dy);
 
 			const { container: cardContainer } = drag;
-			const cardIndex = syncCards.indexOf(cardContainer);
+			const cardId = drag.cardId;
 			drag = null;
 			cardContainer.cursor = 'pointer';
 
 			// This is ugly and does not work properly
 			if (dist < 10) {
 				cardContainer.flip();
-				if (cardIndex !== -1) {
+				if (cardId !== '') {
 					room.send('flip', {
-						cardIndex,
+						cardIndex: cardId,
 						isFaceUp: cardContainer.isFrontShowing()
 					});
 				}
 			}
 
-			if (cardIndex !== -1) {
-				console.log(`Sending move end for card ${cardIndex}:`, cardContainer.x, cardContainer.y);
+			if (cardId !== '') {
+				console.log(`Sending move end for card ${cardId}:`, cardContainer.x, cardContainer.y);
 				room.send('moveend', {
-					cardIndex,
+					cardId: cardId,
 					x: cardContainer.x,
 					y: cardContainer.y
 				});
@@ -287,7 +295,7 @@
 			drag.container.x = drag.startX + dx;
 			drag.container.y = drag.startY + dy;
 			room.send('move', {
-				cardIndex: drag.index,
+				cardId: drag.cardId,
 				x: drag.container.x,
 				y: drag.container.y
 			});
@@ -296,113 +304,90 @@
 		app.stage.on('pointerup', endDragAndMaybeFlip);
 		app.stage.on('pointerupoutside', endDragAndMaybeFlip);
 
-		try {
-			const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
-
-			let x = 50;
-			const y = 50;
-			const cardSpacing = 150;
-
-			// Create card containers with hybrid rendering
-			for (let i = 0; i < hybridResults.length; i++) {
-				const { front, back } = hybridResults[i];
-
-				const cardContainer = new BoardGameItem(front, back);
-
-				cardContainer.x = x;
-				cardContainer.y = y;
-
-				syncCards.push(cardContainer);
-
-				cardContainer.scale.set(0.5);
-
-				cardContainer.eventMode = 'static';
-				cardContainer.cursor = 'pointer';
-
-				cardContainer.on('pointerover', () => {
-					if (!drag) cardContainer.tint = 0xcccccc;
-				});
-				cardContainer.on('pointerout', () => {
-					cardContainer.tint = 0xffffff;
-				});
-				cardContainer.on('pointerdown', (e: any) => {
-					// Convert screen coordinates to world coordinates for initial position
-					const worldPos = viewport.toWorld(e.globalX, e.globalY);
-
-					drag = {
-						container: cardContainer,
-						startGlobalX: e.globalX,
-						startGlobalY: e.globalY,
-						startX: cardContainer.x,
-						startY: cardContainer.y,
-						clickThreshold: 10,
-						index: i
-					};
-					cardContainer.cursor = 'grabbing';
-				});
-
-				cardContainer.on('rightdown', (e: any) => {
-					handleRightClick(e, i);
-				});
-
-				boardContainer.addChild(cardContainer);
-				x += cardSpacing;
-			}
-
-			room.send('initializeGame', {
-				cardCount: hybridResults.length
-			});
-		} catch (error) {
-			console.error('Failed to load SVG data:', error);
-		}
+		room.send('init', {
+			length: hybridResults.length
+		});
 
 		return () => {
 			app?.destroy(true, { children: true, texture: true });
 		};
 	});
 
+	async function initCards(
+		hybridResults: {
+			front: LayoutContainer;
+			back: LayoutContainer;
+			index: number;
+		}[],
+		ids: string[]
+	) {
+		// send init here.
+
+		let x = 50;
+		const y = 50;
+		const cardSpacing = 150;
+
+		// Create card containers with hybrid rendering
+		for (let i = 0; i < hybridResults.length; i++) {
+			const { front, back } = hybridResults[i];
+
+			const cardContainer = new BoardGameItem(front, back);
+
+			cardContainer.x = x;
+			cardContainer.y = y;
+
+			const id = crypto.randomUUID();
+			ids.push(id);
+			syncCards.set(id, cardContainer);
+
+			cardContainer.scale.set(0.5);
+
+			cardContainer.eventMode = 'static';
+			cardContainer.cursor = 'pointer';
+
+			cardContainer.on('pointerover', () => {
+				if (!drag) cardContainer.tint = 0xcccccc;
+			});
+			cardContainer.on('pointerout', () => {
+				cardContainer.tint = 0xffffff;
+			});
+			cardContainer.on('pointerdown', (e: any) => {
+				// Convert screen coordinates to world coordinates for initial position
+				const worldPos = viewport.toWorld(e.globalX, e.globalY);
+
+				drag = {
+					container: cardContainer,
+					startGlobalX: e.globalX,
+					startGlobalY: e.globalY,
+					startX: cardContainer.x,
+					startY: cardContainer.y,
+					clickThreshold: 10,
+					cardId: id
+				};
+				cardContainer.cursor = 'grabbing';
+			});
+
+			cardContainer.on('rightdown', (e: any) => {
+				handleRightClick(e, id);
+			});
+
+			boardContainer.addChild(cardContainer);
+			x += cardSpacing;
+		}
+	}
+
 	onDestroy(() => {
+		// Remove context menu prevention
+		document.removeEventListener('contextmenu', handleContextMenu);
 		app?.destroy(true, { children: true, texture: true });
 	});
 
-	function handleDrawCardd(selectedCardIndex: number) {
-		const card = syncCards[selectedCardIndex];
+	function handleDrawCard(cardId: string) {
+		console.log('drawing card ' + cardId);
+		const card = syncCards.get(cardId);
+		console.log(card);
 		if (!card) return;
-
-		// 1) Remove from board
-		boardContainer.removeChild(card);
-
-		// 2) Reset transforms so layout has a clean slate
-		card.scale.set(1);
-		card.rotation = 0;
-		card.pivot.set(0, 0);
-		// If BoardGameItem exposes anchors for its sprites, force top-left:
-		// card.setAnchors?.(0, 0); // or card.front.anchor.set(0); card.back.anchor.set(0);
-
-		// 3) Optional but safest: put the card inside a layout wrapper so anchor/flip logic
-		//    inside the card never confuses the layout engine.
-		const wrapper = new LayoutContainer({
-			layout: {
-				// Fill the hand row vertically; width is derived from aspectRatio.
-				height: '100%',
-				aspectRatio: card.width / card.height, // ratio is scale-independent
-				objectFit: 'contain',
-				objectPosition: 'center'
-			}
-		});
-
-		// Place the visual at (0,0) inside the wrapper.
-		card.x = 0;
-		card.y = 0;
-		wrapper.addChild(card);
-
-		handContainer.addChild(wrapper);
-	}
-
-	function handleDrawCard(selectedCardIndex: number) {
-		console.log('Drawing card index:', selectedCardIndex);
-		const card = syncCards[selectedCardIndex];
-		if (!card) return;
+		console.log('my card');
 
 		boardContainer.removeChild(card);
 
@@ -442,12 +427,8 @@
 			></div>
 		</ContextMenu.Trigger>
 		<ContextMenu.Content strategy="absolute" style="top: {contextMenuPosition.y}px; z-index: 1000;">
-			<ContextMenu.Item onclick={() => handleFlipCard(selectedCardIndex)}>
-				Flip Card
-			</ContextMenu.Item>
-			<ContextMenu.Item onclick={() => handleDrawCard(selectedCardIndex)}>
-				Draw Card
-			</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => handleFlipCard(selectedCardId)}>Flip Card</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => handleDrawCard(selectedCardId)}>Draw Card</ContextMenu.Item>
 		</ContextMenu.Content>
 	</ContextMenu.Root>
 </div>

@@ -1,42 +1,50 @@
 import { Room, Client } from "@colyseus/core";
-import { Card, BoardgameRoomState } from "./schema/MyRoomState";
+import { Card, BoardgameRoomState, Player } from "./schema/MyRoomState";
 
 export class MyRoom extends Room<BoardgameRoomState> {
     maxClients = 4;
     state = new BoardgameRoomState();
 
     onCreate(options: any) {
-        this.onMessage("initializeGame", (client, message) => {
-            if (this.state.cards.length === 0) {
-                for (let i = 0; i < message.cardCount; i++) {
-                    const card = new Card();
-                    card.x = 50 + (i * 220);
-                    card.y = 50;
-                    card.isFaceUp = true;
-                    this.state.cards.push(card);
-                }
-                console.log("Game initialized with", message.cardCount, "cards.");
-            }
-        });
-
-        this.onMessage("flip", (client, message) => {
-            if (message.cardIndex < 0 || message.cardIndex >= this.state.cards.length) {
-                console.error("Invalid card index:", message.cardIndex);
+        this.onMessage("init", (client, message: { length: number }) => {
+            if (this.state.cards.size !== 0) {
                 return;
             }
-            const card = this.state.cards[message.cardIndex];
-            card.isFaceUp = message.isFaceUp;
-            console.log(`Card ${message.cardIndex} flipped to ${message.isFaceUp ? 'face up' : 'face down'}`);
+
+            for (let i = 0; i < length; i++) {
+                const cardId = crypto.randomUUID()
+                const card = new Card();
+                card.x = 50 + (i * 220);
+                card.y = 50;
+                card.isFaceUp = true;
+                this.state.cards.set(cardId, card);
+            };
+
+            console.log("Game initialized with", cardIds.length, "cards.");
         });
 
-        this.onMessage("move", (client, message) => {
-            if (message.cardIndex < 0 || message.cardIndex >= this.state.cards.length) {
-                console.error("Invalid card index:", message.cardIndex);
+        this.onMessage("flip", (client, message: { cardId: string; isFaceUp: boolean }) => {
+            const card = this.state.cards.get(message.cardId);
+            if (!card) {
+                console.error("Invalid card id:", message.cardId);
                 return;
             }
-            const card = this.state.cards[message.cardIndex];
             if (card.owner !== "" && card.owner !== client.sessionId) {
-                console.warn(`Card ${message.cardIndex} is currently owned by another player.`);
+                console.warn(`Card ${message.cardId} is currently owned by another player.`);
+                return;
+            }
+            card.isFaceUp = message.isFaceUp;
+            console.log(`Card ${message.cardId} flipped to ${message.isFaceUp ? 'face up' : 'face down'}`);
+        });
+
+        this.onMessage("move", (client, message: { cardId: string; x: number; y: number }) => {
+            const card = this.state.cards.get(message.cardId);
+            if (!card) {
+                console.error("Invalid card id:", message.cardId);
+                return;
+            }
+            if (card.owner !== "" && card.owner !== client.sessionId) {
+                console.warn(`Card ${message.cardId} is currently owned by another player.`);
                 return;
             }
             card.x = message.x;
@@ -44,21 +52,39 @@ export class MyRoom extends Room<BoardgameRoomState> {
             card.owner = client.sessionId;
         });
 
-        this.onMessage("moveend", (client, message) => {
-            if (message.cardIndex < 0 || message.cardIndex >= this.state.cards.length) {
-                console.error("Invalid card index:", message.cardIndex);
+        this.onMessage("moveend", (client, message: { cardId: string; x: number; y: number }) => {
+            const card = this.state.cards.get(message.cardId);
+            if (!card) {
+                console.error("Invalid card id:", message.cardId);
                 return;
             }
-            const card = this.state.cards[message.cardIndex];
+            if (card.owner !== client.sessionId) {
+                console.warn(`Card ${message.cardId} moveend ignored; not owned by player.`);
+                return;
+            }
             card.x = message.x;
             card.y = message.y;
             card.owner = "";
-            console.log(`Card ${message.cardIndex} move ended at (${message.x}, ${message.y})`);
+            console.log(`Card ${message.cardId} move ended at (${message.x}, ${message.y})`);
+        });
+
+        this.onMessage("draw", (client, message: { cardId: string }) => {
+            const card = this.state.cards.get(message.cardId);
+            if (!card) {
+                console.error("Invalid card id:", message.cardId);
+                return;
+            }
+            if (card.owner !== "" && card.owner !== client.sessionId) {
+                console.warn(`Card ${message.cardId} is already owned by another player.`);
+                return;
+            }
         });
     }
 
     onJoin(client: Client, options: any) {
-        this.state.players.add(client.sessionId);
+        const player = new Player();
+        player.id = client.sessionId;
+        this.state.players.set(client.sessionId, player);
         console.log(client.sessionId, "joined!");
     }
 
