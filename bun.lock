@@ -19,6 +19,7 @@
       "name": "@svg-table/app",
       "version": "0.0.1",
       "dependencies": {
+        "@pixi/marquee-selection": "^1.0.2",
         "@supabase/supabase-js": "^2.55.0",
         "@types/jspreadsheet-ce": "^4.7.9",
         "@types/papaparse": "^5.3.16",
@@ -312,6 +313,8 @@
     "@pixi/devtools": ["@pixi/devtools@2.0.1", "", { "peerDependencies": { "pixi.js": "^7 || ^8" } }, "sha512-TFCqNkJoLNYHDELgQ3bKWvA33twWpoUhQB8Y+hneBdDBunRsqZ5ZzwH7+6E5eVaVn7eeLAXHs9QGRGsxM0fRlw=="],
 
     "@pixi/layout": ["@pixi/layout@3.1.0", "", { "optionalDependencies": { "@pixi/react": "^8.0.0" }, "peerDependencies": { "pixi.js": "^8", "yoga-layout": "^3" } }, "sha512-bP52gz3YneZk8Ll8aAPWUixWLm68HFNSUPOncoLxd0lBdDCnzB93zkcWSUBkQm1Uls62Xukiw6jVIAOnrfZMdQ=="],
+
+    "@pixi/marquee-selection": ["@pixi/marquee-selection@1.0.2", "", { "peerDependencies": { "pixi.js": ">=8 <9" } }, "sha512-oaHxObVJYdjFhSJ4Fy9+lGV7HQnwasvPmF+I1Lg3Z3xIuG0iEpeETNhg5wRQxTmPvzbbZ2QW8SM/AP2J81leiA=="],
 
     "@pixi/react": ["@pixi/react@8.0.3", "", { "dependencies": { "its-fine": "^2.0.0", "react-reconciler": "0.31.0" }, "peerDependencies": { "pixi.js": "^8.2.6", "react": ">=19.0.0" } }, "sha512-k0feY0Vj4WIWpaLaRQY8NBKlDqVCPPyEUu5EibQVqdtgdMx1brRWeJC+ruq7Im08vtZWx7iZwNGhgHNubO/OMQ=="],
 
