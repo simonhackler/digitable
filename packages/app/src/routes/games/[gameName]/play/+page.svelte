@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Client, Room, getStateCallbacks, } from 'colyseus.js';
+	import { Client, Room, getStateCallbacks } from 'colyseus.js';
 	import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
@@ -44,12 +44,8 @@
 		e.preventDefault();
 		e.stopPropagation();
 
-		console.log('Right click on card index:', cardId);
 		selectedCardId = cardId;
-
-		// Convert PIXI coordinates to CSS coordinates
 		const cssPosition = pixiToCSSCoordinates(e.globalX, e.globalY);
-		console.log('Context menu CSS position:', cssPosition);
 		contextMenuPosition = cssPosition;
 		showContextMenu = true;
 	}
@@ -57,20 +53,15 @@
 	function pixiToCSSCoordinates(pixiX: number, pixiY: number) {
 		if (!app) return { x: pixiX, y: pixiY };
 
-		// Get canvas bounds in CSS pixels
 		const canvas = app.canvas;
 		const canvasRect = canvas.getBoundingClientRect();
 
-		// Get renderer internal size (in device pixels)
-		const res = app.renderer.resolution;
 		const internalW = app.renderer.width;
 		const internalH = app.renderer.height;
 
-		// Scale factors from PIXI coords → CSS pixels
 		const sx = canvasRect.width / internalW;
 		const sy = canvasRect.height / internalH;
 
-		// Convert PIXI coordinates to CSS coordinates
 		const cssX = pixiX * sx;
 		const cssY = pixiY * sy;
 
@@ -104,8 +95,8 @@
 
 	let viewport: Viewport;
 
+    let selectedItems: BoardGameItem[] = [];
 	type DragState = {
-		container: BoardGameItem;
 		startGlobalX: number;
 		startGlobalY: number;
 		startX: number;
@@ -131,8 +122,6 @@
 		app = new Application();
 		await app.init({
 			background: '#2c3e50',
-			// width: 1920,
-			// height: 1080,
 			resizeTo: window,
 			antialias: true,
 			resolution: window.devicePixelRatio || 1,
@@ -201,12 +190,8 @@
 				backgroundColor: 'red'
 			}
 		});
-		handContainer.zIndex = 10; // always above the board
-
+		handContainer.zIndex = 10;
 		screenContainer.addChild(handContainer);
-
-		// ---- robust drag state managed at stage level ----
-
 		function endDragAndMaybeFlip(e: any) {
 			if (!drag) return;
 
@@ -216,7 +201,6 @@
 				return;
 			}
 
-			// Convert screen coordinates to world coordinates for distance calculation
 			const worldPos = viewport.toWorld(e.globalX, e.globalY);
 			const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
 
@@ -224,7 +208,7 @@
 			const dy = worldPos.y - startWorldPos.y;
 			const dist = Math.hypot(dx, dy);
 
-			const { container: cardContainer } = drag;
+			const { containers: cardContainer } = drag;
 			const cardId = drag.cardId;
 			drag = null;
 			cardContainer.cursor = 'pointer';
@@ -260,13 +244,15 @@
 			const dx = worldPos.x - startWorldPos.x;
 			const dy = worldPos.y - startWorldPos.y;
 
-			drag.container.x = drag.startX + dx;
-			drag.container.y = drag.startY + dy;
-			room.send('move', {
-				cardId: drag.cardId,
-				x: drag.container.x,
-				y: drag.container.y
-			});
+			for (const boardItem of selectedItems) {
+				boardItem.x = drag.startX + dx;
+				boardItem.y = drag.startY + dy;
+				room.send('move', {
+					cardId: drag.cardId, // TODO
+					x: boardItem.x,
+					y: boardItem.y
+				});
+			}
 		});
 
 		app.stage.on('pointerup', endDragAndMaybeFlip);
@@ -276,14 +262,11 @@
 		room.send('init', {
 			cardAmount: hybridResults.length
 		});
-        let s = getStateCallbacks(room);
+		let s = getStateCallbacks(room);
 
 		s(room.state).cards.onAdd((card, index) => {
-			console.log('init with card: ' + card + ' and index: ' + index);
-
 			initCard(hybridResults, card, card.idx);
 
-			// Listen to individual card changes
 			s(card).onChange(() => {
 				if (card.owner === room.sessionId) return;
 				const cardContainer = syncCards.get(index);
@@ -309,11 +292,9 @@
 			back: LayoutContainer;
 			index: number;
 		}[],
-        card: Card,
+		card: Card,
 		i: number
 	) {
-		// send init here.
-
 		let x = card.x;
 		const y = card.y;
 
@@ -337,12 +318,8 @@
 		cardContainer.on('pointerout', () => {
 			cardContainer.tint = 0xffffff;
 		});
-		cardContainer.on('pointerdown', (e: any) => {
-			// Convert screen coordinates to world coordinates for initial position
-			const worldPos = viewport.toWorld(e.globalX, e.globalY);
-
+		cardContainer.on('pointerdown', (e) => {
 			drag = {
-				container: cardContainer,
 				startGlobalX: e.globalX,
 				startGlobalY: e.globalY,
 				startX: cardContainer.x,
@@ -351,6 +328,20 @@
 				cardId: card.id
 			};
 			cardContainer.cursor = 'grabbing';
+            console.log('Pointer down on card', card.id);
+            if (e.ctrlKey) {
+                if (selectedItems.includes(cardContainer)) {
+                    selectedItems = selectedItems.filter(item => item !== cardContainer);
+                    cardContainer.alpha = 1.0; // Deselect visual feedback
+                } else {
+                    selectedItems.push(cardContainer);
+                    cardContainer.alpha = 0.7; // Select visual feedback
+                }
+            } else {
+                selectedItems.forEach(item => item.alpha = 1.0); // Reset alpha for previously selected items
+                selectedItems = [cardContainer];
+                cardContainer.alpha = 0.7; // Select visual feedback
+            }
 		});
 
 		cardContainer.on('rightdown', (e: any) => {
