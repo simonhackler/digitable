@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Client, Room, getStateCallbacks } from 'colyseus.js';
+	import { Client, Room, getStateCallbacks, } from 'colyseus.js';
 	import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
@@ -7,24 +7,12 @@
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import { error } from '@sveltejs/kit';
-	import { BoardgameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
+	import { BoardgameRoomState, Card } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
 	import { LayoutContainer } from '@pixi/layout/components';
 	import { initDevtools } from '@pixi/devtools';
-
-	// TODO: Simple data driven design. Server should sync the data to the clients.
-	// Then clients update components based on the data.
-	// How to send updates to the server?
-	// Players probably need to "own" components so they will not be updated by the server, except if the owner changes
-	// Client functions will have to update data on the client and send the changes to the server
-	// Create a small query based system. Server is authorative.
-
-	// The data layout is tricky here. Players can have cards in hand, moving or on their own board, where they should not be interactable
-	// Should this all be maps, each player has a map of their own cards? What about cards that might be owned by 2 players? Then they
-	// would have to be moved from array to array etc. How to handle timeouts? E.g locks for cards that are on the board
-	// should be released. However locks for cards in hand should not be released.
 
 	let canvasContainer: HTMLDivElement;
 	let app: Application;
@@ -43,9 +31,7 @@
 	}
 
 	const client = new Client('ws://localhost:2567');
-	const room = await createOrJoinRoom(client, 'my_room');
-
-	const s = getStateCallbacks(room);
+	let room: Room<BoardgameRoomState>;
 
 	let syncCards: Map<string, BoardGameItem> = new Map();
 
@@ -116,6 +102,19 @@
 		index: number;
 	}[];
 
+	let viewport: Viewport;
+
+	type DragState = {
+		container: BoardGameItem;
+		startGlobalX: number;
+		startGlobalY: number;
+		startX: number;
+		startY: number;
+		clickThreshold: number;
+		cardId: string;
+	} | null;
+
+	let drag: DragState = null;
 	// Context menu prevention handler
 	function handleContextMenu(e: Event) {
 		e.preventDefault();
@@ -129,26 +128,6 @@
 		document.addEventListener('contextmenu', handleContextMenu);
 
 		// Listen for card array changes
-		s(room.state).cards.onAdd((card, index) => {
-			if (syncCards[index]) {
-				syncCards[index].x = card.x;
-				syncCards[index].y = card.y;
-			}
-
-			// Listen to individual card changes
-			s(card).onChange(() => {
-				if (card.owner === room.sessionId) return;
-				const cardContainer = syncCards[index];
-				if (syncCards[index]) {
-					cardContainer.x = card.x;
-					cardContainer.y = card.y;
-
-					if (cardContainer.isFrontShowing() !== card.isFaceUp) {
-						cardContainer.flip();
-					}
-				}
-			});
-		});
 		app = new Application();
 		await app.init({
 			background: '#2c3e50',
@@ -165,7 +144,7 @@
 			app
 		};
 		console.log('App renderer size:', app.renderer.width, app.renderer.height);
-		const viewport = new Viewport({
+		viewport = new Viewport({
 			screenWidth: window.innerWidth,
 			screenHeight: window.innerHeight,
 			worldWidth: 6000,
@@ -177,7 +156,7 @@
 		viewport.drag({
 			mouseButtons: 'right'
 		});
-		viewport.moveCenter(viewport.worldWidth / 2, viewport.worldHeight / 2);
+		// viewport.moveCenter(viewport.worldWidth / 2, viewport.worldHeight / 2);
 		viewport.clamp({
 			left: 0,
 			right: viewport.worldWidth,
@@ -227,17 +206,6 @@
 		screenContainer.addChild(handContainer);
 
 		// ---- robust drag state managed at stage level ----
-		type DragState = {
-			container: BoardGameItem;
-			startGlobalX: number;
-			startGlobalY: number;
-			startX: number;
-			startY: number;
-			clickThreshold: number;
-			cardId: string;
-		} | null;
-
-		let drag: DragState = null;
 
 		function endDragAndMaybeFlip(e: any) {
 			if (!drag) return;
@@ -304,8 +272,30 @@
 		app.stage.on('pointerup', endDragAndMaybeFlip);
 		app.stage.on('pointerupoutside', endDragAndMaybeFlip);
 
+		room = await createOrJoinRoom(client, 'my_room');
 		room.send('init', {
-			length: hybridResults.length
+			cardAmount: hybridResults.length
+		});
+        let s = getStateCallbacks(room);
+
+		s(room.state).cards.onAdd((card, index) => {
+			console.log('init with card: ' + card + ' and index: ' + index);
+
+			initCard(hybridResults, card, card.idx);
+
+			// Listen to individual card changes
+			s(card).onChange(() => {
+				if (card.owner === room.sessionId) return;
+				const cardContainer = syncCards.get(index);
+				if (cardContainer) {
+					cardContainer.x = card.x;
+					cardContainer.y = card.y;
+
+					if (cardContainer.isFrontShowing() !== card.isFaceUp) {
+						cardContainer.flip();
+					}
+				}
+			});
 		});
 
 		return () => {
@@ -313,67 +303,61 @@
 		};
 	});
 
-	async function initCards(
+	async function initCard(
 		hybridResults: {
 			front: LayoutContainer;
 			back: LayoutContainer;
 			index: number;
 		}[],
-		ids: string[]
+        card: Card,
+		i: number
 	) {
 		// send init here.
 
-		let x = 50;
-		const y = 50;
-		const cardSpacing = 150;
+		let x = card.x;
+		const y = card.y;
 
-		// Create card containers with hybrid rendering
-		for (let i = 0; i < hybridResults.length; i++) {
-			const { front, back } = hybridResults[i];
+		const { front, back } = hybridResults[i];
 
-			const cardContainer = new BoardGameItem(front, back);
+		const cardContainer = new BoardGameItem(front, back);
 
-			cardContainer.x = x;
-			cardContainer.y = y;
+		cardContainer.x = x;
+		cardContainer.y = y;
 
-			const id = crypto.randomUUID();
-			ids.push(id);
-			syncCards.set(id, cardContainer);
+		syncCards.set(card.id, cardContainer);
 
-			cardContainer.scale.set(0.5);
+		cardContainer.scale.set(0.5);
 
-			cardContainer.eventMode = 'static';
-			cardContainer.cursor = 'pointer';
+		cardContainer.eventMode = 'static';
+		cardContainer.cursor = 'pointer';
 
-			cardContainer.on('pointerover', () => {
-				if (!drag) cardContainer.tint = 0xcccccc;
-			});
-			cardContainer.on('pointerout', () => {
-				cardContainer.tint = 0xffffff;
-			});
-			cardContainer.on('pointerdown', (e: any) => {
-				// Convert screen coordinates to world coordinates for initial position
-				const worldPos = viewport.toWorld(e.globalX, e.globalY);
+		cardContainer.on('pointerover', () => {
+			if (!drag) cardContainer.tint = 0xcccccc;
+		});
+		cardContainer.on('pointerout', () => {
+			cardContainer.tint = 0xffffff;
+		});
+		cardContainer.on('pointerdown', (e: any) => {
+			// Convert screen coordinates to world coordinates for initial position
+			const worldPos = viewport.toWorld(e.globalX, e.globalY);
 
-				drag = {
-					container: cardContainer,
-					startGlobalX: e.globalX,
-					startGlobalY: e.globalY,
-					startX: cardContainer.x,
-					startY: cardContainer.y,
-					clickThreshold: 10,
-					cardId: id
-				};
-				cardContainer.cursor = 'grabbing';
-			});
+			drag = {
+				container: cardContainer,
+				startGlobalX: e.globalX,
+				startGlobalY: e.globalY,
+				startX: cardContainer.x,
+				startY: cardContainer.y,
+				clickThreshold: 10,
+				cardId: card.id
+			};
+			cardContainer.cursor = 'grabbing';
+		});
 
-			cardContainer.on('rightdown', (e: any) => {
-				handleRightClick(e, id);
-			});
+		cardContainer.on('rightdown', (e: any) => {
+			handleRightClick(e, card.id);
+		});
 
-			boardContainer.addChild(cardContainer);
-			x += cardSpacing;
-		}
+		boardContainer.addChild(cardContainer);
 	}
 
 	onDestroy(() => {
