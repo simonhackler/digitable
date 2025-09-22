@@ -5,6 +5,8 @@ export class Card extends Schema {
     @type("number") y: number;
     @type("boolean") isFaceUp: boolean;
     @type("string") owner: string = "";
+    @type("string") id: string = "";
+    @type("number") idx: number;
 }
 
 export class Player extends Schema {

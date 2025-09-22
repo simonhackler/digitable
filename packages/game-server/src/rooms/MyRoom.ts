@@ -6,21 +6,23 @@ export class MyRoom extends Room<BoardgameRoomState> {
     state = new BoardgameRoomState();
 
     onCreate(options: any) {
-        this.onMessage("init", (client, message: { length: number }) => {
+        this.onMessage("init", (client, message: { cardAmount: number }) => {
             if (this.state.cards.size !== 0) {
                 return;
             }
 
-            for (let i = 0; i < length; i++) {
+            for (let i = 0; i < message.cardAmount; i++) {
                 const cardId = crypto.randomUUID()
                 const card = new Card();
-                card.x = 50 + (i * 220);
-                card.y = 50;
+                card.x = 50 + i * 220;
+                card.y = 50 + i * 320;
                 card.isFaceUp = true;
+                card.idx = i;
+                card.id = cardId;
                 this.state.cards.set(cardId, card);
             };
 
-            console.log("Game initialized with", cardIds.length, "cards.");
+            console.log("Game initialized with", message.cardAmount, "cards.");
         });
 
         this.onMessage("flip", (client, message: { cardId: string; isFaceUp: boolean }) => {
