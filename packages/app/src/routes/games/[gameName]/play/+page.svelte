@@ -95,14 +95,13 @@
 
 	let viewport: Viewport;
 
-    let selectedItems: BoardGameItem[] = [];
+	let selItems = new Set<BoardGameItem>();
 	type DragState = {
 		startGlobalX: number;
 		startGlobalY: number;
 		startX: number;
 		startY: number;
 		clickThreshold: number;
-		cardId: string;
 	} | null;
 
 	let drag: DragState = null;
@@ -192,6 +191,7 @@
 		});
 		handContainer.zIndex = 10;
 		screenContainer.addChild(handContainer);
+
 		function endDragAndMaybeFlip(e: any) {
 			if (!drag) return;
 
@@ -244,7 +244,7 @@
 			const dx = worldPos.x - startWorldPos.x;
 			const dy = worldPos.y - startWorldPos.y;
 
-			for (const boardItem of selectedItems) {
+			for (const boardItem of selItems) {
 				boardItem.x = drag.startX + dx;
 				boardItem.y = drag.startY + dy;
 				room.send('move', {
@@ -257,6 +257,51 @@
 
 		app.stage.on('pointerup', endDragAndMaybeFlip);
 		app.stage.on('pointerupoutside', endDragAndMaybeFlip);
+		app.stage.on('pointerdown', (e) => {
+			let curr = e.target;
+			while (curr != viewport && curr != app.stage) {
+				if (
+					curr instanceof BoardGameItem &&
+					curr.parent &&
+					!(curr.parent instanceof BoardGameItem)
+				) {
+					if (e.ctrlKey) {
+						if (selItems.has(curr)) {
+							selItems.delete(curr);
+							curr.alpha = 1.0;
+						} else {
+							selItems.add(curr);
+							curr.alpha = 0.7;
+							drag = {
+								startGlobalX: e.globalX,
+								startGlobalY: e.globalY,
+								startX: curr.x,
+								startY: curr.y,
+								clickThreshold: 10
+							};
+						}
+					} else {
+						selItems.forEach((item) => (item.alpha = 1.0));
+						selItems = new Set<BoardGameItem>([curr]);
+						curr.alpha = 0.7;
+						drag = {
+							startGlobalX: e.globalX,
+							startGlobalY: e.globalY,
+							startX: curr.x,
+							startY: curr.y,
+							clickThreshold: 10
+						};
+					}
+					break;
+				}
+				curr = curr.parent!;
+			}
+			if (e.target == app.stage) {
+				console.log('hit stage');
+			} else if (e.target == viewport) {
+				console.log('hie viewport');
+			}
+		});
 
 		room = await createOrJoinRoom(client, 'my_room');
 		room.send('init', {
@@ -328,20 +373,7 @@
 				cardId: card.id
 			};
 			cardContainer.cursor = 'grabbing';
-            console.log('Pointer down on card', card.id);
-            if (e.ctrlKey) {
-                if (selectedItems.includes(cardContainer)) {
-                    selectedItems = selectedItems.filter(item => item !== cardContainer);
-                    cardContainer.alpha = 1.0; // Deselect visual feedback
-                } else {
-                    selectedItems.push(cardContainer);
-                    cardContainer.alpha = 0.7; // Select visual feedback
-                }
-            } else {
-                selectedItems.forEach(item => item.alpha = 1.0); // Reset alpha for previously selected items
-                selectedItems = [cardContainer];
-                cardContainer.alpha = 0.7; // Select visual feedback
-            }
+			console.log('Pointer down on card', card.id);
 		});
 
 		cardContainer.on('rightdown', (e: any) => {
