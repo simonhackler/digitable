@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Client, Room, getStateCallbacks } from 'colyseus.js';
 	import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
+	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
@@ -99,9 +100,8 @@
 	type DragState = {
 		startGlobalX: number;
 		startGlobalY: number;
-		startX: number;
-		startY: number;
 		clickThreshold: number;
+		dragType: 'marquee' | 'selection';
 	} | null;
 
 	let drag: DragState = null;
@@ -120,7 +120,7 @@
 		// Listen for card array changes
 		app = new Application();
 		await app.init({
-			background: '#2c3e50',
+			background: '#eba92e',
 			resizeTo: window,
 			antialias: true,
 			resolution: window.devicePixelRatio || 1,
@@ -192,6 +192,21 @@
 		handContainer.zIndex = 10;
 		screenContainer.addChild(handContainer);
 
+		const width = 200;
+		const height = 200;
+
+		const marquee = new MarqueeSelection({
+			dash: 4,
+			dashSpace: 4,
+			thickness: 1,
+			speed: 0.2,
+			width,
+			height,
+			color: 'black',
+			x: ((app.screen.width - width) / 2) | 0,
+			y: ((app.screen.height - height) / 2) | 0
+		});
+
 		function endDragAndMaybeFlip(e: any) {
 			if (!drag) return;
 
@@ -203,36 +218,42 @@
 
 			const worldPos = viewport.toWorld(e.globalX, e.globalY);
 			const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
-
 			const dx = worldPos.x - startWorldPos.x;
 			const dy = worldPos.y - startWorldPos.y;
-			const dist = Math.hypot(dx, dy);
 
-			const { containers: cardContainer } = drag;
-			const cardId = drag.cardId;
-			drag = null;
-			cardContainer.cursor = 'pointer';
+			if (drag.dragType == 'marquee') {
+				console.log(drag.dragType);
+			} else if (drag.dragType == 'selection') {
+				const dist = Math.hypot(dx, dy);
 
-			// This is ugly and does not work properly
-			if (dist < 10) {
-				cardContainer.flip();
+				const { containers: cardContainer } = drag;
+				const cardId = drag.cardId;
+				cardContainer.cursor = 'pointer';
+
+				// This is ugly and does not work properly
+				if (dist < 10) {
+					cardContainer.flip();
+					if (cardId !== '') {
+						room.send('flip', {
+							cardIndex: cardId,
+							isFaceUp: cardContainer.isFrontShowing()
+						});
+					}
+				}
+
 				if (cardId !== '') {
-					room.send('flip', {
-						cardIndex: cardId,
-						isFaceUp: cardContainer.isFrontShowing()
+					console.log(`Sending move end for card ${cardId}:`, cardContainer.x, cardContainer.y);
+					room.send('moveend', {
+						cardId: cardId,
+						x: cardContainer.x,
+						y: cardContainer.y
 					});
 				}
 			}
-
-			if (cardId !== '') {
-				console.log(`Sending move end for card ${cardId}:`, cardContainer.x, cardContainer.y);
-				room.send('moveend', {
-					cardId: cardId,
-					x: cardContainer.x,
-					y: cardContainer.y
-				});
-			}
+			drag = null;
 		}
+
+		viewport.addChild(marquee);
 
 		app.stage.on('pointermove', (e) => {
 			if (!drag) return;
@@ -243,16 +264,23 @@
 
 			const dx = worldPos.x - startWorldPos.x;
 			const dy = worldPos.y - startWorldPos.y;
-
-			for (const boardItem of selItems) {
-				boardItem.x = drag.startX + dx;
-				boardItem.y = drag.startY + dy;
-				room.send('move', {
-					cardId: drag.cardId, // TODO
-					x: boardItem.x,
-					y: boardItem.y
-				});
+			if (drag.dragType == 'marquee') {
+				const width = dx + worldPos.x - marquee.x;
+				const height = dy + worldPos.y - marquee.y;
+				marquee.resize(width, height);
+			} else if (drag.dragType == 'selection') {
+				for (const boardItem of selItems) {
+					boardItem.x = boardItem.x + dx;
+					boardItem.y = boardItem.y + dy;
+					room.send('move', {
+						cardId: boardItem.id,
+						x: boardItem.x,
+						y: boardItem.y
+					});
+				}
 			}
+			drag.startGlobalX = e.globalX;
+			drag.startGlobalY = e.globalY;
 		});
 
 		app.stage.on('pointerup', endDragAndMaybeFlip);
@@ -271,36 +299,36 @@
 							curr.alpha = 1.0;
 						} else {
 							selItems.add(curr);
-							curr.alpha = 0.7;
-							drag = {
-								startGlobalX: e.globalX,
-								startGlobalY: e.globalY,
-								startX: curr.x,
-								startY: curr.y,
-								clickThreshold: 10
-							};
 						}
 					} else {
 						selItems.forEach((item) => (item.alpha = 1.0));
 						selItems = new Set<BoardGameItem>([curr]);
-						curr.alpha = 0.7;
-						drag = {
-							startGlobalX: e.globalX,
-							startGlobalY: e.globalY,
-							startX: curr.x,
-							startY: curr.y,
-							clickThreshold: 10
-						};
 					}
 					break;
 				}
 				curr = curr.parent!;
 			}
-			if (e.target == app.stage) {
-				console.log('hit stage');
-			} else if (e.target == viewport) {
-				console.log('hie viewport');
+			if (curr == viewport) {
+				selItems.forEach((item) => (item.alpha = 1.0));
+				selItems = new Set<BoardGameItem>();
 			}
+			let dragType: 'marquee' | 'selection';
+			if (selItems.has(curr)) {
+				curr.alpha = 0.7;
+				dragType = 'selection';
+			} else {
+				dragType = 'marquee';
+				marquee.position.copyFrom(viewport.toWorld(e.globalX, e.globalY));
+				marquee.visible = true;
+				// TODO: factor scaling into this?
+				marquee.resize(2, 2);
+			}
+			drag = {
+				startGlobalX: e.globalX,
+				startGlobalY: e.globalY,
+				clickThreshold: 10,
+				dragType
+			};
 		});
 
 		room = await createOrJoinRoom(client, 'my_room');
@@ -345,7 +373,7 @@
 
 		const { front, back } = hybridResults[i];
 
-		const cardContainer = new BoardGameItem(front, back);
+		const cardContainer = new BoardGameItem(front, back, card.id);
 
 		cardContainer.x = x;
 		cardContainer.y = y;
@@ -367,10 +395,7 @@
 			drag = {
 				startGlobalX: e.globalX,
 				startGlobalY: e.globalY,
-				startX: cardContainer.x,
-				startY: cardContainer.y,
-				clickThreshold: 10,
-				cardId: card.id
+				clickThreshold: 10
 			};
 			cardContainer.cursor = 'grabbing';
 			console.log('Pointer down on card', card.id);
@@ -404,6 +429,7 @@
 		card.pivot.set(0, 0);
 		card.x = 0;
 		card.y = 0;
+		card.alpha = 1.0;
 
 		const wrapper = new LayoutContainer({
 			layout: {
