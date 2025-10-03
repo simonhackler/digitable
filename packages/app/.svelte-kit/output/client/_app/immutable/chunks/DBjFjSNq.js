@@ -1,1 +1,0 @@
-import{o as s,q as o}from"./CcupEzEf.js";const e="filesystem";function r(t){s(e,t)}function a(){const t=o(e);if(!(t!=null&&t.adapter))throw new Error("File system context not set");return t.adapter}export{a as g,r as s};
