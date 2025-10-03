@@ -7,11 +7,12 @@ export class Card extends Schema {
     @type("string") owner: string = "";
     @type("string") id: string = "";
     @type("number") idx: number;
+    @type("boolean") visible: boolean;
 }
 
 export class Player extends Schema {
     @type("string") id: string
-    @type([Card]) hand = new ArraySchema<Card>();
+    @type({map: Card}) hand = new MapSchema<Card>();
 }
 
 export class BoardgameRoomState extends Schema {

@@ -2,14 +2,9 @@
 	import { Client, Room, getStateCallbacks } from 'colyseus.js';
 	import {
 		Application,
-		Assets,
-		Bounds,
 		Container,
 		Graphics,
 		Rectangle,
-		Sprite,
-		Texture,
-		TilingSprite
 	} from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
@@ -103,6 +98,7 @@
 
 	let viewport: Viewport;
 
+    let hoverItem: BoardGameItem;
 	let selItems = new Set<BoardGameItem>();
 	type DragState = {
 		startGlobalX: number;
@@ -118,14 +114,13 @@
 	}
 
 	function createSelectionBorder(item: BoardGameItem) {
-		// compute in LOCAL space so it scales with the card cleanly
-		const b = item.getLocalBounds(); // Rectangle in local coords
+		const b = item.getLocalBounds();
 		const pad = Math.min(Math.max(Math.min(b.width, b.height) * 0.02, 2), 8); // 2–8px padding
 		const radius = Math.min(Math.max(Math.min(b.width, b.height) * 0.06, 6), 20); // rounded corners
 
 		const g = new Graphics();
-		g.eventMode = 'none'; // never steal events
-		g.zIndex = 9999; // keep above faces
+		g.eventMode = 'none';
+		g.zIndex = 9999;
 		// Outer blue ring
 		g.roundRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2, radius).stroke({
 			width: 16,
@@ -150,6 +145,7 @@
 
 	function deselectItem(item: BoardGameItem) {
 		if (!selItems.has(item)) return;
+        console.log('Deselecting item', item.id);
 		selItems.delete(item);
 		item.removeChildren(2);
 	}
@@ -159,6 +155,7 @@
 		selectItem(item);
 	}
 
+    // This is probalby useless. Fighting against the engine here
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
 			if (curr instanceof BoardGameItem && curr.parent && !(curr.parent instanceof BoardGameItem)) {
@@ -240,7 +237,7 @@
 		handContainer = new LayoutContainer({
 			layout: {
 				width: '70%',
-				height: '30%',
+				height: '15%',
 				justifyContent: 'center',
 				flexDirection: 'row',
 				alignItems: 'flex-end',
@@ -271,16 +268,10 @@
 		function endDrag(e: any) {
 			if (!drag) return;
 
-			// Don't flip on right-click (button 2)
 			if (e.button === 2) {
 				drag = null;
 				return;
 			}
-
-			const worldPos = viewport.toWorld(e.global);
-			const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
-			const dx = worldPos.x - startWorldPos.x;
-			const dy = worldPos.y - startWorldPos.y;
 
 			if (drag.dragType == 'marquee') {
 				marquee.visible = false;
@@ -298,8 +289,6 @@
 					}
 				}
 			} else if (drag.dragType == 'selection') {
-				const dist = Math.hypot(dx, dy);
-
 				const containers = selItems.values();
 				for (const c of containers) {
 					const cardId = c.id;
@@ -313,16 +302,17 @@
 				}
 			}
 			drag = null;
-			console.log(drag);
 		}
 
-		//viewport.addChild(marquee);
 		app.stage.addChild(marquee);
 
 		app.stage.on('pointermove', (e) => {
+            console.log(e.target);
+            const topItem = findTopLevelItem(e.target);
+            if (topItem) {
+                hoverItem = topItem;
+            }
 			if (!drag) return;
-
-			// Convert screen coordinates to world coordinates
 			const worldPos = viewport.toWorld(e.global);
 			const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
 			const delta = worldPos.subtract(startWorldPos);
@@ -348,10 +338,11 @@
 		app.stage.on('pointerup', endDrag);
 		app.stage.on('pointerupoutside', endDrag);
 		app.stage.on('pointerdown', (e) => {
+            console.log('Pointer down at', e.globalX, e.globalY, 'button:', e.button, 'ctrlKey:', e.ctrlKey, 'shiftKey:', e.shiftKey);
 			const boardItem = findTopLevelItem(e.target);
 			if (boardItem) {
 				if (e.ctrlKey) {
-					if (selItems.has(boardItem)) {
+					if (selItems.has(boardItem) && e.button === 1) {
 						deselectItem(boardItem);
 					} else {
 						selectItem(boardItem);
@@ -370,17 +361,30 @@
 				dragType: 'selection'
 			};
 			if (e.button === 2 && boardItem) {
-                handleRightClick(e, boardItem.id);
+				handleRightClick(e, boardItem.id);
 			}
 			if (e.shiftKey) {
 				drag.dragType = 'marquee';
 				marquee.position.copyFrom(e.global);
 				marquee.visible = true;
-				// TODO: factor scaling into this?
 				marquee.resize(2, 2);
-			} else if (!selItems.has(boardItem)) {
+			} else if (!boardItem || !selItems.has(boardItem)) {
 				drag = null;
 			}
+		});
+		window.addEventListener('keydown', (e) => {
+			console.log('Key down:', e.key, e.code);
+			if (e.key === 'Escape') {
+				closeContextMenu();
+			} else if (e.code === 'KeyF') {
+				selItems.forEach((item) => handleFlipCard(item));
+			} else if (e.code === 'KeyD') {
+				selItems.forEach((item) => handleDrawCard(item));
+			} else if (e.code == 'Alt') {
+                if (hoverItem) {
+                    // TODO generate hover Preview in big on top of the item
+                }
+            }
 		});
 
 		room = await createOrJoinRoom(client, 'my_room');
@@ -398,7 +402,7 @@
 				if (cardContainer) {
 					cardContainer.x = card.x;
 					cardContainer.y = card.y;
-
+					cardContainer.visible = card.visible;
 					if (cardContainer.isFrontShowing() !== card.isFaceUp) {
 						cardContainer.flip();
 					}
@@ -459,34 +463,31 @@
 		app?.destroy(true, { children: true, texture: true });
 	});
 
-	function handleDrawCard(cardId: string) {
-		console.log('drawing card ' + cardId);
-		const card = syncCards.get(cardId);
-		console.log(card);
-		if (!card) return;
-		console.log('my card');
+	function handleDrawCard(item: BoardGameItem) {
+        console.log('Drawing card', item.id);
+		boardContainer.removeChild(item);
 
-		boardContainer.removeChild(card);
-
-		// Reset transforms so layout sizing is predictable inside the hand row.
-		card.scale.set(1);
-		card.rotation = 0;
-		card.pivot.set(0, 0);
-		card.x = 0;
-		card.y = 0;
-		card.alpha = 1.0;
+		item.scale.set(1);
+		item.rotation = 0;
+		item.pivot.set(0, 0);
+		item.x = 0;
+		item.y = 0;
+		item.alpha = 1.0;
 
 		const wrapper = new LayoutContainer({
 			layout: {
 				height: '100%',
-				aspectRatio: card.width / card.height,
+				aspectRatio: item.width / item.height,
 				objectFit: 'contain',
 				objectPosition: 'center'
 			}
 		});
 
-		wrapper.addChild(card);
+		wrapper.addChild(item);
 		handContainer.addChild(wrapper);
+		room.send('draw', {
+			cardId: item.id
+		});
 	}
 </script>
 
@@ -506,9 +507,13 @@
 		</ContextMenu.Trigger>
 		<ContextMenu.Content strategy="absolute" style="top: {contextMenuPosition.y}px; z-index: 1000;">
 			<ContextMenu.Item onclick={() => selItems.forEach((item) => handleFlipCard(item))}
-				>Flip Card</ContextMenu.Item
-			>
-			<ContextMenu.Item onclick={() => handleDrawCard(selectedCardId)}>Draw Card</ContextMenu.Item>
+				>Flip Card
+				<ContextMenu.Shortcut>F</ContextMenu.Shortcut>
+			</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => selItems.forEach((item) => handleDrawCard(item))}
+				>Draw Card
+				<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
+			</ContextMenu.Item>
 		</ContextMenu.Content>
 	</ContextMenu.Root>
 </div>

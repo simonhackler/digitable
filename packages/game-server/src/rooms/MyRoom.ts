@@ -19,6 +19,7 @@ export class MyRoom extends Room<BoardgameRoomState> {
                 card.isFaceUp = true;
                 card.idx = i;
                 card.id = cardId;
+                card.visible = true;
                 this.state.cards.set(cardId, card);
             };
 
@@ -71,6 +72,8 @@ export class MyRoom extends Room<BoardgameRoomState> {
         });
 
         this.onMessage("draw", (client, message: { cardId: string }) => {
+            // Probalby remove card from state.cards as well?
+            // SO I should have board and then hands
             const card = this.state.cards.get(message.cardId);
             if (!card) {
                 console.error("Invalid card id:", message.cardId);
@@ -80,6 +83,16 @@ export class MyRoom extends Room<BoardgameRoomState> {
                 console.warn(`Card ${message.cardId} is already owned by another player.`);
                 return;
             }
+            const player = this.state.players.get(client.sessionId);
+            if (!player) {
+                console.error("Player not found:", client.sessionId);
+                return;
+            }
+            console.log(player);
+            console.log(player.hand);
+            player.hand.set(message.cardId, card);
+            card.owner = client.sessionId;
+            card.visible = false;
         });
     }
 
