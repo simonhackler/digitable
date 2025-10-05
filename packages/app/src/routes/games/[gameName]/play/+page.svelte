@@ -1,11 +1,6 @@
 <script lang="ts">
 	import { Client, Room, getStateCallbacks } from 'colyseus.js';
-	import {
-		Application,
-		Container,
-		Graphics,
-		Rectangle,
-	} from 'pixi.js';
+	import { Application, Container, Point, Rectangle } from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
@@ -20,6 +15,11 @@
 	import { LayoutContainer } from '@pixi/layout/components';
 	import { initDevtools } from '@pixi/devtools';
 	import 'pixi.js/math-extras';
+	import { PreviewHelper } from './hover-helpers';
+	import { SelectionManager } from './SelectionManager';
+	import { pixiToCSSCoordinates } from './coordinate-utils';
+	import { createViewport } from './viewport-utils';
+	import { HandContainer } from './HandContainer';
 
 	let canvasContainer: HTMLDivElement;
 	let app: Application;
@@ -46,33 +46,15 @@
 	let showContextMenu = $state(false);
 	let contextMenuPosition = $state({ x: 0, y: 0 });
 
-	function handleRightClick(e: any, cardId: string) {
+	function handleRightClick(e: any) {
 		e.preventDefault();
 		e.stopPropagation();
 
 		if (!showContextMenu) {
-			const cssPosition = pixiToCSSCoordinates(e.globalX, e.globalY);
+			const cssPosition = pixiToCSSCoordinates(app, e.globalX, e.globalY);
 			contextMenuPosition = cssPosition;
 			showContextMenu = true;
 		}
-	}
-
-	function pixiToCSSCoordinates(pixiX: number, pixiY: number) {
-		if (!app) return { x: pixiX, y: pixiY };
-
-		const canvas = app.canvas;
-		const canvasRect = canvas.getBoundingClientRect();
-
-		const internalW = app.renderer.width;
-		const internalH = app.renderer.height;
-
-		const sx = canvasRect.width / internalW;
-		const sy = canvasRect.height / internalH;
-
-		const cssX = pixiX * sx;
-		const cssY = pixiY * sy;
-
-		return { x: cssX, y: cssY };
 	}
 
 	function closeContextMenu() {
@@ -89,7 +71,7 @@
 	}
 
 	let boardContainer: Container;
-	let handContainer: Container;
+	let handContainer: HandContainer;
 	let hybridResults: {
 		front: LayoutContainer;
 		back: LayoutContainer;
@@ -98,13 +80,16 @@
 
 	let viewport: Viewport;
 
-    let hoverItem: BoardGameItem;
-	let selItems = new Set<BoardGameItem>();
+	let hoverItem: BoardGameItem;
+	let selectionManager = new SelectionManager();
+	const pressedKeys = new Set<string>();
+
 	type DragState = {
 		startGlobalX: number;
 		startGlobalY: number;
 		clickThreshold: number;
-		dragType: 'marquee' | 'selection';
+		dragType: 'marquee' | 'selection' | 'handToBoard';
+		isFromHand?: boolean;
 	} | null;
 
 	let drag: DragState = null;
@@ -113,49 +98,7 @@
 		e.preventDefault();
 	}
 
-	function createSelectionBorder(item: BoardGameItem) {
-		const b = item.getLocalBounds();
-		const pad = Math.min(Math.max(Math.min(b.width, b.height) * 0.02, 2), 8); // 2–8px padding
-		const radius = Math.min(Math.max(Math.min(b.width, b.height) * 0.06, 6), 20); // rounded corners
-
-		const g = new Graphics();
-		g.eventMode = 'none';
-		g.zIndex = 9999;
-		// Outer blue ring
-		g.roundRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2, radius).stroke({
-			width: 16,
-			color: 0x3b82f6,
-			alpha: 1
-		});
-		// Subtle inner hairline for a "crisp" look
-		g.roundRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2, radius).stroke({
-			width: 4,
-			color: 0xffffff,
-			alpha: 0.9
-		});
-
-		item.addChild(g);
-	}
-
-	function selectItem(item: BoardGameItem) {
-		if (selItems.has(item)) return;
-		selItems.add(item);
-		createSelectionBorder(item);
-	}
-
-	function deselectItem(item: BoardGameItem) {
-		if (!selItems.has(item)) return;
-        console.log('Deselecting item', item.id);
-		selItems.delete(item);
-		item.removeChildren(2);
-	}
-
-	function selectOnlyItem(item: BoardGameItem) {
-		selItems.forEach((it) => deselectItem(it));
-		selectItem(item);
-	}
-
-    // This is probalby useless. Fighting against the engine here
+	// This is probably useless. Fighting against the engine here
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
 			if (curr instanceof BoardGameItem && curr.parent && !(curr.parent instanceof BoardGameItem)) {
@@ -183,35 +126,15 @@
 			autoDensity: true
 		});
 
+		const previewer = new PreviewHelper(app);
+		previewer.previewContainer.zIndex = 10000;
 		hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
 		initDevtools({ app });
 		window.__PIXI_DEVTOOLS__ = {
 			app
 		};
 		console.log('App renderer size:', app.renderer.width, app.renderer.height);
-		viewport = new Viewport({
-			screenWidth: window.innerWidth,
-			screenHeight: window.innerHeight,
-			worldWidth: 6000,
-			worldHeight: 3500,
-			events: app.renderer.events,
-			disableOnContextMenu: true
-		});
-		viewport.pinch().wheel();
-		viewport.drag({
-			mouseButtons: 'right'
-		});
-		// viewport.moveCenter(viewport.worldWidth / 2, viewport.worldHeight / 2);
-		viewport.clamp({
-			left: 0,
-			right: viewport.worldWidth,
-			top: 0,
-			bottom: viewport.worldHeight,
-			direction: 'all',
-			underflow: 'center'
-		});
-		viewport.clampZoom({ minScale: 0.3, maxScale: 5 });
-		app.stage.addChild(viewport);
+		viewport = createViewport(app);
 
 		canvasContainer.appendChild(app.canvas);
 
@@ -234,20 +157,8 @@
 
 		app.stage.addChild(screenContainer);
 
-		handContainer = new LayoutContainer({
-			layout: {
-				width: '70%',
-				height: '15%',
-				justifyContent: 'center',
-				flexDirection: 'row',
-				alignItems: 'flex-end',
-				alignContent: 'center',
-				gap: 4,
-				backgroundColor: 'red'
-			}
-		});
-		handContainer.zIndex = 10;
-		screenContainer.addChild(handContainer);
+		handContainer = new HandContainer();
+		screenContainer.addChild(handContainer.container);
 
 		const width = 200;
 		const height = 200;
@@ -285,11 +196,11 @@
 				for (const item of syncCards.values()) {
 					const itemBounds = item.getBounds();
 					if (selectionRect.intersects(new Rectangle().copyFromBounds(itemBounds))) {
-						selectItem(item);
+						selectionManager.select(item);
 					}
 				}
 			} else if (drag.dragType == 'selection') {
-				const containers = selItems.values();
+				const containers = selectionManager.values();
 				for (const c of containers) {
 					const cardId = c.id;
 					c.cursor = 'pointer';
@@ -300,6 +211,18 @@
 						y: c.y
 					});
 				}
+			} else if (drag.dragType == 'handToBoard') {
+				// Handle playing card from hand to board
+				const containers = selectionManager.values();
+				for (const c of containers) {
+					if (handContainer.hasItem(c)) {
+						c.x = 0;
+						c.y = 0;
+					} else {
+						handlePlayCard(c, e.globalX, e.globalY);
+					}
+					c.cursor = 'pointer';
+				}
 			}
 			drag = null;
 		}
@@ -307,21 +230,27 @@
 		app.stage.addChild(marquee);
 
 		app.stage.on('pointermove', (e) => {
-            console.log(e.target);
-            const topItem = findTopLevelItem(e.target);
-            if (topItem) {
-                hoverItem = topItem;
-            }
+			previewer.updatePointer(e.globalX, e.globalY);
+			const topItem = findTopLevelItem(e.target);
+			if (topItem) {
+				hoverItem = topItem;
+				if (pressedKeys.has('AltLeft')) {
+					previewer.showPreview(hoverItem);
+				}
+			} else {
+				previewer.hidePreview();
+			}
 			if (!drag) return;
-			const worldPos = viewport.toWorld(e.global);
-			const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
-			const delta = worldPos.subtract(startWorldPos);
+
 			if (drag.dragType == 'marquee') {
 				const width = e.global.x - drag.startGlobalX + e.globalX - marquee.x;
 				const height = e.global.y - drag.startGlobalY + e.globalY - marquee.y;
 				marquee.resize(width, height);
 			} else if (drag.dragType == 'selection') {
-				for (const boardItem of selItems) {
+				const worldPos = viewport.toWorld(e.global);
+				const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
+				const delta = worldPos.subtract(startWorldPos);
+				for (const boardItem of selectionManager.values()) {
 					const newPos = boardItem.position.add(delta);
 					boardItem.position = newPos;
 					room.send('move', {
@@ -329,6 +258,53 @@
 						x: boardItem.x,
 						y: boardItem.y
 					});
+				}
+			} else if (drag.dragType == 'handToBoard') {
+				for (const boardItem of selectionManager.values()) {
+					if (handContainer.hasItem(boardItem)) {
+						const deltaX = e.globalX - drag.startGlobalX;
+						const deltaY = e.globalY - drag.startGlobalY;
+						const wrapper = boardItem.parent;
+						if (wrapper) {
+							const wrapperGlobal = wrapper.toGlobal(boardItem.position);
+							const newGlobalX = wrapperGlobal.x + deltaX;
+							const newGlobalY = wrapperGlobal.y + deltaY;
+
+							const newLocal = wrapper.toLocal({ x: newGlobalX, y: newGlobalY });
+							boardItem.position.set(newLocal.x, newLocal.y);
+
+							const wrapperBounds = wrapper.getBounds();
+							const handBounds = handContainer.container.getBounds();
+							const cardHeight = wrapperBounds.height;
+
+							const cardCenterY = wrapperBounds.y + cardHeight / 2;
+							const handTop = handBounds.maxY - cardHeight;
+
+							if (cardCenterY < handTop) {
+								handContainer.removeItem(boardItem);
+								boardItem.scale.set(0.5);
+								boardItem.rotation = 0;
+								boardItem.pivot.set(0, 0);
+								boardItem.alpha = 1.0;
+						        const worldPos = viewport.toWorld(e.global);
+
+                                drag.startGlobalX = e.globalX;
+                                drag.startGlobalY = e.globalY;
+
+                                const offset = e.global.subtract(new Point(wrapperBounds.minX, wrapperBounds.minY))
+
+						        boardItem.position = (worldPos.subtract(offset).subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2)));
+
+								boardContainer.addChild(boardItem);
+							}
+						}
+					} else {
+						const worldPos = viewport.toWorld(e.global);
+						const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
+						const delta = worldPos.subtract(startWorldPos);
+						const newPos = boardItem.position.add(delta);
+					    boardItem.position = newPos;
+					}
 				}
 			}
 			drag.startGlobalX = e.globalX;
@@ -338,53 +314,67 @@
 		app.stage.on('pointerup', endDrag);
 		app.stage.on('pointerupoutside', endDrag);
 		app.stage.on('pointerdown', (e) => {
-            console.log('Pointer down at', e.globalX, e.globalY, 'button:', e.button, 'ctrlKey:', e.ctrlKey, 'shiftKey:', e.shiftKey);
 			const boardItem = findTopLevelItem(e.target);
 			if (boardItem) {
 				if (e.ctrlKey) {
-					if (selItems.has(boardItem) && e.button === 1) {
-						deselectItem(boardItem);
+					if (selectionManager.has(boardItem) && e.button === 1) {
+						selectionManager.deselect(boardItem);
 					} else {
-						selectItem(boardItem);
+						selectionManager.select(boardItem);
 					}
 				} else {
-					selectOnlyItem(boardItem);
+					selectionManager.selectOnly(boardItem);
 				}
 			}
 			if (!boardItem) {
-				selItems.forEach((item) => deselectItem(item));
+				selectionManager.clear();
 			}
+
+			// Determine drag type based on whether the item is in hand
+			let dragType: 'marquee' | 'selection' | 'handToBoard' = 'selection';
+			if (boardItem && handContainer.hasItem(boardItem)) {
+				dragType = 'handToBoard';
+				// Don't immediately move card from hand - let it stay until more than half is dragged out
+			}
+
 			drag = {
 				startGlobalX: e.globalX,
 				startGlobalY: e.globalY,
 				clickThreshold: 10,
-				dragType: 'selection'
+				dragType: dragType
 			};
 			if (e.button === 2 && boardItem) {
-				handleRightClick(e, boardItem.id);
+				handleRightClick(e);
 			}
 			if (e.shiftKey) {
 				drag.dragType = 'marquee';
 				marquee.position.copyFrom(e.global);
 				marquee.visible = true;
 				marquee.resize(2, 2);
-			} else if (!boardItem || !selItems.has(boardItem)) {
+			} else if (!boardItem || (!selectionManager.has(boardItem) && dragType !== 'handToBoard')) {
 				drag = null;
 			}
 		});
 		window.addEventListener('keydown', (e) => {
-			console.log('Key down:', e.key, e.code);
 			if (e.key === 'Escape') {
 				closeContextMenu();
 			} else if (e.code === 'KeyF') {
-				selItems.forEach((item) => handleFlipCard(item));
+				selectionManager.forEach((item) => handleFlipCard(item));
 			} else if (e.code === 'KeyD') {
-				selItems.forEach((item) => handleDrawCard(item));
-			} else if (e.code == 'Alt') {
-                if (hoverItem) {
-                    // TODO generate hover Preview in big on top of the item
-                }
-            }
+				selectionManager.forEach((item) => handleDrawCard(item));
+			} else if (e.code == 'AltLeft') {
+				if (hoverItem) {
+					previewer.showPreview(hoverItem);
+					pressedKeys.add('AltLeft');
+				}
+			}
+		});
+
+		window.addEventListener('keyup', (e) => {
+			if (e.code == 'AltLeft') {
+				pressedKeys.delete('AltLeft');
+				previewer.hidePreview();
+			}
 		});
 
 		room = await createOrJoinRoom(client, 'my_room');
@@ -398,24 +388,18 @@
 
 			s(card).onChange(() => {
 				if (card.owner === room.sessionId) return;
-				const cardContainer = syncCards.get(index);
-				if (cardContainer) {
-					cardContainer.x = card.x;
-					cardContainer.y = card.y;
-					cardContainer.visible = card.visible;
-					if (cardContainer.isFrontShowing() !== card.isFaceUp) {
-						cardContainer.flip();
-					}
-				}
+				// const cardContainer = syncCards.get(index);
+				// if (cardContainer) {
+				// 	cardContainer.x = card.x;
+				// 	cardContainer.y = card.y;
+				// 	cardContainer.visible = card.visible;
+				// 	if (cardContainer.isFrontShowing() !== card.isFaceUp) {
+				// 		cardContainer.flip();
+				// 	}
+				// }
 			});
 		});
 
-		// app.ticker.add((ticker) => {
-		//           if (marquee.visible) {
-		//
-		//           }
-		// });
-		//
 		return () => {
 			app?.destroy(true, { children: true, texture: true });
 		};
@@ -464,29 +448,18 @@
 	});
 
 	function handleDrawCard(item: BoardGameItem) {
-        console.log('Drawing card', item.id);
 		boardContainer.removeChild(item);
-
-		item.scale.set(1);
-		item.rotation = 0;
-		item.pivot.set(0, 0);
-		item.x = 0;
-		item.y = 0;
-		item.alpha = 1.0;
-
-		const wrapper = new LayoutContainer({
-			layout: {
-				height: '100%',
-				aspectRatio: item.width / item.height,
-				objectFit: 'contain',
-				objectPosition: 'center'
-			}
-		});
-
-		wrapper.addChild(item);
-		handContainer.addChild(wrapper);
+		handContainer.addItem(item);
 		room.send('draw', {
 			cardId: item.id
+		});
+	}
+
+	function handlePlayCard(item: BoardGameItem, x: number, y: number) {
+		room.send('play', {
+			cardId: item.id,
+			x: item.x,
+			y: item.y
 		});
 	}
 </script>
@@ -506,11 +479,11 @@
 			></div>
 		</ContextMenu.Trigger>
 		<ContextMenu.Content strategy="absolute" style="top: {contextMenuPosition.y}px; z-index: 1000;">
-			<ContextMenu.Item onclick={() => selItems.forEach((item) => handleFlipCard(item))}
+			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleFlipCard(item))}
 				>Flip Card
 				<ContextMenu.Shortcut>F</ContextMenu.Shortcut>
 			</ContextMenu.Item>
-			<ContextMenu.Item onclick={() => selItems.forEach((item) => handleDrawCard(item))}
+			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleDrawCard(item))}
 				>Draw Card
 				<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
 			</ContextMenu.Item>

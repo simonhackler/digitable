@@ -1,16 +1,18 @@
 import { Container } from 'pixi.js';
 
 export class BoardGameItem extends Container {
-    public readonly id: string;
+	public readonly id: string;
 	private readonly frontContainer: Container;
 	private readonly backContainer: Container;
 
 	constructor(frontContainer: Container, backContainer: Container, id: string) {
-		super({layout: {
-            aspectRatio: frontContainer.width / frontContainer.height,
-        }});
-        this.id = id;
-        this.layout = true;
+		super({
+			layout: {
+				aspectRatio: frontContainer.width / frontContainer.height
+			}
+		});
+		this.id = id;
+		this.layout = true;
 		this.frontContainer = frontContainer;
 		this.backContainer = backContainer;
 		this.addChild(this.frontContainer);

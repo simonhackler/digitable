@@ -35,6 +35,7 @@
     "@colyseus/playground": "^0.16.0",
     "@colyseus/tools": "^0.16.0",
     "colyseus": "^0.16.0",
+    "debug": "^4.4.3",
     "express": "^4.18.2"
   }
 }
