@@ -63,9 +63,12 @@
 
 	function handleFlipCard(item: BoardGameItem) {
 		item.flip();
-		room.send('flip', {
-			cardId: item.id,
-			isFaceUp: item.isFrontShowing()
+		room.send('cmd', {
+			commandType: 'flip',
+			payload: {
+				cardId: item.id,
+				isFaceUp: item.isFrontShowing()
+			}
 		});
 		closeContextMenu();
 	}
@@ -205,10 +208,13 @@
 					const cardId = c.id;
 					c.cursor = 'pointer';
 
-					room.send('moveend', {
-						cardId: cardId,
-						x: c.x,
-						y: c.y
+					room.send('cmd', {
+						commandType: 'moveend',
+						payload: {
+							cardId: cardId,
+							x: c.x,
+							y: c.y
+						}
 					});
 				}
 			} else if (drag.dragType == 'handToBoard') {
@@ -253,10 +259,13 @@
 				for (const boardItem of selectionManager.values()) {
 					const newPos = boardItem.position.add(delta);
 					boardItem.position = newPos;
-					room.send('move', {
-						cardId: boardItem.id,
-						x: boardItem.x,
-						y: boardItem.y
+					room.send('cmd', {
+						commandType: 'move',
+						payload: {
+							cardId: boardItem.id,
+							x: boardItem.x,
+							y: boardItem.y
+						}
 					});
 				}
 			} else if (drag.dragType == 'handToBoard') {
@@ -378,8 +387,11 @@
 		});
 
 		room = await createOrJoinRoom(client, 'my_room');
-		room.send('init', {
-			cardAmount: hybridResults.length
+		room.send('cmd', {
+			commandType: 'init',
+			payload: {
+				cardAmount: hybridResults.length
+			}
 		});
 		let s = getStateCallbacks(room);
 
@@ -388,15 +400,15 @@
 
 			s(card).onChange(() => {
 				if (card.owner === room.sessionId) return;
-				// const cardContainer = syncCards.get(index);
-				// if (cardContainer) {
-				// 	cardContainer.x = card.x;
-				// 	cardContainer.y = card.y;
-				// 	cardContainer.visible = card.visible;
-				// 	if (cardContainer.isFrontShowing() !== card.isFaceUp) {
-				// 		cardContainer.flip();
-				// 	}
-				// }
+				const cardContainer = syncCards.get(index);
+				if (cardContainer) {
+					cardContainer.x = card.x;
+					cardContainer.y = card.y;
+					cardContainer.visible = card.visible;
+					if (cardContainer.isFrontShowing() !== card.isFaceUp) {
+						cardContainer.flip();
+					}
+				}
 			});
 		});
 
@@ -450,16 +462,22 @@
 	function handleDrawCard(item: BoardGameItem) {
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);
-		room.send('draw', {
-			cardId: item.id
+		room.send('cmd', {
+			commandType: 'draw',
+			payload: {
+				cardId: item.id
+			}
 		});
 	}
 
 	function handlePlayCard(item: BoardGameItem, x: number, y: number) {
-		room.send('play', {
-			cardId: item.id,
-			x: item.x,
-			y: item.y
+		room.send('cmd', {
+			commandType: 'play',
+			payload: {
+				cardId: item.id,
+				x: item.x,
+				y: item.y
+			}
 		});
 	}
 </script>

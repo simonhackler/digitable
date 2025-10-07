@@ -6,6 +6,7 @@ import { playground } from "@colyseus/playground";
  * Import your Room files
  */
 import { MyRoom } from "./rooms/MyRoom";
+import { CommandRoom } from "./rooms/command-room";
 
 export default config({
 
@@ -13,7 +14,7 @@ export default config({
         /**
          * Define your room handlers:
          */
-        gameServer.define('my_room', MyRoom);
+        gameServer.define('my_room', CommandRoom);
 
     },
 

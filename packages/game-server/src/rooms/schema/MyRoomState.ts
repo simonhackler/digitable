@@ -1,6 +1,6 @@
 import { ArraySchema, MapSchema, Schema, SetSchema, type } from "@colyseus/schema";
 
-export class Card extends Schema {
+export class BoardItem extends Schema {
     @type("number") x: number;
     @type("number") y: number;
     @type("boolean") isFaceUp: boolean;
@@ -12,10 +12,10 @@ export class Card extends Schema {
 
 export class Player extends Schema {
     @type("string") id: string
-    @type({map: Card}) hand = new MapSchema<Card>();
+    @type({map: BoardItem}) hand = new MapSchema<BoardItem>();
 }
 
 export class BoardgameRoomState extends Schema {
-    @type({map: Card}) cards = new MapSchema<Card>();
+    @type({map: BoardItem}) cards = new MapSchema<BoardItem>();
     @type({ map: Player }) players = new MapSchema<Player>();
 }

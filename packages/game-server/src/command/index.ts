@@ -74,6 +74,7 @@ export class Dispatcher<R extends Room> {
       debugCommand(`execute -> ${command.constructor.name} ${(command.payload) ? `(${JSON.stringify(command.payload)})` : ''}`);
     }
 
+    // TODO save to db here probably
     const result = command.execute(command.payload);
 
     if (result instanceof Promise) {
