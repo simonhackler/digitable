@@ -1,6 +1,6 @@
 import { Client, Room } from "colyseus";
 
-import { BoardgameRoomState, Player, Card } from "./schema/MyRoomState";
+import { BoardgameRoomState, Player, BoardItem } from "./schema/MyRoomState";
 import { Command, Dispatcher } from "../command";
 
 export class CommandRoom extends Room<BoardgameRoomState> {
@@ -36,7 +36,7 @@ export class CommandRoom extends Room<BoardgameRoomState> {
     }
 }
 
-function getValidCard(state: BoardgameRoomState, cardId: string, sessionId: string, allowOwned: boolean = true): Card | null {
+function getValidCard(state: BoardgameRoomState, cardId: string, sessionId: string, allowOwned: boolean = true): BoardItem | null {
     const card = state.cards.get(cardId);
     if (!card) {
         console.error("Invalid card id:", cardId);
@@ -79,7 +79,7 @@ export class InitCommand extends Command<CommandRoom, {
     execute(payload: this["payload"]) {
         for (let i = 0; i < payload.cardAmount; i++) {
             const cardId = crypto.randomUUID();
-            const card = new Card();
+            const card = new BoardItem();
             card.x = 50 + i * 220;
             card.y = 50 + i * 320;
             card.isFaceUp = true;
@@ -151,7 +151,7 @@ export class DrawCommand extends Command<CommandRoom, {
     validate(payload: this["payload"]) {
         const card = getValidCard(this.state, payload.cardId, payload.sessionId, false);
         if (!card) return false;
-        
+
         const player = this.state.players.get(payload.sessionId);
         if (!player) {
             console.error("Player not found:", payload.sessionId);
@@ -177,13 +177,13 @@ export class PlayCommand extends Command<CommandRoom, {
     validate(payload: this["payload"]) {
         const card = getValidCard(this.state, payload.cardId, payload.sessionId, true);
         if (!card) return false;
-        
+
         const player = this.state.players.get(payload.sessionId);
         if (!player) {
             console.error("Player not found:", payload.sessionId);
             return false;
         }
-        
+
         if (!player.hand.has(payload.cardId)) {
             console.warn(`Card ${payload.cardId} is not in player's hand`);
             return false;

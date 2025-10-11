@@ -10,6 +10,36 @@ export class BoardItem extends Schema {
     @type("boolean") visible: boolean;
 }
 
+export class Stackable extends Schema {
+
+}
+
+export class Positionable extends Schema {
+    @type("number") x: number;
+    @type("number") y: number;
+}
+
+export class Flippable extends Schema {
+    @type("boolean") isFaceUp: boolean;
+}
+
+export class Component extends Schema {
+    @type("string") id: string = "";
+}
+
+export class Item extends Schema {
+    @type(Positionable) position: Positionable = new Positionable();
+    @type(Flippable) flip: Flippable = new Flippable();
+    @type(Component) component: Component = new Component();
+}
+
+export class Deck extends Schema {
+    @type({array: String}) itemIds = new ArraySchema<string>();
+    @type(Positionable) position: Positionable = new Positionable();
+    @type(Flippable) flip: Flippable = new Flippable();
+    @type(Component) component: Component = new Component();
+}
+
 export class Player extends Schema {
     @type("string") id: string
     @type({map: BoardItem}) hand = new MapSchema<BoardItem>();

@@ -8,7 +8,7 @@
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import { error } from '@sveltejs/kit';
-	import { BoardgameRoomState, Card } from 'boardgame-server/src/rooms/schema/MyRoomState';
+	import { BoardgameRoomState, BoardItem } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
@@ -423,7 +423,7 @@
 			back: LayoutContainer;
 			index: number;
 		}[],
-		card: Card,
+		card: BoardItem,
 		i: number
 	) {
 		let x = card.x;
