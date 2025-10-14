@@ -8,7 +8,11 @@
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import { error } from '@sveltejs/kit';
-	import { BoardgameRoomState, BoardItem } from 'boardgame-server/src/rooms/schema/MyRoomState';
+	import {
+		BoardGameRoomState,
+		Component,
+		Positionable
+	} from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
@@ -30,7 +34,7 @@
 
 	async function createOrJoinRoom(client: Client, roomName: string) {
 		try {
-			return await client.joinOrCreate<BoardgameRoomState>(roomName);
+			return await client.joinOrCreate<BoardGameRoomState>(roomName);
 		} catch (e) {
 			console.error('Failed to join or create room:', e);
 			error(500, 'Could not join or create room');
@@ -38,7 +42,7 @@
 	}
 
 	const client = new Client('ws://localhost:2567');
-	let room: Room<BoardgameRoomState>;
+	let room: Room<BoardGameRoomState>;
 
 	let syncCards: Map<string, BoardGameItem> = new Map();
 
@@ -295,14 +299,16 @@
 								boardItem.rotation = 0;
 								boardItem.pivot.set(0, 0);
 								boardItem.alpha = 1.0;
-						        const worldPos = viewport.toWorld(e.global);
+								const worldPos = viewport.toWorld(e.global);
 
-                                drag.startGlobalX = e.globalX;
-                                drag.startGlobalY = e.globalY;
+								drag.startGlobalX = e.globalX;
+								drag.startGlobalY = e.globalY;
 
-                                const offset = e.global.subtract(new Point(wrapperBounds.minX, wrapperBounds.minY))
+								const offset = e.global.subtract(new Point(wrapperBounds.minX, wrapperBounds.minY));
 
-						        boardItem.position = (worldPos.subtract(offset).subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2)));
+								boardItem.position = worldPos
+									.subtract(offset)
+									.subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2));
 
 								boardContainer.addChild(boardItem);
 							}
@@ -312,7 +318,7 @@
 						const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
 						const delta = worldPos.subtract(startWorldPos);
 						const newPos = boardItem.position.add(delta);
-					    boardItem.position = newPos;
+						boardItem.position = newPos;
 					}
 				}
 			}
@@ -395,17 +401,17 @@
 		});
 		let s = getStateCallbacks(room);
 
-		s(room.state).cards.onAdd((card, index) => {
-			initCard(hybridResults, card, card.idx);
+		s(room.state).components.onAdd((component, index) => {
+			initComponent(hybridResults, component, component.idx);
 
-			s(card).onChange(() => {
-				if (card.owner === room.sessionId) return;
+			s(component).onChange(() => {
+				if (component.owner === room.sessionId) return;
 				const cardContainer = syncCards.get(index);
 				if (cardContainer) {
-					cardContainer.x = card.x;
-					cardContainer.y = card.y;
-					cardContainer.visible = card.visible;
-					if (cardContainer.isFrontShowing() !== card.isFaceUp) {
+					cardContainer.x = component.x;
+					cardContainer.y = component.y;
+					cardContainer.visible = component.visible;
+					if (cardContainer.isFrontShowing() !== component.isFaceUp) {
 						cardContainer.flip();
 					}
 				}
@@ -417,39 +423,38 @@
 		};
 	});
 
-	async function initCard(
+	async function initComponent(
 		hybridResults: {
 			front: LayoutContainer;
 			back: LayoutContainer;
 			index: number;
 		}[],
-		card: BoardItem,
+		component: Component,
+		state: BoardGameRoomState,
 		i: number
 	) {
-		let x = card.x;
-		const y = card.y;
-
 		const { front, back } = hybridResults[i];
 
-		const cardContainer = new BoardGameItem(front, back, card.id);
+		const cardContainer = new BoardGameItem(front, back, component.id);
 
-		cardContainer.x = x;
-		cardContainer.y = y;
+		const position = state.positions.get(component.id);
+		if (position) {
+			cardContainer.x = position.x;
+			cardContainer.y = position.y;
+            cardContainer.visible = position.visible;
+		}
 
-		syncCards.set(card.id, cardContainer);
+		syncCards.set(component.id, cardContainer);
 
 		cardContainer.scale.set(0.5);
-
 		cardContainer.eventMode = 'static';
 		cardContainer.cursor = 'pointer';
-
 		cardContainer.on('pointerover', () => {
 			if (!drag) cardContainer.tint = 0xcccccc;
 		});
 		cardContainer.on('pointerout', () => {
 			cardContainer.tint = 0xffffff;
 		});
-
 		boardContainer.addChild(cardContainer);
 	}
 

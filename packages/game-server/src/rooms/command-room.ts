@@ -1,9 +1,9 @@
 import { Client, Room } from "colyseus";
 
-import { BoardgameRoomState, Player, BoardItem } from "./schema/MyRoomState";
+import { BoardGameRoomState as BoardGameRoomState, Item, Player } from "./schema/MyRoomState";
 import { Command, Dispatcher } from "../command";
 
-export class CommandRoom extends Room<BoardgameRoomState> {
+export class CommandRoom extends Room<BoardGameRoomState> {
     dispatcher = new Dispatcher(this);
     roomCommands = new Map<string, new () => Command<CommandRoom, any>>([
         ["flip", FlipCommand],
@@ -15,7 +15,7 @@ export class CommandRoom extends Room<BoardgameRoomState> {
     ]);
 
     onCreate() {
-        this.setState(new BoardgameRoomState());
+        this.setState(new BoardGameRoomState());
         this.onMessage("cmd", (client, message) => {
             const CommandClass = this.roomCommands.get(message.commandType);
             if (CommandClass) {
@@ -36,17 +36,17 @@ export class CommandRoom extends Room<BoardgameRoomState> {
     }
 }
 
-function getValidCard(state: BoardgameRoomState, cardId: string, sessionId: string, allowOwned: boolean = true): BoardItem | null {
-    const card = state.cards.get(cardId);
-    if (!card) {
-        console.error("Invalid card id:", cardId);
+function getValidComponent(state: BoardGameRoomState, componentId: string, sessionId: string, allowOwned: boolean = true) {
+    const component = state.components.get(componentId);
+    if (!component) {
+        console.error("Invalid card id:", componentId);
         return null;
     }
-    if (!allowOwned && card.owner !== "" && card.owner !== sessionId) {
-        console.warn(`Card ${cardId} is currently owned by another player.`);
+    if (!allowOwned && component.owner !== "" && component.owner !== sessionId) {
+        console.warn(`Component ${componentId} is currently owned by another player.`);
         return null;
     }
-    return card;
+    return component;
 }
 
 
@@ -61,15 +61,16 @@ export class OnJoinCommand extends Command<CommandRoom, {
 }
 
 export class FlipCommand extends Command<CommandRoom, {
-    sessionId: string, cardId: string, isFaceUp: boolean
+    sessionId: string, componentId: string, isFaceUp: boolean
 }> {
     execute(payload: this["payload"]) {
-        const card = this.state.cards.get(payload.cardId);
-        card.isFaceUp = payload.isFaceUp;
+        const component = this.state.flippable.get(payload.componentId);
+        component.isFaceUp = payload.isFaceUp;
     }
 
     validate(payload: this["payload"]) {
-        return getValidCard(this.state, payload.cardId, payload.sessionId, false) !== null;
+        const component = getValidComponent(this.state, payload.componentId, payload.sessionId, false);
+        return this.state.flippable.has(component.id);
     }
 }
 
@@ -79,14 +80,16 @@ export class InitCommand extends Command<CommandRoom, {
     execute(payload: this["payload"]) {
         for (let i = 0; i < payload.cardAmount; i++) {
             const cardId = crypto.randomUUID();
-            const card = new BoardItem();
-            card.x = 50 + i * 220;
-            card.y = 50 + i * 320;
-            card.isFaceUp = true;
+            const card = new Item();
+            card.flip.isFaceUp = true;
+            card.position.x = 10 + i * 220;
+            card.position.y = 50 + i * 320;
             card.idx = i;
-            card.id = cardId;
-            card.visible = true;
-            this.state.cards.set(cardId, card);
+            card.component.id = cardId;
+            card.position.visible = true;
+            this.state.positions.set(cardId, card.position);
+            this.state.flippable.set(cardId, card.flip);
+            this.state.components.set(cardId, card.component);
         }
         console.log("Game initialized with", payload.cardAmount, "cards.");
     }
@@ -111,7 +114,7 @@ export class MoveCommand extends Command<CommandRoom, {
     }
 
     validate(payload: this["payload"]) {
-        return getValidCard(this.state, payload.cardId, payload.sessionId, false) !== null;
+        return getValidComponent(this.state, payload.cardId, payload.sessionId, false) !== null;
     }
 }
 
@@ -127,7 +130,7 @@ export class MoveEndCommand extends Command<CommandRoom, {
     }
 
     validate(payload: this["payload"]) {
-        const card = getValidCard(this.state, payload.cardId, payload.sessionId, true);
+        const card = getValidComponent(this.state, payload.cardId, payload.sessionId, true);
         if (!card) return false;
         if (card.owner !== payload.sessionId) {
             console.warn(`Card ${payload.cardId} moveend ignored; not owned by player.`);
@@ -149,7 +152,7 @@ export class DrawCommand extends Command<CommandRoom, {
     }
 
     validate(payload: this["payload"]) {
-        const card = getValidCard(this.state, payload.cardId, payload.sessionId, false);
+        const card = getValidComponent(this.state, payload.cardId, payload.sessionId, false);
         if (!card) return false;
 
         const player = this.state.players.get(payload.sessionId);
@@ -175,7 +178,7 @@ export class PlayCommand extends Command<CommandRoom, {
     }
 
     validate(payload: this["payload"]) {
-        const card = getValidCard(this.state, payload.cardId, payload.sessionId, true);
+        const card = getValidComponent(this.state, payload.cardId, payload.sessionId, true);
         if (!card) return false;
 
         const player = this.state.players.get(payload.sessionId);
