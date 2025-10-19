@@ -158,6 +158,7 @@ export async function createHybridContainer(svg: SVGSVGElement) {
 	return container;
 }
 
+
 export async function loadAndProcessCards(projectName: string, cardName: string, fileSystem: any) {
 	const fullFolderPath = `/${projectName}/system/${cardName}`;
 	const [frontFile, backFile] = await fileSystem.download([
@@ -179,11 +180,10 @@ export async function loadAndProcessCards(projectName: string, cardName: string,
 		svgTemplateFront,
 		svgTemplateBack
 	);
-
-	console.log('Loaded SVG Data:', svgData);
-	console.log('Spreadsheet Data:', spreadsheetData);
+    const idIndex = spreadsheetData.cols.findIndex(x => x.title == 'id');
 
 	const cards = spreadsheetData.data.map((row) => ({
+        id: row[idIndex],
 		front: generateSvg(
 			svgTemplateFront,
 			spreadsheetData.cols.map((c) => c.title as string),
@@ -198,12 +198,12 @@ export async function loadAndProcessCards(projectName: string, cardName: string,
 		)
 	}));
 
-	const hybridPromises = cards.map(async (card, index) => {
+	const hybridPromises = cards.map(async (card) => {
 		const [frontContainer, backContainer] = await Promise.all([
 			createHybridContainer(card.front),
 			createHybridContainer(card.back)
 		]);
-		return { front: frontContainer, back: backContainer, index };
+		return { id: card.id, front: frontContainer, back: backContainer };
 	});
 	const hybridResults = await Promise.all(hybridPromises);
 

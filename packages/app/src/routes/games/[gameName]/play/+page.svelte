@@ -11,7 +11,10 @@
 	import {
 		BoardGameRoomState,
 		Component,
-		Positionable
+		Positionable,
+
+		type InitGamePayload
+
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
@@ -80,9 +83,9 @@
 	let boardContainer: Container;
 	let handContainer: HandContainer;
 	let hybridResults: {
+		id: string;
 		front: LayoutContainer;
 		back: LayoutContainer;
-		index: number;
 	}[];
 
 	let viewport: Viewport;
@@ -116,6 +119,15 @@
 		return null;
 	}
 
+    // Can init stacks, or singular components with ids and containers
+    // So one map of components and one map of stacks with stacks having maps of components
+    interface InitStructure {
+
+    }
+
+	function parsePayload(payloadData: string[]): InitGamePayload {
+	}
+
 	onMount(async () => {
 		// Disable native context menu on the entire page
 		const handleContextMenu = (e: Event) => {
@@ -135,7 +147,9 @@
 
 		const previewer = new PreviewHelper(app);
 		previewer.previewContainer.zIndex = 10000;
+
 		hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
+
 		initDevtools({ app });
 		window.__PIXI_DEVTOOLS__ = {
 			app
@@ -266,7 +280,7 @@
 					room.send('cmd', {
 						commandType: 'move',
 						payload: {
-							cardId: boardItem.id,
+							componentId: boardItem.id,
 							x: boardItem.x,
 							y: boardItem.y
 						}
@@ -395,22 +409,23 @@
 		room = await createOrJoinRoom(client, 'my_room');
 		room.send('cmd', {
 			commandType: 'init',
-			payload: {
-				cardAmount: hybridResults.length
-			}
+			payload: { ids: componentIds }
 		});
 		let s = getStateCallbacks(room);
 
 		s(room.state).components.onAdd((component, index) => {
-			initComponent(hybridResults, component, component.idx);
+			initComponent(hybridResults, component, room.state);
 
 			s(component).onChange(() => {
 				if (component.owner === room.sessionId) return;
 				const cardContainer = syncCards.get(index);
 				if (cardContainer) {
-					cardContainer.x = component.x;
-					cardContainer.y = component.y;
-					cardContainer.visible = component.visible;
+					const position = room.state.positions.get(component.id);
+					if (position) {
+						cardContainer.x = position.x;
+						cardContainer.y = position.y;
+						cardContainer.visible = position.visible;
+					}
 					if (cardContainer.isFrontShowing() !== component.isFaceUp) {
 						cardContainer.flip();
 					}
@@ -427,12 +442,11 @@
 		hybridResults: {
 			front: LayoutContainer;
 			back: LayoutContainer;
-			index: number;
 		}[],
 		component: Component,
-		state: BoardGameRoomState,
-		i: number
+		state: BoardGameRoomState
 	) {
+		const i = component.idx; // TODO i. How to init this properly. Need a real structure etc. Just having on the component is fine for now?
 		const { front, back } = hybridResults[i];
 
 		const cardContainer = new BoardGameItem(front, back, component.id);
@@ -441,7 +455,7 @@
 		if (position) {
 			cardContainer.x = position.x;
 			cardContainer.y = position.y;
-            cardContainer.visible = position.visible;
+			cardContainer.visible = position.visible;
 		}
 
 		syncCards.set(component.id, cardContainer);

@@ -1,5 +1,6 @@
 import { ArraySchema, MapSchema, Schema, SetSchema, type } from "@colyseus/schema";
 
+
 // export class BoardItem extends Schema {
 //     @type("number") x: number;
 //     @type("number") y: number;
@@ -11,7 +12,9 @@ import { ArraySchema, MapSchema, Schema, SetSchema, type } from "@colyseus/schem
 // }
 //
 
-
+export interface InitGamePayload {
+    stacks: { id: string; componentIds: string[] }[];
+}
 // Board, Tokens, Tiles, Figures, Cards, Dice
 export class Positionable extends Schema {
     @type("number") x: number;
@@ -30,17 +33,20 @@ export class Component extends Schema {
 }
 
 export class Item extends Schema {
-    @type("number") idx: number;
     @type(Component) component = new Component();
     @type(Positionable) position = new Positionable();
     @type(Flippable) flip = new Flippable();
 }
 
+export class Stack extends Schema {
+    @type([ "string" ]) componentIds = new ArraySchema<string>();
+}
+
 export class Deck extends Schema {
     @type(Component) component = new Component();
-    @type({ set: String }) itemIds = new SetSchema<string>();
     @type(Positionable) position = new Positionable();
     @type(Flippable) flip = new Flippable();
+    @type(Stack) stack = new Stack();
 }
 
 export class Player extends Schema {
@@ -57,5 +63,6 @@ export class BoardGameRoomState extends Schema {
     @type({ map: Component }) components = new MapSchema<Component>();
     @type({ map: Positionable }) positions = new MapSchema<Positionable>();
     @type({ map: Flippable }) flippable = new MapSchema<Flippable>();
+    @type({ map: Stack }) stacks = new MapSchema<Stack>();
     @type({ map: Player }) players = new MapSchema<Player>();
 }
