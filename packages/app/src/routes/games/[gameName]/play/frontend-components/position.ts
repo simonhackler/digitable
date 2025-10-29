@@ -14,10 +14,10 @@ export class Position {
     room: Room<BoardGameRoomState>;
     sessionId: string;
 
-    constructor(room: Room<BoardGameRoomState>, sessionId: string, component: Component, container: Container, position: Positionable, s: SchemaCallbackProxy<BoardGameRoomState>) {
+    constructor(room: Room<BoardGameRoomState>, component: Component, container: Container, position: Positionable, s: SchemaCallbackProxy<BoardGameRoomState>) {
         // This will be the same on every single one of these classes.
         this.room = room;
-        this.sessionId = sessionId;
+        this.sessionId = room.sessionId;
         this.container = container;
         this.component = component;
 

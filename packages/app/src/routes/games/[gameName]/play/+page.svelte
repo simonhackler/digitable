@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { type SchemaCallbackProxy } from '@colyseus/schema';
 	import { Client, Room, getStateCallbacks } from 'colyseus.js';
 	import { Application, Container, Point, Rectangle } from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
@@ -12,9 +13,7 @@
 		BoardGameRoomState,
 		Component,
 		Positionable,
-
 		type InitGamePayload
-
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
@@ -27,6 +26,7 @@
 	import { pixiToCSSCoordinates } from './coordinate-utils';
 	import { createViewport } from './viewport-utils';
 	import { HandContainer } from './HandContainer';
+	import { Position } from './frontend-components/position';
 
 	let canvasContainer: HTMLDivElement;
 	let app: Application;
@@ -80,13 +80,15 @@
 		closeContextMenu();
 	}
 
-	let boardContainer: Container;
-	let handContainer: HandContainer;
-	let hybridResults: {
+	interface ParsedSvg {
 		id: string;
 		front: LayoutContainer;
 		back: LayoutContainer;
-	}[];
+	}
+
+	let boardContainer: Container;
+	let handContainer: HandContainer;
+	let hybridResults: ParsedSvg[];
 
 	let viewport: Viewport;
 
@@ -119,13 +121,14 @@
 		return null;
 	}
 
-    // Can init stacks, or singular components with ids and containers
-    // So one map of components and one map of stacks with stacks having maps of components
-    interface InitStructure {
-
-    }
-
-	function parsePayload(payloadData: string[]): InitGamePayload {
+	// Can init stacks, or singular components with ids and containers
+	// So one map of components and one map of stacks with stacks having maps of components
+	function parsePayload(parsedSvgs: ParsedSvg[]): InitGamePayload {
+		const res = parsedSvgs.map((x) => {
+			return x.id;
+		});
+		const payload: InitGamePayload = { stacks: [{ componentIds: res }] };
+		return payload;
 	}
 
 	onMount(async () => {
@@ -409,28 +412,12 @@
 		room = await createOrJoinRoom(client, 'my_room');
 		room.send('cmd', {
 			commandType: 'init',
-			payload: { ids: componentIds }
+			payload: parsePayload(hybridResults)
 		});
 		let s = getStateCallbacks(room);
 
 		s(room.state).components.onAdd((component, index) => {
-			initComponent(hybridResults, component, room.state);
-
-			s(component).onChange(() => {
-				if (component.owner === room.sessionId) return;
-				const cardContainer = syncCards.get(index);
-				if (cardContainer) {
-					const position = room.state.positions.get(component.id);
-					if (position) {
-						cardContainer.x = position.x;
-						cardContainer.y = position.y;
-						cardContainer.visible = position.visible;
-					}
-					if (cardContainer.isFrontShowing() !== component.isFaceUp) {
-						cardContainer.flip();
-					}
-				}
-			});
+			initComponent(hybridResults, component, room.state, s);
 		});
 
 		return () => {
@@ -439,37 +426,41 @@
 	});
 
 	async function initComponent(
-		hybridResults: {
-			front: LayoutContainer;
-			back: LayoutContainer;
-		}[],
+		hybridResults: ParsedSvg[],
 		component: Component,
-		state: BoardGameRoomState
+		state: BoardGameRoomState,
+        s: SchemaCallbackProxy<BoardGameRoomState>
 	) {
-		const i = component.idx; // TODO i. How to init this properly. Need a real structure etc. Just having on the component is fine for now?
-		const { front, back } = hybridResults[i];
+		if (component.type == 'stack') {
+            console.log("STACK!!!");
+		} else {
+            const card = hybridResults.find(x => x.id == component.id); // This is never big enough to need a map
+            if (!card) {
+                throw new Error("card not found");
+            }
+			const cardContainer = new BoardGameItem(card.front, card.back, component.id);
+			const position = state.positions.get(component.id);
+			if (position) {
+                const frontendPosition = new Position(room, component, cardContainer, position, s)
+			}
+            const flip = state.flippable.get(component.id);
+            if (flip) {
+                // Todo implement
+            }
 
-		const cardContainer = new BoardGameItem(front, back, component.id);
+			syncCards.set(component.id, cardContainer);
 
-		const position = state.positions.get(component.id);
-		if (position) {
-			cardContainer.x = position.x;
-			cardContainer.y = position.y;
-			cardContainer.visible = position.visible;
+			cardContainer.scale.set(0.5);
+			cardContainer.eventMode = 'static';
+			cardContainer.cursor = 'pointer';
+			cardContainer.on('pointerover', () => {
+				if (!drag) cardContainer.tint = 0xcccccc;
+			});
+			cardContainer.on('pointerout', () => {
+				cardContainer.tint = 0xffffff;
+			});
+			boardContainer.addChild(cardContainer);
 		}
-
-		syncCards.set(component.id, cardContainer);
-
-		cardContainer.scale.set(0.5);
-		cardContainer.eventMode = 'static';
-		cardContainer.cursor = 'pointer';
-		cardContainer.on('pointerover', () => {
-			if (!drag) cardContainer.tint = 0xcccccc;
-		});
-		cardContainer.on('pointerout', () => {
-			cardContainer.tint = 0xffffff;
-		});
-		boardContainer.addChild(cardContainer);
 	}
 
 	onDestroy(() => {

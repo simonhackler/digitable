@@ -13,7 +13,7 @@ import { ArraySchema, MapSchema, Schema, SetSchema, type } from "@colyseus/schem
 //
 
 export interface InitGamePayload {
-    stacks: { id: string; componentIds: string[] }[];
+    stacks: { componentIds: string[] }[];
 }
 // Board, Tokens, Tiles, Figures, Cards, Dice
 export class Positionable extends Schema {
