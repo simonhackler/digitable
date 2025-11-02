@@ -1,20 +1,9 @@
 import { ArraySchema, MapSchema, Schema, SetSchema, type } from "@colyseus/schema";
 
-
-// export class BoardItem extends Schema {
-//     @type("number") x: number;
-//     @type("number") y: number;
-//     @type("boolean") isFaceUp: boolean;
-//     @type("string") owner: string = "";
-//     @type("string") id: string = "";
-//     @type("number") idx: number;
-//     @type("boolean") visible: boolean;
-// }
-//
-
 export interface InitGamePayload {
     stacks: { componentIds: string[] }[];
 }
+
 // Board, Tokens, Tiles, Figures, Cards, Dice
 export class Positionable extends Schema {
     @type("number") x: number;
