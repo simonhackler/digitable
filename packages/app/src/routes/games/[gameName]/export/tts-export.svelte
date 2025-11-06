@@ -28,6 +28,7 @@
 	let sheetEl: HTMLDivElement;
 	const fileSytem = getFileSystemContext();
 
+    // TODO Why in a effect? rendering? I will have to check it out again
 	$effect(() => {
 		svgs.forEach((svg) => {
 			svg.removeAttribute('width');

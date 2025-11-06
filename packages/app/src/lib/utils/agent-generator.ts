@@ -4,7 +4,7 @@ import type { Adapter } from '$lib/components/file-browser/adapters/adapter.js';
 import agentTemplate from '$lib/templates/agents/boardgame-discovery-agent.md?raw';
 import createGameCommand from '$lib/templates/commands/create-game.md?raw';
 import createSvgCommand from '$lib/templates/commands/create-svg.md?raw';
-import placeholderFrontSvg from '../../../static/placeholder.svg?raw';
+import placeholderFrontSvg from '../../placeholder.svg?raw';
 
 export async function generateAgentFiles(adapter: Adapter) {
 	const schemaJson = generateSchemaJson();
