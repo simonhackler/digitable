@@ -30,7 +30,11 @@
   "dependencies": {
     "@pixi/devtools": "^2.0.1",
     "@pixi/layout": "^3.2.0",
+    "@sveltejs/kit": "^2.48.4",
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "pixi-viewport": "^6.0.3",
-    "pixi.js": "^8.14.0"
+    "pixi.js": "^8.14.0",
+    "svelte": "^5.43.4",
+    "svelte-check": "^4.3.3"
   }
 }
