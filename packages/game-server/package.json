@@ -33,6 +33,7 @@
   "dependencies": {
     "@colyseus/monitor": "^0.16.0",
     "@colyseus/playground": "^0.16.0",
+    "@colyseus/schema": "^3.0.60",
     "@colyseus/tools": "^0.16.0",
     "colyseus": "^0.16.0",
     "debug": "^4.4.3",

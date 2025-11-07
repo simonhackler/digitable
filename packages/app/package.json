@@ -18,6 +18,7 @@
 		"build-storybook": "storybook build"
 	},
 	"dependencies": {
+		"@colyseus/schema": "^3.0.60",
 		"@pixi/marquee-selection": "^1.0.2",
 		"@supabase/supabase-js": "^2.55.0",
 		"@types/jspreadsheet-ce": "^4.7.9",

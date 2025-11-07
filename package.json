@@ -23,14 +23,14 @@
   },
   "devDependencies": {
     "@types/debug": "^4.1.12",
-    "@types/node": "^20.19.11",
+    "@types/node": "^20.19.24",
     "concurrently": "^9.2.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@pixi/devtools": "^2.0.1",
-    "@pixi/layout": "^3.1.0",
+    "@pixi/layout": "^3.2.0",
     "pixi-viewport": "^6.0.3",
-    "pixi.js": "^8.13.2"
+    "pixi.js": "^8.14.0"
   }
 }
