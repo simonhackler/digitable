@@ -80,9 +80,14 @@
 			onExported(sheets[index]);
 		} catch (error) {
 			console.error('Error taking image:', error);
-			// console.error(error.target);
-			// Parent
-			console.error(error.target.parentNode);
+			console.error('Sheet element:', sheetEl);
+			console.error('Current sheet:', sheets[index]);
+			console.error('SVGs in current sheet:', svgs.length);
+			// Log more detailed information about the error
+			if (error instanceof Error) {
+				console.error('Error message:', error.message);
+				console.error('Error stack:', error.stack);
+			}
 		}
 	}
 

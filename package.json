@@ -25,6 +25,8 @@
     "@types/debug": "^4.1.12",
     "@types/node": "^20.19.24",
     "concurrently": "^9.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-storybook": "^10.0.6",
     "typescript": "^5.9.3"
   },
   "dependencies": {

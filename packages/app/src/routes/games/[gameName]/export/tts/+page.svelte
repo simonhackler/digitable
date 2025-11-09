@@ -11,12 +11,20 @@
 	const projectData = getExportContext();
 	const fileSystem = getFileSystemContext();
 
-	const sheets = $derived(
-		projectData.projects.flatMap((p) => [
-			{ name: p.name, svgs: p.svgsFront },
-			{ name: `${p.name}_back`, svgs: p.svgsBack }
-		])
+	const projectSheets = $derived(
+		projectData.projects.map((p) => {
+            const res: Sheet[] = []
+            for (let i = 0; i <= p.svgsFront.length; i += 70) {
+                const name = `${p.name}_${i}_${i+70}`
+                res.push(
+				    { name, svgs: p.svgsFront.slice(i, i + 70) },
+				    { name: `${name}_back`, svgs: p.svgsBack.slice(i, i + 70) }
+                )
+            }
+            return {name: p.name, sheets: res}
+		})
 	);
+    const sheets = $derived(projectSheets.flatMap(p => p.sheets));
 
 	let exportIndex = $state(0);
 	let finished = $state(false);
@@ -52,11 +60,25 @@
 
 		let deckIndex = 1;
 		const path = `${projectName}/tts-export`;
-		for (const p of projectData.projects) {
-			const faceUrl = `file:///home/simon/data/projects/boardgame/projects/${path}/${p.name}_sheet.png`;
-			const backUrl = `file:///home/simon/data/projects/boardgame/projects/${path}/${p.name}_back_sheet.png`;
 
-			const cardCount = p.svgsFront.length; // already includes "Copies"
+        for (const project of projectSheets) {
+		    for (let i = 0; i < project.sheets.length; i += 2) {
+            }
+        }
+
+		for (let i = 0; i < sheets.length; i += 2) {
+			const frontSheet = sheets[i];
+			const backSheet = sheets[i + 1];
+
+			// Skip if this is a back sheet (we process them in pairs)
+			if (frontSheet.name.includes('_back_sheet')) {
+				continue;
+			}
+
+			const faceUrl = `file:///home/simon/data/projects/boardgame/projects/${path}/${frontSheet.name}_sheet.png`;
+			const backUrl = `file:///home/simon/data/projects/boardgame/projects/${path}/${backSheet.name}_sheet.png`;
+
+			const cardCount = frontSheet.svgs.length;
 			const numWidth = Math.min(cardCount, CARDS_PER_ROW);
 			const numHeight = Math.ceil(cardCount / CARDS_PER_ROW);
 
@@ -70,8 +92,8 @@
 				Type: 0 // rounded-rect
 			};
 
-			for (let i = 0; i < cardCount; i++) {
-				deckIDs.push(deckIndex * 100 + i); // 101, 102, …
+			for (let j = 0; j < cardCount; j++) {
+				deckIDs.push(deckIndex * 100 + j); // 101, 102, …
 			}
 			deckIndex++;
 		}
@@ -107,6 +129,7 @@
 		const jsonFile = new File([jsonBlob], `${projectName}.json`);
 		await fileSystem.upload(jsonFile, path, true);
 		finished = true;
+        console.log("exported");
 	}
 
 	async function onExported(sheet: Sheet) {
@@ -130,7 +153,7 @@
 
 <div class="hide">
 	<div>
-		<TtsExport {sheets} gameName={projectName} {onExported} />
+		<TtsExport sheets={sheets} gameName={projectName} {onExported} />
 	</div>
 </div>
 
