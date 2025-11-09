@@ -72,10 +72,17 @@
 			await fileSytem.upload(file, `${gameName}/tts-export`, true);
 			if (index < sheets.length - 1) {
 				index += 1;
-				svgs = sheets[index].svgs.map((svg) => {
+				const svgsReal = sheets[index].svgs.map((svg) => {
 					const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
 					return clonedSvg;
 				});
+                const missing = Math.max(11 - svgsReal.length, 0); //TTS expects 2 rows per sheet, hacky
+                console.log('SVGS for next sheet:', svgsReal.length, 'missing:', missing);
+                for (let i = 0; i < missing; i++) {
+					const clonedSvg = sheets[index].svgs[0].cloneNode(true) as SVGSVGElement;
+                    svgsReal.push(clonedSvg);
+                }
+                svgs = svgsReal;
 			}
 			onExported(sheets[index]);
 		} catch (error) {
