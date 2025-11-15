@@ -2,8 +2,10 @@
   "files": [],
   "references": [
     {
-      "path": "./packages/app",
-      "path": "./packages/game-server",
+      "path": "./packages/app"
+    },
+    {
+      "path": "./packages/game-server"
     }
   ]
 }
