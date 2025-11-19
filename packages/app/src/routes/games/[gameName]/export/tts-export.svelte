@@ -19,13 +19,15 @@
 	} = $props();
 
 	let index = $state(0);
-	let svgs: SVGSVGElement[] = $state(
-		sheets[0].svgs.map((svg) => {
-			const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
-			return clonedSvg;
-		})
-	);
-	let sheetEl: HTMLDivElement;
+
+	// let svgs: SVGSVGElement[] = $state(
+	// 	sheets[0].svgs.map((svg) => {
+	// 		const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+	// 		return clonedSvg;
+	// 	})
+	// );
+	// let sheetEl: HTMLDivElement;
+    let svgs: SVGSVGElement[] = $state([]);
 	const fileSytem = getFileSystemContext();
 
 	$effect(() => {

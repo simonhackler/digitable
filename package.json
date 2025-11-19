@@ -24,10 +24,10 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/debug": "^4.1.12",
-    "@types/node": "^20.19.24",
+    "@types/node": "^24.10.1",
     "concurrently": "^9.2.1",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-storybook": "^10.0.6",
+    "eslint-plugin-storybook": "^10.0.7",
     "eslint-plugin-svelte": "^3.13.0",
     "globals": "^16.5.0",
     "typescript": "^5.9.3",
@@ -37,6 +37,6 @@
     "@pixi/devtools": "^2.0.1",
     "@pixi/layout": "^3.2.0",
     "pixi-viewport": "^6.0.3",
-    "pixi.js": "^8.14.0"
+    "pixi.js": "^8.14.1"
   }
 }

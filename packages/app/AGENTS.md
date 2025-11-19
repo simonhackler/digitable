@@ -22,6 +22,7 @@ This file contains essential information for AI coding agents working in this re
 - AVOID let statements
 - PREFER single word variable names where possible
 - ALWAYS use bun
+- Svelte 5 now supports the experimental async api. Which allows top level await!
 
 ## Component Guidelines
 

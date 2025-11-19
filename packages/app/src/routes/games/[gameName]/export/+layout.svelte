@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
-	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
+	import { Folder, isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndData } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
@@ -14,10 +14,10 @@
 	const projectData = new ProjectData();
 	setExportContext(() => projectData);
 
-	const root = await fileSystem.getRootFolder();
+	const { children } = $props();
 
-	async function getFoldersToExport() {
-		const res = root.result;
+	async function getFoldersToExport(root: Folder, projectName: string, projectData: ProjectData) {
+		const res = root;
 		console.log(res);
 		if (res) {
 			for (const child of res.children) {
@@ -94,9 +94,10 @@
 		}
 	}
 
-	await getFoldersToExport();
-
-	const { children } = $props();
+	const root = await fileSystem.getRootFolder();
+	if (root.result) {
+		await getFoldersToExport(root.result, projectName, projectData);
+	}
 </script>
 
 {@render children()}
