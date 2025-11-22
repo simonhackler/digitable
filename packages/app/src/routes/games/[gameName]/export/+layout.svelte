@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { createContext } from 'svelte';
 	import { page } from '$app/state';
 	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
 	import { Folder, isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
@@ -6,19 +7,23 @@
 	import { loadSvgsAndData } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import type { Project } from './types';
-	import { ProjectData, setExportContext } from './export-context.svelte';
+	import { ProjectData, setExportContext, setProjectDataContext } from './export-context.svelte';
+	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
 	const projectName = $derived(page.params.gameName);
 	const fileSystem = getFileSystemContext();
 
 	const projectData = new ProjectData();
-	setExportContext(() => projectData);
+	// setExportContext(() => projectData);
 
 	const { children } = $props();
 
-	async function getFoldersToExport(root: Folder, projectName: string, projectData: ProjectData) {
-		const res = root;
-		console.log(res);
+	async function getFoldersToExport(fileSystem: Adapter, projectName: string, projectData: ProjectData) {
+        const root = await fileSystem.getRootFolder();
+        if (!root.result) {
+            throw new Error('No root folder found');
+        }
+		const res = root.result;
 		if (res) {
 			for (const child of res.children) {
 				console.log(child.name);
@@ -92,12 +97,11 @@
 				}
 			}
 		}
+        return projectData;
 	}
 
-	const root = await fileSystem.getRootFolder();
-	if (root.result) {
-		await getFoldersToExport(root.result, projectName, projectData);
-	}
+    const getFoldersProm = $derived(getFoldersToExport(fileSystem, projectName, projectData));
+    setProjectDataContext(() => getFoldersProm);
 </script>
 
 {@render children()}

@@ -250,10 +250,6 @@
 	{/if}
 </div>
 
-<!-- <div id="print-grid" style:--col={width} style:--row={height} aria-hidden="true"></div> -->
-<!-- </div> -->
-
-<!-- ---------- print-aware layout ---------- -->
 <style>
 	.sheet {
 		visibility: visible;

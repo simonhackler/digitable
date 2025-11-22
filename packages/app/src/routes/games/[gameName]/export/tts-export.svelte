@@ -19,15 +19,13 @@
 	} = $props();
 
 	let index = $state(0);
-
-	// let svgs: SVGSVGElement[] = $state(
-	// 	sheets[0].svgs.map((svg) => {
-	// 		const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
-	// 		return clonedSvg;
-	// 	})
-	// );
-	// let sheetEl: HTMLDivElement;
-    let svgs: SVGSVGElement[] = $state([]);
+	let svgs: SVGSVGElement[] = $state(
+		sheets[0].svgs.slice(0).map((svg) => { // TODO: Why does this work and with the "normal" svg way it doesn't? Very confusing
+			const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+			return clonedSvg;
+		})
+	);
+	let sheetEl: HTMLDivElement;
 	const fileSytem = getFileSystemContext();
 
 	$effect(() => {
@@ -44,6 +42,7 @@
 			});
 		});
 	});
+
 
 	async function takeImage() {
 		try {

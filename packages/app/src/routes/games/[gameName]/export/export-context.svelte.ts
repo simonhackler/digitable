@@ -1,4 +1,4 @@
-import { getContext, setContext } from 'svelte';
+import { getContext, setContext, createContext } from 'svelte';
 import type { Project } from './types';
 
 const key = 'export';
@@ -19,3 +19,5 @@ export function getExportContext(): ProjectData {
 	const contextFn = getContext<() => ProjectData>(key);
 	return contextFn();
 }
+
+export const [getProjectDataContext, setProjectDataContext] = createContext<() => Promise<ProjectData>>();

@@ -4,12 +4,13 @@
 	import TtsExport, { type Sheet } from '../tts-export.svelte';
 	import TtsPreview from '../tts-preview.svelte';
 	import { Tween } from 'svelte/motion';
-	import { getExportContext } from '../export-context.svelte';
+	import { getProjectDataContext } from '../export-context.svelte';
 	import { getFileSystemContext } from '../../../context';
 
 	const projectName = $derived(page.params.gameName);
-	const projectData = getExportContext();
 	const fileSystem = getFileSystemContext();
+    const proj = getProjectDataContext();
+    const projectData = await proj();
 
 	const projectSheets = $derived(
 		projectData.projects.map((p) => {
@@ -135,6 +136,8 @@
 	}
 
 	$inspect(exportIndex, 'exportIndex');
+    $inspect(projectSheets)
+    $inspect(exportingSheet)
 </script>
 
 <div class="m-4 flex flex-col items-center justify-center">
