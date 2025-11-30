@@ -34,6 +34,7 @@ export class Position {
     // IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client
     // Or I will need a frontend command or something like that?
     // I somehow want to tightly couple server and frontend commands
+    // How will the commands then have to look like?
     moveTo(x: number, y: number) {
         if (this.component.owner !== this.sessionId && this.component.owner !== '') {
             console.warn(`Component ${this.component.id} is currently owned by another player.`);
@@ -58,8 +59,8 @@ export class Position {
             commandType: 'moveend',
             payload: {
                 cardId: this.component.id,
-                x: this.component.x,
-                y: this.component.y
+                x: this.container.x,
+                y: this.container.y
             }
         });
     }

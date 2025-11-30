@@ -108,9 +108,9 @@ export class InitCommand extends Command<CommandRoom, {
                 this.state.positions.set(cardId, card.position);
                 this.state.flippable.set(cardId, card.flip);
                 this.state.components.set(cardId, card.component);
+                deck.stack.componentIds.push(cardId);
             }
         }
-        console.log("Game initialized with");
     }
 
     validate(payload: this["payload"]) {

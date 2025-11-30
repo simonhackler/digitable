@@ -27,6 +27,7 @@
 	import { createViewport } from './viewport-utils';
 	import { HandContainer } from './HandContainer';
 	import { Position } from './frontend-components/position';
+	import { FrontendStack } from './frontend-components/frontend-stack';
 
 	let canvasContainer: HTMLDivElement;
 	let app: Application;
@@ -48,6 +49,7 @@
 	let room: Room<BoardGameRoomState>;
 
 	let syncCards: Map<string, BoardGameItem> = new Map();
+	let positions: Map<string, Position> = new Map();
 
 	// Context menu state
 	let showContextMenu = $state(false);
@@ -432,23 +434,41 @@
         s: SchemaCallbackProxy<BoardGameRoomState>
 	) {
 		if (component.type == 'stack') {
-            console.log("STACK!!!");
+            const stack = state.stacks.get(component.id);
+            if (!stack) {
+                throw new Error("stack not found");
+            }
+            const stacks: BoardGameItem[] = [];
+            for (const id of stack.componentIds) {
+                console.log(id);
+                if (!syncCards.has(id)) {
+                    initComponent(hybridResults, state.components.get(id)!, state, s);
+                }
+                stacks.push(syncCards.get(id)!)
+                positions.get(id)!.moveTo(100, 100); // Should then be unnecessary. Card positions will not matter anyway once added to the stack
+                // cards should be invisble then anyway
+            }
+            const stackContainer = new FrontendStack(room, component, stacks, stack, s)
 		} else {
             const card = hybridResults.find(x => x.id == component.id); // This is never big enough to need a map
             if (!card) {
                 throw new Error("card not found");
             }
+            if (syncCards.has(card.id)) {
+                return;
+            }
 			const cardContainer = new BoardGameItem(card.front, card.back, component.id);
+			syncCards.set(component.id, cardContainer);
 			const position = state.positions.get(component.id);
 			if (position) {
                 const frontendPosition = new Position(room, component, cardContainer, position, s)
+                positions.set(component.id, frontendPosition)
 			}
             const flip = state.flippable.get(component.id);
             if (flip) {
                 // Todo implement
             }
 
-			syncCards.set(component.id, cardContainer);
 
 			cardContainer.scale.set(0.5);
 			cardContainer.eventMode = 'static';
