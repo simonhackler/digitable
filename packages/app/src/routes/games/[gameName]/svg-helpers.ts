@@ -92,8 +92,6 @@ export function initialSetupForSvgItem(
 	const styleAttr = el.getAttribute('style') ?? '';
 	const shapeMatch = /shape-inside\s*:\s*url\(\s*#([^)]+)\)/i.exec(styleAttr);
 
-	// Let's see if this works without bbox. Would be incredible
-	// let { x, y, width, height } = el.getBBox();
 	let x = el.getAttribute('x');
 	let y = el.getAttribute('y');
 	let width = el.getAttribute('width');
@@ -120,6 +118,9 @@ export function initialSetupForSvgItem(
 	}
 
 	const fo = document.createElementNS(svg.namespaceURI, 'foreignObject') as SVGForeignObjectElement;
+    if (!x || !y) {
+        throw new Error(`Element ${elementId} is missing x or y attributes`);
+    }
 	fo.setAttribute('x', x.toString());
 	fo.setAttribute('y', y.toString());
 	fo.setAttribute('width', width.toString());
