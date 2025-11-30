@@ -20,7 +20,8 @@
 
 	let index = $state(0);
 	let svgs: SVGSVGElement[] = $state(
-		sheets[0].svgs.slice(0).map((svg) => { // TODO: Why does this work and with the "normal" svg way it doesn't? Very confusing
+		sheets[0].svgs.slice(0).map((svg) => {
+			// TODO: Why does this work and with the "normal" svg way it doesn't? Very confusing
 			const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
 			return clonedSvg;
 		})
@@ -42,7 +43,6 @@
 			});
 		});
 	});
-
 
 	async function takeImage() {
 		try {
@@ -77,13 +77,13 @@
 					const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
 					return clonedSvg;
 				});
-                const missing = Math.max(11 - svgsReal.length, 0); //TTS expects 2 rows per sheet, hacky
-                console.log('SVGS for next sheet:', svgsReal.length, 'missing:', missing);
-                for (let i = 0; i < missing; i++) {
+				const missing = Math.max(11 - svgsReal.length, 0); //TTS expects 2 rows per sheet, hacky
+				console.log('SVGS for next sheet:', svgsReal.length, 'missing:', missing);
+				for (let i = 0; i < missing; i++) {
 					const clonedSvg = sheets[index].svgs[0].cloneNode(true) as SVGSVGElement;
-                    svgsReal.push(clonedSvg);
-                }
-                svgs = svgsReal;
+					svgsReal.push(clonedSvg);
+				}
+				svgs = svgsReal;
 			}
 			onExported(sheets[index]);
 		} catch (error) {

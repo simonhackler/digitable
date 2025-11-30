@@ -9,8 +9,8 @@
 
 	const projectName = $derived(page.params.gameName);
 	const fileSystem = getFileSystemContext();
-    const proj = getProjectDataContext();
-    const projectData = await proj();
+	const proj = getProjectDataContext();
+	const projectData = await proj();
 
 	const projectSheets = $derived(
 		projectData.projects.map((p) => {
@@ -55,14 +55,13 @@
 		const CARDS_PER_ROW = 10; // <-- match whatever TtsExport used
 		const makeGUID = () => Math.random().toString(36).slice(2, 6);
 
-
 		const path = `${projectName}/tts-export`;
 
-        const ttsDecks = [];
+		const ttsDecks = [];
 		let deckIndex = 1;
 		for (const project of projectSheets) {
-		    const deckIDs: number[] = [];
-		    const customDeck: Record<string, any> = {};
+			const deckIDs: number[] = [];
+			const customDeck: Record<string, any> = {};
 			for (let i = 0; i < project.sheets.length; i += 2) {
 				const frontSheet = project.sheets[i];
 				const backSheet = project.sheets[i + 1];
@@ -97,7 +96,7 @@
 			}
 			const ttsDeck = {
 				Name: 'Deck',
-                Nickname: project.name,
+				Nickname: project.name,
 				Transform: {
 					posX: 3 * projectSheets.indexOf(project),
 					posY: 3,
@@ -116,7 +115,7 @@
 				LuaScriptState: '',
 				GUID: makeGUID()
 			};
-            ttsDecks.push(ttsDeck);
+			ttsDecks.push(ttsDeck);
 		}
 
 		const ttsSave = { ObjectStates: ttsDecks };
@@ -136,8 +135,8 @@
 	}
 
 	$inspect(exportIndex, 'exportIndex');
-    $inspect(projectSheets)
-    $inspect(exportingSheet)
+	$inspect(projectSheets);
+	$inspect(exportingSheet);
 </script>
 
 <div class="m-4 flex flex-col items-center justify-center">

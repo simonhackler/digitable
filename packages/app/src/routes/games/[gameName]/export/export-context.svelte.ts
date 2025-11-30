@@ -20,4 +20,5 @@ export function getExportContext(): ProjectData {
 	return contextFn();
 }
 
-export const [getProjectDataContext, setProjectDataContext] = createContext<() => Promise<ProjectData>>();
+export const [getProjectDataContext, setProjectDataContext] =
+	createContext<() => Promise<ProjectData>>();

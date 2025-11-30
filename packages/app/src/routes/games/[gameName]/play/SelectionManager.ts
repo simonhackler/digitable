@@ -65,4 +65,3 @@ export class SelectionManager {
 		item.addChild(g);
 	}
 }
-

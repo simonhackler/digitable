@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { createContext } from 'svelte';
+	import { createContext } from 'svelte';
 	import { page } from '$app/state';
 	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
 	import { Folder, isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
@@ -18,11 +18,15 @@
 
 	const { children } = $props();
 
-	async function getFoldersToExport(fileSystem: Adapter, projectName: string, projectData: ProjectData) {
-        const root = await fileSystem.getRootFolder();
-        if (!root.result) {
-            throw new Error('No root folder found');
-        }
+	async function getFoldersToExport(
+		fileSystem: Adapter,
+		projectName: string,
+		projectData: ProjectData
+	) {
+		const root = await fileSystem.getRootFolder();
+		if (!root.result) {
+			throw new Error('No root folder found');
+		}
 		const res = root.result;
 		if (res) {
 			for (const child of res.children) {
@@ -97,11 +101,11 @@
 				}
 			}
 		}
-        return projectData;
+		return projectData;
 	}
 
-    const getFoldersProm = $derived(getFoldersToExport(fileSystem, projectName, projectData));
-    setProjectDataContext(() => getFoldersProm);
+	const getFoldersProm = $derived(getFoldersToExport(fileSystem, projectName, projectData));
+	setProjectDataContext(() => getFoldersProm);
 </script>
 
 {@render children()}

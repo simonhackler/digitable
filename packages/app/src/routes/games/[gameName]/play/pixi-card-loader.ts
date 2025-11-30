@@ -158,7 +158,6 @@ export async function createHybridContainer(svg: SVGSVGElement) {
 	return container;
 }
 
-
 export async function loadAndProcessCards(projectName: string, cardName: string, fileSystem: any) {
 	const fullFolderPath = `/${projectName}/system/${cardName}`;
 	const [frontFile, backFile] = await fileSystem.download([
@@ -180,10 +179,10 @@ export async function loadAndProcessCards(projectName: string, cardName: string,
 		svgTemplateFront,
 		svgTemplateBack
 	);
-    const idIndex = spreadsheetData.cols.findIndex(x => x.title == 'id');
+	const idIndex = spreadsheetData.cols.findIndex((x) => x.title == 'id');
 
 	const cards = spreadsheetData.data.map((row) => ({
-        id: row[idIndex],
+		id: row[idIndex],
 		front: generateSvg(
 			svgTemplateFront,
 			spreadsheetData.cols.map((c) => c.title as string),

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { type SchemaCallbackProxy } from '@colyseus/schema';
+	import { type SchemaCallbackProxy } from '@colyseus/schema';
 	import { Client, Room, getStateCallbacks } from 'colyseus.js';
 	import { Application, Container, Point, Rectangle } from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
@@ -431,44 +431,43 @@
 		hybridResults: ParsedSvg[],
 		component: Component,
 		state: BoardGameRoomState,
-        s: SchemaCallbackProxy<BoardGameRoomState>
+		s: SchemaCallbackProxy<BoardGameRoomState>
 	) {
 		if (component.type == 'stack') {
-            const stack = state.stacks.get(component.id);
-            if (!stack) {
-                throw new Error("stack not found");
-            }
-            const stacks: BoardGameItem[] = [];
-            for (const id of stack.componentIds) {
-                console.log(id);
-                if (!syncCards.has(id)) {
-                    initComponent(hybridResults, state.components.get(id)!, state, s);
-                }
-                stacks.push(syncCards.get(id)!)
-                positions.get(id)!.moveTo(100, 100); // Should then be unnecessary. Card positions will not matter anyway once added to the stack
-                // cards should be invisble then anyway
-            }
-            const stackContainer = new FrontendStack(room, component, stacks, stack, s)
+			const stack = state.stacks.get(component.id);
+			if (!stack) {
+				throw new Error('stack not found');
+			}
+			const stacks: BoardGameItem[] = [];
+			for (const id of stack.componentIds) {
+				console.log(id);
+				if (!syncCards.has(id)) {
+					initComponent(hybridResults, state.components.get(id)!, state, s);
+				}
+				stacks.push(syncCards.get(id)!);
+				positions.get(id)!.moveTo(100, 100); // Should then be unnecessary. Card positions will not matter anyway once added to the stack
+				// cards should be invisble then anyway
+			}
+			const stackContainer = new FrontendStack(room, component, stacks, stack, s);
 		} else {
-            const card = hybridResults.find(x => x.id == component.id); // This is never big enough to need a map
-            if (!card) {
-                throw new Error("card not found");
-            }
-            if (syncCards.has(card.id)) {
-                return;
-            }
+			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map
+			if (!card) {
+				throw new Error('card not found');
+			}
+			if (syncCards.has(card.id)) {
+				return;
+			}
 			const cardContainer = new BoardGameItem(card.front, card.back, component.id);
 			syncCards.set(component.id, cardContainer);
 			const position = state.positions.get(component.id);
 			if (position) {
-                const frontendPosition = new Position(room, component, cardContainer, position, s)
-                positions.set(component.id, frontendPosition)
+				const frontendPosition = new Position(room, component, cardContainer, position, s);
+				positions.set(component.id, frontendPosition);
 			}
-            const flip = state.flippable.get(component.id);
-            if (flip) {
-                // Todo implement
-            }
-
+			const flip = state.flippable.get(component.id);
+			if (flip) {
+				// Todo implement
+			}
 
 			cardContainer.scale.set(0.5);
 			cardContainer.eventMode = 'static';
