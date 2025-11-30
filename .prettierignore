@@ -4,3 +4,13 @@ pnpm-lock.yaml
 yarn.lock
 bun.lock
 bun.lockb
+
+# Build outputs
+.svelte-kit/
+build/
+dist/
+packages/app/.svelte-kit/
+
+# Storybook
+.storybook/storybook-static/
+packages/app/.storybook/storybook-static/

@@ -1,30 +1,28 @@
 # AGENTS.md
+Essential information for AI coding agents working in this SVG Table monorepo.
+This project is a boardgame design and testing tool
 
-This file contains essential information for AI coding agents working in this repository.
+## Monorepo Structure
+- **Root**: Main package.json with workspace configuration
+- **packages/app/**: SvelteKit application (main frontend)
+- **packages/game-server/**: Colyseus game server
+- **projects/**: Game project files and assets
 
-## Code Style Guidelines
+## Build/Test Commands (use bun)
+- `bun dev` - Start both app and game server
+- `bun dev:app` - Start SvelteKit app only
+- `bun dev:server` - Start game server only
+- `bun build` - Build app for production
+- `bun test` - Run e2e tests (Playwright)
+- `bun test:e2e` - Run specific e2e test
+- `bun lint` - Check prettier and ESLint
+- `bun format` - Format with prettier
+- `bun check` - TypeScript and Svelte check
+- `bun storybook` - Run Storybook dev server
 
-- Svelte 5 with runes (`$state`, `$derived`, `$props`, `$bindable`)
-- Use `$lib/` imports for internal modules
-- Use Tailwind CSS
-- Use Top Level await, which is supported now in svelte 5
-- Use keyed each blocks `{#each expression as name (key)}...{/each}`
+## Key Technologies
+- **Frontend**: SvelteKit with Svelte 5, TypeScript, Tailwind CSS
+- **Backend**: Colyseus game server with TypeScript
+- **Testing**: Playwright for e2e, Vitest + Storybook for components
+- **Package Manager**: Bun (always use bun, not npm)
 
-## IMPORTANT
-- Try to keep things in one function unless composable or reusable
-- DO NOT do unnecessary destructuring of variables
-- DO NOT use else statements unless necessary
-- DO NOT use try/catch if it can be avoided
-- AVOID try/catch where possible
-- AVOID else statements
-- AVOID using any type
-- AVOID let statements
-- PREFER single word variable names where possible
-
-## Component Guidelines
-
-- Before creating new components, check `@ieedan/shadcn-svelte-extras` with jsrepo
-- Use the pinned version from jsrepo.json when fetching external components
-- Components should use TypeScript and proper type definitions
-- Use the `cn()` utility for className merging
-- Follow the existing component structure with module and instance scripts

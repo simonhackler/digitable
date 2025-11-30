@@ -6,8 +6,9 @@ node_modules
 .vercel
 .netlify
 .wrangler
-/.svelte-kit
-/build
+**/.svelte-kit
+**/build
+**/dist
 
 # OS
 .DS_Store
@@ -23,5 +24,10 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Storybook
 *storybook.log
 storybook-static
+
+# Colyseus
+.colyseus-cloud.json
+.devmode.json
