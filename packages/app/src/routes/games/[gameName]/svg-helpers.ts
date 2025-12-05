@@ -118,9 +118,9 @@ export function initialSetupForSvgItem(
 	}
 
 	const fo = document.createElementNS(svg.namespaceURI, 'foreignObject') as SVGForeignObjectElement;
-    if (!x || !y) {
-        throw new Error(`Element ${elementId} is missing x or y attributes`);
-    }
+	if (!x || !y) {
+		throw new Error(`Element ${elementId} is missing x or y attributes`);
+	}
 	fo.setAttribute('x', x.toString());
 	fo.setAttribute('y', y.toString());
 	fo.setAttribute('width', width.toString());

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { resolve } from '$app/paths';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -14,6 +15,10 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
+	import type { ResolvedPathname } from '$app/types';
+	import type { Pathname } from '$app/types';
+	import type { RouteId } from '$app/types';
+
 
 	let { activeGame }: { activeGame: Game | null } = $props();
 	let openCreateDeckDialog = $state(false);
@@ -31,7 +36,6 @@
 		onUpdate({ form }) {
 			if (form.valid) {
 				const path = `/games/${activeGame?.name}/decks/${form.data.deckName}/data`;
-				console.log('Form is valid, navigating to new deck', path);
 				switchPath(path);
 			}
 		}
@@ -39,7 +43,7 @@
 
 	async function switchPath(path: string) {
 		await tick();
-		await goto(path);
+		await goto(resolve(path));
 		openCreateDeckDialog = false;
 	}
 

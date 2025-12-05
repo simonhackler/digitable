@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { resolve } from '$app/paths';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import CreateMenu from './create-menu.svelte';
 	import ExportMenu from './export-menu.svelte';
@@ -19,7 +20,7 @@
 
 	function onProjectChange(project: Game) {
 		activeProject = project;
-		goto(`/games/${project.name}`);
+		goto(resolve(`/games/${project.name}`));
 	}
 </script>
 
