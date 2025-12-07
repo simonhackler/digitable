@@ -91,10 +91,26 @@
 			console.error('Sheet element:', sheetEl);
 			console.error('Current sheet:', sheets[index]);
 			console.error('SVGs in current sheet:', svgs.length);
-			// Log more detailed information about the error
-			if (error instanceof Error) {
+
+			// Special handling for html-to-image "image load failed" events
+			if (error instanceof Event) {
+				const target = (error as Event).target || (error as Event).currentTarget;
+
+				if (target instanceof HTMLImageElement) {
+					console.error('[takeImage] Broken image src:', target.src);
+					console.error('[takeImage] Image attributes:', {
+						crossOrigin: target.crossOrigin,
+						width: target.width,
+						height: target.height
+					});
+				} else {
+					console.error('[takeImage] Event target is not an HTMLImageElement:', target);
+				}
+			} else if (error instanceof Error) {
 				console.error('Error message:', error.message);
 				console.error('Error stack:', error.stack);
+			} else {
+				console.error('Unknown error type:', error);
 			}
 		}
 	}

@@ -7,7 +7,7 @@
 	import { loadSvgsAndData } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import type { Project } from './types';
-	import { ProjectData, setExportContext, setProjectDataContext } from './export-context.svelte';
+	import { ProjectData, setProjectDataContext } from './export-context.svelte';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
 	const projectName = $derived(page.params.gameName);

@@ -1,3 +1,4 @@
+import { assert } from '$lib/utils/assert';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import type { ColumnWithData } from './types';
 
@@ -85,7 +86,9 @@ export function initialSetupForSvgItem(
 	if (!el) {
 		return null;
 	} else if (el.tagName === 'image') {
-		updateSvgImageLink(el, imagePaths.get(data));
+        const path = imagePaths.get(data);
+        assert(path, `Image path for key ${data} not found.`);
+		updateSvgImageLink(el, path);
 	}
 	if (el.tagName !== 'text') return null;
 
