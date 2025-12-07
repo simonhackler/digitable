@@ -20,6 +20,7 @@
 	import { type CellValue } from 'jspreadsheet-ce';
 	import { loadSvgsAndData } from '../../../data-loader';
 	import type { SvgCard } from '../../../types';
+	import { requireParam } from '$lib/utils/assert';
 
 	const {
 		svgTemplateFront,
@@ -31,8 +32,8 @@
 		element: () => el
 	});
 
-	const projectName = $derived(page.params.gameName);
-	const cardName = $derived(page.params.deckName);
+	const projectName = $derived(requireParam('gameName'));
+	const cardName = $derived(requireParam('deckName'));
 	const fileSystem = getFileSystemContext();
 
 	const { svgData, spreadsheetData, imagePaths } = $derived(
@@ -116,6 +117,7 @@
 	let contextItems: SheetContextMenuItem[] = $state([]);
 
 	function initSpreadsheet(data: string[][], columns: Column[] = []) {
+        console.log("init spread");
 		if (!spreadsheetEl) return;
 
 		spreadsheet = jspreadsheet(spreadsheetEl, {

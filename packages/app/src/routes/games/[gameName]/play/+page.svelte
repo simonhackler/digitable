@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { type SchemaCallbackProxy } from '@colyseus/schema';
 	import { Client, Room, getStateCallbacks } from 'colyseus.js';
-	import { Application, Container, Point, Rectangle } from 'pixi.js';
+	import { Application, Container, FederatedPointerEvent, Point, Rectangle } from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
@@ -12,7 +12,6 @@
 	import {
 		BoardGameRoomState,
 		Component,
-		Positionable,
 		type InitGamePayload
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
@@ -28,6 +27,7 @@
 	import { HandContainer } from './HandContainer';
 	import { Position } from './frontend-components/position';
 	import { FrontendStack } from './frontend-components/frontend-stack';
+	import { assert } from '$lib/utils/assert';
 
 	let canvasContainer: HTMLDivElement;
 	let app: Application;
@@ -55,7 +55,7 @@
 	let showContextMenu = $state(false);
 	let contextMenuPosition = $state({ x: 0, y: 0 });
 
-	function handleRightClick(e: any) {
+	function handleRightClick(e: FederatedPointerEvent) {
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -153,6 +153,7 @@
 		const previewer = new PreviewHelper(app);
 		previewer.previewContainer.zIndex = 10000;
 
+        assert(projectName != undefined, 'Project name is undefined');
 		hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
 
 		initDevtools({ app });
@@ -248,7 +249,7 @@
 						c.x = 0;
 						c.y = 0;
 					} else {
-						handlePlayCard(c, e.globalX, e.globalY);
+						handlePlayCard(c);
 					}
 					c.cursor = 'pointer';
 				}
@@ -418,7 +419,7 @@
 		});
 		let s = getStateCallbacks(room);
 
-		s(room.state).components.onAdd((component, index) => {
+		s(room.state).components.onAdd((component, _index) => {
 			initComponent(hybridResults, component, room.state, s);
 		});
 
@@ -499,7 +500,7 @@
 		});
 	}
 
-	function handlePlayCard(item: BoardGameItem, x: number, y: number) {
+	function handlePlayCard(item: BoardGameItem) {
 		room.send('cmd', {
 			commandType: 'play',
 			payload: {

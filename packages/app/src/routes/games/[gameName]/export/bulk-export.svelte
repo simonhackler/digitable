@@ -1,17 +1,16 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
 	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndData } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import { Progress } from '$lib/components/ui/progress/index.js';
-	import TtsExport, { type Sheet } from './tts-export.svelte';
 	import { Tween } from 'svelte/motion';
 	import ExportPages from './export-pages.svelte';
 	import type { Project } from './types';
+	import { assert, requireParam } from '$lib/utils/assert';
 
-	const projectName = $derived(page.params.gameName);
+	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
 	const root = await fileSystem.getRootFolder();
 	const projects: Project[] = [];
@@ -24,7 +23,12 @@
 				console.log(child.name);
 			}
 			const project = res.children.find((f) => f.name === projectName);
+            assert(project, `Project folder "${projectName}" not found`);
+            assert(isFolder(project), `"${projectName}" is not a folder`);
+
 			const systemFolder = project?.children.find((f) => f.name === 'system');
+            assert(systemFolder, `"system" folder not found in project "${projectName}"`);
+            assert(isFolder(systemFolder), `"system" folder not found in project "${projectName}"`);
 			for (const child of systemFolder.children) {
 				// Check every child folder for front.svg back.svg and data.csv
 				if (isFolder(child)) {
@@ -46,7 +50,7 @@
 							const svgTemplateFront = loadSvgTemplate(svgFileFront);
 							const svgTemplateBack = loadSvgTemplate(svgFileBack);
 
-							const { svgData, spreadsheetData, imagePaths } = await loadSvgsAndData(
+							const { _svgData, spreadsheetData, imagePaths } = await loadSvgsAndData(
 								projectName,
 								child.name,
 								fileSystem,
@@ -129,7 +133,7 @@
 
 		// 1.  Assemble DeckIDs[] and CustomDeck{}
 		const deckIDs: number[] = [];
-		const customDeck: Record<string, any> = {};
+		const customDeck: Record<string, unknown> = {};
 
 		let deckIndex = 1;
 		const path = `${projectName}/tts-export`;
@@ -196,8 +200,6 @@
 			onFinish(true);
 		}
 	}
-
-	$inspect(exportIndex, 'exportIndex');
 </script>
 
 <div class="m-4 flex flex-col items-center justify-center">

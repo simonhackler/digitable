@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import TtsExport, { type Sheet } from '../tts-export.svelte';
 	import TtsPreview from '../tts-preview.svelte';
 	import { Tween } from 'svelte/motion';
 	import { getProjectDataContext } from '../export-context.svelte';
 	import { getFileSystemContext } from '../../../context';
+	import { requireParam } from '$lib/utils/assert';
 
-	const projectName = $derived(page.params.gameName);
+	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
 	const proj = getProjectDataContext();
 	const projectData = await proj();

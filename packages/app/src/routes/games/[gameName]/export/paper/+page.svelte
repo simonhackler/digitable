@@ -2,9 +2,10 @@
 	import { page } from '$app/state';
 	import ExportPages from '../export-pages.svelte';
 	import { getProjectDataContext } from '../export-context.svelte';
+	import { requireParam } from '$lib/utils/assert';
 
-	const projectName = $derived(page.params.gameName);
+	const gameName = $derived(requireParam('gameName'));
 	const projectData = await getProjectDataContext()();
 </script>
 
-<ExportPages projects={projectData.projects} gameName={projectName} />
+<ExportPages projects={projectData.projects} gameName={gameName} />
