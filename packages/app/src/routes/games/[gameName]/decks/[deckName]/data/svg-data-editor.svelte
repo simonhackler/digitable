@@ -2,8 +2,8 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { useDebounce } from 'runed';
 	import Papa from 'papaparse';
-	import { onMount, tick } from 'svelte';
 	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
+	import type { Attachment } from 'svelte/attachments';
 	import { ScrollState } from 'runed';
 	import { Button } from '$lib/components/ui/button';
 	import { page } from '$app/state';
@@ -27,9 +27,12 @@
 		svgTemplateBack
 	}: { svgTemplateFront: SVGSVGElement; svgTemplateBack: SVGSVGElement } = $props();
 
-	let el = $state<HTMLElement>(null);
+	let scrollEl = $state<HTMLElement>(null);
+    $inspect(scrollEl)
+    // TODO scroll state error. Ignore for now
+    // When I comment out the next 3 line the inspect triggers correctly, when I leave them it does not. I just keep it for now
 	const scroll = new ScrollState({
-		element: () => el
+		element: () => scrollEl
 	});
 
 	const projectName = $derived(requireParam('gameName'));
@@ -75,7 +78,6 @@
 
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = [];
 	let selectionRects: SVGRectElement[] = [];
-	let spreadsheetEl: HTMLDivElement;
 
 	function flip() {
 		showFront = !showFront;
@@ -95,11 +97,6 @@
 		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
 	}
 
-	onMount(async () => {
-		await tick(); // Don't understand why this is needed, the div should be initialized already
-		initSpreadsheet(spreadsheetData.data, spreadsheetData.cols);
-	});
-
 	function clearSelectionRects() {
 		for (const rect of selectionRects) rect.remove();
 		selectionRects = [];
@@ -116,15 +113,20 @@
 
 	let contextItems: SheetContextMenuItem[] = $state([]);
 
-	function initSpreadsheet(data: string[][], columns: Column[] = []) {
-        console.log("init spread");
-		if (!spreadsheetEl) return;
+	function mountSpreadsheet(el: HTMLDivElement) {
+		// Read reactive dependencies so attachment re-runs when data loads
+		const { data, cols } = spreadsheetData;
 
-		spreadsheet = jspreadsheet(spreadsheetEl, {
+		if (!data.length && !cols.length) {
+			// Data not loaded yet, wait for it
+			return;
+		}
+
+		const instance = jspreadsheet(el, {
 			worksheets: [
 				{
 					data,
-					columns,
+					columns: cols,
 					allowInsertColumn: true,
 					allowManualInsertColumn: false,
 					allowDeleteColumn: true
@@ -164,6 +166,8 @@
 				} else if (borderTopIndex > 1) {
 					scrollTo = width * (borderTopIndex - 1) + width / 2;
 				}
+                console.log(scroll);
+                console.log(el);
 				scroll.scrollTo(scrollTo, 0);
 				clearSelectionRects();
 				const headers = spreadsheet[0].getHeaders(true) as string[];
@@ -234,6 +238,16 @@
 				clearSelectionRects();
 			}
 		});
+
+		// Store the spreadsheet instance globally for other functions to access
+		spreadsheet = instance;
+
+		return () => {
+			// Cleanup function - destroy spreadsheet when element unmounts or data changes
+			if (instance && instance[0]?.destroy) {
+				instance[0].destroy();
+			}
+		};
 	}
 
 	async function addImageAndUpdateSvg(x: number, y: number, value: string) {
@@ -314,12 +328,10 @@
 		borderRightIndex: number;
 		borderBottomIndex: number;
 	} | null = $state(null);
-
-	$inspect(selection);
 </script>
 
 <div
-	bind:this={el}
+	bind:this={scrollEl}
 	class="flex w-screen flex-nowrap gap-2 overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
 >
 	{#each svgsToShow as svg, i (svg.id)}
@@ -374,7 +386,7 @@
 </div>
 <ContextMenu.Root>
 	<ContextMenu.Trigger>
-		<div id="spreadsheet" bind:this={spreadsheetEl}></div>
+		<div id="spreadsheet" {@attach mountSpreadsheet}></div>
 	</ContextMenu.Trigger>
 	<ContextMenu.Content>
 		{#each contextItems as item (item)}

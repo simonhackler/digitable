@@ -23,20 +23,20 @@
   "devDependencies": {
     "@colyseus/loadtest": "^0.16.0",
     "@colyseus/testing": "^0.16.0",
-    "@types/express": "^5.0.5",
+    "@types/express": "^5.0.6",
     "@types/mocha": "^10.0.1",
     "mocha": "^11.7.5",
-    "rimraf": "^6.1.0",
-    "tsx": "^4.20.6",
+    "rimraf": "^6.1.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.4"
   },
   "dependencies": {
     "@colyseus/monitor": "^0.16.0",
     "@colyseus/playground": "^0.16.0",
-    "@colyseus/schema": "^3.0.68",
-    "@colyseus/tools": "^0.16.14",
+    "@colyseus/schema": "^3.0.70",
+    "@colyseus/tools": "^0.16.15",
     "colyseus": "^0.16.5",
     "debug": "^4.4.3",
-    "express": "^5.1.0"
+    "express": "^5.2.1"
   }
 }
