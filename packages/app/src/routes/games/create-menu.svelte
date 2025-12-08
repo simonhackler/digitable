@@ -15,9 +15,7 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
-	import type { ResolvedPathname } from '$app/types';
 	import type { Pathname } from '$app/types';
-	import type { RouteId } from '$app/types';
 
 
 	let { activeGame }: { activeGame: Game | null } = $props();
@@ -43,7 +41,7 @@
 
 	async function switchPath(path: string) {
 		await tick();
-		await goto(resolve(path));
+		await goto(resolve(path as Pathname));
 		openCreateDeckDialog = false;
 	}
 
@@ -78,7 +76,7 @@
 												<Form.Control>
 													{#snippet children({ props })}
 														<Form.Label>Email</Form.Label>
-														<Input placeholder="deck name" bind:value={$formData.deckName} />
+														<Input {...props} placeholder="deck name" bind:value={$formData.deckName} />
 													{/snippet}
 												</Form.Control>
 												<Form.Description />
@@ -92,7 +90,7 @@
 								</Dialog.Content>
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
-										<Dialog.Trigger>
+										<Dialog.Trigger {...props}>
 											{#snippet child({ props })}
 												<Button {...props} variant="outline" class="w-full">
 													<PlusIcon /> New
@@ -107,7 +105,7 @@
 							<Sidebar.MenuSubItem>
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
-										<a href={`/games/${activeGame?.name}/decks/${deck.name}/data`} {...props}>
+										<a href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/data`)} {...props}>
 											<span class="text-muted-foreground">{deck.name}</span>
 										</a>
 									{/snippet}
