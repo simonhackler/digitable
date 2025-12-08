@@ -38,9 +38,9 @@
 <div class="bg-background flex items-center gap-4 rounded-lg border p-4">
 	<!-- Paper size selector -->
 	<div class="flex items-center gap-2">
-		<label class="text-sm font-medium">Paper size:</label>
+		<div class="text-sm font-medium">Paper size:</div>
 		<DropdownMenu.Root>
-			<DropdownMenu.Trigger asChild>
+			<DropdownMenu.Trigger>
 				<Button variant="outline" class="min-w-[120px] justify-between">
 					{paperSize}
 					<ChevronDownIcon class="size-4" />
@@ -58,7 +58,7 @@
 
 	<!-- Orientation toggle -->
 	<div class="flex items-center gap-2">
-		<label class="text-sm font-medium">Orientation:</label>
+		<div class="text-sm font-medium">Orientation:</div>
 		<Button variant="outline" onclick={toggleOrientation}>
 			{orientation}
 			{orientation === 'Portrait' ? '⇄' : '⇄'}
@@ -68,24 +68,24 @@
 	<!-- Fronts checkbox -->
 	<div class="flex items-center gap-2">
 		<Checkbox bind:checked={fronts} />
-		<label class="text-sm font-medium">Fronts</label>
+		<div class="text-sm font-medium">Fronts</div>
 	</div>
 
 	<!-- Backs checkbox -->
 	<div class="flex items-center gap-2">
 		<Checkbox bind:checked={backs} />
-		<label class="text-sm font-medium">Backs</label>
+		<div class="text-sm font-medium">Backs</div>
 	</div>
 
 	<!-- Crop marks checkbox -->
 	<div class="flex items-center gap-2">
 		<Checkbox bind:checked={cropMarks} />
-		<label class="text-sm font-medium">Crop marks</label>
+		<div class="text-sm font-medium">Crop marks</div>
 	</div>
 
 	<!-- Margin input -->
 	<div class="flex items-center gap-2">
-		<label class="text-sm font-medium">Margin (mm):</label>
+		<div class="text-sm font-medium">Margin (mm):</div>
 		<Input type="number" bind:value={margin} min="0" max="50" class="w-20" />
 	</div>
 

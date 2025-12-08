@@ -2,7 +2,7 @@
 	import { toBlob } from 'html-to-image';
 	import { tick } from 'svelte';
 	import { getFileSystemContext } from '../../context';
-	import { Attachment } from 'svelte/attachments';
+	import { type Attachment } from 'svelte/attachments';
 
 	export interface Sheet {
 		name: string;

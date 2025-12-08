@@ -14,6 +14,7 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { PlusIcon } from '@lucide/svelte';
 	import { getFileSystemContext } from '../../../../context';
+	import type { Attachment } from 'svelte/attachments';
 
 	const loadSvgsContext = getLoadSvgsContext();
 	let { front: templateFront, back: templateBack } = $derived(await loadSvgsContext.loadTemplates);
