@@ -2,11 +2,9 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { useDebounce } from 'runed';
 	import Papa from 'papaparse';
-	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
+	import jspreadsheet, { type JspreadsheetInstanceElement }  from 'jspreadsheet-ce';
 	import type { Attachment } from 'svelte/attachments';
 	import { ScrollState } from 'runed';
-	import { Button } from '$lib/components/ui/button';
-	import { page } from '$app/state';
 	import { getFileSystemContext } from '../../../../context';
 	import {
 		generateSvg,
@@ -20,17 +18,18 @@
 	import { type CellValue } from 'jspreadsheet-ce';
 	import { loadSvgsAndData } from '../../../data-loader';
 	import type { SvgCard } from '../../../types';
-	import { requireParam } from '$lib/utils/assert';
+	import { assert, requireParam } from '$lib/utils/assert';
 
 	const {
 		svgTemplateFront,
 		svgTemplateBack
 	}: { svgTemplateFront: SVGSVGElement; svgTemplateBack: SVGSVGElement } = $props();
 
-	let scrollEl = $state<HTMLElement>(null);
-    $inspect(scrollEl)
-    // TODO scroll state error. Ignore for now
-    // When I comment out the next 3 line the inspect triggers correctly, when I leave them it does not. I just keep it for now
+	let scrollEl = $state<HTMLElement | null>(null);
+	// $inspect(scrollEl);
+	// TODO scroll state error. Ignore for now
+	// When I comment out the next 3 line the inspect triggers correctly, when I leave them it does not. I just keep it for now
+    // Seems to work now=
 	const scroll = new ScrollState({
 		element: () => scrollEl
 	});
@@ -42,7 +41,6 @@
 	const { svgData, spreadsheetData, imagePaths } = $derived(
 		await loadSvgsAndData(projectName, cardName, fileSystem, svgTemplateFront, svgTemplateBack)
 	);
-	$inspect(spreadsheetData);
 
 	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references
 	let cards: SvgCard[] = $state(
@@ -61,8 +59,6 @@
 			)
 		}))
 	);
-
-	$inspect(cards);
 
 	// Ideally this would be set directly from a reactive value from the spreadsheet
 	let deletedSvgColumns = $derived(
@@ -104,6 +100,7 @@
 
 	function highlight(el: Element, svg: SVGSVGElement, pad = 4) {
 		const scale = svg.viewBox.baseVal.width / svg.getBoundingClientRect().width;
+        assert(el instanceof SVGGraphicsElement, 'svg must be an SVGSVGElement');
 		const rect = createHighlightRect(el, svg, scale, pad * scale);
 		if (rect) {
 			selectionRects.push(rect);
@@ -148,15 +145,15 @@
 					})
 				);
 
-				return false;
+				return null;
 			},
 			onselection(
-				instance,
+				_instance,
 				borderLeftIndex,
 				borderTopIndex,
 				borderRightIndex,
 				borderBottomIndex,
-				origin
+				_origin
 			) {
 				// This could be nicer
 				const width = svgsToShow[0]?.getBoundingClientRect().width || 480;
@@ -166,8 +163,8 @@
 				} else if (borderTopIndex > 1) {
 					scrollTo = width * (borderTopIndex - 1) + width / 2;
 				}
-                console.log(scroll);
-                console.log(el);
+				console.log(scroll);
+				console.log(el);
 				scroll.scrollTo(scrollTo, 0);
 				clearSelectionRects();
 				const headers = spreadsheet[0].getHeaders(true) as string[];
@@ -200,8 +197,9 @@
 						}
 					}
 				}
+                return true;
 			},
-			oninsertrow(instance, rows) {
+			oninsertrow(_instance, rows) {
 				const headers = spreadsheet[0].getHeaders(true) as string[];
 				const rowsData = rows.map((row) => row.data.map((x) => x.toString()));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
@@ -212,29 +210,36 @@
 				}));
 				cards.splice(minRow, 0, ...newCards);
 			},
-			onafterchanges(worksheet, records) {
+			onafterchanges(_worksheet, _records) {
 				saveDebounced();
 			},
-			ondeleterow(instance, removedRows) {
+			ondeleterow(_instance, removedRows) {
 				const filteredOutCards = removedRows.map((row) => cards[row]);
 				cards = cards.filter((card) => !filteredOutCards.includes(card));
 			},
-			oneditionstart(worksheet, cell, x, y) {
+			oneditionstart(_worksheet, cell, x, y) {
 				cell.oninput = (e) => {
 					if (e.target != null) {
+                        assert(e.target instanceof HTMLInputElement, 'Expected event target to be an HTMLInputElement');
 						addImageAndUpdateSvg(x, y, e.target.value.toString());
 					}
 				};
 			},
-			onchange(instance, cell, colIndex, rowIndex, newValue, oldValue) {
+			onchange(_instance, cell, colIndex, rowIndex, newValue, _oldValue) {
 				cell.oninput = null;
+                if (typeof colIndex == 'string') {
+                    colIndex = parseFloat(colIndex);
+                }
+                if (typeof rowIndex == 'string') {
+                    rowIndex = parseFloat(rowIndex);
+                }
 				addImageAndUpdateSvg(colIndex, rowIndex, newValue.toString());
 			},
-			onsort(instance, colIndex, order, newOrderValues) {
+			onsort(_instance, _colIndex, _order, _newOrderValues) {
 				//TODO
 			},
 
-			onblur(worksheet) {
+			onblur(_worksheet) {
 				clearSelectionRects();
 			}
 		});
@@ -243,9 +248,8 @@
 		spreadsheet = instance;
 
 		return () => {
-			// Cleanup function - destroy spreadsheet when element unmounts or data changes
-			if (instance && instance[0]?.destroy) {
-				instance[0].destroy();
+			if (instance) {
+                jspreadsheet.destroy(el as JspreadsheetInstanceElement);
 			}
 		};
 	}
@@ -261,18 +265,16 @@
 		cards = [...cards]; //TODO FORCE update for imageSelectionModal, very hacky.
 	}
 
-	function attachSVG(svg: SVGSVGElement | null): Attachment {
+	function attachSVG(svg: SVGSVGElement): Attachment {
 		return (element) => {
-			if (svg instanceof Node) {
-				element.appendChild(svg);
-				svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-				Object.assign(svg.style, {
-					display: 'block',
-					width: 'auto',
-					height: 'auto',
-					maxWidth: '100%'
-				});
-			}
+			element.appendChild(svg);
+			svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+			Object.assign(svg.style, {
+				display: 'block',
+				width: 'auto',
+				height: 'auto',
+				maxWidth: '100%'
+			});
 			return () => {
 				element.removeChild(svg);
 			};
@@ -300,7 +302,7 @@
 		const result = spreadsheet[0].insertColumn(
 			1,
 			spreadsheet[0].getHeaders(true).length, // how many columns
-			false, // insert *after* column 1
+			false, // insert *after* column 1
 			[
 				{
 					title: col,
@@ -311,6 +313,7 @@
 				}
 			]
 		);
+        assert(result !== false, 'Failed to insert column into spreadsheet');
 		spreadsheet[0].setColumnData(
 			spreadsheet[0].getHeaders(true).length - 1,
 			Array(cards.length).fill((column.data[0] as CellValue) || '')
@@ -344,8 +347,9 @@
 				let node: EventTarget | null = e.target;
 				let id: string | null = null;
 				while (node && node !== e.currentTarget) {
-					if (node instanceof Element && node.id) {
-						if (headers.some((c) => c === node.id)) {
+					if (node instanceof Element) {
+                        const res = node.id;
+						if (headers.some((c) => c === res)) {
 							id = node.id;
 							break;
 						}
@@ -374,7 +378,7 @@
 		{deletedSvgColumns}
 		onAddColumn={addColumn}
 		onHover={highlightColumn}
-		onExitHover={(x) => clearSelectionRects()}
+		onExitHover={(_x) => clearSelectionRects()}
 		{flip}
 		{selection}
 		spreadsheet={spreadsheet[0]}

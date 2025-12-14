@@ -210,7 +210,9 @@ export async function updateSvg(
 		}
 		div.textContent = newText;
 	} else if (el.tagName == 'image') {
-		updateSvgImageLink(el, imagePaths.get(newText));
+        const path = imagePaths.get(newText);
+        assert(path, `Image path for key ${newText} not found.`);
+		updateSvgImageLink(el, path);
 	}
 }
 
