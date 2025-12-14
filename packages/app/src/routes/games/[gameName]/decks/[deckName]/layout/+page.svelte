@@ -109,7 +109,7 @@
 		fileSystem.upload(svgFile, fullFolderPath, true);
 	}
 
-	function attachSVG(svg: SVGSVGElement | null): Attachment {
+	function attachSVG(svg: SVGSVGElement): Attachment {
 		return (element) => {
 			if (svg instanceof Node) {
 				svg.removeAttribute('width');

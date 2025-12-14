@@ -9,13 +9,12 @@
 	import type { Project } from './types';
 	import { ProjectData, setProjectDataContext } from './export-context.svelte';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
-	import { assert } from '$lib/utils/assert';
+	import { assert, requireParam } from '$lib/utils/assert';
 
-	const projectName = $derived(page.params.gameName);
+	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
 
 	const projectData = new ProjectData();
-	// setExportContext(() => projectData);
 
 	const { children } = $props();
 
