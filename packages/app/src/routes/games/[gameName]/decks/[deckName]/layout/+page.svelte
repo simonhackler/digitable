@@ -4,10 +4,9 @@
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { page } from '$app/state';
-	import FileUpload from '$lib/components/file-browser/browser-ui/file-upload.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { MEGABYTE } from '$lib/components/ui/file-drop-zone';
-	import FileDropZone from '$lib/components/ui/file-drop-zone/file-drop-zone.svelte';
+	import FileDropZone, { FileDropZoneProps } from '$lib/components/ui/file-drop-zone/file-drop-zone.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { z } from 'zod';
 	import { superForm, defaults } from 'sveltekit-superforms';
