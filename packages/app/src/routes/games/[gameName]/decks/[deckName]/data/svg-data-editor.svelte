@@ -129,6 +129,7 @@
 					allowDeleteColumn: true
 				}
 			],
+            // @ts-expect-error Returning false is correct, typing is wrong here. Returning undefined causes contextmenu to not show up
 			contextMenu(instance, colIndex, rowIndex, event, items, role, x, y) {
 				contextItems = defaultContextMenuItems(instance, x, y, role);
 				instance.element.dispatchEvent(
@@ -145,7 +146,7 @@
 					})
 				);
 
-				return null;
+                return false;
 			},
 			onselection(
 				_instance,
@@ -163,8 +164,6 @@
 				} else if (borderTopIndex > 1) {
 					scrollTo = width * (borderTopIndex - 1) + width / 2;
 				}
-				console.log(scroll);
-				console.log(el);
 				scroll.scrollTo(scrollTo, 0);
 				clearSelectionRects();
 				const headers = spreadsheet[0].getHeaders(true) as string[];

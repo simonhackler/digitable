@@ -9,10 +9,10 @@
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import { error } from '@sveltejs/kit';
-	import {
+	import type {
 		BoardGameRoomState,
 		Component,
-		type InitGamePayload
+		InitGamePayload
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
@@ -203,7 +203,7 @@
 		});
 		marquee.visible = false;
 
-		function endDrag(e: any) {
+		function endDrag(e: FederatedPointerEvent) {
 			if (!drag) return;
 
 			if (e.button === 2) {

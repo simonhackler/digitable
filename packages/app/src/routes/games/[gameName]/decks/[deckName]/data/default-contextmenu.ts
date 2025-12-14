@@ -1,213 +1,214 @@
 import type jspreadsheet from 'jspreadsheet-ce';
-import jSuites from 'jsuites';
 import type { Component } from 'svelte';
 
 import {
-	Plus,
-	Trash2,
-	Edit2,
-	SortAsc,
-	SortDesc,
-	Copy as CopyIcon,
-	ClipboardPaste as PasteIcon,
-	Save as SaveIcon,
-	MessageSquare,
-	MessageSquareX,
-	ArrowUpCircle,
-	ArrowDown,
-	ArrowDownCircle,
-	ArrowLeftCircle,
-	ArrowRightCircle
+    Trash2,
+    Pen,
+    ArrowUpNarrowWide,
+    ArrowDownWideNarrow,
+    Copy as CopyIcon,
+    ClipboardPaste as PasteIcon,
+    CircleArrowUp,
+    CircleArrowDown,
+    CircleArrowLeft,
+    CircleArrowRight
 } from '@lucide/svelte';
 
 export interface SheetContextMenuItem {
-	title?: string;
-	shortcut?: string;
-	onclick?: () => void;
-	type?: 'line';
-	icon?: Component;
+    title?: string;
+    shortcut?: string;
+    onclick?: () => void;
+    type?: 'line';
+    icon?: Component;
 }
 
-export const defaultContextMenuItems = function (
-	worksheet: jspreadsheet.WorksheetInstance,
-	x: number | string | null,
-	y: number | string | null,
-	role: jspreadsheet.ContextMenuRole
+export const defaultContextMenuItems = function(
+    worksheet: jspreadsheet.WorksheetInstance,
+    x: number | string | null,
+    y: number | string | null,
+    role: jspreadsheet.ContextMenuRole
 ) {
-	const items: SheetContextMenuItem[] = [];
+    const items: SheetContextMenuItem[] = [];
 
-	if (role === 'header') {
-		// Insert a new column
-		if (worksheet.options.allowInsertColumn != false) {
-			items.push({
-				title: jSuites.translate('Insert a new column before'),
-				icon: ArrowLeftCircle,
-				onclick: function () {
-					worksheet.insertColumn(1, parseInt(x), 1);
-				}
-			});
-		}
+    const parsedX = x !== null ? parseInt(x as string) : null;
+    const parsedY = y !== null ? parseInt(y as string) : null;
 
-		if (worksheet.options.allowInsertColumn != false) {
-			items.push({
-				title: jSuites.translate('Insert a new column after'),
-				icon: ArrowRightCircle,
-				onclick: function () {
-					worksheet.insertColumn(1, parseInt(x), 0);
-				}
-			});
-		}
+    if (role === 'header') {
+        // Insert a new column
+        if (parsedX !== null) {
+            if (worksheet.options.allowInsertColumn != false) {
+                items.push({
+                    title: 'Insert a new column before',
+                    icon: CircleArrowLeft,
+                    onclick: function() {
+                        worksheet.insertColumn(1, parsedX, true);
+                    }
+                });
+            }
 
-		// Delete a column
-		if (worksheet.options.allowDeleteColumn != false) {
-			items.push({
-				title: jSuites.translate('Delete selected columns'),
-				icon: Trash2,
-				onclick: function () {
-					worksheet.deleteColumn(worksheet.getSelectedColumns().length ? undefined : parseInt(x));
-				}
-			});
-		}
+            if (worksheet.options.allowInsertColumn != false) {
+                items.push({
+                    title: 'Insert a new column after',
+                    icon: CircleArrowRight,
+                    onclick: function() {
+                        worksheet.insertColumn(1, parsedX, false);
+                    }
+                });
+            }
+        }
 
-		// Rename column
-		if (worksheet.options.allowRenameColumn != false) {
-			items.push({
-				title: jSuites.translate('Rename this column'),
-				icon: Edit2,
-				onclick: function () {
-					const oldValue = worksheet.getHeader(x);
+        // Delete a column
+        if (worksheet.options.allowDeleteColumn != false) {
+            items.push({
+                title: 'Delete selected columns',
+                icon: Trash2,
+                onclick: function() {
+                    worksheet.deleteColumn(worksheet.getSelectedColumns().length || parsedX === null ? undefined : parsedX);
+                }
+            });
+        }
 
-					const newValue = prompt(jSuites.translate('Column name'), oldValue);
+        if (parsedX !== null) {
 
-					worksheet.setHeader(x, newValue);
-				}
-			});
-		}
+            if (worksheet.options.allowRenameColumn != false) {
+                items.push({
+                    title: 'Rename this column',
+                    icon: Pen,
+                    onclick: function() {
+                        const oldValue = worksheet.getHeader(parsedX);
 
-		// Sorting
-		if (worksheet.options.columnSorting != false) {
-			// Line
-			items.push({ type: 'line' });
+                        const newValue = prompt('Column name', oldValue);
 
-			items.push({
-				title: jSuites.translate('Order ascending'),
-				icon: SortAsc,
+                        worksheet.setHeader(parsedX, newValue!);
+                    }
+                });
+            }
 
-				onclick: function () {
-					worksheet.orderBy(x, 0);
-				}
-			});
-			items.push({
-				title: jSuites.translate('Order descending'),
-				icon: SortDesc,
+            // Sorting
+            if (worksheet.options.columnSorting != false) {
+                // Line
+                items.push({ type: 'line' });
 
-				onclick: function () {
-					worksheet.orderBy(x, 1);
-				}
-			});
-		}
-	}
+                items.push({
+                    title: 'Order ascending',
+                    icon: ArrowUpNarrowWide,
 
-	if (role === 'row' || role === 'cell') {
-		// Insert new row
-		if (worksheet.options.allowInsertRow != false) {
-			items.push({
-				title: jSuites.translate('Insert a new row before'),
-				icon: ArrowUpCircle,
+                    onclick: function() {
+                        worksheet.orderBy(parsedX, 0);
+                    }
+                });
+                items.push({
+                    title: 'Order descending',
+                    icon: ArrowDownWideNarrow,
 
-				onclick: function () {
-					worksheet.insertRow(1, parseInt(y), 1);
-				}
-			});
+                    onclick: function() {
+                        worksheet.orderBy(parsedX, 1);
+                    }
+                });
+            }
+        }
+    }
 
-			items.push({
-				title: jSuites.translate('Insert a new row after'),
-				icon: ArrowDownCircle,
+    if (role === 'row' || role === 'cell') {
+        if (parsedY !== null) {
+            if (worksheet.options.allowInsertRow != false) {
+                items.push({
+                    title: 'Insert a new row before',
+                    icon: CircleArrowUp,
 
-				onclick: function () {
-					worksheet.insertRow(1, parseInt(y));
-				}
-			});
-		}
+                    onclick: function() {
+                        worksheet.insertRow(1, parsedY, 1);
+                    }
+                });
 
-		if (worksheet.options.allowDeleteRow != false) {
-			items.push({
-				title: jSuites.translate('Delete selected rows'),
-				icon: Trash2,
-				onclick: function () {
-					worksheet.deleteRow(worksheet.getSelectedRows().length ? undefined : parseInt(y));
-				}
-			});
-		}
-	}
+                items.push({
+                    title: 'Insert a new row after',
+                    icon: CircleArrowDown,
 
-	if (role === 'cell') {
-		if (worksheet.options.allowComments != false) {
-			items.push({ type: 'line' });
+                    onclick: function() {
+                        worksheet.insertRow(1, parsedY);
+                    }
+                });
+            }
 
-			const title = worksheet.records[y][x].element.getAttribute('title') || '';
+        }
+        if (worksheet.options.allowDeleteRow != false) {
+            items.push({
+                title: 'Delete selected rows',
+                icon: Trash2,
+                onclick: function() {
+                    worksheet.deleteRow(worksheet.getSelectedRows().length || parsedY === null ? undefined : parsedY);
+                }
+            });
+        }
+    }
 
-			items.push({
-				title: jSuites.translate(title ? 'Edit comments' : 'Add comments'),
-				icon: MessageSquare,
+    // if (role === 'cell') {
+    //     if (worksheet.options.allowComments != false) {
+    //         items.push({ type: 'line' });
+    //
+    //         const title = worksheet.records[y][x].element.getAttribute('title') || '';
+    //
+    //         items.push({
+    //             title: title ? 'Edit comments' : 'Add comments',
+    //             icon: MessageSquare,
+    //
+    //             onclick: function() {
+    //                 const comment = prompt('Comments', title);
+    //                 if (comment) {
+    //                     worksheet.setComments(getCellNameFromCoords(x, y), comment);
+    //                 }
+    //             }
+    //         });
+    //
+    //         if (title) {
+    //             items.push({
+    //                 title: 'Clear comments',
+    //                 icon: MessageSquareX,
+    //
+    //                 onclick: function() {
+    //                     worksheet.setComments(getCellNameFromCoords(x, y), '');
+    //                 }
+    //             });
+    //         }
+    //     }
+    // }
 
-				onclick: function () {
-					const comment = prompt(jSuites.translate('Comments'), title);
-					if (comment) {
-						worksheet.setComments(getCellNameFromCoords(x, y), comment);
-					}
-				}
-			});
+    if (items.length !== 0) {
+        items.push({ type: 'line' });
+    }
 
-			if (title) {
-				items.push({
-					title: jSuites.translate('Clear comments'),
-					icon: MessageSquareX,
+    // TODO does not work?
+    if (role === 'header' || role === 'row' || role === 'cell') {
+        items.push({
+            title: 'Copy...',
+            icon: CopyIcon,
 
-					onclick: function () {
-						worksheet.setComments(getCellNameFromCoords(x, y), '');
-					}
-				});
-			}
-		}
-	}
+            shortcut: 'Ctrl + C',
+            onclick: function() {
+                worksheet.copy.call(worksheet, true);
+            }
+        });
 
-	// Line
-	if (items.length !== 0) {
-		items.push({ type: 'line' });
-	}
+        // Paste
+        if (navigator && navigator.clipboard) {
+            items.push({
+                title: 'Paste...',
+                shortcut: 'Ctrl + V',
+                icon: PasteIcon,
 
-	// Copy
-	if (role === 'header' || role === 'row' || role === 'cell') {
-		items.push({
-			title: jSuites.translate('Copy') + '...',
-			icon: CopyIcon,
+                onclick: function() {
+                    if (worksheet.selectedCell) {
+                        navigator.clipboard.readText().then(function(text) {
+                            if (text && worksheet.selectedCell) {
+                                worksheet.paste.call(worksheet, worksheet.selectedCell[0] as number, worksheet.selectedCell[1] as number, text);
+                            }
+                        });
+                    }
+                }
+            });
+        }
+    }
 
-			shortcut: 'Ctrl + C',
-			onclick: function () {
-				copy.call(worksheet, true);
-			}
-		});
-
-		// Paste
-		if (navigator && navigator.clipboard) {
-			items.push({
-				title: jSuites.translate('Paste') + '...',
-				shortcut: 'Ctrl + V',
-				icon: PasteIcon,
-
-				onclick: function () {
-					if (worksheet.selectedCell) {
-						navigator.clipboard.readText().then(function (text) {
-							if (text) {
-								paste.call(worksheet, worksheet.selectedCell[0], worksheet.selectedCell[1], text);
-							}
-						});
-					}
-				}
-			});
-		}
-	}
-
-	return items;
+    return items;
 };

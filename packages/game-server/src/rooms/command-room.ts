@@ -1,6 +1,6 @@
 import { Client, Room } from "colyseus";
 
-import { BoardGameRoomState as BoardGameRoomState, Deck, Item, Player, InitGamePayload } from "./schema/MyRoomState";
+import { BoardGameRoomState as BoardGameRoomState, Deck, Item, Player, Component, Positionable, Flippable, Stack, InitGamePayload } from "./schema/MyRoomState";
 import { Command, Dispatcher } from "../command";
 import { randomUUID } from "crypto";
 
@@ -26,7 +26,7 @@ export class CommandRoom extends Room<BoardGameRoomState> {
         });
     }
 
-    onJoin(client: Client, options: any) {
+    onJoin(client: Client, _options: any) {
         this.dispatcher.dispatch(new OnJoinCommand(), {
             sessionId: client.sessionId
         });
@@ -55,8 +55,7 @@ export class OnJoinCommand extends Command<CommandRoom, {
     sessionId: string
 }> {
     execute({ sessionId } = this.payload) {
-        const player = new Player();
-        player.id = sessionId;
+        const player = new Player(sessionId);
         this.state.players.set(sessionId, player);
     }
 }
@@ -80,40 +79,35 @@ export class InitCommand extends Command<CommandRoom, {
 } & InitGamePayload> {
     execute(payload: this["payload"]) {
         for (const stack of payload.stacks) {
-            // create deck
-            const deck = new Deck();
-            deck.component.id = randomUUID();
-            deck.component.type = "stack";
-            deck.position.x = 50;
-            deck.position.y = 50;
-            deck.position.visible = true;
-            deck.flip.isFaceUp = false;
-            for (const cardId of stack.componentIds) {
-                deck.stack.componentIds.push(cardId);
-            }
-            this.state.positions.set(deck.component.id, deck.position);
-            this.state.flippable.set(deck.component.id, deck.flip);
-            this.state.components.set(deck.component.id, deck.component);
-            this.state.stacks.set(deck.component.id, deck.stack);
+            // create deck components
+            const deckId = randomUUID();
+            const deckComponent = new Component(deckId, "", "stack");
+            const deckPosition = new Positionable(50, 50, true);
+            const deckFlip = new Flippable(false);
+            const deckStack = new Stack(stack.componentIds);
+            const _deck = new Deck(deckComponent, deckPosition, deckFlip, deckStack);
+
+            this.state.positions.set(deckId, deckPosition);
+            this.state.flippable.set(deckId, deckFlip);
+            this.state.components.set(deckId, deckComponent);
+            this.state.stacks.set(deckId, deckStack);
 
             // create cards
             for (let i = 0; i < stack.componentIds.length; i++) {
                 const cardId = stack.componentIds[i];
-                const card = new Item(); // Still necessary? Maybe nice helper
-                card.flip.isFaceUp = true;
-                card.position.x = 10 + i * 220;
-                card.position.y = 50 + i * 320;
-                card.component.id = cardId;
-                card.position.visible = true;
-                this.state.positions.set(cardId, card.position);
-                this.state.flippable.set(cardId, card.flip);
-                this.state.components.set(cardId, card.component);
-                deck.stack.componentIds.push(cardId);
+                const cardComponent = new Component(cardId, "", "card");
+                const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, true);
+                const cardFlip = new Flippable(true);
+                const _card = new Item(cardComponent, cardPosition, cardFlip);
+
+                this.state.positions.set(cardId, cardPosition);
+                this.state.flippable.set(cardId, cardFlip);
+                this.state.components.set(cardId, cardComponent);
             }
         }
     }
 
-    validate(payload: this["payload"]) {
+    validate(_payload: this["payload"]) {
         if (this.state.components.size !== 0) {
             console.warn("Game already initialized");
             return false;
