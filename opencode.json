@@ -1,0 +1,10 @@
+{
+	"$schema": "https://opencode.ai/config.json",
+	"mcp": {
+		"svelte": {
+			"type": "local",
+			"command": ["bunx", "@sveltejs/mcp"]
+		}
+	}
+}
+
