@@ -3,6 +3,7 @@
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { onMount } from 'svelte';
 	import { get, set } from 'idb-keyval';
+	import { assert } from '$lib/utils/assert';
 
 	const homePath = '';
 
@@ -29,7 +30,7 @@
 	});
 
 	async function verifyPermission(handle: FileSystemDirectoryHandle, readWrite = false) {
-		const opts = readWrite ? { mode: 'readwrite' } : {};
+		const opts = readWrite ? { mode: 'readwrite' as const } : {};
 		if ((await handle.queryPermission(opts)) === 'granted') {
 			return true;
 		}
@@ -51,7 +52,7 @@
 
 	async function initDirectory() {
 		let dirHandle = await loadFolder();
-
+        assert(dirHandle != null, 'No saved directory handle found.');
 		const ok = await verifyPermission(dirHandle, true);
 		if (!ok) {
 			throw new Error('Access to the directory was denied.');

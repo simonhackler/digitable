@@ -367,7 +367,7 @@
 					spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
 				}
 			}}
-			class="h-full flex-shrink-0 rounded-lg border-8 border-zinc-950"
+			class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
 			{@attach attachSVG(svg)}
 		></div>
 	{/each}

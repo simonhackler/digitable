@@ -47,7 +47,7 @@ export class PreviewHelper {
 		this.previewContainer.visible = false;
 		this.previewForId = null;
 		if (this.previewSprite) {
-			this.previewSprite.destroy({ texture: true, baseTexture: true });
+			this.previewSprite.destroy({ texture: true });
 			this.previewSprite = null;
 		}
 		this.previewContainer.removeChildren();

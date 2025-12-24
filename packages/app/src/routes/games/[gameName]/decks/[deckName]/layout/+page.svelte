@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getLoadSvgsContext, getToLoadSvgsContext } from '../svg-context.svelte';
+	import { getToLoadSvgsContext } from '../svg-context.svelte';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
@@ -15,9 +15,6 @@
 	import { getFileSystemContext } from '../../../../context';
 	import type { Attachment } from 'svelte/attachments';
 
-	// const loadSvgsContext = getLoadSvgsContext();
-	// let { front: templateFront, back: templateBack } = $derived(await loadSvgsContext.loadTemplates);
-	//
     const svgs = getToLoadSvgsContext();
 	let { front: templateFront, back: templateBack } = $derived(await svgs());
 

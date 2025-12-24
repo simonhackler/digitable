@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { getLoadSvgsContext, getToLoadSvgsContext } from '../svg-context.svelte';
+	import { getToLoadSvgsContext } from '../svg-context.svelte';
 	import SvgDataEditor from './svg-data-editor.svelte';
 
 	const currentProject = $derived(page.params.gameName);
