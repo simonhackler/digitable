@@ -15,7 +15,6 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
-	import type { Pathname } from '$app/types';
 
 
 	let { activeGame }: { activeGame: Game | null } = $props();
@@ -41,7 +40,8 @@
 
 	async function switchPath(path: string) {
 		await tick();
-		await goto(resolve(path as Pathname));
+        // @ts-expect-error Weird sveltekit typing
+		await goto(resolve(path));
 		openCreateDeckDialog = false;
 	}
 

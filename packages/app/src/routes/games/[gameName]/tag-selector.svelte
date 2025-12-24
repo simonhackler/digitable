@@ -63,12 +63,12 @@
 
 <div class="space-y-3">
 	<Form.Field {form} name="tags">
-		<label class="text-sm font-medium">Setting (tags)</label>
+		<div class="text-sm font-medium">Setting (tags)</div>
 
 		<div class="space-y-2">
 			<div class="text-muted-foreground text-xs">Suggestions:</div>
 			<div class="flex flex-wrap gap-2">
-				{#each filteredSuggestedTags as tag}
+				{#each filteredSuggestedTags as tag (tag)}
 					<Button
 						variant="outline"
 						size="sm"

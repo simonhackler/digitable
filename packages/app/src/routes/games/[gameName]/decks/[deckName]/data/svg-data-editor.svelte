@@ -43,7 +43,7 @@
 	);
 
 	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references
-	let cards: SvgCard[] = $state(
+	let cards: SvgCard[] = $derived(
 		spreadsheetData.data.map((row) => ({
 			front: generateSvg(
 				svgTemplateFront,
@@ -72,7 +72,7 @@
 
 	const saveDebounced = useDebounce(saveCsv, 1000);
 
-	let spreadsheet: jspreadsheet.WorksheetInstance[] = [];
+	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
 	let selectionRects: SVGRectElement[] = [];
 
 	function flip() {

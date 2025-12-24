@@ -16,14 +16,22 @@ export async function loadSpreadsheetData(
 	const csvBlob = csvFileResult[0].result?.data;
     const csvFile = csvBlob ? new File([csvBlob], 'data.csv', { type: 'text/csv' }) : null;
     const csvData = csvFile ? await parseCsvFile(csvFile) : null;
-	const idCol = { type: 'hidden', title: 'id' };
+	const idCol: Column = { type: 'hidden', title: 'id' };
 	if (csvData) {
-		const newCols = csvData.header
+		const newCols: Column[] = csvData.header
 			.filter((x) => x !== 'id')
 			.map((header) => {
-				return svgData.get(header)
-					? { ...svgData.get(header) } // Exists in svgData
-					: { title: header, type: 'text' }; // Column not in svgData
+				const svgCol = svgData.get(header);
+				if (svgCol) {
+					// Create proper Column object from ColumnWithData
+					return {
+						title: svgCol.title,
+						type: svgCol.type
+					} as Column;
+				} else {
+					// Column not in svgData
+					return { title: header, type: 'text' } as Column;
+				}
 			});
 		newCols.unshift(idCol);
 
@@ -54,7 +62,7 @@ export async function loadSpreadsheetData(
 				...Array.from(svgData.values()).map((c) => ({
 					title: c.title,
 					type: c.type
-				}))
+				} as Column))
 			],
 			data: [
 				[

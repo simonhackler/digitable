@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { getLoadSvgsContext } from '../svg-context.svelte';
+	import { getLoadSvgsContext, getToLoadSvgsContext } from '../svg-context.svelte';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import { MEGABYTE } from '$lib/components/ui/file-drop-zone';
-	import FileDropZone, { FileDropZoneProps } from '$lib/components/ui/file-drop-zone/file-drop-zone.svelte';
+	import FileDropZone, { type FileDropZoneProps } from '$lib/components/ui/file-drop-zone/file-drop-zone.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { z } from 'zod';
 	import { superForm, defaults } from 'sveltekit-superforms';
@@ -15,8 +15,11 @@
 	import { getFileSystemContext } from '../../../../context';
 	import type { Attachment } from 'svelte/attachments';
 
-	const loadSvgsContext = getLoadSvgsContext();
-	let { front: templateFront, back: templateBack } = $derived(await loadSvgsContext.loadTemplates);
+	// const loadSvgsContext = getLoadSvgsContext();
+	// let { front: templateFront, back: templateBack } = $derived(await loadSvgsContext.loadTemplates);
+	//
+    const svgs = getToLoadSvgsContext();
+	let { front: templateFront, back: templateBack } = $derived(await svgs());
 
 	const emptyCardSchema = z.object({
 		side: z.enum(['front', 'back']),
@@ -56,7 +59,12 @@
 			width = templateBack.getAttribute('width');
 			height = templateBack.getAttribute('height');
 		}
-		return { width: width?.replace('mm', ''), height: height?.replace('mm', '') };
+        if (!width || !height) {
+            return { width: null, height: null };
+        }
+        const widthNum = parseFloat(width.replace('mm', ''));
+        const heightNum = parseFloat(height.replace('mm', ''));
+		return { width: widthNum, height: heightNum };
 	});
 
 	function buildUploadFunction(type: 'front' | 'back') {
@@ -70,16 +78,7 @@
 
 	const onFileRejected: FileDropZoneProps['onFileRejected'] = async ({ reason, file }) => {
 		console.error(`File upload failed: ${file.name}`, reason);
-		toast.error(`${file.name} failed to upload!`, { description: reason });
 	};
-
-	async function uploadToAdapter(file: File, overwrite: boolean = false) {
-		const result = await fileSystem.upload(file, fullFolderPath, overwrite);
-		if (result) {
-			throw new Error(result.message);
-		}
-		return result;
-	}
 
 	function createEmptySvg(side: 'front' | 'back', width: number, height: number) {
 		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -174,7 +173,7 @@
 						class="mb-4 h-full"
 					/>
 					{#if width && height}
-						<Button onclick={() => createEmptySvg(side)}>Create empty</Button>
+                        <Button onclick={() => createEmptySvg(side, width, height)}>Create empty</Button>
 					{:else}
 						<Popover.Root>
 							<Popover.Trigger>
@@ -189,6 +188,7 @@
 												{#snippet children({ props })}
 													<Form.Label>Width:</Form.Label>
 													<Input
+                                                        {...props}
 														type="number"
 														placeholder="width (mm)"
 														bind:value={$formData.width}
@@ -203,6 +203,7 @@
 												{#snippet children({ props })}
 													<Form.Label>Height:</Form.Label>
 													<Input
+                                                        {...props}
 														type="number"
 														placeholder="hegith (mm)"
 														bind:value={$formData.height}
