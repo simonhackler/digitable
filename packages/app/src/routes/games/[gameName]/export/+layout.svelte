@@ -33,11 +33,11 @@
 				console.log(child.name);
 			}
 			const project = res.children.find((f) => f.name === projectName);
-            assert(project, `Project folder "${projectName}" not found`);
-            assert(isFolder(project), `"${projectName}" is not a folder`);
+			assert(project, `Project folder "${projectName}" not found`);
+			assert(isFolder(project), `"${projectName}" is not a folder`);
 			const systemFolder = project.children.find((f) => f.name === 'system');
-            assert(systemFolder, `"system" folder not found in project "${projectName}"`);
-            assert(isFolder(systemFolder), `"system" folder not found in project "${projectName}"`);
+			assert(systemFolder, `"system" folder not found in project "${projectName}"`);
+			assert(isFolder(systemFolder), `"system" folder not found in project "${projectName}"`);
 			if (systemFolder?.children) {
 				for (const child of systemFolder.children) {
 					// Check every child folder for front.svg back.svg and data.csv

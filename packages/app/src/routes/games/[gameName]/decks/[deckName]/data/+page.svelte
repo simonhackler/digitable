@@ -8,19 +8,18 @@
 	const currentProject = $derived(page.params.gameName);
 	const currentCard = $derived(page.params.deckName);
 
-    const svgs = getToLoadSvgsContext();
+	const svgs = getToLoadSvgsContext();
 	let { front: templateFront, back: templateBack } = $derived(await svgs());
-    $effect(() => {
-        if (!templateFront || !templateBack) {
-            console.warn('SVG templates not loaded yet, redirecting to layout page');
-            goto(resolve(`/games/${currentProject}/decks/${currentCard}/layout`));
-        } else {
-            console.log('SVG templates loaded', templateFront, templateBack);
-        }
-    });
+	$effect(() => {
+		if (!templateFront || !templateBack) {
+			console.warn('SVG templates not loaded yet, redirecting to layout page');
+			goto(resolve(`/games/${currentProject}/decks/${currentCard}/layout`));
+		} else {
+			console.log('SVG templates loaded', templateFront, templateBack);
+		}
+	});
 </script>
 
-{#if templateFront && templateBack }
-	<SvgDataEditor svgTemplateFront={templateFront} svgTemplateBack={templateBack}
-	></SvgDataEditor>
+{#if templateFront && templateBack}
+	<SvgDataEditor svgTemplateFront={templateFront} svgTemplateBack={templateBack}></SvgDataEditor>
 {/if}

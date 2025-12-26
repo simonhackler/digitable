@@ -52,7 +52,7 @@
 
 	async function initDirectory() {
 		let dirHandle = await loadFolder();
-        assert(dirHandle != null, 'No saved directory handle found.');
+		assert(dirHandle != null, 'No saved directory handle found.');
 		const ok = await verifyPermission(dirHandle, true);
 		if (!ok) {
 			throw new Error('Access to the directory was denied.');

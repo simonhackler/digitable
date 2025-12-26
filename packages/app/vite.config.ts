@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [
 		tailwindcss(),
-		sveltekit(),
+		sveltekit()
 		// {
 		// 	name: 'full-reload',
 		// 	handleHotUpdate({ server }) {

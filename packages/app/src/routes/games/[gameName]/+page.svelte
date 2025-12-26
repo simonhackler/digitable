@@ -4,7 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { superForm, defaults } from 'sveltekit-superforms';
-	import {  zod4 } from 'sveltekit-superforms/adapters';
+	import { zod4 } from 'sveltekit-superforms/adapters';
 	import TagSelector from './tag-selector.svelte';
 	import { createGameSchema, type CreateGameForm } from '../schemas.js';
 	import { getFileSystemContext } from '../context.js';
@@ -45,7 +45,7 @@
 			}
 		} catch (error) {
 			console.log('No existing game.json found, creating new game');
-            console.error(error);
+			console.error(error);
 		}
 
 		// Default data for new game
@@ -273,7 +273,7 @@
 											class="h-full w-full object-cover"
 										/>
 										<button
-                                            aria-label="Remove thumbnail"
+											aria-label="Remove thumbnail"
 											type="button"
 											onclick={removeThumbnail}
 											class="bg-destructive text-destructive-foreground hover:bg-destructive/90 absolute top-2 right-2 rounded-full p-1"

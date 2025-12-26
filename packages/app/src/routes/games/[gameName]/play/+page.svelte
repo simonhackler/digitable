@@ -373,8 +373,8 @@
 		return app;
 	}
 
-    async function createRoom(_app: Application) {
-	    const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem)
+	async function createRoom(_app: Application) {
+		const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
 		const room = await createOrJoinRoom(client, 'my_room');
 
 		room.send('cmd', {
@@ -386,11 +386,11 @@
 		s(room.state).components.onAdd((component, _index) => {
 			initComponent(hybridResults, component, room.state, s);
 		});
-        return room;
-    }
+		return room;
+	}
 
 	const app = $state(await initApp());
-    const room = $derived(await createRoom(app));
+	const room = $derived(await createRoom(app));
 
 	onMount(() => {
 		// Disable native context menu on the entire page
@@ -398,14 +398,13 @@
 			e.preventDefault();
 		};
 		document.addEventListener('contextmenu', handleContextMenu);
-
 	});
 
 	function attachApp(app: Application): Attachment {
 		return (element) => {
 			element.appendChild(app.view);
 			return () => {
-			    app.destroy(true, { children: true, texture: true });
+				app.destroy(true, { children: true, texture: true });
 				element.removeChild(app.view);
 			};
 		};

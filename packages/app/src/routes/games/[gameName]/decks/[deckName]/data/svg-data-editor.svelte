@@ -2,7 +2,7 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { useDebounce } from 'runed';
 	import Papa from 'papaparse';
-	import jspreadsheet, { type JspreadsheetInstanceElement }  from 'jspreadsheet-ce';
+	import jspreadsheet, { type JspreadsheetInstanceElement } from 'jspreadsheet-ce';
 	import type { Attachment } from 'svelte/attachments';
 	import { ScrollState } from 'runed';
 	import { getFileSystemContext } from '../../../../context';
@@ -29,7 +29,7 @@
 	// $inspect(scrollEl);
 	// TODO scroll state error. Ignore for now
 	// When I comment out the next 3 line the inspect triggers correctly, when I leave them it does not. I just keep it for now
-    // Seems to work now=
+	// Seems to work now=
 	const scroll = new ScrollState({
 		element: () => scrollEl
 	});
@@ -100,7 +100,7 @@
 
 	function highlight(el: Element, svg: SVGSVGElement, pad = 4) {
 		const scale = svg.viewBox.baseVal.width / svg.getBoundingClientRect().width;
-        assert(el instanceof SVGGraphicsElement, 'svg must be an SVGSVGElement');
+		assert(el instanceof SVGGraphicsElement, 'svg must be an SVGSVGElement');
 		const rect = createHighlightRect(el, svg, scale, pad * scale);
 		if (rect) {
 			selectionRects.push(rect);
@@ -129,7 +129,7 @@
 					allowDeleteColumn: true
 				}
 			],
-            // @ts-expect-error Returning false is correct, typing is wrong here. Returning undefined causes contextmenu to not show up
+			// @ts-expect-error Returning false is correct, typing is wrong here. Returning undefined causes contextmenu to not show up
 			contextMenu(instance, colIndex, rowIndex, event, items, role, x, y) {
 				contextItems = defaultContextMenuItems(instance, x, y, role);
 				instance.element.dispatchEvent(
@@ -146,7 +146,7 @@
 					})
 				);
 
-                return false;
+				return false;
 			},
 			onselection(
 				_instance,
@@ -196,7 +196,7 @@
 						}
 					}
 				}
-                return true;
+				return true;
 			},
 			oninsertrow(_instance, rows) {
 				const headers = spreadsheet[0].getHeaders(true) as string[];
@@ -219,19 +219,22 @@
 			oneditionstart(_worksheet, cell, x, y) {
 				cell.oninput = (e) => {
 					if (e.target != null) {
-                        assert(e.target instanceof HTMLInputElement, 'Expected event target to be an HTMLInputElement');
+						assert(
+							e.target instanceof HTMLInputElement,
+							'Expected event target to be an HTMLInputElement'
+						);
 						addImageAndUpdateSvg(x, y, e.target.value.toString());
 					}
 				};
 			},
 			onchange(_instance, cell, colIndex, rowIndex, newValue, _oldValue) {
 				cell.oninput = null;
-                if (typeof colIndex == 'string') {
-                    colIndex = parseFloat(colIndex);
-                }
-                if (typeof rowIndex == 'string') {
-                    rowIndex = parseFloat(rowIndex);
-                }
+				if (typeof colIndex == 'string') {
+					colIndex = parseFloat(colIndex);
+				}
+				if (typeof rowIndex == 'string') {
+					rowIndex = parseFloat(rowIndex);
+				}
 				addImageAndUpdateSvg(colIndex, rowIndex, newValue.toString());
 			},
 			onsort(_instance, _colIndex, _order, _newOrderValues) {
@@ -248,7 +251,7 @@
 
 		return () => {
 			if (instance) {
-                jspreadsheet.destroy(el as JspreadsheetInstanceElement);
+				jspreadsheet.destroy(el as JspreadsheetInstanceElement);
 			}
 		};
 	}
@@ -312,7 +315,7 @@
 				}
 			]
 		);
-        assert(result !== false, 'Failed to insert column into spreadsheet');
+		assert(result !== false, 'Failed to insert column into spreadsheet');
 		spreadsheet[0].setColumnData(
 			spreadsheet[0].getHeaders(true).length - 1,
 			Array(cards.length).fill((column.data[0] as CellValue) || '')
@@ -347,7 +350,7 @@
 				let id: string | null = null;
 				while (node && node !== e.currentTarget) {
 					if (node instanceof Element) {
-                        const res = node.id;
+						const res = node.id;
 						if (headers.some((c) => c === res)) {
 							id = node.id;
 							break;

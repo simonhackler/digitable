@@ -10,7 +10,7 @@ export class PreviewHelper {
 
 	constructor(app: Application) {
 		this.app = app;
-		this.previewContainer = new Container({zIndex: 10000});
+		this.previewContainer = new Container({ zIndex: 10000 });
 		this.previewContainer.visible = false;
 		this.app.stage.addChild(this.previewContainer);
 	}

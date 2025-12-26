@@ -8,4 +8,4 @@
 	const projectData = await getProjectDataContext()();
 </script>
 
-<ExportPages projects={projectData.projects} gameName={gameName} />
+<ExportPages projects={projectData.projects} {gameName} />

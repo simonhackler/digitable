@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { resolve } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { Download, Gamepad2, Printer } from '@lucide/svelte';

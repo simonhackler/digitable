@@ -6,7 +6,9 @@
 	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import { MEGABYTE } from '$lib/components/ui/file-drop-zone';
-	import FileDropZone, { type FileDropZoneProps } from '$lib/components/ui/file-drop-zone/file-drop-zone.svelte';
+	import FileDropZone, {
+		type FileDropZoneProps
+	} from '$lib/components/ui/file-drop-zone/file-drop-zone.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { z } from 'zod';
 	import { superForm, defaults } from 'sveltekit-superforms';
@@ -15,7 +17,7 @@
 	import { getFileSystemContext } from '../../../../context';
 	import type { Attachment } from 'svelte/attachments';
 
-    const svgs = getToLoadSvgsContext();
+	const svgs = getToLoadSvgsContext();
 	let { front: templateFront, back: templateBack } = $derived(await svgs());
 
 	const emptyCardSchema = z.object({
@@ -56,11 +58,11 @@
 			width = templateBack.getAttribute('width');
 			height = templateBack.getAttribute('height');
 		}
-        if (!width || !height) {
-            return { width: null, height: null };
-        }
-        const widthNum = parseFloat(width.replace('mm', ''));
-        const heightNum = parseFloat(height.replace('mm', ''));
+		if (!width || !height) {
+			return { width: null, height: null };
+		}
+		const widthNum = parseFloat(width.replace('mm', ''));
+		const heightNum = parseFloat(height.replace('mm', ''));
 		return { width: widthNum, height: heightNum };
 	});
 
@@ -170,7 +172,7 @@
 						class="mb-4 h-full"
 					/>
 					{#if width && height}
-                        <Button onclick={() => createEmptySvg(side, width, height)}>Create empty</Button>
+						<Button onclick={() => createEmptySvg(side, width, height)}>Create empty</Button>
 					{:else}
 						<Popover.Root>
 							<Popover.Trigger>
@@ -185,7 +187,7 @@
 												{#snippet children({ props })}
 													<Form.Label>Width:</Form.Label>
 													<Input
-                                                        {...props}
+														{...props}
 														type="number"
 														placeholder="width (mm)"
 														bind:value={$formData.width}
@@ -200,7 +202,7 @@
 												{#snippet children({ props })}
 													<Form.Label>Height:</Form.Label>
 													<Input
-                                                        {...props}
+														{...props}
 														type="number"
 														placeholder="hegith (mm)"
 														bind:value={$formData.height}

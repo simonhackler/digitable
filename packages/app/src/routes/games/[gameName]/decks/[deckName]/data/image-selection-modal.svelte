@@ -270,7 +270,7 @@
 					</p>
 					<div class="mt-2">
 						<span class="text-xs font-medium">Image columns:</span>
-						{#each selectionData.imageColumns as column  (column.index)}
+						{#each selectionData.imageColumns as column (column.index)}
 							{@render columnBadge(column.name)}
 						{/each}
 					</div>

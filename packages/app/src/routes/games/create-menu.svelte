@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { resolve } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -15,7 +15,6 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
-
 
 	let { activeGame }: { activeGame: Game | null } = $props();
 	let openCreateDeckDialog = $state(false);
@@ -40,7 +39,7 @@
 
 	async function switchPath(path: string) {
 		await tick();
-        // @ts-expect-error Weird sveltekit typing
+		// @ts-expect-error Weird sveltekit typing
 		await goto(resolve(path));
 		openCreateDeckDialog = false;
 	}
@@ -76,7 +75,11 @@
 												<Form.Control>
 													{#snippet children({ props })}
 														<Form.Label>Email</Form.Label>
-														<Input {...props} placeholder="deck name" bind:value={$formData.deckName} />
+														<Input
+															{...props}
+															placeholder="deck name"
+															bind:value={$formData.deckName}
+														/>
 													{/snippet}
 												</Form.Control>
 												<Form.Description />
@@ -105,7 +108,10 @@
 							<Sidebar.MenuSubItem>
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
-										<a href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/data`)} {...props}>
+										<a
+											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/data`)}
+											{...props}
+										>
 											<span class="text-muted-foreground">{deck.name}</span>
 										</a>
 									{/snippet}

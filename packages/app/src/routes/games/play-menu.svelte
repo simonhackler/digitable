@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { resolve } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { Play } from '@lucide/svelte';
 	import type { Game } from './types.js';

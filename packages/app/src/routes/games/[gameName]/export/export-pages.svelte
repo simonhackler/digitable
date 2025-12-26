@@ -290,7 +290,7 @@
 				transparent var(--svg-w)
 			),
 			/* Horizontal crop marks */
-				repeating-linear-gradient(
+			repeating-linear-gradient(
 					to bottom,
 					transparent 0,
 					transparent calc(var(--svg-h) - 0.5mm),

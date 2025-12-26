@@ -13,7 +13,10 @@
 
 	const fileSystem = getFileSystemContext();
 
-	async function loadSvgTemplates(fileSystem: Adapter, fullFolderPath: string): Promise<LoadedSvgTemplates> {
+	async function loadSvgTemplates(
+		fileSystem: Adapter,
+		fullFolderPath: string
+	): Promise<LoadedSvgTemplates> {
 		const [front, back] = await fileSystem.download([
 			`${fullFolderPath}/front.svg`,
 			`${fullFolderPath}/back.svg`
@@ -27,8 +30,7 @@
 	}
 
 	const svgsProm = $derived(loadSvgTemplates(fileSystem, fullFolderPath));
-    setToLoadSvgsContext(() => svgsProm);
-
+	setToLoadSvgsContext(() => svgsProm);
 </script>
 
 {@render children()}

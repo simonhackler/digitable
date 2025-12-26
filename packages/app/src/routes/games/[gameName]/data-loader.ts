@@ -14,8 +14,8 @@ export async function loadSpreadsheetData(
 		`/${currentProject}/system/${currentCard}/data.csv`
 	]);
 	const csvBlob = csvFileResult[0].result?.data;
-    const csvFile = csvBlob ? new File([csvBlob], 'data.csv', { type: 'text/csv' }) : null;
-    const csvData = csvFile ? await parseCsvFile(csvFile) : null;
+	const csvFile = csvBlob ? new File([csvBlob], 'data.csv', { type: 'text/csv' }) : null;
+	const csvData = csvFile ? await parseCsvFile(csvFile) : null;
 	const idCol: Column = { type: 'hidden', title: 'id' };
 	if (csvData) {
 		const newCols: Column[] = csvData.header
@@ -59,10 +59,13 @@ export async function loadSpreadsheetData(
 		return {
 			cols: [
 				idCol,
-				...Array.from(svgData.values()).map((c) => ({
-					title: c.title,
-					type: c.type
-				} as Column))
+				...Array.from(svgData.values()).map(
+					(c) =>
+						({
+							title: c.title,
+							type: c.type
+						}) as Column
+				)
 			],
 			data: [
 				[
@@ -90,7 +93,7 @@ export async function loadImagePaths(
 		imageStrings.map(async (img, i) => {
 			const file = files[i];
 			if (file.result) {
-                const result = file.result;
+				const result = file.result;
 				if (useDataUrls) {
 					const dataUrl = new Promise<string>((resolve) => {
 						const reader = new FileReader();
