@@ -1,10 +1,7 @@
 {
-  "name": "Western Cards",
-  "minPlayers": 2,
-  "maxPlayers": 6,
-  "description": "Dino gunslingers shoot at each other hidden targets to find out who becomes the sheriff in town. No dinos are harmed in this game. ",
-  "tags": [
-    "Wild West",
-    "Dinosaurs"
-  ]
+	"name": "Western Cards",
+	"minPlayers": 2,
+	"maxPlayers": 6,
+	"description": "Dino gunslingers shoot at each other hidden targets to find out who becomes the sheriff in town. No dinos are harmed in this game. ",
+	"tags": ["Wild West", "Dinosaurs"]
 }

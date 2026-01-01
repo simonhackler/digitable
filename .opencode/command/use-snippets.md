@@ -2,7 +2,6 @@
 description: refactor a file with snippets to remove duplicate html
 ---
 
-
 These are the svelte docs for snippets.
 
 ```svelte
@@ -199,7 +198,7 @@ You can declare snippet props as being optional. You can either use optional cha
 
 ```svelte
 <script>
-    let { children } = $props();
+	let { children } = $props();
 </script>
 
 {@render children?.()}
@@ -209,13 +208,13 @@ You can declare snippet props as being optional. You can either use optional cha
 
 ```svelte
 <script>
-    let { children } = $props();
+	let { children } = $props();
 </script>
 
 {#if children}
-    {@render children()}
+	{@render children()}
 {:else}
-    fallback content
+	fallback content
 {/if}
 ```
 

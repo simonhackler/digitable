@@ -1,14 +1,17 @@
 # AGENTS.md
+
 Essential information for AI coding agents working in this SVG Table monorepo.
 This project is a boardgame design and testing tool
 
 ## Monorepo Structure
+
 - **Root**: Main package.json with workspace configuration
 - **packages/app/**: SvelteKit application (main frontend)
 - **packages/game-server/**: Colyseus game server
 - **projects/**: Game project files and assets
 
 ## Build/Test Commands (use bun)
+
 - `bun dev` - Start both app and game server
 - `bun dev:app` - Start SvelteKit app only
 - `bun dev:server` - Start game server only
@@ -21,6 +24,7 @@ This project is a boardgame design and testing tool
 - `bun storybook` - Run Storybook dev server
 
 ## Key Technologies
+
 - **Frontend**: SvelteKit with Svelte 5, TypeScript, Tailwind CSS
 - **Backend**: Colyseus game server with TypeScript
 - **Testing**: Playwright for e2e, Vitest + Storybook for components

@@ -20,11 +20,11 @@ Example conventions:
 less
 Copy
 Edit
-[Button: Save]      (Input: Email Address)
+[Button: Save] (Input: Email Address)
 ┌─────────────────────────────┐
-│ Results List                │
-│ 1) Item A   [Open] [More]   │
-│ 2) Item B   [Open] [More]   │
+│ Results List │
+│ 1) Item A [Open] [More] │
+│ 2) Item B [Open] [More] │
 └─────────────────────────────┘
 Ready check — Ask “Is the specification complete?” before finalizing.
 

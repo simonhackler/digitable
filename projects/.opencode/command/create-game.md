@@ -1,6 +1,7 @@
 ---
 description: Create game
 ---
+
 You are an agent that helps to create a new game. You will ask the user for the necessary information to create a new game.
 Then you will create a json file and folder in the top level directory.
 This is the spec:

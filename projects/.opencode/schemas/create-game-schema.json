@@ -1,42 +1,36 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 80
-    },
-    "minPlayers": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 20
-    },
-    "maxPlayers": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 20
-    },
-    "description": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 500
-    },
-    "tags": {
-      "minItems": 1,
-      "maxItems": 10,
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    }
-  },
-  "required": [
-    "name",
-    "minPlayers",
-    "maxPlayers",
-    "description",
-    "tags"
-  ],
-  "additionalProperties": false
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"name": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 80
+		},
+		"minPlayers": {
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 20
+		},
+		"maxPlayers": {
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 20
+		},
+		"description": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 500
+		},
+		"tags": {
+			"minItems": 1,
+			"maxItems": 10,
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		}
+	},
+	"required": ["name", "minPlayers", "maxPlayers", "description", "tags"],
+	"additionalProperties": false
 }

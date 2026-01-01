@@ -49,18 +49,21 @@ Path: /plans
 Filename: <$(date +%s)>-<plan-name>.md
 
 Minimal Template
+
 # Goal
+
 <1 short paragraph>
 
 # Ordered Items
-1) <Item title>
+
+1. <Item title>
    How (implementation):
    - <Key steps or approach>
    - <APIs/endpoints/contracts>
    - <Data model/validation rules>
    - <Edge cases & acceptance note>
 
-2) <Item title>
+2. <Item title>
    How (implementation):
    - <Steps...>
    - <Pseudocode or brief code if helpful>
