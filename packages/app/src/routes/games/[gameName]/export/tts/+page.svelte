@@ -61,7 +61,7 @@
 		let deckIndex = 1;
 		for (const project of projectSheets) {
 			const deckIDs: number[] = [];
-			const customDeck: Record<string, any> = {};
+			const customDeck: Record<string, object> = {};
 			for (let i = 0; i < project.sheets.length; i += 2) {
 				const frontSheet = project.sheets[i];
 				const backSheet = project.sheets[i + 1];
@@ -127,16 +127,12 @@
 		console.log('exported');
 	}
 
-	async function onExported(sheet: Sheet) {
+	async function onExported(_sheet: Sheet) {
 		exportIndex += 1;
 		if (exportIndex == sheets.length) {
 			onFinish(true);
 		}
 	}
-
-	$inspect(exportIndex, 'exportIndex');
-	$inspect(projectSheets);
-	$inspect(exportingSheet);
 </script>
 
 <div class="m-4 flex flex-col items-center justify-center">

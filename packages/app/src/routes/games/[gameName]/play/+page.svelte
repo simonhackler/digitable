@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { type SchemaCallbackProxy } from '@colyseus/schema';
-	import { Client, Room, getStateCallbacks } from 'colyseus.js';
+	import { Client, getStateCallbacks } from 'colyseus.js';
 	import { Application, Container, FederatedPointerEvent, Point, Rectangle } from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
@@ -27,7 +27,7 @@
 	import { HandContainer } from './HandContainer';
 	import { Position } from './frontend-components/position';
 	import { FrontendStack } from './frontend-components/frontend-stack';
-	import { assert, requireParam } from '$lib/utils/assert';
+	import { requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 
 	const projectName = $derived(requireParam('gameName'));
@@ -431,7 +431,7 @@
 				positions.get(id)!.moveTo(100, 100); // Should then be unnecessary. Card positions will not matter anyway once added to the stack
 				// cards should be invisble then anyway
 			}
-			const stackContainer = new FrontendStack(room, component, stacks, stack, s);
+			new FrontendStack(room, component, stacks, stack, s);
 		} else {
 			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map
 			if (!card) {

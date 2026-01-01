@@ -1,4 +1,5 @@
-import type { CellValue, WorksheetInstance, Column, CustomEditor } from 'jspreadsheet-ce';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import type { CustomEditor } from 'jspreadsheet-ce';
 
 export const ImageEditor: CustomEditor = {
 	updateCell: function (cell, value, x, y, instance, options) {

@@ -1,4 +1,4 @@
-import { type Result, Ok, tryAsync, Err } from 'wellcrafted/result';
+import { Ok, Err } from 'wellcrafted/result';
 
 export interface ImagePrompt {
 	columnName: string;

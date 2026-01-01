@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import PrintConfigurationBar from './print-configuration-bar.svelte';
 	import type { Attachment } from 'svelte/attachments';
@@ -25,14 +24,10 @@
 	}
 
 	let {
-		projects,
-		gameName
+		projects
 	}: {
 		projects: Project[];
-		gameName: string;
 	} = $props();
-
-	let sheetEl: HTMLDivElement;
 
 	let paperSize: PaperSize = $state('A4');
 	let orientation: Orientation = $state('Portrait');
@@ -169,7 +164,7 @@
 		updatePageRule(paperSize, orientation, margin);
 	});
 
-	function updatePageRule(paperSize: PaperSize, orientation: Orientation, margin: number) {
+	function updatePageRule(paperSize: PaperSize, orientation: Orientation, _margin: number) {
 		if (!pageStyleEl) return;
 		pageStyleEl.textContent = `
 			@page {

@@ -40,7 +40,6 @@
 	} = $props();
 
 	const gameName = $derived(page.params.gameName);
-	const cardName = $derived(page.params.deckName);
 	const filesystem = getFileSystemContext();
 
 	async function handleGenerateImages(images: ImageGenResponse) {

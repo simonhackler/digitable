@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { createContext } from 'svelte';
-	import { page } from '$app/state';
 	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
-	import { Folder, isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
+	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndData } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
@@ -60,7 +58,7 @@
 								const svgTemplateFront = loadSvgTemplate(svgFileFront);
 								const svgTemplateBack = loadSvgTemplate(svgFileBack);
 
-								const { svgData, spreadsheetData, imagePaths } = await loadSvgsAndData(
+								const { spreadsheetData, imagePaths } = await loadSvgsAndData(
 									projectName,
 									child.name,
 									fileSystem,

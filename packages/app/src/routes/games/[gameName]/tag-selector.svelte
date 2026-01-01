@@ -6,9 +6,10 @@
 	import { X, Plus } from '@lucide/svelte';
 	import type { SuperForm } from 'sveltekit-superforms';
 	import { suggestedTags } from '../suggested-tags.js';
+	import type { CreateGameForm } from '../schemas.js';
 
 	type Props = {
-		form: SuperForm<any>;
+		form: SuperForm<CreateGameForm>;
 		selectedTags: string[];
 		onTagsChange: (tags: string[]) => void;
 	};

@@ -151,7 +151,7 @@
 		// Convert prompts to the expected format and call generateImages
 		const imagePrompts: ImagePrompt[] = previewPrompts.filter((p) => p.prompt.trim().length > 0);
 		generateImages(imagePrompts).then((images) => {
-			const { data, error } = images;
+			const { data } = images;
 			if (data) {
 				onGenerateImages(data);
 				generationComplete = true;
@@ -240,7 +240,7 @@
 					</p>
 					<div class="mt-2">
 						<span class="text-xs font-medium">Image columns:</span>
-						{#each selectionData.imageColumns as column, i (column.index)}
+						{#each selectionData.imageColumns as column (column.index)}
 							{@render columnBadge(column.name)}
 						{/each}
 					</div>
