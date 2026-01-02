@@ -22,4 +22,3 @@ repos:
         language: system
         files: \.(js|ts|jsx|tsx|svelte)$
         pass_filenames: false
-
