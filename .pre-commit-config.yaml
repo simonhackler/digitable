@@ -10,7 +10,7 @@ repos:
 
       - id: bun-lint
         name: ESLint (staged files)
-        entry: bunx eslint
+        entry: bunx eslint --max-warnings 0
         language: system
         files: \.(js|ts|jsx|tsx|svelte)$
         pass_filenames: true
