@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import { cn } from '$lib/utils/utils.js';
 	import { Popover as PopoverPrimitive } from 'bits-ui';

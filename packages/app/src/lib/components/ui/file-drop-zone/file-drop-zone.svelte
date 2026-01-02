@@ -1,8 +1,4 @@
 <!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
-<!--
 	Installed from @ieedan/shadcn-svelte-extras
 -->
 
@@ -73,11 +69,13 @@
 		...rest
 	}: FileDropZoneProps = $props();
 
-	if (maxFiles !== undefined && fileCount === undefined) {
-		console.warn(
-			'Make sure to provide FileDropZone with `fileCount` when using the `maxFiles` prompt'
-		);
-	}
+	$effect(() => {
+		if (maxFiles !== undefined && fileCount === undefined) {
+			console.warn(
+				'Make sure to provide FileDropZone with `fileCount` when using the `maxFiles` prompt'
+			);
+		}
+	});
 
 	let uploading = $state(false);
 

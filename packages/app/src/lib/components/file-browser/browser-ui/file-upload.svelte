@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Upload } from '@lucide/svelte';
@@ -28,7 +24,6 @@
 		await Promise.allSettled(files.map((file) => uploadFile(file)));
 	};
 	const onFileRejected: FileDropZoneProps['onFileRejected'] = async ({ reason, file }) => {
-		console.error(`File upload failed: ${file.name}`, reason);
 		toast.error(`${file.name} failed to upload!`, { description: reason });
 	};
 	const uploadFile = (file: File) => {
@@ -67,6 +62,7 @@
 	async function uploadFiles() {
 		const errors = await Promise.all(files.map((f) => uploadToAdapter(f.file, f.overwrite)));
 		if (errors.some((e) => e !== null)) {
+			console.error('Upload errors:', errors);
 		} else {
 			open = false;
 			files = [];
@@ -101,7 +97,7 @@
 				<FileDropZone
 					{onUpload}
 					{onFileRejected}
-					maxFileSize={12 * MEGABYTE}
+					maxFileSize={6 * MEGABYTE}
 					maxFiles={4}
 					fileCount={files.length}
 				/>

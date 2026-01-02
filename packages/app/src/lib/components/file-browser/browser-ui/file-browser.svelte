@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Plus } from '@lucide/svelte';
@@ -38,7 +34,7 @@
 		showActions?: boolean;
 	} = $props();
 
-	const explorerFunctions = new ExplorerNodeFunctions(fileFunctions, homeFolderPath);
+	const explorerFunctions = $derived(new ExplorerNodeFunctions(fileFunctions, homeFolderPath));
 
 	let display: 'grid' | 'list' = $state('grid');
 	let createFolderInput: HTMLInputElement | null = $state(null);
@@ -76,20 +72,27 @@
 		showCreateInput = false;
 	}
 
-	async function deleteNode(node: ExplorerNode) {
-		return await explorerFunctions.deleteNodes([node]);
+	async function deleteNode(node: ExplorerNode): Promise<void> {
+		await explorerFunctions.deleteNodes([node]);
 	}
 
-	async function downloadNode(node: ExplorerNode) {
-		return await explorerFunctions.downloadNodes([node]);
+	async function downloadNode(node: ExplorerNode): Promise<void> {
+		await explorerFunctions.downloadNodes([node]);
 	}
 
-	const fileFunctionsNode = {
+	const fileFunctionsNode = $derived({
 		deleteNodes: explorerFunctions.deleteNodes.bind(explorerFunctions),
-		downloadNodes: explorerFunctions.downloadNodes.bind(explorerFunctions),
+		downloadNodes: async (nodes: ExplorerNode[]): Promise<Error | null> => {
+			try {
+				await explorerFunctions.downloadNodes(nodes);
+				return null;
+			} catch (error) {
+				return error instanceof Error ? error : new Error(String(error));
+			}
+		},
 		moveNodes: setActionMove,
 		copyNodes: setActionCopy
-	};
+	});
 
 	let currentAction: 'copy' | 'move' = $state('copy');
 	let openMoveCopy = $state(false);

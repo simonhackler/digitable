@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import type { HTMLOlAttributes } from 'svelte/elements';
 	import { cn, type WithElementRef } from '$lib/utils/utils.js';

@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { ExplorerNode } from '$lib/components/file-browser/browser-utils/types.svelte';
@@ -20,11 +16,7 @@
 	} = $props();
 
 	let tree = $state<Folder>(new Folder('home', null, []));
-	let currentFolder = $state<Folder>(new Folder('home', null, []));
-
-	$effect(() => {
-		currentFolder = tree;
-	});
+	let currentFolder = $derived(tree);
 
 	function getPathArray(node: ExplorerNode): string[] {
 		const parts = [node.name];
