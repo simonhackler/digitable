@@ -17,7 +17,7 @@
 	let dirPicker = $state(false);
 
 	async function pickFolder() {
-		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
 		await saveFolder(folderHandle);
 		opfsAdapter = new OPFSAdapter(folderHandle);
 	}
@@ -40,7 +40,7 @@
 	});
 
 	async function verifyPermission(handle: FileSystemDirectoryHandle) {
-		const opts = { mode: 'readwrite' };
+		const opts = { mode: 'readwrite' as const };
 		if ((await handle.queryPermission(opts)) === 'granted') {
 			return true;
 		}
@@ -71,7 +71,7 @@
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={(e) => useOpfs()}>Use Browser storage</AlertDialog.Action>
+			<AlertDialog.Action onclick={() => useOpfs()}>Use Browser storage</AlertDialog.Action>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 
@@ -80,7 +80,7 @@
 			<p>Get started by picking a folder to store your projects</p>
 			<div class="flex flex-row gap-2">
 				<AlertDialog.Trigger><Button variant="outline">Use Browser</Button></AlertDialog.Trigger>
-				<Button onclick={(e) => pickFolder()}>Pick folder</Button>
+				<Button onclick={() => pickFolder()}>Pick folder</Button>
 			</div>
 		</div>
 	{:else if dirPicker}

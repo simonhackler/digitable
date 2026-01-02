@@ -1,7 +1,3 @@
-/*
-	Installed from github/simonhackler/svelte-file-explorer
-*/
-
 import type { Adapter } from '../adapter';
 import {
 	buildTreeFromLocalStorage,

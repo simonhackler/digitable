@@ -7,15 +7,16 @@
 	import { getFileSystemContext } from '../../../../context';
 	import { page } from '$app/state';
 	import type { SvgCard } from '../../../types';
-	import type {
-		Folder,
-		ExplorerNode
-	} from '$lib/components/file-browser/browser-utils/types.svelte.ts';
+	import {
+		type Folder,
+		type ExplorerNode,
+		isFolder
+	} from '$lib/components/file-browser/browser-utils/types.svelte';
 
 	let {
 		selection = null,
 		spreadsheet,
-		imagePaths,
+		imagePaths: _imagePaths,
 		cards,
 		showFront
 	}: {
@@ -73,7 +74,6 @@
 		};
 	});
 
-	// Current card data
 	const currentCardData = $derived.by(() => {
 		if (!selection || !selectionData.hasImageColumns) return null;
 
@@ -88,7 +88,6 @@
 		};
 	});
 
-	// Current SVG from the cards array
 	const currentSvg = $derived.by(() => {
 		if (!currentCardData || !cards.length) return null;
 
@@ -97,7 +96,7 @@
 
 		// Get the appropriate SVG based on showFront
 		const card = cards[cardIndex];
-		return showFront ? card.front.cloneNode(true) : card.back;
+		return showFront ? (card.front.cloneNode(true) as SVGSVGElement) : card.back;
 	});
 
 	// Get available images for a specific rowId and column
@@ -117,8 +116,8 @@
 
 			// Filter files that match the pattern: rowId_*_columnName.*
 			const matchingFiles = generatedFolder.children
-				.filter((child: ExplorerNode) => !('children' in child)) // Only files, not folders
-				.map((file: any) => file.name)
+				.filter((child: ExplorerNode) => !isFolder(child)) // Only files, not folders
+				.map((file) => file.name)
 				.filter((filename: string) => {
 					// Match pattern: rowId_timestamp_columnName.extension
 					const regex = new RegExp(`^${rowId}_\\d+_${columnName}\\.[^.]+$`);
@@ -133,7 +132,6 @@
 		}
 	}
 
-	// Helper function to find a folder in the tree by path segments
 	function findFolderInTree(folder: Folder, ...pathSegments: string[]): Folder | null {
 		let current: ExplorerNode | undefined = folder;
 		for (const segment of pathSegments) {
@@ -145,7 +143,7 @@
 
 	// Initialize available images and indices when card changes
 	$effect(() => {
-		if (open) {
+		if (open && currentCardData) {
 			(async () => {
 				for (const column of selectionData.imageColumns) {
 					const availableImagesForColumn = await getAvailableImagesForColumn(
@@ -220,15 +218,11 @@
 		}
 	}
 
-	function attachSVG(svg: SVGSVGElement | null) {
+	function attachSVG(svg: SVGSVGElement) {
 		return (element: HTMLElement) => {
-			if (svg instanceof Node) {
-				element.appendChild(svg);
-			}
+			element.appendChild(svg);
 			return () => {
-				if (svg && element.contains(svg)) {
-					element.removeChild(svg);
-				}
+				element.removeChild(svg);
 			};
 		};
 	}
@@ -276,7 +270,7 @@
 					</p>
 					<div class="mt-2">
 						<span class="text-xs font-medium">Image columns:</span>
-						{#each selectionData.imageColumns as column, i (column.index)}
+						{#each selectionData.imageColumns as column (column.index)}
 							{@render columnBadge(column.name)}
 						{/each}
 					</div>

@@ -1,11 +1,10 @@
-import {
+import type {
 	BoardGameRoomState,
 	Component,
 	Stack
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import { type SchemaCallbackProxy } from '@colyseus/schema';
 import { Room } from 'colyseus.js';
-import { Container } from 'pixi.js';
 import type { BoardGameItem } from '$lib/pixi/item';
 
 export class FrontendStack {
@@ -17,7 +16,7 @@ export class FrontendStack {
 	constructor(
 		room: Room<BoardGameRoomState>,
 		component: Component,
-		stacks: BoardGameItem[],
+		_stacks: BoardGameItem[],
 		stack: Stack,
 		s: SchemaCallbackProxy<BoardGameRoomState>
 	) {
@@ -27,7 +26,7 @@ export class FrontendStack {
 		this.component = component;
 		this.stack = stack;
 
-		s(stack).componentIds.onRemove((id, sessionId) => {
+		s(stack).componentIds.onRemove((_id, _sessionId) => {
 			// For this it feels like I will need to have essentially global state that is passed to these classed. Ugly.
 		});
 	}

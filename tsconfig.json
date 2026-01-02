@@ -1,11 +1,11 @@
 {
-  "files": [],
-  "references": [
-    {
-      "path": "./packages/app"
-    },
-    {
-      "path": "./packages/game-server"
-    }
-  ]
+	"files": [],
+	"references": [
+		{
+			"path": "./packages/app"
+		},
+		{
+			"path": "./packages/game-server"
+		}
+	]
 }

@@ -1,20 +1,18 @@
 <script lang="ts">
-	import { createContext } from 'svelte';
-	import { page } from '$app/state';
 	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
-	import { Folder, isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
+	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndData } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import type { Project } from './types';
-	import { ProjectData, setExportContext, setProjectDataContext } from './export-context.svelte';
+	import { ProjectData, setProjectDataContext } from './export-context.svelte';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+	import { assert, requireParam } from '$lib/utils/assert';
 
-	const projectName = $derived(page.params.gameName);
+	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
 
 	const projectData = new ProjectData();
-	// setExportContext(() => projectData);
 
 	const { children } = $props();
 
@@ -33,7 +31,11 @@
 				console.log(child.name);
 			}
 			const project = res.children.find((f) => f.name === projectName);
-			const systemFolder = project?.children.find((f) => f.name === 'system');
+			assert(project, `Project folder "${projectName}" not found`);
+			assert(isFolder(project), `"${projectName}" is not a folder`);
+			const systemFolder = project.children.find((f) => f.name === 'system');
+			assert(systemFolder, `"system" folder not found in project "${projectName}"`);
+			assert(isFolder(systemFolder), `"system" folder not found in project "${projectName}"`);
 			if (systemFolder?.children) {
 				for (const child of systemFolder.children) {
 					// Check every child folder for front.svg back.svg and data.csv
@@ -56,7 +58,7 @@
 								const svgTemplateFront = loadSvgTemplate(svgFileFront);
 								const svgTemplateBack = loadSvgTemplate(svgFileBack);
 
-								const { svgData, spreadsheetData, imagePaths } = await loadSvgsAndData(
+								const { spreadsheetData, imagePaths } = await loadSvgsAndData(
 									projectName,
 									child.name,
 									fileSystem,

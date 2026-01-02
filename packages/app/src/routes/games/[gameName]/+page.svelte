@@ -3,20 +3,17 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import { Badge } from '$lib/components/ui/badge';
 	import { superForm, defaults } from 'sveltekit-superforms';
-	import { zod, zod4 } from 'sveltekit-superforms/adapters';
+	import { zod4 } from 'sveltekit-superforms/adapters';
 	import TagSelector from './tag-selector.svelte';
-	import CreateMenu from '../create-menu.svelte';
 	import { createGameSchema, type CreateGameForm } from '../schemas.js';
 	import { getFileSystemContext } from '../context.js';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import { Upload, Image } from '@lucide/svelte';
-	import { CheckCircle } from '@lucide/svelte';
+	import { CircleCheck } from '@lucide/svelte';
+	import { requireParam } from '$lib/utils/assert';
 
 	const fileSystem = getFileSystemContext();
-	const gameName = $derived(page.params.gameName);
+	const gameName = $derived(requireParam('gameName'));
 
 	// Load game data using top-level await
 	async function loadGameData(gameName: string): Promise<{
@@ -48,6 +45,7 @@
 			}
 		} catch (error) {
 			console.log('No existing game.json found, creating new game');
+			console.error(error);
 		}
 
 		// Default data for new game
@@ -114,9 +112,7 @@
 			}
 		})
 	);
-	$inspect(initialData);
-	$inspect(form);
-	const { form: formData, enhance, validateForm } = $derived(form);
+	const { form: formData, enhance } = $derived(form);
 
 	let selectedTags = $derived<string[]>(initialData.tags || []);
 	let selectedThumbnail = $state<File | null>(null);
@@ -195,7 +191,7 @@
 					</Form.Field>
 
 					<div class="space-y-2">
-						<label class="text-base font-medium">Players</label>
+						<div class="text-base font-medium">Players</div>
 						<div class="flex gap-4">
 							<Form.Field {form} name="minPlayers" class="flex-1">
 								<Form.Control>
@@ -262,7 +258,7 @@
 
 					<!-- Thumbnail Upload -->
 					<div class="space-y-2">
-						<label class="text-base font-medium">Game Thumbnail</label>
+						<div class="text-base font-medium">Game Thumbnail</div>
 						<div class="space-y-4">
 							<!-- Image Preview -->
 							<div class="relative">
@@ -277,6 +273,7 @@
 											class="h-full w-full object-cover"
 										/>
 										<button
+											aria-label="Remove thumbnail"
 											type="button"
 											onclick={removeThumbnail}
 											class="bg-destructive text-destructive-foreground hover:bg-destructive/90 absolute top-2 right-2 rounded-full p-1"
@@ -334,7 +331,7 @@
 							<div
 								class="mb-4 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-green-800"
 							>
-								<CheckCircle class="h-5 w-5" />
+								<CircleCheck class="h-5 w-5" />
 								<span>Game {isEditMode ? 'updated' : 'created'} successfully!</span>
 							</div>
 						{/if}

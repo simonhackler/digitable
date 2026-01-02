@@ -1,9 +1,9 @@
 import { Assets, Container, Sprite, type Texture } from 'pixi.js';
 import { loadSvgsAndData } from '../data-loader';
 import { generateSvg, loadSvgTemplate } from '../svg-helpers';
-import { BoardGameItem } from '$lib/pixi/item';
 import '@pixi/layout';
-import { LayoutContainer, LayoutSprite } from '@pixi/layout/components';
+import { LayoutContainer } from '@pixi/layout/components';
+import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
 interface ImageInfo {
 	element: SVGImageElement;
@@ -158,7 +158,11 @@ export async function createHybridContainer(svg: SVGSVGElement) {
 	return container;
 }
 
-export async function loadAndProcessCards(projectName: string, cardName: string, fileSystem: any) {
+export async function loadAndProcessCards(
+	projectName: string,
+	cardName: string,
+	fileSystem: Adapter
+) {
 	const fullFolderPath = `/${projectName}/system/${cardName}`;
 	const [frontFile, backFile] = await fileSystem.download([
 		`${fullFolderPath}/front.svg`,
@@ -172,7 +176,7 @@ export async function loadAndProcessCards(projectName: string, cardName: string,
 	const svgTemplateFront = loadSvgTemplate(svgTextFront);
 	const svgTemplateBack = loadSvgTemplate(svgTextBack);
 
-	const { svgData, spreadsheetData, imagePaths } = await loadSvgsAndData(
+	const { spreadsheetData, imagePaths } = await loadSvgsAndData(
 		projectName,
 		cardName,
 		fileSystem,

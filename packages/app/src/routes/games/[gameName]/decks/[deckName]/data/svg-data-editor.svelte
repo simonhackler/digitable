@@ -2,11 +2,9 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { useDebounce } from 'runed';
 	import Papa from 'papaparse';
-	import { onMount, tick } from 'svelte';
-	import jspreadsheet, { type Column } from 'jspreadsheet-ce';
+	import jspreadsheet, { type JspreadsheetInstanceElement } from 'jspreadsheet-ce';
+	import type { Attachment } from 'svelte/attachments';
 	import { ScrollState } from 'runed';
-	import { Button } from '$lib/components/ui/button';
-	import { page } from '$app/state';
 	import { getFileSystemContext } from '../../../../context';
 	import {
 		generateSvg,
@@ -20,28 +18,32 @@
 	import { type CellValue } from 'jspreadsheet-ce';
 	import { loadSvgsAndData } from '../../../data-loader';
 	import type { SvgCard } from '../../../types';
+	import { assert, requireParam } from '$lib/utils/assert';
 
 	const {
 		svgTemplateFront,
 		svgTemplateBack
 	}: { svgTemplateFront: SVGSVGElement; svgTemplateBack: SVGSVGElement } = $props();
 
-	let el = $state<HTMLElement>(null);
+	let scrollEl = $state<HTMLElement | null>(null);
+	// $inspect(scrollEl);
+	// TODO scroll state error. Ignore for now
+	// When I comment out the next 3 line the inspect triggers correctly, when I leave them it does not. I just keep it for now
+	// Seems to work now=
 	const scroll = new ScrollState({
-		element: () => el
+		element: () => scrollEl
 	});
 
-	const projectName = $derived(page.params.gameName);
-	const cardName = $derived(page.params.deckName);
+	const projectName = $derived(requireParam('gameName'));
+	const cardName = $derived(requireParam('deckName'));
 	const fileSystem = getFileSystemContext();
 
 	const { svgData, spreadsheetData, imagePaths } = $derived(
 		await loadSvgsAndData(projectName, cardName, fileSystem, svgTemplateFront, svgTemplateBack)
 	);
-	$inspect(spreadsheetData);
 
 	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references
-	let cards: SvgCard[] = $state(
+	let cards: SvgCard[] = $derived(
 		spreadsheetData.data.map((row) => ({
 			front: generateSvg(
 				svgTemplateFront,
@@ -58,8 +60,6 @@
 		}))
 	);
 
-	$inspect(cards);
-
 	// Ideally this would be set directly from a reactive value from the spreadsheet
 	let deletedSvgColumns = $derived(
 		Array.from(svgData.values())
@@ -72,9 +72,8 @@
 
 	const saveDebounced = useDebounce(saveCsv, 1000);
 
-	let spreadsheet: jspreadsheet.WorksheetInstance[] = [];
+	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
 	let selectionRects: SVGRectElement[] = [];
-	let spreadsheetEl: HTMLDivElement;
 
 	function flip() {
 		showFront = !showFront;
@@ -94,11 +93,6 @@
 		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
 	}
 
-	onMount(async () => {
-		await tick(); // Don't understand why this is needed, the div should be initialized already
-		initSpreadsheet(spreadsheetData.data, spreadsheetData.cols);
-	});
-
 	function clearSelectionRects() {
 		for (const rect of selectionRects) rect.remove();
 		selectionRects = [];
@@ -106,6 +100,7 @@
 
 	function highlight(el: Element, svg: SVGSVGElement, pad = 4) {
 		const scale = svg.viewBox.baseVal.width / svg.getBoundingClientRect().width;
+		assert(el instanceof SVGGraphicsElement, 'svg must be an SVGSVGElement');
 		const rect = createHighlightRect(el, svg, scale, pad * scale);
 		if (rect) {
 			selectionRects.push(rect);
@@ -115,19 +110,26 @@
 
 	let contextItems: SheetContextMenuItem[] = $state([]);
 
-	function initSpreadsheet(data: string[][], columns: Column[] = []) {
-		if (!spreadsheetEl) return;
+	function mountSpreadsheet(el: HTMLDivElement) {
+		// Read reactive dependencies so attachment re-runs when data loads
+		const { data, cols } = spreadsheetData;
 
-		spreadsheet = jspreadsheet(spreadsheetEl, {
+		if (!data.length && !cols.length) {
+			// Data not loaded yet, wait for it
+			return;
+		}
+
+		const instance = jspreadsheet(el, {
 			worksheets: [
 				{
 					data,
-					columns,
+					columns: cols,
 					allowInsertColumn: true,
 					allowManualInsertColumn: false,
 					allowDeleteColumn: true
 				}
 			],
+			// @ts-expect-error Returning false is correct, typing is wrong here. Returning undefined causes contextmenu to not show up
 			contextMenu(instance, colIndex, rowIndex, event, items, role, x, y) {
 				contextItems = defaultContextMenuItems(instance, x, y, role);
 				instance.element.dispatchEvent(
@@ -147,12 +149,12 @@
 				return false;
 			},
 			onselection(
-				instance,
+				_instance,
 				borderLeftIndex,
 				borderTopIndex,
 				borderRightIndex,
 				borderBottomIndex,
-				origin
+				_origin
 			) {
 				// This could be nicer
 				const width = svgsToShow[0]?.getBoundingClientRect().width || 480;
@@ -194,8 +196,9 @@
 						}
 					}
 				}
+				return true;
 			},
-			oninsertrow(instance, rows) {
+			oninsertrow(_instance, rows) {
 				const headers = spreadsheet[0].getHeaders(true) as string[];
 				const rowsData = rows.map((row) => row.data.map((x) => x.toString()));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
@@ -206,32 +209,51 @@
 				}));
 				cards.splice(minRow, 0, ...newCards);
 			},
-			onafterchanges(worksheet, records) {
+			onafterchanges(_worksheet, _records) {
 				saveDebounced();
 			},
-			ondeleterow(instance, removedRows) {
+			ondeleterow(_instance, removedRows) {
 				const filteredOutCards = removedRows.map((row) => cards[row]);
 				cards = cards.filter((card) => !filteredOutCards.includes(card));
 			},
-			oneditionstart(worksheet, cell, x, y) {
+			oneditionstart(_worksheet, cell, x, y) {
 				cell.oninput = (e) => {
 					if (e.target != null) {
+						assert(
+							e.target instanceof HTMLInputElement,
+							'Expected event target to be an HTMLInputElement'
+						);
 						addImageAndUpdateSvg(x, y, e.target.value.toString());
 					}
 				};
 			},
-			onchange(instance, cell, colIndex, rowIndex, newValue, oldValue) {
+			onchange(_instance, cell, colIndex, rowIndex, newValue, _oldValue) {
 				cell.oninput = null;
+				if (typeof colIndex == 'string') {
+					colIndex = parseFloat(colIndex);
+				}
+				if (typeof rowIndex == 'string') {
+					rowIndex = parseFloat(rowIndex);
+				}
 				addImageAndUpdateSvg(colIndex, rowIndex, newValue.toString());
 			},
-			onsort(instance, colIndex, order, newOrderValues) {
+			onsort(_instance, _colIndex, _order, _newOrderValues) {
 				//TODO
 			},
 
-			onblur(worksheet) {
+			onblur(_worksheet) {
 				clearSelectionRects();
 			}
 		});
+
+		// Store the spreadsheet instance globally for other functions to access
+		spreadsheet = instance;
+
+		return () => {
+			if (instance) {
+				jspreadsheet.destroy(el as JspreadsheetInstanceElement);
+			}
+		};
 	}
 
 	async function addImageAndUpdateSvg(x: number, y: number, value: string) {
@@ -245,18 +267,16 @@
 		cards = [...cards]; //TODO FORCE update for imageSelectionModal, very hacky.
 	}
 
-	function attachSVG(svg: SVGSVGElement | null): Attachment {
+	function attachSVG(svg: SVGSVGElement): Attachment {
 		return (element) => {
-			if (svg instanceof Node) {
-				element.appendChild(svg);
-				svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-				Object.assign(svg.style, {
-					display: 'block',
-					width: 'auto',
-					height: 'auto',
-					maxWidth: '100%'
-				});
-			}
+			element.appendChild(svg);
+			svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+			Object.assign(svg.style, {
+				display: 'block',
+				width: 'auto',
+				height: 'auto',
+				maxWidth: '100%'
+			});
 			return () => {
 				element.removeChild(svg);
 			};
@@ -284,7 +304,7 @@
 		const result = spreadsheet[0].insertColumn(
 			1,
 			spreadsheet[0].getHeaders(true).length, // how many columns
-			false, // insert *after* column 1
+			false, // insert *after* column 1
 			[
 				{
 					title: col,
@@ -295,6 +315,7 @@
 				}
 			]
 		);
+		assert(result !== false, 'Failed to insert column into spreadsheet');
 		spreadsheet[0].setColumnData(
 			spreadsheet[0].getHeaders(true).length - 1,
 			Array(cards.length).fill((column.data[0] as CellValue) || '')
@@ -312,12 +333,10 @@
 		borderRightIndex: number;
 		borderBottomIndex: number;
 	} | null = $state(null);
-
-	$inspect(selection);
 </script>
 
 <div
-	bind:this={el}
+	bind:this={scrollEl}
 	class="flex w-screen flex-nowrap gap-2 overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
 >
 	{#each svgsToShow as svg, i (svg.id)}
@@ -330,8 +349,9 @@
 				let node: EventTarget | null = e.target;
 				let id: string | null = null;
 				while (node && node !== e.currentTarget) {
-					if (node instanceof Element && node.id) {
-						if (headers.some((c) => c === node.id)) {
+					if (node instanceof Element) {
+						const res = node.id;
+						if (headers.some((c) => c === res)) {
 							id = node.id;
 							break;
 						}
@@ -350,7 +370,7 @@
 					spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
 				}
 			}}
-			class="h-full flex-shrink-0 rounded-lg border-8 border-zinc-950"
+			class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
 			{@attach attachSVG(svg)}
 		></div>
 	{/each}
@@ -360,7 +380,7 @@
 		{deletedSvgColumns}
 		onAddColumn={addColumn}
 		onHover={highlightColumn}
-		onExitHover={(x) => clearSelectionRects()}
+		onExitHover={(_x) => clearSelectionRects()}
 		{flip}
 		{selection}
 		spreadsheet={spreadsheet[0]}
@@ -372,7 +392,7 @@
 </div>
 <ContextMenu.Root>
 	<ContextMenu.Trigger>
-		<div id="spreadsheet" bind:this={spreadsheetEl}></div>
+		<div id="spreadsheet" {@attach mountSpreadsheet}></div>
 	</ContextMenu.Trigger>
 	<ContextMenu.Content>
 		{#each contextItems as item (item)}

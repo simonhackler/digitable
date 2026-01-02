@@ -1,3 +1,4 @@
+import { assert } from '$lib/utils/assert';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import type { ColumnWithData } from './types';
 
@@ -85,7 +86,9 @@ export function initialSetupForSvgItem(
 	if (!el) {
 		return null;
 	} else if (el.tagName === 'image') {
-		updateSvgImageLink(el, imagePaths.get(data));
+		const path = imagePaths.get(data);
+		assert(path, `Image path for key ${data} not found.`);
+		updateSvgImageLink(el, path);
 	}
 	if (el.tagName !== 'text') return null;
 
@@ -118,9 +121,9 @@ export function initialSetupForSvgItem(
 	}
 
 	const fo = document.createElementNS(svg.namespaceURI, 'foreignObject') as SVGForeignObjectElement;
-    if (!x || !y) {
-        throw new Error(`Element ${elementId} is missing x or y attributes`);
-    }
+	if (!x || !y) {
+		throw new Error(`Element ${elementId} is missing x or y attributes`);
+	}
 	fo.setAttribute('x', x.toString());
 	fo.setAttribute('y', y.toString());
 	fo.setAttribute('width', width.toString());
@@ -207,7 +210,9 @@ export async function updateSvg(
 		}
 		div.textContent = newText;
 	} else if (el.tagName == 'image') {
-		updateSvgImageLink(el, imagePaths.get(newText));
+		const path = imagePaths.get(newText);
+		assert(path, `Image path for key ${newText} not found.`);
+		updateSvgImageLink(el, path);
 	}
 }
 

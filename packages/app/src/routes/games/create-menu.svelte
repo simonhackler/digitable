@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -31,7 +32,6 @@
 		onUpdate({ form }) {
 			if (form.valid) {
 				const path = `/games/${activeGame?.name}/decks/${form.data.deckName}/data`;
-				console.log('Form is valid, navigating to new deck', path);
 				switchPath(path);
 			}
 		}
@@ -39,7 +39,8 @@
 
 	async function switchPath(path: string) {
 		await tick();
-		await goto(path);
+		// @ts-expect-error Weird sveltekit typing
+		await goto(resolve(path));
 		openCreateDeckDialog = false;
 	}
 
@@ -74,7 +75,11 @@
 												<Form.Control>
 													{#snippet children({ props })}
 														<Form.Label>Email</Form.Label>
-														<Input placeholder="deck name" bind:value={$formData.deckName} />
+														<Input
+															{...props}
+															placeholder="deck name"
+															bind:value={$formData.deckName}
+														/>
 													{/snippet}
 												</Form.Control>
 												<Form.Description />
@@ -88,7 +93,7 @@
 								</Dialog.Content>
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
-										<Dialog.Trigger>
+										<Dialog.Trigger {...props}>
 											{#snippet child({ props })}
 												<Button {...props} variant="outline" class="w-full">
 													<PlusIcon /> New
@@ -103,7 +108,10 @@
 							<Sidebar.MenuSubItem>
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
-										<a href={`/games/${activeGame?.name}/decks/${deck.name}/data`} {...props}>
+										<a
+											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/data`)}
+											{...props}
+										>
 											<span class="text-muted-foreground">{deck.name}</span>
 										</a>
 									{/snippet}

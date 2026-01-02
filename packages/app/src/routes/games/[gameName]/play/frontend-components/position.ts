@@ -1,4 +1,4 @@
-import {
+import type {
 	BoardGameRoomState,
 	Positionable,
 	Component
@@ -57,7 +57,7 @@ export class Position {
 	}
 
 	moveEnd(x: number, y: number) {
-		this.container.x = y;
+		this.container.x = x;
 		this.container.y = y;
 		this.room.send('cmd', {
 			commandType: 'moveend',

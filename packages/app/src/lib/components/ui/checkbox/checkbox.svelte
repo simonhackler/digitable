@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import { Checkbox as CheckboxPrimitive } from 'bits-ui';
 	import CheckIcon from '@lucide/svelte/icons/check';

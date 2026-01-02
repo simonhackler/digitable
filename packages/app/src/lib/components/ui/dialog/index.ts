@@ -1,7 +1,3 @@
-/*
-	Installed from github/simonhackler/svelte-file-explorer
-*/
-
 import { Dialog as DialogPrimitive } from 'bits-ui';
 
 import Title from './dialog-title.svelte';

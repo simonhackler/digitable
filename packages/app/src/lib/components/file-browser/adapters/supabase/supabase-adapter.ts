@@ -1,7 +1,3 @@
-/*
-	Installed from github/simonhackler/svelte-file-explorer
-*/
-
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Adapter } from '../adapter';
 import { buildFileTree } from '$lib/components/file-browser/browser-utils/file-tree.svelte';

@@ -23,7 +23,7 @@ export function extractImageDimensions(
 			const bbox = (element as SVGGraphicsElement).getBBox();
 			width = bbox.width || 512;
 			height = bbox.height || 512;
-		} catch (e) {
+		} catch (_e) {
 			// Keep defaults if getBBox fails
 		}
 	}

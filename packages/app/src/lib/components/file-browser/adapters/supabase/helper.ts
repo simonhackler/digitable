@@ -1,7 +1,3 @@
-/*
-	Installed from github/simonhackler/svelte-file-explorer
-*/
-
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 // This will get all the files out of a bucket the user has rls access on

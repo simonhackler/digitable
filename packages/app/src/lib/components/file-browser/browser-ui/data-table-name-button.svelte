@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import type { ComponentProps } from 'svelte';
 	import ArrowUpDownIcon from '@lucide/svelte/icons/arrow-up-down';

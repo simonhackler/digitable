@@ -1,7 +1,3 @@
-/*
-	Installed from github/simonhackler/svelte-file-explorer
-*/
-
 import { Popover as PopoverPrimitive } from 'bits-ui';
 import Content from './popover-content.svelte';
 import Trigger from './popover-trigger.svelte';

@@ -10,7 +10,7 @@ export class PreviewHelper {
 
 	constructor(app: Application) {
 		this.app = app;
-		this.previewContainer = new Container();
+		this.previewContainer = new Container({ zIndex: 10000 });
 		this.previewContainer.visible = false;
 		this.app.stage.addChild(this.previewContainer);
 	}
@@ -47,7 +47,7 @@ export class PreviewHelper {
 		this.previewContainer.visible = false;
 		this.previewForId = null;
 		if (this.previewSprite) {
-			this.previewSprite.destroy({ texture: true, baseTexture: true });
+			this.previewSprite.destroy({ texture: true });
 			this.previewSprite = null;
 		}
 		this.previewContainer.removeChildren();

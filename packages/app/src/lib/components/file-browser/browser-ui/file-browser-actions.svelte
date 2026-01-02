@@ -1,14 +1,9 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Ellipsis, Trash2, Folders, FolderOutput, Download } from '@lucide/svelte';
 	import {
 		isFolder,
-		type ExplorerNode,
-		type Folder
+		type ExplorerNode
 	} from '$lib/components/file-browser/browser-utils/types.svelte';
 
 	let {
@@ -28,6 +23,7 @@
 	const url = $derived(!isFolder(node) && node.fileData?.url?.then((url) => url));
 </script>
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger>
 		<Ellipsis />
@@ -46,7 +42,12 @@
 			{#if url}
 				{#await url then url}
 					<DropdownMenu.Item>
-						<a class="flex cursor-default gap-2" href={url} download={node.name}>
+						<a
+							class="flex cursor-default gap-2"
+							href={url}
+							download={node.name}
+							data-sveltekit-reload
+						>
 							<Download /> Download
 						</a>
 					</DropdownMenu.Item>

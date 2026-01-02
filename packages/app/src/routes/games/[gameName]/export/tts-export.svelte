@@ -2,6 +2,7 @@
 	import { toBlob } from 'html-to-image';
 	import { tick } from 'svelte';
 	import { getFileSystemContext } from '../../context';
+	import { type Attachment } from 'svelte/attachments';
 
 	export interface Sheet {
 		name: string;
@@ -19,7 +20,7 @@
 	} = $props();
 
 	let index = $state(0);
-	let svgs: SVGSVGElement[] = $state(
+	let svgs: SVGSVGElement[] = $derived(
 		sheets[0].svgs.slice(0).map((svg) => {
 			// TODO: Why does this work and with the "normal" svg way it doesn't? Very confusing
 			const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
@@ -91,10 +92,26 @@
 			console.error('Sheet element:', sheetEl);
 			console.error('Current sheet:', sheets[index]);
 			console.error('SVGs in current sheet:', svgs.length);
-			// Log more detailed information about the error
-			if (error instanceof Error) {
+
+			// Special handling for html-to-image "image load failed" events
+			if (error instanceof Event) {
+				const target = (error as Event).target || (error as Event).currentTarget;
+
+				if (target instanceof HTMLImageElement) {
+					console.error('[takeImage] Broken image src:', target.src);
+					console.error('[takeImage] Image attributes:', {
+						crossOrigin: target.crossOrigin,
+						width: target.width,
+						height: target.height
+					});
+				} else {
+					console.error('[takeImage] Event target is not an HTMLImageElement:', target);
+				}
+			} else if (error instanceof Error) {
 				console.error('Error message:', error.message);
 				console.error('Error stack:', error.stack);
+			} else {
+				console.error('Unknown error type:', error);
 			}
 		}
 	}

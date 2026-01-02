@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import { Plus, FolderOpen } from '@lucide/svelte';
 	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
+	import { resolve } from '$app/paths';
 
 	const fileSystem = getFileSystemContext();
 
@@ -57,8 +58,8 @@
 		}
 	}
 
-	function navigateToGame(gameName: string) {
-		goto(`/games/${gameName}`);
+	async function navigateToGame(gameName: string) {
+		await goto(resolve(`/games/${gameName}`));
 	}
 
 	function createNewGame() {
@@ -114,7 +115,7 @@
 					{#if game.tags && game.tags.length > 0}
 						<Card.Content class="pt-0">
 							<div class="flex flex-wrap gap-1">
-								{#each game.tags.slice(0, 3) as tag}
+								{#each game.tags.slice(0, 3) as tag (tag)}
 									<Badge variant="secondary" class="text-xs">
 										{tag}
 									</Badge>

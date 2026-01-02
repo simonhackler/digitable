@@ -13,16 +13,25 @@ export async function loadSpreadsheetData(
 	const csvFileResult = await fileSystem.download([
 		`/${currentProject}/system/${currentCard}/data.csv`
 	]);
-	const csvFile = csvFileResult[0].result?.data;
+	const csvBlob = csvFileResult[0].result?.data;
+	const csvFile = csvBlob ? new File([csvBlob], 'data.csv', { type: 'text/csv' }) : null;
 	const csvData = csvFile ? await parseCsvFile(csvFile) : null;
-	const idCol = { type: 'hidden', title: 'id' };
+	const idCol: Column = { type: 'hidden', title: 'id' };
 	if (csvData) {
-		const newCols = csvData.header
+		const newCols: Column[] = csvData.header
 			.filter((x) => x !== 'id')
 			.map((header) => {
-				return svgData.get(header)
-					? { ...svgData.get(header) } // Exists in svgData
-					: { title: header, type: 'text' }; // Column not in svgData
+				const svgCol = svgData.get(header);
+				if (svgCol) {
+					// Create proper Column object from ColumnWithData
+					return {
+						title: svgCol.title,
+						type: svgCol.type
+					} as Column;
+				} else {
+					// Column not in svgData
+					return { title: header, type: 'text' } as Column;
+				}
 			});
 		newCols.unshift(idCol);
 
@@ -50,10 +59,13 @@ export async function loadSpreadsheetData(
 		return {
 			cols: [
 				idCol,
-				...Array.from(svgData.values()).map((c) => ({
-					title: c.title,
-					type: c.type
-				}))
+				...Array.from(svgData.values()).map(
+					(c) =>
+						({
+							title: c.title,
+							type: c.type
+						}) as Column
+				)
 			],
 			data: [
 				[
@@ -81,11 +93,12 @@ export async function loadImagePaths(
 		imageStrings.map(async (img, i) => {
 			const file = files[i];
 			if (file.result) {
+				const result = file.result;
 				if (useDataUrls) {
 					const dataUrl = new Promise<string>((resolve) => {
 						const reader = new FileReader();
 						reader.onload = () => resolve(reader.result as string);
-						reader.readAsDataURL(file.result.data);
+						reader.readAsDataURL(result.data);
 					});
 					imagePaths.set(img, await dataUrl);
 				} else {

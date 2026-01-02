@@ -1,7 +1,3 @@
-/*
-	Installed from github/simonhackler/svelte-file-explorer
-*/
-
 import { downloadZip } from 'client-zip';
 import {
 	deepCopyExplorerNode,

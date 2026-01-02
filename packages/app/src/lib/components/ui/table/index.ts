@@ -1,7 +1,3 @@
-/*
-	Installed from github/simonhackler/svelte-file-explorer
-*/
-
 import Root from './table.svelte';
 import Body from './table-body.svelte';
 import Caption from './table-caption.svelte';

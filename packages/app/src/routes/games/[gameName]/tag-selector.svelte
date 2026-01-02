@@ -6,9 +6,10 @@
 	import { X, Plus } from '@lucide/svelte';
 	import type { SuperForm } from 'sveltekit-superforms';
 	import { suggestedTags } from '../suggested-tags.js';
+	import type { CreateGameForm } from '../schemas.js';
 
 	type Props = {
-		form: SuperForm<any>;
+		form: SuperForm<CreateGameForm>;
 		selectedTags: string[];
 		onTagsChange: (tags: string[]) => void;
 	};
@@ -63,12 +64,12 @@
 
 <div class="space-y-3">
 	<Form.Field {form} name="tags">
-		<label class="text-sm font-medium">Setting (tags)</label>
+		<div class="text-sm font-medium">Setting (tags)</div>
 
 		<div class="space-y-2">
 			<div class="text-muted-foreground text-xs">Suggestions:</div>
 			<div class="flex flex-wrap gap-2">
-				{#each filteredSuggestedTags as tag}
+				{#each filteredSuggestedTags as tag (tag)}
 					<Button
 						variant="outline"
 						size="sm"
@@ -115,7 +116,7 @@
 			<div class="space-y-2">
 				<div class="text-muted-foreground text-xs">Selected:</div>
 				<div class="flex flex-wrap gap-2">
-					{#each selectedTags as tag}
+					{#each selectedTags as tag (tag)}
 						<Badge variant="secondary" class="flex items-center gap-1">
 							{tag}
 							<button

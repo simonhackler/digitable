@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { Download, Gamepad2, Printer } from '@lucide/svelte';
@@ -29,7 +30,7 @@
 						<Sidebar.MenuSubItem>
 							<Sidebar.MenuSubButton>
 								{#snippet child({ props })}
-									<a href={`/games/${activeGame?.name}/export/tts`} {...props}>
+									<a href={resolve(`/games/${activeGame?.name}/export/tts`)} {...props}>
 										<Gamepad2 class="mr-2 h-4 w-4" />
 										TTS
 									</a>
@@ -39,7 +40,7 @@
 						<Sidebar.MenuSubItem>
 							<Sidebar.MenuSubButton>
 								{#snippet child({ props })}
-									<a href={`/games/${activeGame?.name}/export/paper`} {...props}>
+									<a href={resolve(`/games/${activeGame?.name}/export/paper`)} {...props}>
 										<Printer class="mr-2 h-4 w-4" />
 										Paper
 									</a>

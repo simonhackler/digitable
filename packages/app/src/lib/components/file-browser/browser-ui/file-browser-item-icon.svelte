@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import { FolderIcon, FileIcon } from '@lucide/svelte';
 	import {

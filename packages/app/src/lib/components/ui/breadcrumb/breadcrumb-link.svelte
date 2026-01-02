@@ -1,7 +1,3 @@
-<!--
-	Installed from github/simonhackler/svelte-file-explorer
--->
-
 <script lang="ts">
 	import type { HTMLAnchorAttributes } from 'svelte/elements';
 	import type { Snippet } from 'svelte';

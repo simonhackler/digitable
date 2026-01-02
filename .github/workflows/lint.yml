@@ -20,11 +20,10 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Format code
-        run: bun run format
-
       - name: Check formatting and lint
-        run: bun run --filter=@svg-table/app lint
+        run: bun run lint
 
       - name: Run type check
         run: bun run check
+        env:
+          REPLICATE_API_TOKEN: 'dummy_token_for_ci'

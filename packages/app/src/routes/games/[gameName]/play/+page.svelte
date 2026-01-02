@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { type SchemaCallbackProxy } from '@colyseus/schema';
-	import { Client, Room, getStateCallbacks } from 'colyseus.js';
-	import { Application, Container, Point, Rectangle } from 'pixi.js';
+	import { Client, getStateCallbacks } from 'colyseus.js';
+	import { Application, Container, FederatedPointerEvent, Point, Rectangle } from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
@@ -9,11 +9,10 @@
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import { error } from '@sveltejs/kit';
-	import {
+	import type {
 		BoardGameRoomState,
 		Component,
-		Positionable,
-		type InitGamePayload
+		InitGamePayload
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
@@ -28,11 +27,10 @@
 	import { HandContainer } from './HandContainer';
 	import { Position } from './frontend-components/position';
 	import { FrontendStack } from './frontend-components/frontend-stack';
+	import { requireParam } from '$lib/utils/assert';
+	import type { Attachment } from 'svelte/attachments';
 
-	let canvasContainer: HTMLDivElement;
-	let app: Application;
-
-	const projectName = $derived(page.params.gameName);
+	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(page.params.deckName || 'western');
 	const fileSystem = getFileSystemContext();
 
@@ -46,7 +44,6 @@
 	}
 
 	const client = new Client('ws://localhost:2567');
-	let room: Room<BoardGameRoomState>;
 
 	let syncCards: Map<string, BoardGameItem> = new Map();
 	let positions: Map<string, Position> = new Map();
@@ -55,7 +52,7 @@
 	let showContextMenu = $state(false);
 	let contextMenuPosition = $state({ x: 0, y: 0 });
 
-	function handleRightClick(e: any) {
+	function handleRightClick(e: FederatedPointerEvent) {
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -90,7 +87,6 @@
 
 	let boardContainer: Container;
 	let handContainer: HandContainer;
-	let hybridResults: ParsedSvg[];
 
 	let viewport: Viewport;
 
@@ -133,15 +129,8 @@
 		return payload;
 	}
 
-	onMount(async () => {
-		// Disable native context menu on the entire page
-		const handleContextMenu = (e: Event) => {
-			e.preventDefault();
-		};
-		document.addEventListener('contextmenu', handleContextMenu);
-
-		// Listen for card array changes
-		app = new Application();
+	async function initApp() {
+		const app = new Application();
 		await app.init({
 			background: '#eba92e',
 			resizeTo: window,
@@ -149,22 +138,15 @@
 			resolution: window.devicePixelRatio || 1,
 			autoDensity: true
 		});
-
-		const previewer = new PreviewHelper(app);
-		previewer.previewContainer.zIndex = 10000;
-
-		hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
-
 		initDevtools({ app });
 		window.__PIXI_DEVTOOLS__ = {
 			app
 		};
 		console.log('App renderer size:', app.renderer.width, app.renderer.height);
 		viewport = createViewport(app);
+		// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
+		const previewer = new PreviewHelper(app);
 
-		canvasContainer.appendChild(app.canvas);
-
-		// allow the stage itself to catch pointer events anywhere
 		app.stage.eventMode = 'static';
 		app.stage.hitArea = app.screen;
 
@@ -202,7 +184,7 @@
 		});
 		marquee.visible = false;
 
-		function endDrag(e: any) {
+		function endDrag(e: FederatedPointerEvent) {
 			if (!drag) return;
 
 			if (e.button === 2) {
@@ -241,14 +223,13 @@
 					});
 				}
 			} else if (drag.dragType == 'handToBoard') {
-				// Handle playing card from hand to board
 				const containers = selectionManager.values();
 				for (const c of containers) {
 					if (handContainer.hasItem(c)) {
 						c.x = 0;
 						c.y = 0;
 					} else {
-						handlePlayCard(c, e.globalX, e.globalY);
+						handlePlayCard(c);
 					}
 					c.cursor = 'pointer';
 				}
@@ -389,43 +370,45 @@
 				drag = null;
 			}
 		});
-		window.addEventListener('keydown', (e) => {
-			if (e.key === 'Escape') {
-				closeContextMenu();
-			} else if (e.code === 'KeyF') {
-				selectionManager.forEach((item) => handleFlipCard(item));
-			} else if (e.code === 'KeyD') {
-				selectionManager.forEach((item) => handleDrawCard(item));
-			} else if (e.code == 'AltLeft') {
-				if (hoverItem) {
-					previewer.showPreview(hoverItem);
-					pressedKeys.add('AltLeft');
-				}
-			}
-		});
+		return app;
+	}
 
-		window.addEventListener('keyup', (e) => {
-			if (e.code == 'AltLeft') {
-				pressedKeys.delete('AltLeft');
-				previewer.hidePreview();
-			}
-		});
+	async function createRoom(_app: Application) {
+		const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
+		const room = await createOrJoinRoom(client, 'my_room');
 
-		room = await createOrJoinRoom(client, 'my_room');
 		room.send('cmd', {
 			commandType: 'init',
 			payload: parsePayload(hybridResults)
 		});
 		let s = getStateCallbacks(room);
 
-		s(room.state).components.onAdd((component, index) => {
+		s(room.state).components.onAdd((component, _index) => {
 			initComponent(hybridResults, component, room.state, s);
 		});
+		return room;
+	}
 
-		return () => {
-			app?.destroy(true, { children: true, texture: true });
+	const app = $state(await initApp());
+	const room = $derived(await createRoom(app));
+
+	onMount(() => {
+		// Disable native context menu on the entire page
+		const handleContextMenu = (e: Event) => {
+			e.preventDefault();
 		};
+		document.addEventListener('contextmenu', handleContextMenu);
 	});
+
+	function attachApp(app: Application): Attachment {
+		return (element) => {
+			element.appendChild(app.view);
+			return () => {
+				app.destroy(true, { children: true, texture: true });
+				element.removeChild(app.view);
+			};
+		};
+	}
 
 	async function initComponent(
 		hybridResults: ParsedSvg[],
@@ -448,7 +431,7 @@
 				positions.get(id)!.moveTo(100, 100); // Should then be unnecessary. Card positions will not matter anyway once added to the stack
 				// cards should be invisble then anyway
 			}
-			const stackContainer = new FrontendStack(room, component, stacks, stack, s);
+			new FrontendStack(room, component, stacks, stack, s);
 		} else {
 			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map
 			if (!card) {
@@ -499,7 +482,7 @@
 		});
 	}
 
-	function handlePlayCard(item: BoardGameItem, x: number, y: number) {
+	function handlePlayCard(item: BoardGameItem) {
 		room.send('cmd', {
 			commandType: 'play',
 			payload: {
@@ -512,7 +495,7 @@
 </script>
 
 <div class="absolute inset-0">
-	<div bind:this={canvasContainer} class="full relative w-full" style="pointer-events: auto;"></div>
+	<div class="full relative w-full" style="pointer-events: auto;" {@attach attachApp(app)}></div>
 
 	<ContextMenu.Root bind:open={showContextMenu}>
 		<ContextMenu.Trigger
