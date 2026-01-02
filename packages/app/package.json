@@ -70,7 +70,7 @@
 		"globals": "^16.3.0",
 		"jsrepo": "^3.0.8",
 		"prettier": "^3.7.4",
-		"prettier-plugin-svelte": "^3.4.0",
+		"prettier-plugin-svelte": "^3.4.1",
 		"prettier-plugin-tailwindcss": "^0.7.2",
 		"storybook": "^10.1.4",
 		"svelte": "^5.45.6",
