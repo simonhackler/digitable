@@ -56,18 +56,16 @@ export class PreviewHelper {
 	showPreview(item: BoardGameItem) {
 		if (!item || !this.app) return;
 
-		// If we're already previewing this card, just move the popup.
 		if (this.previewForId === item.id && this.previewContainer.visible) {
 			this.updatePreviewPosition();
 			return;
 		}
 
-		// Fresh rebuild
 		this.hidePreview();
 		this.previewForId = item.id;
 
-		// Temporarily hide selection border (if it exists) for clean preview
 		const lastChild = item.children[item.children.length - 1];
+        // Better selection border system needed
 		const hasSelectionBorder = lastChild && lastChild.zIndex === 9999;
 		if (hasSelectionBorder) {
 			lastChild.visible = false;
@@ -75,20 +73,17 @@ export class PreviewHelper {
 
 		const tex = this.app.renderer.generateTexture({ target: item, resolution: 2 });
 
-		// Restore selection border visibility
 		if (hasSelectionBorder) {
 			lastChild.visible = true;
 		}
 		this.previewSprite = new Sprite(tex);
 
-		// Size constraints
 		const maxW = Math.min(this.app.screen.width * 0.45, 600);
 		const maxH = Math.min(this.app.screen.height * 0.65, 800);
 		const scale = Math.min(maxW / this.previewSprite.width, maxH / this.previewSprite.height);
 
 		this.previewSprite.scale.set(scale);
 
-		// Simple card-like background
 		const pad = 12;
 		const bgW = (this.previewSprite.width | 0) + pad * 2;
 		const bgH = (this.previewSprite.height | 0) + pad * 2;
@@ -98,7 +93,6 @@ export class PreviewHelper {
 			.fill({ color: 0xffffff, alpha: 0.98 })
 			.stroke({ width: 2, color: 0x000000, alpha: 0.08 });
 
-		// Light drop shadow
 		const shadow = new Graphics();
 		shadow.roundRect(6, 8, bgW, bgH, 14).fill({ color: 0x000000, alpha: 0.12 });
 

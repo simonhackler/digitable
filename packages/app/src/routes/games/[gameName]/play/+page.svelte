@@ -1,14 +1,13 @@
 <script lang="ts">
 	import { type SchemaCallbackProxy } from '@colyseus/schema';
-	import { Client, getStateCallbacks } from 'colyseus.js';
-	import { Application, Container, FederatedPointerEvent, Point, Rectangle } from 'pixi.js';
+	import { Client, getStateCallbacks, Room } from 'colyseus.js';
+	import { Application, Container, FederatedPointerEvent, Point, Rectangle, type Renderer } from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
-	import { error } from '@sveltejs/kit';
 	import type {
 		BoardGameRoomState,
 		Component,
@@ -27,28 +26,22 @@
 	import { HandContainer } from './HandContainer';
 	import { Position } from './frontend-components/position';
 	import { FrontendStack } from './frontend-components/frontend-stack';
-	import { requireParam } from '$lib/utils/assert';
+	import { assert, requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
+	import { PressedKeys } from 'runed';
 
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(page.params.deckName || 'western');
 	const fileSystem = getFileSystemContext();
-
-	async function createOrJoinRoom(client: Client, roomName: string) {
-		try {
-			return await client.joinOrCreate<BoardGameRoomState>(roomName);
-		} catch (e) {
-			console.error('Failed to join or create room:', e);
-			error(500, 'Could not join or create room');
-		}
-	}
-
 	const client = new Client('ws://localhost:2567');
 
 	let syncCards: Map<string, BoardGameItem> = new Map();
 	let positions: Map<string, Position> = new Map();
 
-	// Context menu state
+	function sendCmd<T extends string, P>(room: Room<BoardGameRoomState>, commandType: T, payload: P) {
+		room.send('cmd', { commandType, payload });
+	}
+
 	let showContextMenu = $state(false);
 	let contextMenuPosition = $state({ x: 0, y: 0 });
 
@@ -69,13 +62,8 @@
 
 	function handleFlipCard(item: BoardGameItem) {
 		item.flip();
-		room.send('cmd', {
-			commandType: 'flip',
-			payload: {
-				cardId: item.id,
-				isFaceUp: item.isFrontShowing()
-			}
-		});
+        console.log(item.id);
+		sendCmd(room, 'flip', { componentId: item.id, isFaceUp: item.isFrontShowing() });
 		closeContextMenu();
 	}
 
@@ -90,9 +78,25 @@
 
 	let viewport: Viewport;
 
-	let hoverItem: BoardGameItem;
+	let hoverItem: BoardGameItem | null = null;
 	let selectionManager = new SelectionManager();
-	const pressedKeys = new Set<string>();
+    const keys = new PressedKeys();
+
+    keys.onKeys('Escape', () => {
+        closeContextMenu();
+    });
+    keys.onKeys('F', () => {
+        selectionManager.forEach((item) => handleFlipCard(item));
+    });
+    keys.onKeys('D', () => {
+        selectionManager.forEach((item) => handleDrawCard(item));
+    });
+
+    keys.onKeys('alt', () => {
+        if (hoverItem) {
+            previewer.showPreview(hoverItem);
+        }
+    });
 
 	type DragState = {
 		startGlobalX: number;
@@ -103,12 +107,9 @@
 	} | null;
 
 	let drag: DragState = null;
-	// Context menu prevention handler
-	function handleContextMenu(e: Event) {
-		e.preventDefault();
-	}
 
-	// This is probably useless. Fighting against the engine here
+
+    // I am fighting against pixi's event target system here. This can probably be done more elegantly
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
 			if (curr instanceof BoardGameItem && curr.parent && !(curr.parent instanceof BoardGameItem)) {
@@ -142,11 +143,11 @@
 		window.__PIXI_DEVTOOLS__ = {
 			app
 		};
-		console.log('App renderer size:', app.renderer.width, app.renderer.height);
-		viewport = createViewport(app);
-		// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
-		const previewer = new PreviewHelper(app);
+        return app;
+    }
 
+    function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
+		viewport = createViewport(app);
 		app.stage.eventMode = 'static';
 		app.stage.hitArea = app.screen;
 
@@ -208,23 +209,14 @@
 					}
 				}
 			} else if (drag.dragType == 'selection') {
-				const containers = selectionManager.values();
-				for (const c of containers) {
+				for (const c of selectionManager.values()) {
 					const cardId = c.id;
 					c.cursor = 'pointer';
 
-					room.send('cmd', {
-						commandType: 'moveend',
-						payload: {
-							cardId: cardId,
-							x: c.x,
-							y: c.y
-						}
-					});
+					sendCmd(room, 'moveend', { cardId: cardId, x: c.x, y: c.y });
 				}
 			} else if (drag.dragType == 'handToBoard') {
-				const containers = selectionManager.values();
-				for (const c of containers) {
+				for (const c of selectionManager.values()) {
 					if (handContainer.hasItem(c)) {
 						c.x = 0;
 						c.y = 0;
@@ -244,12 +236,14 @@
 			const topItem = findTopLevelItem(e.target);
 			if (topItem) {
 				hoverItem = topItem;
-				if (pressedKeys.has('AltLeft')) {
-					previewer.showPreview(hoverItem);
-				}
 			} else {
-				previewer.hidePreview();
+                hoverItem = null;
 			}
+            if (hoverItem && keys.has('Alt')) {
+                previewer.showPreview(hoverItem);
+            } else {
+                previewer.hidePreview();
+            }
 			if (!drag) return;
 
 			if (drag.dragType == 'marquee') {
@@ -263,14 +257,7 @@
 				for (const boardItem of selectionManager.values()) {
 					const newPos = boardItem.position.add(delta);
 					boardItem.position = newPos;
-					room.send('cmd', {
-						commandType: 'move',
-						payload: {
-							componentId: boardItem.id,
-							x: boardItem.x,
-							y: boardItem.y
-						}
-					});
+					sendCmd(room, 'move', { componentId: boardItem.id, x: boardItem.x, y: boardItem.y });
 				}
 			} else if (drag.dragType == 'handToBoard') {
 				for (const boardItem of selectionManager.values()) {
@@ -370,42 +357,34 @@
 				drag = null;
 			}
 		});
-		return app;
+		return true;
 	}
 
-	async function createRoom(_app: Application) {
+	async function createRoom(_init: boolean) {
 		const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
-		const room = await createOrJoinRoom(client, 'my_room');
-
-		room.send('cmd', {
-			commandType: 'init',
-			payload: parsePayload(hybridResults)
-		});
+        const roomName = 'my_room';
+        const room = await client.joinOrCreate<BoardGameRoomState>(roomName)
 		let s = getStateCallbacks(room);
 
 		s(room.state).components.onAdd((component, _index) => {
 			initComponent(hybridResults, component, room.state, s);
 		});
+		sendCmd(room, 'init', parsePayload(hybridResults));
 		return room;
 	}
 
 	const app = $state(await initApp());
-	const room = $derived(await createRoom(app));
-
-	onMount(() => {
-		// Disable native context menu on the entire page
-		const handleContextMenu = (e: Event) => {
-			e.preventDefault();
-		};
-		document.addEventListener('contextmenu', handleContextMenu);
-	});
+	// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
+    const previewer = $derived(new PreviewHelper(app));
+    const init = $derived(initEditor(app, previewer));
+	const room = $derived(await createRoom(init));
 
 	function attachApp(app: Application): Attachment {
 		return (element) => {
 			element.appendChild(app.view);
 			return () => {
-				app.destroy(true, { children: true, texture: true });
 				element.removeChild(app.view);
+				app.destroy(true, { children: true, texture: true });
 			};
 		};
 	}
@@ -418,9 +397,7 @@
 	) {
 		if (component.type == 'stack') {
 			const stack = state.stacks.get(component.id);
-			if (!stack) {
-				throw new Error('stack not found');
-			}
+            assert(stack, 'Stack not found in state');
 			const stacks: BoardGameItem[] = [];
 			for (const id of stack.componentIds) {
 				console.log(id);
@@ -434,9 +411,7 @@
 			new FrontendStack(room, component, stacks, stack, s);
 		} else {
 			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map
-			if (!card) {
-				throw new Error('card not found');
-			}
+            assert(card, 'Card not found in hybrid results');
 			if (syncCards.has(card.id)) {
 				return;
 			}
@@ -465,33 +440,28 @@
 		}
 	}
 
+	function blockNativeContextMenu(e: Event) {
+		e.preventDefault();
+	}
+
+	onMount(() => {
+		document.addEventListener('contextmenu', blockNativeContextMenu);
+	});
+
 	onDestroy(() => {
-		// Remove context menu prevention
-		document.removeEventListener('contextmenu', handleContextMenu);
-		app?.destroy(true, { children: true, texture: true });
+		document.removeEventListener('contextmenu', blockNativeContextMenu);
 	});
 
 	function handleDrawCard(item: BoardGameItem) {
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);
-		room.send('cmd', {
-			commandType: 'draw',
-			payload: {
-				cardId: item.id
-			}
-		});
+		sendCmd(room, 'draw', { cardId: item.id });
 	}
 
 	function handlePlayCard(item: BoardGameItem) {
-		room.send('cmd', {
-			commandType: 'play',
-			payload: {
-				cardId: item.id,
-				x: item.x,
-				y: item.y
-			}
-		});
+		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
 	}
+
 </script>
 
 <div class="absolute inset-0">
