@@ -4,6 +4,22 @@ export interface InitGamePayload {
 	stacks: { componentIds: string[] }[];
 }
 
+// Should support different types of positions. For example a position might have differen
+// so for example there might be a board that is a grid (Summonners War), a board that is a freeform x, y (Warhammer) board or
+// a graph based board. So a position has to know for what board type it is and would probably even need a reference to the board itself?
+// Also a horizontal/vertical flex layout
+
+export class HandPosition extends Schema {
+    @type ('number') positionInHand: number;
+    @type ('number') playerId: string;
+
+    constructor(positionInHand: number, playerId: string) {
+        super();
+        this.positionInHand= positionInHand;
+        this.playerId= playerId;
+    }
+}
+
 // Board, Tokens, Tiles, Figures, Cards, Dice
 export class Positionable extends Schema {
 	@type('number') x: number;
@@ -90,11 +106,6 @@ export class Player extends Schema {
 		this.hand = new SetSchema<string>();
 	}
 }
-
-// export class BoardgameRoomStateOld extends Schema {
-//     @type({map: BoardItem}) cards = new MapSchema<BoardItem>();
-//     @type({ map: Player }) players = new MapSchema<Player>();
-// }
 
 export class BoardGameRoomState extends Schema {
 	@type({ map: Component }) components: MapSchema<Component>;
