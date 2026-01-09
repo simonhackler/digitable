@@ -1,5 +1,5 @@
 import { Client, Room } from 'colyseus';
-import { logger } from "@colyseus/core";
+import { logger } from '@colyseus/core';
 
 import {
 	BoardGameRoomState as BoardGameRoomState,
@@ -27,10 +27,10 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 	]);
 
 	onCreate() {
-        logger.info('CommandRoom created');
+		logger.info('CommandRoom created');
 		this.state = new BoardGameRoomState();
 		this.onMessage('cmd', (client, message) => {
-            logger.info(`Received command: ${message.commandType} from ${client.sessionId}`);
+			logger.info(`Received command: ${message.commandType} from ${client.sessionId}`);
 			const CommandClass = this.roomCommands.get(message.commandType);
 			if (CommandClass) {
 				const command = new CommandClass();
@@ -40,7 +40,7 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 	}
 
 	onJoin(client: Client, _options: any) {
-        logger.info('Client joined:', client.sessionId);
+		logger.info('Client joined:', client.sessionId);
 		this.dispatcher.dispatch(new OnJoinCommand(), {
 			sessionId: client.sessionId
 		});

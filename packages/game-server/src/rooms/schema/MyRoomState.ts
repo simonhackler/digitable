@@ -10,14 +10,14 @@ export interface InitGamePayload {
 // Also a horizontal/vertical flex layout
 
 export class HandPosition extends Schema {
-    @type ('number') positionInHand: number;
-    @type ('number') playerId: string;
+	@type('number') positionInHand: number;
+	@type('number') playerId: string;
 
-    constructor(positionInHand: number, playerId: string) {
-        super();
-        this.positionInHand= positionInHand;
-        this.playerId= playerId;
-    }
+	constructor(positionInHand: number, playerId: string) {
+		super();
+		this.positionInHand = positionInHand;
+		this.playerId = playerId;
+	}
 }
 
 // Board, Tokens, Tiles, Figures, Cards, Dice
