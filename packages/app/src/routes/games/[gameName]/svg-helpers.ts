@@ -31,7 +31,6 @@ export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
 			data: [t.textContent || '']
 		} as ColumnWithData;
 	});
-	console.log(textColumns);
 	const imageColumns = images.map((im) => {
 		return {
 			title: im.id,
@@ -117,7 +116,6 @@ export function initialSetupForSvgItem(
 		const bbox = el.getBBox();
 		width = bbox.width.toString();
 		height = bbox.height.toString();
-		console.log(width, height, x, y);
 	}
 
 	const fo = document.createElementNS(svg.namespaceURI, 'foreignObject') as SVGForeignObjectElement;

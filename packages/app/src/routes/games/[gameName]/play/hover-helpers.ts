@@ -65,7 +65,7 @@ export class PreviewHelper {
 		this.previewForId = item.id;
 
 		const lastChild = item.children[item.children.length - 1];
-        // Better selection border system needed
+		// Better selection border system needed
 		const hasSelectionBorder = lastChild && lastChild.zIndex === 9999;
 		if (hasSelectionBorder) {
 			lastChild.visible = false;

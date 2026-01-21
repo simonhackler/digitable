@@ -7,6 +7,8 @@ import { type SchemaCallbackProxy } from '@colyseus/schema';
 import { Room } from 'colyseus.js';
 import { Container } from 'pixi.js';
 
+// Is this the correct way?
+// I am still not sure. I can't rely on the backend state only.
 export class Position {
 	container: Container;
 	component: Component;

@@ -1,7 +1,14 @@
 <script lang="ts">
 	import { type SchemaCallbackProxy } from '@colyseus/schema';
 	import { Client, getStateCallbacks, Room } from 'colyseus.js';
-	import { Application, Container, FederatedPointerEvent, Point, Rectangle, type Renderer } from 'pixi.js';
+	import {
+		Application,
+		Container,
+		FederatedPointerEvent,
+		Point,
+		Rectangle,
+		type Renderer
+	} from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
@@ -25,7 +32,6 @@
 	import { createViewport } from './viewport-utils';
 	import { HandContainer } from './HandContainer';
 	import { Position } from './frontend-components/position';
-	import { FrontendStack } from './frontend-components/frontend-stack';
 	import { assert, requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
@@ -35,10 +41,14 @@
 	const fileSystem = getFileSystemContext();
 	const client = new Client('ws://localhost:2567');
 
-	let syncCards: Map<string, BoardGameItem> = new Map();
+	let boardGameItems: Map<string, BoardGameItem> = new Map();
 	let positions: Map<string, Position> = new Map();
 
-	function sendCmd<T extends string, P>(room: Room<BoardGameRoomState>, commandType: T, payload: P) {
+	function sendCmd<T extends string, P>(
+		room: Room<BoardGameRoomState>,
+		commandType: T,
+		payload: P
+	) {
 		room.send('cmd', { commandType, payload });
 	}
 
@@ -62,7 +72,7 @@
 
 	function handleFlipCard(item: BoardGameItem) {
 		item.flip();
-        console.log(item.id);
+		console.log(item.id);
 		sendCmd(room, 'flip', { componentId: item.id, isFaceUp: item.isFrontShowing() });
 		closeContextMenu();
 	}
@@ -80,23 +90,22 @@
 
 	let hoverItem: BoardGameItem | null = null;
 	let selectionManager = new SelectionManager();
-    const keys = new PressedKeys();
+	const keys = new PressedKeys();
 
-    keys.onKeys('Escape', () => {
-        closeContextMenu();
-    });
-    keys.onKeys('F', () => {
-        selectionManager.forEach((item) => handleFlipCard(item));
-    });
-    keys.onKeys('D', () => {
-        selectionManager.forEach((item) => handleDrawCard(item));
-    });
-
-    keys.onKeys('alt', () => {
-        if (hoverItem) {
-            previewer.showPreview(hoverItem);
-        }
-    });
+	keys.onKeys('Escape', () => {
+		closeContextMenu();
+	});
+	keys.onKeys('F', () => {
+		selectionManager.forEach((item) => handleFlipCard(item));
+	});
+	keys.onKeys('D', () => {
+		selectionManager.forEach((item) => handleDrawCard(item));
+	});
+	keys.onKeys('alt', () => {
+		if (hoverItem) {
+			previewer.showPreview(hoverItem);
+		}
+	});
 
 	type DragState = {
 		startGlobalX: number;
@@ -108,8 +117,7 @@
 
 	let drag: DragState = null;
 
-
-    // I am fighting against pixi's event target system here. This can probably be done more elegantly
+	// I am fighting against pixi's event target system here. This can probably be done more elegantly
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
 			if (curr instanceof BoardGameItem && curr.parent && !(curr.parent instanceof BoardGameItem)) {
@@ -143,10 +151,10 @@
 		window.__PIXI_DEVTOOLS__ = {
 			app
 		};
-        return app;
-    }
+		return app;
+	}
 
-    function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
+	function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
 		viewport = createViewport(app);
 		app.stage.eventMode = 'static';
 		app.stage.hitArea = app.screen;
@@ -202,7 +210,7 @@
 					marquee.width,
 					marquee.height
 				);
-				for (const item of syncCards.values()) {
+				for (const item of boardGameItems.values()) {
 					const itemBounds = item.getBounds();
 					if (selectionRect.intersects(new Rectangle().copyFromBounds(itemBounds))) {
 						selectionManager.select(item);
@@ -237,13 +245,13 @@
 			if (topItem) {
 				hoverItem = topItem;
 			} else {
-                hoverItem = null;
+				hoverItem = null;
 			}
-            if (hoverItem && keys.has('Alt')) {
-                previewer.showPreview(hoverItem);
-            } else {
-                previewer.hidePreview();
-            }
+			if (hoverItem && keys.has('Alt')) {
+				previewer.showPreview(hoverItem);
+			} else {
+				previewer.hidePreview();
+			}
 			if (!drag) return;
 
 			if (drag.dragType == 'marquee') {
@@ -362,8 +370,8 @@
 
 	async function createRoom(_init: boolean) {
 		const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
-        const roomName = 'my_room';
-        const room = await client.joinOrCreate<BoardGameRoomState>(roomName)
+		const roomName = 'my_room';
+		const room = await client.joinOrCreate<BoardGameRoomState>(roomName);
 		let s = getStateCallbacks(room);
 
 		s(room.state).components.onAdd((component, _index) => {
@@ -375,15 +383,15 @@
 
 	const app = $state(await initApp());
 	// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
-    const previewer = $derived(new PreviewHelper(app));
-    const init = $derived(initEditor(app, previewer));
+	const previewer = $derived(new PreviewHelper(app));
+	const init = $derived(initEditor(app, previewer));
 	const room = $derived(await createRoom(init));
 
 	function attachApp(app: Application): Attachment {
 		return (element) => {
-			element.appendChild(app.view);
+			element.appendChild(app.canvas);
 			return () => {
-				element.removeChild(app.view);
+				element.removeChild(app.canvas);
 				app.destroy(true, { children: true, texture: true });
 			};
 		};
@@ -397,26 +405,26 @@
 	) {
 		if (component.type == 'stack') {
 			const stack = state.stacks.get(component.id);
-            assert(stack, 'Stack not found in state');
+			assert(stack, 'Stack not found in state');
 			const stacks: BoardGameItem[] = [];
 			for (const id of stack.componentIds) {
 				console.log(id);
-				if (!syncCards.has(id)) {
+				if (!boardGameItems.has(id)) {
 					initComponent(hybridResults, state.components.get(id)!, state, s);
 				}
-				stacks.push(syncCards.get(id)!);
+				stacks.push(boardGameItems.get(id)!);
 				positions.get(id)!.moveTo(100, 100); // Should then be unnecessary. Card positions will not matter anyway once added to the stack
 				// cards should be invisble then anyway
 			}
-			new FrontendStack(room, component, stacks, stack, s);
+			// new FrontendStack(room, component, stacks, stack, s);
 		} else {
 			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map
-            assert(card, 'Card not found in hybrid results');
-			if (syncCards.has(card.id)) {
+			assert(card, 'Card not found in hybrid results');
+			if (boardGameItems.has(card.id)) {
 				return;
 			}
 			const cardContainer = new BoardGameItem(card.front, card.back, component.id);
-			syncCards.set(component.id, cardContainer);
+			boardGameItems.set(component.id, cardContainer);
 			const position = state.positions.get(component.id);
 			if (position) {
 				const frontendPosition = new Position(room, component, cardContainer, position, s);
@@ -461,7 +469,6 @@
 	function handlePlayCard(item: BoardGameItem) {
 		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
 	}
-
 </script>
 
 <div class="absolute inset-0">
