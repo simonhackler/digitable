@@ -15,10 +15,11 @@
 	import { page } from '$app/state';
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
-	import type {
-		BoardGameRoomState,
-		Component,
-		InitGamePayload
+	import {
+		Flippable,
+		type BoardGameRoomState,
+		type Component,
+		type InitGamePayload
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItem } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
@@ -31,7 +32,11 @@
 	import { pixiToCSSCoordinates } from './coordinate-utils';
 	import { createViewport } from './viewport-utils';
 	import { HandContainer } from './HandContainer';
-	import { Position } from './frontend-components/position';
+	import {
+		ClientFlippable,
+		ClientPosition,
+		type SharedClientValues
+	} from './frontend-components/position';
 	import { assert, requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
@@ -42,7 +47,7 @@
 	const client = new Client('ws://localhost:2567');
 
 	let boardGameItems: Map<string, BoardGameItem> = new Map();
-	let positions: Map<string, Position> = new Map();
+	let positions: Map<string, ClientPosition> = new Map();
 
 	function sendCmd<T extends string, P>(
 		room: Room<BoardGameRoomState>,
@@ -263,6 +268,10 @@
 				const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
 				const delta = worldPos.subtract(startWorldPos);
 				for (const boardItem of selectionManager.values()) {
+					// if (boardItem.clientPosition) {
+					//     continue;
+					// }
+					// boardItem.clientPosition.moveTo(boardItem.x + delta.x, boardItem.y + delta.y);
 					const newPos = boardItem.position.add(delta);
 					boardItem.position = newPos;
 					sendCmd(room, 'move', { componentId: boardItem.id, x: boardItem.x, y: boardItem.y });
@@ -403,6 +412,12 @@
 		state: BoardGameRoomState,
 		s: SchemaCallbackProxy<BoardGameRoomState>
 	) {
+		const sharedClientValues: SharedClientValues = {
+			component,
+			room,
+			sessionId: room.sessionId,
+			s
+		};
 		if (component.type == 'stack') {
 			const stack = state.stacks.get(component.id);
 			assert(stack, 'Stack not found in state');
@@ -423,28 +438,41 @@
 			if (boardGameItems.has(card.id)) {
 				return;
 			}
-			const cardContainer = new BoardGameItem(card.front, card.back, component.id);
-			boardGameItems.set(component.id, cardContainer);
+			const cardContainer = new Container();
+			cardContainer.addChild(card.front);
+			cardContainer.addChild(card.back);
+
+			const boardGameItem = new BoardGameItem(card.front, card.back, component.id);
+			boardGameItems.set(component.id, boardGameItem);
 			const position = state.positions.get(component.id);
 			if (position) {
-				const frontendPosition = new Position(room, component, cardContainer, position, s);
+				const frontendPosition = new ClientPosition(sharedClientValues, position);
 				positions.set(component.id, frontendPosition);
 			}
-			const flip = state.flippable.get(component.id);
-			if (flip) {
-				// Todo implement
+			const flippable = state.flippable.get(component.id);
+			if (flippable) {
+				const frontendFlip = new ClientFlippable(sharedClientValues, flippable);
+				frontendFlip.onFlipped.subscribe((flippable) => {
+					if (flippable.isFaceUp) {
+						card.front.visible = true;
+						card.back.visible = false;
+					} else {
+						card.front.visible = false;
+						card.back.visible = true;
+					}
+				});
 			}
 
-			cardContainer.scale.set(0.5);
-			cardContainer.eventMode = 'static';
-			cardContainer.cursor = 'pointer';
-			cardContainer.on('pointerover', () => {
-				if (!drag) cardContainer.tint = 0xcccccc;
+			boardGameItem.scale.set(0.5);
+			boardGameItem.eventMode = 'static';
+			boardGameItem.cursor = 'pointer';
+			boardGameItem.on('pointerover', () => {
+				if (!drag) boardGameItem.tint = 0xcccccc;
 			});
-			cardContainer.on('pointerout', () => {
-				cardContainer.tint = 0xffffff;
+			boardGameItem.on('pointerout', () => {
+				boardGameItem.tint = 0xffffff;
 			});
-			boardContainer.addChild(cardContainer);
+			boardContainer.addChild(boardGameItem);
 		}
 	}
 

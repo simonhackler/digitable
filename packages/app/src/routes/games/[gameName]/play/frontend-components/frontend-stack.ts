@@ -22,6 +22,7 @@ interface Flippable<T> {
 	flip(state: T): void;
 }
 
+// Drawable is a client site "nicety" for moving something onto the server
 interface Drawable<T> {
 	draw(component: Component, state: T): BoardGameItem | null;
 }
@@ -191,3 +192,5 @@ export class ClientCard extends ClientComponent<CardState, Stack> {
 // The logic for flipping is the same for tokens and cards. They might display a different animation
 // Tokens can be put into stacks of the same token type. Cards can be put into stacks of the same card type(Decks). Stacks of tokens/tiles can be flipped.
 // The logic might be the same but animations might be different. Taking a token works the same for both.
+//
+// 2 Options for triggering client changes. Have the server components also on the frontend or

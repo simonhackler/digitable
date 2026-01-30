@@ -1,72 +1,132 @@
-import type {
-	BoardGameRoomState,
+import {
+	type BoardGameRoomState,
 	Positionable,
-	Component
+	type Component,
+	Flippable
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import { type SchemaCallbackProxy } from '@colyseus/schema';
 import { Room } from 'colyseus.js';
-import { Container } from 'pixi.js';
 
-// Is this the correct way?
-// I am still not sure. I can't rely on the backend state only.
-export class Position {
-	container: Container;
+type Handler<T> = (payload: T) => void;
+
+export class Event<T> {
+	private handlers = new Set<Handler<T>>();
+
+	subscribe(handler: Handler<T>): () => void {
+		this.handlers.add(handler);
+		return () => this.handlers.delete(handler);
+	}
+
+	emit(payload: T): void {
+		for (const h of this.handlers) h(payload);
+	}
+
+	clear(): void {
+		this.handlers.clear();
+	}
+}
+
+export interface SharedClientValues {
 	component: Component;
 	room: Room<BoardGameRoomState>;
 	sessionId: string;
+	s: SchemaCallbackProxy<BoardGameRoomState>;
+}
 
-	constructor(
-		room: Room<BoardGameRoomState>,
-		component: Component,
-		container: Container,
-		position: Positionable,
-		s: SchemaCallbackProxy<BoardGameRoomState>
-	) {
-		// This will be the same on every single one of these classes.
-		this.room = room;
-		this.sessionId = room.sessionId;
-		this.container = container;
-		this.component = component;
+// Is this the correct way?
+// I am still not sure. I can't rely on the backend state only.
+export class ClientPosition {
+	sharedValues: SharedClientValues;
+	clientPositionState: Positionable;
+	onPositionChanged: Event<Positionable> = new Event();
 
-		container.x = position.x;
-		container.y = position.y;
+	constructor(sharedValues: SharedClientValues, position: Positionable) {
+		this.sharedValues = sharedValues;
+		this.clientPositionState = new Positionable(position.x, position.y, position.visible);
 
-		s(position).onChange(() => {
-			container.x = position.x;
-			container.y = position.y;
+		sharedValues.s(position).onChange(() => {
+			this.clientPositionState.x = position.x;
+			this.clientPositionState.y = position.y;
+			this.onPositionChanged.emit(position);
 		});
 	}
-
 	// IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client
 	// Or I will need a frontend command or something like that?
 	// I somehow want to tightly couple server and frontend commands
 	// How will the commands then have to look like?
 	moveTo(x: number, y: number) {
-		if (this.component.owner !== this.sessionId && this.component.owner !== '') {
-			console.warn(`Component ${this.component.id} is currently owned by another player.`);
+		if (
+			this.sharedValues.component.owner !== this.sharedValues.sessionId &&
+			this.sharedValues.component.owner !== ''
+		) {
+			console.warn(
+				`Component ${this.sharedValues.component.id} is currently owned by another player.`
+			);
 			return;
 		}
-		this.container.x = x;
-		this.container.y = y;
-		this.room.send('cmd', {
+		this.clientPositionState.x = x;
+		this.clientPositionState.y = y;
+		this.onPositionChanged.emit(this.clientPositionState);
+		this.sharedValues.room.send('cmd', {
 			commandType: 'move',
 			payload: {
-				componentId: this.component.id,
-				x: this.container.x,
-				y: this.container.y
+				componentId: this.sharedValues.component.id,
+				x,
+				y
 			}
 		});
 	}
 
 	moveEnd(x: number, y: number) {
-		this.container.x = x;
-		this.container.y = y;
-		this.room.send('cmd', {
+		this.clientPositionState.x = x;
+		this.clientPositionState.y = y;
+		this.onPositionChanged.emit(this.clientPositionState);
+		this.sharedValues.room.send('cmd', {
 			commandType: 'moveend',
 			payload: {
-				cardId: this.component.id,
-				x: this.container.x,
-				y: this.container.y
+				cardId: this.sharedValues.component.id,
+				x,
+				y
+			}
+		});
+	}
+}
+
+export class ClientFlippable {
+	sharedValues: SharedClientValues;
+	clientFlippableState: Flippable;
+	onFlipped: Event<Flippable> = new Event();
+
+	constructor(sharedValues: SharedClientValues, flippable: Flippable) {
+		this.sharedValues = sharedValues;
+		this.clientFlippableState = new Flippable(flippable.isFaceUp);
+
+		sharedValues.s(flippable).onChange(() => {
+			this.clientFlippableState.isFaceUp = flippable.isFaceUp;
+			this.onFlipped.emit(flippable);
+		});
+	}
+	// IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client
+	// Or I will need a frontend command or something like that?
+	// I somehow want to tightly couple server and frontend commands
+	// How will the commands then have to look like?
+	flip() {
+		if (
+			this.sharedValues.component.owner !== this.sharedValues.sessionId &&
+			this.sharedValues.component.owner !== ''
+		) {
+			console.warn(
+				`Component ${this.sharedValues.component.id} is currently owned by another player.`
+			);
+			return;
+		}
+		this.clientFlippableState.isFaceUp = !this.clientFlippableState.isFaceUp;
+		this.onFlipped.emit(this.clientFlippableState);
+		this.sharedValues.room.send('cmd', {
+			commandType: 'flip',
+			payload: {
+				componentId: this.sharedValues.component.id,
+				isFaceUp: this.clientFlippableState.isFaceUp
 			}
 		});
 	}
