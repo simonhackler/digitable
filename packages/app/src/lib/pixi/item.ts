@@ -58,6 +58,14 @@ export class BoardGameItemNew extends Container {
 		this.itemContainer = itemContainer;
 		this.addChild(this.itemContainer);
 		this.clientPosition = clientPosition;
+		// Not sure that I like this. E.g flipping is done outside of this. Probably should choose one method
+		// The fix is changing this class that does not extend container and instead having a container property on this class
+		// Then the container can be passed from the outside and subscribed to on the outside. This is probably the best way to do this.
+		if (clientPosition) {
+			clientPosition.onPositionChanged.subscribe((newPos) => {
+				this.position.set(newPos.x, newPos.y);
+			});
+		}
 		this.clientFlippable = clientFlippable;
 	}
 }

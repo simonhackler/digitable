@@ -1,22 +1,23 @@
 import { Graphics } from 'pixi.js';
-import { BoardGameItem } from '$lib/pixi/item';
+import { BoardGameItemNew } from '$lib/pixi/item';
 
 export class SelectionManager {
-	private selectedItems = new Set<BoardGameItem>();
+	private selectedItems = new Set<BoardGameItemNew>();
 
-	select(item: BoardGameItem) {
+	select(item: BoardGameItemNew) {
 		if (this.selectedItems.has(item)) return;
 		this.selectedItems.add(item);
 		this.createSelectionBorder(item);
 	}
 
-	deselect(item: BoardGameItem) {
+	deselect(item: BoardGameItemNew) {
 		if (!this.selectedItems.has(item)) return;
 		this.selectedItems.delete(item);
-		item.removeChildren(2);
+		// TODO this is does not scale
+		item.removeChildren(1);
 	}
 
-	selectOnly(item: BoardGameItem) {
+	selectOnly(item: BoardGameItemNew) {
 		this.clear();
 		this.select(item);
 	}
@@ -25,15 +26,15 @@ export class SelectionManager {
 		this.selectedItems.forEach((item) => this.deselect(item));
 	}
 
-	has(item: BoardGameItem): boolean {
+	has(item: BoardGameItemNew): boolean {
 		return this.selectedItems.has(item);
 	}
 
-	forEach(callback: (item: BoardGameItem) => void) {
+	forEach(callback: (item: BoardGameItemNew) => void) {
 		this.selectedItems.forEach(callback);
 	}
 
-	values(): IterableIterator<BoardGameItem> {
+	values(): IterableIterator<BoardGameItemNew> {
 		return this.selectedItems.values();
 	}
 
@@ -41,7 +42,7 @@ export class SelectionManager {
 		return this.selectedItems.size;
 	}
 
-	private createSelectionBorder(item: BoardGameItem) {
+	private createSelectionBorder(item: BoardGameItemNew) {
 		const b = item.getLocalBounds();
 		const pad = Math.min(Math.max(Math.min(b.width, b.height) * 0.02, 2), 8); // 2–8px padding
 		const radius = Math.min(Math.max(Math.min(b.width, b.height) * 0.06, 6), 20); // rounded corners

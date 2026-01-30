@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Sprite } from 'pixi.js';
-import type { BoardGameItem } from '$lib/pixi/item';
+import type { BoardGameItemNew } from '$lib/pixi/item';
 
 export class PreviewHelper {
 	previewContainer: Container;
@@ -53,7 +53,7 @@ export class PreviewHelper {
 		this.previewContainer.removeChildren();
 	}
 
-	showPreview(item: BoardGameItem) {
+	showPreview(item: BoardGameItemNew) {
 		if (!item || !this.app) return;
 
 		if (this.previewForId === item.id && this.previewContainer.visible) {

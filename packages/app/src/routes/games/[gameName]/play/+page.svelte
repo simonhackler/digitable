@@ -21,7 +21,7 @@
 		type Component,
 		type InitGamePayload
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
-	import { BoardGameItem } from '$lib/pixi/item';
+	import { BoardGameItemNew, CardContainer } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
 	import { LayoutContainer } from '@pixi/layout/components';
@@ -46,7 +46,7 @@
 	const fileSystem = getFileSystemContext();
 	const client = new Client('ws://localhost:2567');
 
-	let boardGameItems: Map<string, BoardGameItem> = new Map();
+	let boardGameItems: Map<string, BoardGameItemNew> = new Map();
 	let positions: Map<string, ClientPosition> = new Map();
 
 	function sendCmd<T extends string, P>(
@@ -75,10 +75,9 @@
 		showContextMenu = false;
 	}
 
-	function handleFlipCard(item: BoardGameItem) {
-		item.flip();
+	function handleFlipCard(item: BoardGameItemNew) {
 		console.log(item.id);
-		sendCmd(room, 'flip', { componentId: item.id, isFaceUp: item.isFrontShowing() });
+		item.clientFlippable?.flip();
 		closeContextMenu();
 	}
 
@@ -93,7 +92,7 @@
 
 	let viewport: Viewport;
 
-	let hoverItem: BoardGameItem | null = null;
+	let hoverItem: BoardGameItemNew | null = null;
 	let selectionManager = new SelectionManager();
 	const keys = new PressedKeys();
 
@@ -125,7 +124,11 @@
 	// I am fighting against pixi's event target system here. This can probably be done more elegantly
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
-			if (curr instanceof BoardGameItem && curr.parent && !(curr.parent instanceof BoardGameItem)) {
+			if (
+				curr instanceof BoardGameItemNew &&
+				curr.parent &&
+				!(curr.parent instanceof BoardGameItemNew)
+			) {
 				return curr;
 			}
 			curr = curr.parent!;
@@ -223,10 +226,10 @@
 				}
 			} else if (drag.dragType == 'selection') {
 				for (const c of selectionManager.values()) {
-					const cardId = c.id;
-					c.cursor = 'pointer';
-
-					sendCmd(room, 'moveend', { cardId: cardId, x: c.x, y: c.y });
+					if (c.clientPosition) {
+						c.clientPosition.moveEnd(c.x, c.y);
+						c.cursor = 'pointer';
+					}
 				}
 			} else if (drag.dragType == 'handToBoard') {
 				for (const c of selectionManager.values()) {
@@ -268,13 +271,10 @@
 				const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
 				const delta = worldPos.subtract(startWorldPos);
 				for (const boardItem of selectionManager.values()) {
-					// if (boardItem.clientPosition) {
-					//     continue;
-					// }
-					// boardItem.clientPosition.moveTo(boardItem.x + delta.x, boardItem.y + delta.y);
-					const newPos = boardItem.position.add(delta);
-					boardItem.position = newPos;
-					sendCmd(room, 'move', { componentId: boardItem.id, x: boardItem.x, y: boardItem.y });
+					if (boardItem.clientPosition) {
+						const newPos = boardItem.position.add(delta);
+						boardItem.clientPosition.moveTo(newPos.x, newPos.y);
+					}
 				}
 			} else if (drag.dragType == 'handToBoard') {
 				for (const boardItem of selectionManager.values()) {
@@ -418,18 +418,18 @@
 			sessionId: room.sessionId,
 			s
 		};
+		// 2 different ways. Basically bundles. E.g Bags decks etc that hold items.
+		// Bags are different to stacks. Bags don't hold have any order
 		if (component.type == 'stack') {
 			const stack = state.stacks.get(component.id);
 			assert(stack, 'Stack not found in state');
-			const stacks: BoardGameItem[] = [];
+			const stacks: BoardGameItemNew[] = [];
 			for (const id of stack.componentIds) {
 				console.log(id);
 				if (!boardGameItems.has(id)) {
 					initComponent(hybridResults, state.components.get(id)!, state, s);
 				}
 				stacks.push(boardGameItems.get(id)!);
-				positions.get(id)!.moveTo(100, 100); // Should then be unnecessary. Card positions will not matter anyway once added to the stack
-				// cards should be invisble then anyway
 			}
 			// new FrontendStack(room, component, stacks, stack, s);
 		} else {
@@ -438,20 +438,18 @@
 			if (boardGameItems.has(card.id)) {
 				return;
 			}
-			const cardContainer = new Container();
-			cardContainer.addChild(card.front);
-			cardContainer.addChild(card.back);
+			const cardContainer = new CardContainer(card.front, card.back);
 
-			const boardGameItem = new BoardGameItem(card.front, card.back, component.id);
-			boardGameItems.set(component.id, boardGameItem);
+			let frontendPosition: ClientPosition | null = null;
 			const position = state.positions.get(component.id);
 			if (position) {
-				const frontendPosition = new ClientPosition(sharedClientValues, position);
-				positions.set(component.id, frontendPosition);
+				frontendPosition = new ClientPosition(sharedClientValues, position);
 			}
+			let frontendFlip: ClientFlippable | null = null;
+
 			const flippable = state.flippable.get(component.id);
 			if (flippable) {
-				const frontendFlip = new ClientFlippable(sharedClientValues, flippable);
+				frontendFlip = new ClientFlippable(sharedClientValues, flippable);
 				frontendFlip.onFlipped.subscribe((flippable) => {
 					if (flippable.isFaceUp) {
 						card.front.visible = true;
@@ -462,6 +460,14 @@
 					}
 				});
 			}
+
+			const boardGameItem = new BoardGameItemNew(
+				cardContainer,
+				component.id,
+				frontendPosition,
+				frontendFlip
+			);
+			boardGameItems.set(component.id, boardGameItem);
 
 			boardGameItem.scale.set(0.5);
 			boardGameItem.eventMode = 'static';
@@ -488,13 +494,13 @@
 		document.removeEventListener('contextmenu', blockNativeContextMenu);
 	});
 
-	function handleDrawCard(item: BoardGameItem) {
+	function handleDrawCard(item: BoardGameItemNew) {
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);
 		sendCmd(room, 'draw', { cardId: item.id });
 	}
 
-	function handlePlayCard(item: BoardGameItem) {
+	function handlePlayCard(item: BoardGameItemNew) {
 		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
 	}
 </script>

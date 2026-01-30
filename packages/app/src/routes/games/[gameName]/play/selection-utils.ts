@@ -1,7 +1,7 @@
 import { Graphics } from 'pixi.js';
-import { BoardGameItem } from '$lib/pixi/item';
+import { BoardGameItemNew } from '$lib/pixi/item';
 
-export function createSelectionBorder(item: BoardGameItem) {
+export function createSelectionBorder(item: BoardGameItemNew) {
 	const b = item.getLocalBounds();
 	const pad = Math.min(Math.max(Math.min(b.width, b.height) * 0.02, 2), 8); // 2–8px padding
 	const radius = Math.min(Math.max(Math.min(b.width, b.height) * 0.06, 6), 20); // rounded corners
@@ -25,20 +25,20 @@ export function createSelectionBorder(item: BoardGameItem) {
 	item.addChild(g);
 }
 
-export function selectItem(item: BoardGameItem, selItems: Set<BoardGameItem>) {
+export function selectItem(item: BoardGameItemNew, selItems: Set<BoardGameItemNew>) {
 	if (selItems.has(item)) return;
 	selItems.add(item);
 	createSelectionBorder(item);
 }
 
-export function deselectItem(item: BoardGameItem, selItems: Set<BoardGameItem>) {
+export function deselectItem(item: BoardGameItemNew, selItems: Set<BoardGameItemNew>) {
 	if (!selItems.has(item)) return;
 	console.log('Deselecting item', item.id);
 	selItems.delete(item);
 	item.removeChildren(2);
 }
 
-export function selectOnlyItem(item: BoardGameItem, selItems: Set<BoardGameItem>) {
+export function selectOnlyItem(item: BoardGameItemNew, selItems: Set<BoardGameItemNew>) {
 	selItems.forEach((it) => deselectItem(it, selItems));
 	selectItem(item, selItems);
 }

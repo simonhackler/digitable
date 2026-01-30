@@ -1,9 +1,9 @@
 import { LayoutContainer } from '@pixi/layout/components';
-import { BoardGameItem } from '$lib/pixi/item';
+import { BoardGameItemNew } from '$lib/pixi/item';
 
 export class HandContainer {
 	container: LayoutContainer;
-	boardGameItems: Set<BoardGameItem>;
+	boardGameItems: Set<BoardGameItemNew>;
 
 	constructor() {
 		this.boardGameItems = new Set();
@@ -22,7 +22,7 @@ export class HandContainer {
 		this.container.zIndex = 10;
 	}
 
-	addItem(item: BoardGameItem) {
+	addItem(item: BoardGameItemNew) {
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);
@@ -42,7 +42,7 @@ export class HandContainer {
 		this.container.addChild(wrapper);
 	}
 
-	removeItem(item: BoardGameItem) {
+	removeItem(item: BoardGameItemNew) {
 		this.boardGameItems.delete(item);
 		const wrapper = item.parent;
 		if (wrapper && wrapper.parent === this.container) {
@@ -50,7 +50,7 @@ export class HandContainer {
 		}
 	}
 
-	hasItem(item: BoardGameItem): boolean {
+	hasItem(item: BoardGameItemNew): boolean {
 		return this.boardGameItems.has(item);
 	}
 

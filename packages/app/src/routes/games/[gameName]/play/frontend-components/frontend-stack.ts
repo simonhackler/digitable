@@ -5,7 +5,7 @@ import type {
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import { type SchemaCallbackProxy } from '@colyseus/schema';
 import { Room } from 'colyseus.js';
-import type { BoardGameItem } from '$lib/pixi/item';
+import type { BoardGameItemNew } from '$lib/pixi/item';
 import { assert } from '$lib/utils/assert';
 import type { Container } from 'pixi.js';
 
@@ -14,7 +14,7 @@ interface StackState {
 	readonly sessionId: string;
 	readonly room: Room<BoardGameRoomState>;
 	readonly component: Component;
-	items: BoardGameItem[]; // state;
+	items: BoardGameItemNew[]; // state;
 	isFaceUp: boolean; // state;
 }
 
@@ -24,7 +24,7 @@ interface Flippable<T> {
 
 // Drawable is a client site "nicety" for moving something onto the server
 interface Drawable<T> {
-	draw(component: Component, state: T): BoardGameItem | null;
+	draw(component: Component, state: T): BoardGameItemNew | null;
 }
 
 interface Movable {
