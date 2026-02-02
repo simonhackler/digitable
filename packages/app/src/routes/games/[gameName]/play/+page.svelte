@@ -7,6 +7,7 @@
 		FederatedPointerEvent,
 		Point,
 		Rectangle,
+		Sprite,
 		type Renderer
 	} from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
@@ -429,8 +430,38 @@
 				if (!boardGameItems.has(id)) {
 					initComponent(hybridResults, state.components.get(id)!, state, s);
 				}
+
 				stacks.push(boardGameItems.get(id)!);
+				boardGameItems.get(id)!.visible = false;
+				boardGameItems.get(id)!.x = 100;
+				boardGameItems.get(id)!.y = 100;
 			}
+
+			let frontendPosition: ClientPosition | null = null;
+			const position = state.positions.get(component.id);
+			if (position) {
+				frontendPosition = new ClientPosition(sharedClientValues, position);
+			}
+			let frontendFlip: ClientFlippable | null = null;
+			const flippable = state.flippable.get(component.id);
+
+			const stackContainer = new Container();
+			const tex = app.renderer.generateTexture({ target: stacks[0], resolution: 2 });
+			const previewSprite = new Sprite(tex);
+			console.log(previewSprite);
+
+			// The stack container does not show up
+			stackContainer.addChild(previewSprite);
+			previewSprite.setSize(1000, 1500);
+			previewSprite.scale.set(1);
+
+			boardContainer.addChild(previewSprite);
+			stackContainer.x = 100;
+			stackContainer.y = 100;
+
+			// TODO copy stacks[0] exactly same size/layout etc and add to stackContainer
+
+			// new BoardGameItemNew(frontendPosition)
 			// new FrontendStack(room, component, stacks, stack, s);
 		} else {
 			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map

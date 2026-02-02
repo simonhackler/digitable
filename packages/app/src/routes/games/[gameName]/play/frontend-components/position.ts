@@ -2,7 +2,8 @@ import {
 	type BoardGameRoomState,
 	Positionable,
 	type Component,
-	Flippable
+	Flippable,
+	Stack
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import { type SchemaCallbackProxy } from '@colyseus/schema';
 import { Room } from 'colyseus.js';
@@ -128,6 +129,23 @@ export class ClientFlippable {
 				componentId: this.sharedValues.component.id,
 				isFaceUp: this.clientFlippableState.isFaceUp
 			}
+		});
+	}
+}
+
+// How to handle draw is still a big question here, is this something that is on the card or the stack since it is basically a draw into a move
+// or something like that.
+export class ClientStack {
+	sharedValues: SharedClientValues;
+	clientStackState: Stack;
+	onFlipped: Event<Stack> = new Event();
+
+	constructor(sharedValues: SharedClientValues, stack: Stack) {
+		this.sharedValues = sharedValues;
+		this.clientStackState = new Stack([...stack.componentIds]);
+
+		sharedValues.s(stack).onChange(() => {
+			this.onFlipped.emit(this.clientStackState);
 		});
 	}
 }

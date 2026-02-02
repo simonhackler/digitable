@@ -1,7 +1,8 @@
 import { Container } from 'pixi.js';
 import type {
 	ClientFlippable,
-	ClientPosition
+	ClientPosition,
+	ClientStack
 } from '../../routes/games/[gameName]/play/frontend-components/position';
 
 export class BoardGameItem extends Container {
@@ -36,17 +37,20 @@ export class BoardGameItem extends Container {
 	}
 }
 
+// I need to move Container into a property and not have it extend Container
 export class BoardGameItemNew extends Container {
 	public readonly id: string;
 	private readonly itemContainer: Container;
 	public readonly clientPosition: ClientPosition | null;
 	public readonly clientFlippable: ClientFlippable | null;
+	public readonly clientStack: ClientStack | null;
 
 	constructor(
 		itemContainer: Container,
 		id: string,
 		clientPosition: ClientPosition | null = null,
-		clientFlippable: ClientFlippable | null = null
+		clientFlippable: ClientFlippable | null = null,
+		clientStack: ClientStack | null = null
 	) {
 		super({
 			layout: {
@@ -67,6 +71,7 @@ export class BoardGameItemNew extends Container {
 			});
 		}
 		this.clientFlippable = clientFlippable;
+		this.clientStack = clientStack;
 	}
 }
 
