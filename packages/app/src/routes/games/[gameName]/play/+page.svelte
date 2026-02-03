@@ -12,7 +12,7 @@
 	} from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
@@ -41,6 +41,7 @@
 	import { assert, requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
+	import TtsPreview from '../export/tts-preview.svelte';
 
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(page.params.deckName || 'western');
@@ -432,10 +433,8 @@
 				}
 
 				stacks.push(boardGameItems.get(id)!);
-				boardGameItems.get(id)!.visible = false;
-				boardGameItems.get(id)!.x = 100;
-				boardGameItems.get(id)!.y = 100;
 			}
+			assert(stacks.length > 0, 'Stack has no items');
 
 			let frontendPosition: ClientPosition | null = null;
 			const position = state.positions.get(component.id);
@@ -446,22 +445,45 @@
 			const flippable = state.flippable.get(component.id);
 
 			const stackContainer = new Container();
-			const tex = app.renderer.generateTexture({ target: stacks[0], resolution: 2 });
+
+			// Ensure the top item is visible when generating the preview texture,
+			// otherwise Pixi renders a transparent sprite.
+			const topItem = stacks[0];
+			const wasVisible = topItem.visible;
+			topItem.visible = true;
+			await new Promise(requestAnimationFrame);
+			await new Promise(requestAnimationFrame);
+
+			const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
+			topItem.visible = wasVisible;
 			const previewSprite = new Sprite(tex);
-			console.log(previewSprite);
-
-			// The stack container does not show up
 			stackContainer.addChild(previewSprite);
-			previewSprite.setSize(1000, 1500);
-			previewSprite.scale.set(1);
+			previewSprite.setSize(topItem.getSize());
+			previewSprite.scale.set(1.0);
 
-			boardContainer.addChild(previewSprite);
-			stackContainer.x = 100;
-			stackContainer.y = 100;
+			for (const item of stacks) {
+				item.visible = false;
+			}
 
+			boardContainer.addChild(stackContainer);
 			// TODO copy stacks[0] exactly same size/layout etc and add to stackContainer
 
-			// new BoardGameItemNew(frontendPosition)
+			const boardGameItem = new BoardGameItemNew(
+				stackContainer,
+				component.id,
+				frontendPosition,
+				frontendFlip
+			);
+			boardGameItem.scale.set(0.5);
+			boardGameItem.eventMode = 'static';
+			boardGameItem.cursor = 'pointer';
+			boardGameItem.on('pointerover', () => {
+				if (!drag) boardGameItem.tint = 0xcccccc;
+			});
+			boardGameItem.on('pointerout', () => {
+				boardGameItem.tint = 0xffffff;
+			});
+			boardContainer.addChild(boardGameItem);
 			// new FrontendStack(room, component, stacks, stack, s);
 		} else {
 			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map

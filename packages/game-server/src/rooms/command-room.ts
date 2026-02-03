@@ -112,7 +112,7 @@ export class InitCommand extends Command<
 			// create deck components
 			const deckId = randomUUID();
 			const deckComponent = new Component(deckId, '', 'stack');
-			const deckPosition = new Positionable(50, 50, true);
+			const deckPosition = new Positionable(400, 400, true);
 			const deckFlip = new Flippable(false);
 			const deckStack = new Stack(stack.componentIds);
 			const _deck = new Deck(deckComponent, deckPosition, deckFlip, deckStack);
