@@ -462,17 +462,17 @@
 			topSprite.setSize(topItem.getSize());
 			topSprite.scale.set(1.0);
 
-            const secondSprite = new Sprite(tex);
+			const secondSprite = new Sprite(tex);
 			stackContainer.addChild(secondSprite);
 			topSprite.setSize(topItem.getSize());
 			topSprite.scale.set(1.0);
-            secondSprite.position.set(-15, 15);
+			secondSprite.position.set(-15, 15);
 
-            const thirdSprite = new Sprite(tex);
-            stackContainer.addChild(thirdSprite);
+			const thirdSprite = new Sprite(tex);
+			stackContainer.addChild(thirdSprite);
 			thirdSprite.setSize(topItem.getSize());
 			thirdSprite.scale.set(1.0);
-            thirdSprite.position.set(-30, 30);
+			thirdSprite.position.set(-30, 30);
 
 			for (const item of stacks) {
 				item.visible = false;
