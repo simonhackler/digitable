@@ -455,18 +455,28 @@
 			await new Promise(requestAnimationFrame);
 
 			const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
+
 			topItem.visible = wasVisible;
-			const previewSprite = new Sprite(tex);
-			stackContainer.addChild(previewSprite);
-			previewSprite.setSize(topItem.getSize());
-			previewSprite.scale.set(1.0);
+			const topSprite = new Sprite(tex);
+			stackContainer.addChild(topSprite);
+			topSprite.setSize(topItem.getSize());
+			topSprite.scale.set(1.0);
+
+            const secondSprite = new Sprite(tex);
+			stackContainer.addChild(secondSprite);
+			topSprite.setSize(topItem.getSize());
+			topSprite.scale.set(1.0);
+            secondSprite.position.set(-15, 15);
+
+            const thirdSprite = new Sprite(tex);
+            stackContainer.addChild(thirdSprite);
+			thirdSprite.setSize(topItem.getSize());
+			thirdSprite.scale.set(1.0);
+            thirdSprite.position.set(-30, 30);
 
 			for (const item of stacks) {
 				item.visible = false;
 			}
-
-			boardContainer.addChild(stackContainer);
-			// TODO copy stacks[0] exactly same size/layout etc and add to stackContainer
 
 			const boardGameItem = new BoardGameItemNew(
 				stackContainer,

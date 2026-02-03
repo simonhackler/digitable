@@ -67,7 +67,10 @@ export class BoardGameItemNew extends Container {
 		// Then the container can be passed from the outside and subscribed to on the outside. This is probably the best way to do this.
 		if (clientPosition) {
 			clientPosition.onPositionChanged.subscribe((newPos) => {
-				this.position.set(newPos.x, newPos.y);
+				if (this.destroyed) return;
+				const position = this.position;
+				if (!position) return;
+				position.set(newPos.x, newPos.y);
 			});
 		}
 		this.clientFlippable = clientFlippable;
