@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { type SchemaCallbackProxy } from '@colyseus/schema';
 	import { Client, getStateCallbacks, Room } from 'colyseus.js';
 	import {
 		Application,
@@ -12,20 +11,17 @@
 	} from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import {
-		Flippable,
 		type BoardGameRoomState,
-		type Component,
 		type InitGamePayload
 	} from 'boardgame-server/src/rooms/schema/MyRoomState';
-	import { BoardGameItemNew, CardContainer } from '$lib/pixi/item';
+	import { BoardGameItemNew } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
-	import { LayoutContainer } from '@pixi/layout/components';
 	import { initDevtools } from '@pixi/devtools';
 	import 'pixi.js/math-extras';
 	import { PreviewHelper } from './hover-helpers';
@@ -33,15 +29,11 @@
 	import { pixiToCSSCoordinates } from './coordinate-utils';
 	import { createViewport } from './viewport-utils';
 	import { HandContainer } from './HandContainer';
-	import {
-		ClientFlippable,
-		ClientPosition,
-		type SharedClientValues
-	} from './frontend-components/position';
-	import { assert, requireParam } from '$lib/utils/assert';
+	import { requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
 	import TtsPreview from '../export/tts-preview.svelte';
+	import { initComponent, type ParsedSvg } from './initComponent';
 
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(page.params.deckName || 'western');
@@ -49,8 +41,6 @@
 	const client = new Client('ws://localhost:2567');
 
 	let boardGameItems: Map<string, BoardGameItemNew> = new Map();
-	let positions: Map<string, ClientPosition> = new Map();
-
 	function sendCmd<T extends string, P>(
 		room: Room<BoardGameRoomState>,
 		commandType: T,
@@ -81,12 +71,6 @@
 		console.log(item.id);
 		item.clientFlippable?.flip();
 		closeContextMenu();
-	}
-
-	interface ParsedSvg {
-		id: string;
-		front: LayoutContainer;
-		back: LayoutContainer;
 	}
 
 	let boardContainer: Container;
@@ -386,7 +370,19 @@
 		let s = getStateCallbacks(room);
 
 		s(room.state).components.onAdd((component, _index) => {
-			initComponent(hybridResults, component, room.state, s);
+			initComponent(
+				{
+					app,
+					boardContainer,
+					boardGameItems,
+					isDragging: () => drag !== null
+				},
+				hybridResults,
+				component,
+				room.state,
+				s,
+				room
+			);
 		});
 		sendCmd(room, 'init', parsePayload(hybridResults));
 		return room;
@@ -406,143 +402,6 @@
 				app.destroy(true, { children: true, texture: true });
 			};
 		};
-	}
-
-	async function initComponent(
-		hybridResults: ParsedSvg[],
-		component: Component,
-		state: BoardGameRoomState,
-		s: SchemaCallbackProxy<BoardGameRoomState>
-	) {
-		const sharedClientValues: SharedClientValues = {
-			component,
-			room,
-			sessionId: room.sessionId,
-			s
-		};
-		// 2 different ways. Basically bundles. E.g Bags decks etc that hold items.
-		// Bags are different to stacks. Bags don't hold have any order
-		if (component.type == 'stack') {
-			const stack = state.stacks.get(component.id);
-			assert(stack, 'Stack not found in state');
-			const stacks: BoardGameItemNew[] = [];
-			for (const id of stack.componentIds) {
-				console.log(id);
-				if (!boardGameItems.has(id)) {
-					initComponent(hybridResults, state.components.get(id)!, state, s);
-				}
-
-				stacks.push(boardGameItems.get(id)!);
-			}
-			assert(stacks.length > 0, 'Stack has no items');
-
-			let frontendPosition: ClientPosition | null = null;
-			const position = state.positions.get(component.id);
-			if (position) {
-				frontendPosition = new ClientPosition(sharedClientValues, position);
-			}
-			let frontendFlip: ClientFlippable | null = null;
-			const flippable = state.flippable.get(component.id);
-
-			const stackContainer = new Container();
-
-			// Ensure the top item is visible when generating the preview texture,
-			// otherwise Pixi renders a transparent sprite.
-			const topItem = stacks[0];
-			const wasVisible = topItem.visible;
-			topItem.visible = true;
-			await new Promise(requestAnimationFrame);
-			await new Promise(requestAnimationFrame);
-
-			const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
-
-			topItem.visible = wasVisible;
-			const topSprite = new Sprite(tex);
-			stackContainer.addChild(topSprite);
-			topSprite.setSize(topItem.getSize());
-			topSprite.scale.set(1.0);
-
-			const secondSprite = new Sprite(tex);
-			stackContainer.addChild(secondSprite);
-			topSprite.setSize(topItem.getSize());
-			topSprite.scale.set(1.0);
-			secondSprite.position.set(-15, 15);
-
-			const thirdSprite = new Sprite(tex);
-			stackContainer.addChild(thirdSprite);
-			thirdSprite.setSize(topItem.getSize());
-			thirdSprite.scale.set(1.0);
-			thirdSprite.position.set(-30, 30);
-
-			for (const item of stacks) {
-				item.visible = false;
-			}
-
-			const boardGameItem = new BoardGameItemNew(
-				stackContainer,
-				component.id,
-				frontendPosition,
-				frontendFlip
-			);
-			boardGameItem.scale.set(0.5);
-			boardGameItem.eventMode = 'static';
-			boardGameItem.cursor = 'pointer';
-			boardGameItem.on('pointerover', () => {
-				if (!drag) boardGameItem.tint = 0xcccccc;
-			});
-			boardGameItem.on('pointerout', () => {
-				boardGameItem.tint = 0xffffff;
-			});
-			boardContainer.addChild(boardGameItem);
-			// new FrontendStack(room, component, stacks, stack, s);
-		} else {
-			const card = hybridResults.find((x) => x.id == component.id); // This is never big enough to need a map
-			assert(card, 'Card not found in hybrid results');
-			if (boardGameItems.has(card.id)) {
-				return;
-			}
-			const cardContainer = new CardContainer(card.front, card.back);
-
-			let frontendPosition: ClientPosition | null = null;
-			const position = state.positions.get(component.id);
-			if (position) {
-				frontendPosition = new ClientPosition(sharedClientValues, position);
-			}
-			let frontendFlip: ClientFlippable | null = null;
-
-			const flippable = state.flippable.get(component.id);
-			if (flippable) {
-				frontendFlip = new ClientFlippable(sharedClientValues, flippable);
-				frontendFlip.onFlipped.subscribe((flippable) => {
-					if (flippable.isFaceUp) {
-						card.front.visible = true;
-						card.back.visible = false;
-					} else {
-						card.front.visible = false;
-						card.back.visible = true;
-					}
-				});
-			}
-
-			const boardGameItem = new BoardGameItemNew(
-				cardContainer,
-				component.id,
-				frontendPosition,
-				frontendFlip
-			);
-			boardGameItems.set(component.id, boardGameItem);
-
-			boardGameItem.scale.set(0.5);
-			boardGameItem.eventMode = 'static';
-			boardGameItem.cursor = 'pointer';
-			boardGameItem.on('pointerover', () => {
-				if (!drag) boardGameItem.tint = 0xcccccc;
-			});
-			boardGameItem.on('pointerout', () => {
-				boardGameItem.tint = 0xffffff;
-			});
-			boardContainer.addChild(boardGameItem);
-		}
 	}
 
 	function blockNativeContextMenu(e: Event) {
