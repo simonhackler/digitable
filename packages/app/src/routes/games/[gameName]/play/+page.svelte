@@ -68,7 +68,6 @@
 	}
 
 	function handleFlipCard(item: BoardGameItemNew) {
-		console.log(item.id);
 		item.clientFlippable?.flip();
 		closeContextMenu();
 	}

@@ -1,5 +1,6 @@
 import { LayoutContainer } from '@pixi/layout/components';
 import { BoardGameItemNew } from '$lib/pixi/item';
+import type { Container } from 'pixi.js';
 
 export class HandContainer {
 	container: LayoutContainer;
@@ -22,7 +23,7 @@ export class HandContainer {
 		this.container.zIndex = 10;
 	}
 
-	addItem(item: BoardGameItemNew) {
+	addItem(item: Container) {
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);

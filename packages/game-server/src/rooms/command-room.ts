@@ -199,6 +199,7 @@ export class MoveEndCommand extends Command<
 	}
 }
 
+// this should be replaced by a general positioning command
 export class DrawCommand extends Command<
 	CommandRoom,
 	{

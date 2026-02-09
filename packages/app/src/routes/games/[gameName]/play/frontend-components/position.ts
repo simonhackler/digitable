@@ -133,13 +133,21 @@ export class ClientFlippable {
 	}
 }
 
-// How to handle draw is still a big question here, is this something that is on the card or the stack since it is basically a draw into a move
-// or something like that.
+// There is an option to have every item be a stack. Combining stacks exists which is basically
+// the same for a singular card or a stack. Drawing is also the same you just take 1 card.
+// There will be some things where it is important to have only 1 item.
+// It is possible to specify between stack and single by just checking for items 1. But I will probably keep a distinction between stack and single
+// item for now.
+//
+// A draw is really just a position move to hand. But for the stack it is different, you remove from the stack and then move to the hand.
 export class ClientStack {
 	sharedValues: SharedClientValues;
 	clientStackState: Stack;
 	onFlipped: Event<Stack> = new Event();
 
+	// You can add to a stack or remove from a stack.
+	// Adding and removing hits also the boardGameItems itself. So when removing the state of a boardgameItem will be changed as well
+	// which will trigger a frontend state change. Drawing should return the item itself. But this will not have to be done here
 	constructor(sharedValues: SharedClientValues, stack: Stack) {
 		this.sharedValues = sharedValues;
 		this.clientStackState = new Stack([...stack.componentIds]);
