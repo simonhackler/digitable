@@ -28,26 +28,28 @@ export interface InitComponentDependencies {
 }
 
 async function buildStack(app: Application, topItem: BoardGameItemNew) {
-	topItem.visible = true;
+	const itemContainerTop = topItem.itemContainer;
+
+	itemContainerTop.visible = true;
 	// This is hacky as to not have flickering
-	topItem.position.set(-9999, -9999);
+	itemContainerTop.position.set(-9999, -9999);
 	// This has to be more robust
 	await new Promise(requestAnimationFrame);
 	await new Promise(requestAnimationFrame);
-	const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
-	topItem.visible = false;
+	const tex = app.renderer.generateTexture({ target: itemContainerTop, resolution: 2 });
+	itemContainerTop.visible = false;
 
 	const topSprite = new Sprite(tex);
-	topSprite.setSize(topItem.getSize());
+	topSprite.setSize(itemContainerTop.getSize());
 	topSprite.scale.set(1.0);
 
 	const secondSprite = new Sprite(tex);
-	topSprite.setSize(topItem.getSize());
+	topSprite.setSize(itemContainerTop.getSize());
 	topSprite.scale.set(1.0);
 	secondSprite.position.set(-15, 15);
 
 	const thirdSprite = new Sprite(tex);
-	thirdSprite.setSize(topItem.getSize());
+	thirdSprite.setSize(itemContainerTop.getSize());
 	thirdSprite.scale.set(1.0);
 	thirdSprite.position.set(-30, 30);
 	return [topSprite, secondSprite, thirdSprite];
@@ -70,6 +72,7 @@ export async function initComponent(
 		s
 	};
 
+	let itemContainer: Container;
 	if (component.type == 'stack') {
 		const stack = state.stacks.get(component.id);
 		assert(stack, 'Stack not found in state');
@@ -89,8 +92,12 @@ export async function initComponent(
 		if (position) {
 			frontendPosition = new ClientPosition(sharedClientValues, position);
 		}
-
-		const stackContainer = new Container();
+		const stackContainer = new Container({
+			layout: {
+				aspectRatio: stacks[0].itemContainer.width / stacks[0].itemContainer.height
+			}
+		});
+		stackContainer.layout = true;
 
 		const topItem = stacks[0];
 		const stackSprites = buildStack(app, topItem);
@@ -99,11 +106,12 @@ export async function initComponent(
 		}
 
 		for (const item of stacks) {
-			item.visible = false;
+			item.itemContainer.visible = false;
 		}
 
 		let frontendFlip: ClientFlippable | null = null;
 		const flippable = state.flippable.get(component.id);
+
 		if (flippable) {
 			frontendFlip = new ClientFlippable(sharedClientValues, flippable);
 			frontendFlip.onFlipped.subscribe((flippable) => {
@@ -112,8 +120,8 @@ export async function initComponent(
 				// Rebuild stack
 				const index = flippable.isFaceUp ? 0 : stacks.length - 1;
 				const item = stacks[index];
-				const front = item.children[0].children[0];
-				const back = item.children[0].children[1];
+				const front = item.itemContainer.children[0].children[0];
+				const back = item.itemContainer.children[0].children[1];
 				front.visible = flippable.isFaceUp;
 				back.visible = !flippable.isFaceUp;
 				buildStack(app, item).then((stackSprites) => {
@@ -130,17 +138,7 @@ export async function initComponent(
 			frontendPosition,
 			frontendFlip
 		);
-		boardGameItem.scale.set(0.5);
-		boardGameItem.eventMode = 'static';
-		boardGameItem.cursor = 'pointer';
-		boardGameItem.on('pointerover', () => {
-			if (!isDragging()) boardGameItem.tint = 0xcccccc;
-		});
-		boardGameItem.on('pointerout', () => {
-			boardGameItem.tint = 0xffffff;
-		});
-		boardContainer.addChild(boardGameItem);
-		// new FrontendStack(room, component, stacks, stack, s);
+		itemContainer = boardGameItem.itemContainer;
 	} else {
 		const card = hybridResults.find((x) => x.id == component.id);
 		assert(card, 'Card not found in hybrid results');
@@ -178,15 +176,16 @@ export async function initComponent(
 		);
 		boardGameItems.set(component.id, boardGameItem);
 
-		boardGameItem.scale.set(0.5);
-		boardGameItem.eventMode = 'static';
-		boardGameItem.cursor = 'pointer';
-		boardGameItem.on('pointerover', () => {
-			if (!isDragging()) boardGameItem.tint = 0xcccccc;
-		});
-		boardGameItem.on('pointerout', () => {
-			boardGameItem.tint = 0xffffff;
-		});
-		boardContainer.addChild(boardGameItem);
+		itemContainer = boardGameItem.itemContainer;
 	}
+	itemContainer.scale.set(0.5);
+	itemContainer.eventMode = 'static';
+	itemContainer.cursor = 'pointer';
+	itemContainer.on('pointerover', () => {
+		if (!isDragging()) itemContainer.tint = 0xcccccc;
+	});
+	itemContainer.on('pointerout', () => {
+		itemContainer.tint = 0xffffff;
+	});
+	boardContainer.addChild(itemContainer);
 }

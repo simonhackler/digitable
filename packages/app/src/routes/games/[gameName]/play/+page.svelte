@@ -32,7 +32,6 @@
 	import { requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
-	import TtsPreview from '../export/tts-preview.svelte';
 	import { initComponent, type ParsedSvg } from './initComponent';
 
 	const projectName = $derived(requireParam('gameName'));
@@ -107,13 +106,9 @@
 	let drag: DragState = null;
 
 	// I am fighting against pixi's event target system here. This can probably be done more elegantly
-	function findTopLevelItem(curr: Container) {
+	function findTopLevelItem(curr: Container): BoardGameItemNew {
 		while (curr != viewport && curr != app.stage) {
-			if (
-				curr instanceof BoardGameItemNew &&
-				curr.parent &&
-				!(curr.parent instanceof BoardGameItemNew)
-			) {
+			if (curr.label == 'boardgameitem' && curr.parent && !(curr.label == 'boardgameitem')) {
 				return curr;
 			}
 			curr = curr.parent!;
@@ -145,6 +140,18 @@
 			app
 		};
 		return app;
+	}
+
+	function onItemClick(boardItem: BoardGameItemNew, e: FederatedPointerEvent) {
+		if (e.ctrlKey) {
+			if (selectionManager.has(boardItem) && e.button === 1) {
+				selectionManager.deselect(boardItem);
+			} else {
+				selectionManager.select(boardItem);
+			}
+		} else {
+			selectionManager.selectOnly(boardItem);
+		}
 	}
 
 	function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
@@ -204,7 +211,7 @@
 					marquee.height
 				);
 				for (const item of boardGameItems.values()) {
-					const itemBounds = item.getBounds();
+					const itemBounds = item.itemContainer.getBounds();
 					if (selectionRect.intersects(new Rectangle().copyFromBounds(itemBounds))) {
 						selectionManager.select(item);
 					}
@@ -212,19 +219,19 @@
 			} else if (drag.dragType == 'selection') {
 				for (const c of selectionManager.values()) {
 					if (c.clientPosition) {
-						c.clientPosition.moveEnd(c.x, c.y);
-						c.cursor = 'pointer';
+						c.clientPosition.moveEnd(c.itemContainer.x, c.itemContainer.y);
+						c.itemContainer.cursor = 'pointer';
 					}
 				}
 			} else if (drag.dragType == 'handToBoard') {
 				for (const c of selectionManager.values()) {
 					if (handContainer.hasItem(c)) {
-						c.x = 0;
-						c.y = 0;
+						c.itemContainer.x = 0;
+						c.itemContainer.y = 0;
 					} else {
 						handlePlayCard(c);
 					}
-					c.cursor = 'pointer';
+					c.itemContainer.cursor = 'pointer';
 				}
 			}
 			drag = null;
@@ -257,7 +264,7 @@
 				const delta = worldPos.subtract(startWorldPos);
 				for (const boardItem of selectionManager.values()) {
 					if (boardItem.clientPosition) {
-						const newPos = boardItem.position.add(delta);
+						const newPos = boardItem.itemContainer.position.add(delta);
 						boardItem.clientPosition.moveTo(newPos.x, newPos.y);
 					}
 				}
@@ -266,14 +273,15 @@
 					if (handContainer.hasItem(boardItem)) {
 						const deltaX = e.globalX - drag.startGlobalX;
 						const deltaY = e.globalY - drag.startGlobalY;
-						const wrapper = boardItem.parent;
+						const itemContainer = boardItem.itemContainer;
+						const wrapper = itemContainer.parent;
 						if (wrapper) {
-							const wrapperGlobal = wrapper.toGlobal(boardItem.position);
+							const wrapperGlobal = wrapper.toGlobal(itemContainer.position);
 							const newGlobalX = wrapperGlobal.x + deltaX;
 							const newGlobalY = wrapperGlobal.y + deltaY;
 
 							const newLocal = wrapper.toLocal({ x: newGlobalX, y: newGlobalY });
-							boardItem.position.set(newLocal.x, newLocal.y);
+							itemContainer.position.set(newLocal.x, newLocal.y);
 
 							const wrapperBounds = wrapper.getBounds();
 							const handBounds = handContainer.container.getBounds();
@@ -284,10 +292,11 @@
 
 							if (cardCenterY < handTop) {
 								handContainer.removeItem(boardItem);
-								boardItem.scale.set(0.5);
-								boardItem.rotation = 0;
-								boardItem.pivot.set(0, 0);
-								boardItem.alpha = 1.0;
+								const itemContainer = boardItem.itemContainer;
+								itemContainer.scale.set(0.5);
+								itemContainer.rotation = 0;
+								itemContainer.pivot.set(0, 0);
+								itemContainer.alpha = 1.0;
 								const worldPos = viewport.toWorld(e.global);
 
 								drag.startGlobalX = e.globalX;
@@ -295,19 +304,19 @@
 
 								const offset = e.global.subtract(new Point(wrapperBounds.minX, wrapperBounds.minY));
 
-								boardItem.position = worldPos
+								itemContainer.position = worldPos
 									.subtract(offset)
 									.subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2));
 
-								boardContainer.addChild(boardItem);
+								boardContainer.addChild(itemContainer);
 							}
 						}
 					} else {
 						const worldPos = viewport.toWorld(e.global);
 						const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
 						const delta = worldPos.subtract(startWorldPos);
-						const newPos = boardItem.position.add(delta);
-						boardItem.position = newPos;
+						const newPos = boardItem.itemContainer.position.add(delta);
+						boardItem.itemContainer.position = newPos;
 					}
 				}
 			}
@@ -416,13 +425,13 @@
 	});
 
 	function handleDrawCard(item: BoardGameItemNew) {
-		boardContainer.removeChild(item);
+		boardContainer.removeChild(item.itemContainer);
 		handContainer.addItem(item);
 		sendCmd(room, 'draw', { cardId: item.id });
 	}
 
 	function handlePlayCard(item: BoardGameItemNew) {
-		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
+		sendCmd(room, 'play', { cardId: item.id, x: item.itemContainer.x, y: item.itemContainer.y });
 	}
 </script>
 

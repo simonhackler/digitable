@@ -1,6 +1,5 @@
 import { LayoutContainer } from '@pixi/layout/components';
 import { BoardGameItemNew } from '$lib/pixi/item';
-import type { Container } from 'pixi.js';
 
 export class HandContainer {
 	container: LayoutContainer;
@@ -23,14 +22,15 @@ export class HandContainer {
 		this.container.zIndex = 10;
 	}
 
-	addItem(item: Container) {
+	addItem(boardItem: BoardGameItemNew) {
+		const item = boardItem.itemContainer;
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);
 		item.x = 0;
 		item.y = 0;
 		item.alpha = 1.0;
-		this.boardGameItems.add(item);
+		this.boardGameItems.add(boardItem);
 		const wrapper = new LayoutContainer({
 			layout: {
 				height: '100%',
@@ -45,7 +45,7 @@ export class HandContainer {
 
 	removeItem(item: BoardGameItemNew) {
 		this.boardGameItems.delete(item);
-		const wrapper = item.parent;
+		const wrapper = item.itemContainer.parent;
 		if (wrapper && wrapper.parent === this.container) {
 			this.container.removeChild(wrapper);
 		}

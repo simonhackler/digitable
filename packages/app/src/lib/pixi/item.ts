@@ -20,23 +20,17 @@ export class BoardGameItemNew {
 		clientFlippable: ClientFlippable | null = null,
 		clientStack: ClientStack | null = null
 	) {
-		super({
-			layout: {
-				aspectRatio: itemContainer.width / itemContainer.height
-			}
-		});
+		itemContainer.label = 'boardgameitem';
+
 		this.id = id;
-		this.layout = true;
 		this.itemContainer = itemContainer;
-		this.addChild(this.itemContainer);
 		this.clientPosition = clientPosition;
 		// Not sure that I like this. E.g flipping is done outside of this. Probably should choose one method
 		// The fix is changing this class that does not extend container and instead having a container property on this class
 		// Then the container can be passed from the outside and subscribed to on the outside. This is probably the best way to do this.
 		if (clientPosition) {
 			clientPosition.onPositionChanged.subscribe((newPos) => {
-				if (this.destroyed) return;
-				const position = this.position;
+				const position = this.itemContainer.position;
 				if (!position) return;
 				position.set(newPos.x, newPos.y);
 			});
