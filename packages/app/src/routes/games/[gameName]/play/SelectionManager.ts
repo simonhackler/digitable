@@ -13,8 +13,9 @@ export class SelectionManager {
 	deselect(item: BoardGameItemNew) {
 		if (!this.selectedItems.has(item)) return;
 		this.selectedItems.delete(item);
-		// TODO this is does not scale
-		item.removeChildren(1);
+
+        console.log("removed");
+		item.itemContainer.removeChildren(item.itemContainer.children.length - 1);
 	}
 
 	selectOnly(item: BoardGameItemNew) {
@@ -43,7 +44,7 @@ export class SelectionManager {
 	}
 
 	private createSelectionBorder(item: BoardGameItemNew) {
-		const b = item.getLocalBounds();
+		const b = item.itemContainer.getLocalBounds();
 		const pad = Math.min(Math.max(Math.min(b.width, b.height) * 0.02, 2), 8); // 2–8px padding
 		const radius = Math.min(Math.max(Math.min(b.width, b.height) * 0.06, 6), 20); // rounded corners
 
@@ -63,6 +64,6 @@ export class SelectionManager {
 			alpha: 0.9
 		});
 
-		item.addChild(g);
+		item.itemContainer.addChild(g);
 	}
 }

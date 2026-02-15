@@ -339,6 +339,7 @@
 					selectionManager.selectOnly(boardItem);
 				}
 			}
+
 			if (!boardItem) {
 				selectionManager.clear();
 			}
@@ -389,7 +390,8 @@
 				component,
 				room.state,
 				s,
-				room
+				room,
+                selectionManager
 			);
 		});
 		sendCmd(room, 'init', parsePayload(hybridResults));
