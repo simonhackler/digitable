@@ -209,7 +209,18 @@ export class DrawCommand extends Command<
 	execute(payload: this['payload']) {
 		const component = this.state.components.get(payload.cardId);
 		const player = this.state.players.get(payload.sessionId);
-		player.hand.add(payload.cardId);
+        let cardId = payload.cardId;
+        const stack = this.state.stacks.get(payload.cardId);
+        if (stack) {
+            const flippable = this.state.flippable.get(payload.cardId);
+            console.log("stack and flippable", flippable);
+            if (flippable.isFaceUp) {
+                cardId = stack.componentIds.splice(0, 1)[0]
+            } else {
+                cardId = stack.componentIds.splice(stack.componentIds.length - 1, 1)[0];
+            }
+        }
+		player.hand.add(cardId);
 		component.owner = payload.sessionId;
 		const position = this.state.positions.get(payload.cardId);
 		position.visible = false;

@@ -29,7 +29,7 @@
 	import { pixiToCSSCoordinates } from './coordinate-utils';
 	import { createViewport } from './viewport-utils';
 	import { HandContainer } from './HandContainer';
-	import { requireParam } from '$lib/utils/assert';
+	import { assert, requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
 	import TtsPreview from '../export/tts-preview.svelte';
@@ -417,9 +417,24 @@
 	});
 
 	function handleDrawCard(item: BoardGameItemNew) {
+        const stack = item.clientStack;
+        const ogId = item.id;
+        console.log("has stack", stack);
+        if (stack) {
+            const flippable = item.clientFlippable;
+            let id = stack.clientStackState.componentIds[stack.clientStackState.componentIds.length - 1];
+            if (flippable && flippable.clientFlippableState.isFaceUp) {
+                id = stack.clientStackState.componentIds[0];
+            }
+            const newItem = boardGameItems.get(id);
+            assert(newItem, "item is empty");
+            newItem.visible = true;
+            item = newItem;
+            console.log(`drawing stack item id ${newItem.id}`);
+        }
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);
-		sendCmd(room, 'draw', { cardId: item.id });
+		sendCmd(room, 'draw', { cardId: ogId });
 	}
 
 	function handlePlayCard(item: BoardGameItemNew) {

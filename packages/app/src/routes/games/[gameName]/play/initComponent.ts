@@ -11,6 +11,7 @@ import {
 import {
     ClientFlippable,
     ClientPosition,
+    ClientStack,
     type SharedClientValues
 } from './frontend-components/position';
 
@@ -31,6 +32,9 @@ async function buildStack(app: Application, topItem: BoardGameItemNew) {
     topItem.visible = true;
     topItem.position.set(-9999, -9999);
     // This has to be more robust
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
     await new Promise(requestAnimationFrame);
     await new Promise(requestAnimationFrame);
     const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
@@ -69,6 +73,7 @@ export async function initComponent(
         s
     };
 
+    let boardGameItem: BoardGameItemNew;
     if (component.type == 'stack') {
         const stack = state.stacks.get(component.id);
         assert(stack, 'Stack not found in state');
@@ -78,7 +83,6 @@ export async function initComponent(
             if (!boardGameItems.has(id)) {
                 initComponent(deps, hybridResults, state.components.get(id)!, state, s, room);
             }
-
             stacks.push(boardGameItems.get(id)!);
         }
         assert(stacks.length > 0, 'Stack has no items');
@@ -91,60 +95,78 @@ export async function initComponent(
 
         const stackContainer = new Container();
 
-        const topItem = stacks[0];
-        // topItem.visible = true;
-        // console.log(topItem.children[0].children[0].background.renderGroup.texture);
-        // // This has to be more robust
-        // await new Promise(requestAnimationFrame);
-        // await new Promise(requestAnimationFrame);
-        const stackSprites = buildStack(app, topItem);
-        for (const sprite of await stackSprites) {
-            stackContainer.addChild(sprite);
-        }
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
 
         for (const item of stacks) {
             item.visible = false;
         }
 
-        let frontendFlip: ClientFlippable | null = null;
-        const flippable = state.flippable.get(component.id);
-        if (flippable) {
-            frontendFlip = new ClientFlippable(sharedClientValues, flippable);
-            frontendFlip.onFlipped.subscribe((flippable) => {
-                // Delete all children
-                stackContainer.removeChildren();
-                // Rebuild stack
-                const index = flippable.isFaceUp ? 0 : stacks.length - 1;
-                const item = stacks[index];
+        function rebuild() {
+            stackContainer.removeChildren();
+            const flippable = state.flippable.get(component.id);
+            const index = !flippable || flippable.isFaceUp ? 0 : stacks.length - 1;
+            const item = stacks[index];
+            if (flippable) {
                 const front = item.children[0].children[0];
                 const back = item.children[0].children[1];
                 front.visible = flippable.isFaceUp;
                 back.visible = !flippable.isFaceUp;
-                buildStack(app, item).then((stackSprites) => {
-                    for (const sprite of stackSprites) {
-                        stackContainer.addChild(sprite);
-                    }
-                });
+            }
+            buildStack(app, item).then((stackSprites) => {
+                for (const sprite of stackSprites) {
+                    stackContainer.addChild(sprite);
+                }
+            });
+        }
+
+        const flippable = state.flippable.get(component.id);
+        let frontendFlip: ClientFlippable | null = null;
+        if (flippable) {
+            // Clean up duplication later when implementing singular stacks as well.
+            rebuild();
+            // const index = flippable.isFaceUp ? 0 : stacks.length - 1;
+            // const item = stacks[index];
+            // const front = item.children[0].children[0];
+            // const back = item.children[0].children[1];
+            // front.visible = flippable.isFaceUp;
+            // back.visible = !flippable.isFaceUp;
+            // buildStack(app, item).then((stackSprites) => {
+            //     for (const sprite of stackSprites) {
+            //         stackContainer.addChild(sprite);
+            //     }
+            // });
+            frontendFlip = new ClientFlippable(sharedClientValues, flippable);
+            frontendFlip.onFlipped.subscribe((flippable) => {
+                rebuild();
+                // stackContainer.removeChildren();
+                // const index = flippable.isFaceUp ? 0 : stacks.length - 1;
+                // const item = stacks[index];
+                // const front = item.children[0].children[0];
+                // const back = item.children[0].children[1];
+                // front.visible = flippable.isFaceUp;
+                // back.visible = !flippable.isFaceUp;
+                // buildStack(app, item).then((stackSprites) => {
+                //     for (const sprite of stackSprites) {
+                //         stackContainer.addChild(sprite);
+                //     }
+                // });
             })
         }
 
-        const boardGameItem = new BoardGameItemNew(
+        const clientStack = new ClientStack(sharedClientValues, stack);
+        clientStack.onRemoved.subscribe((item) => {
+            stacks.splice(stacks.findIndex(x => x.id == item), 1);
+            rebuild();
+        });
+
+        boardGameItem = new BoardGameItemNew(
             stackContainer,
             component.id,
             frontendPosition,
-            frontendFlip
+            frontendFlip,
+            clientStack
         );
-        boardGameItem.scale.set(0.5);
-        boardGameItem.eventMode = 'static';
-        boardGameItem.cursor = 'pointer';
-        boardGameItem.on('pointerover', () => {
-            if (!isDragging()) boardGameItem.tint = 0xcccccc;
-        });
-        boardGameItem.on('pointerout', () => {
-            boardGameItem.tint = 0xffffff;
-        });
-        boardContainer.addChild(boardGameItem);
-        // new FrontendStack(room, component, stacks, stack, s);
     } else {
         const card = hybridResults.find((x) => x.id == component.id);
         assert(card, 'Card not found in hybrid results');
@@ -174,23 +196,23 @@ export async function initComponent(
             });
         }
 
-        const boardGameItem = new BoardGameItemNew(
+        boardGameItem = new BoardGameItemNew(
             cardContainer,
             component.id,
             frontendPosition,
             frontendFlip
         );
-        boardGameItems.set(component.id, boardGameItem);
-
-        boardGameItem.scale.set(0.5);
-        boardGameItem.eventMode = 'static';
-        boardGameItem.cursor = 'pointer';
-        boardGameItem.on('pointerover', () => {
-            if (!isDragging()) boardGameItem.tint = 0xcccccc;
-        });
-        boardGameItem.on('pointerout', () => {
-            boardGameItem.tint = 0xffffff;
-        });
-        boardContainer.addChild(boardGameItem);
     }
+    boardGameItems.set(component.id, boardGameItem);
+
+    boardGameItem.scale.set(0.5);
+    boardGameItem.eventMode = 'static';
+    boardGameItem.cursor = 'pointer';
+    boardGameItem.on('pointerover', () => {
+        if (!isDragging()) boardGameItem.tint = 0xcccccc;
+    });
+    boardGameItem.on('pointerout', () => {
+        boardGameItem.tint = 0xffffff;
+    });
+    boardContainer.addChild(boardGameItem);
 }

@@ -116,7 +116,7 @@ export class Deck extends Schema {
 
 export class Player extends Schema {
 	@type('string') id: string;
-	@type({ set: String }) hand: SetSchema<string>;
+	@type({ set: 'string' }) hand: SetSchema<string>;
 
 	constructor(id: string) {
 		super();

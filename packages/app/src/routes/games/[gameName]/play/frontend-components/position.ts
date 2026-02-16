@@ -7,6 +7,7 @@ import {
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import { type SchemaCallbackProxy } from '@colyseus/schema';
 import { Room } from 'colyseus.js';
+import { assert } from '$lib/utils/assert';
 
 type Handler<T> = (payload: T) => void;
 
@@ -138,14 +139,16 @@ export class ClientFlippable {
 export class ClientStack {
 	sharedValues: SharedClientValues;
 	clientStackState: Stack;
-	onFlipped: Event<Stack> = new Event();
+	onRemoved: Event<string> = new Event();
 
 	constructor(sharedValues: SharedClientValues, stack: Stack) {
 		this.sharedValues = sharedValues;
 		this.clientStackState = new Stack([...stack.componentIds]);
 
-		sharedValues.s(stack).onChange(() => {
-			this.onFlipped.emit(this.clientStackState);
+		sharedValues.s(stack.componentIds).onRemove((item, index) => {
+            const removed = this.clientStackState.componentIds.splice(index, 1)[0];
+            assert(removed == item);
+            this.onRemoved.emit(removed);
 		});
 	}
 }
