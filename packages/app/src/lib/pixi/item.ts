@@ -34,6 +34,7 @@ export class BoardGameItemNew extends Container {
 				if (this.destroyed) return;
 				const position = this.position;
 				if (!position) return;
+                this.visible = true;
 				position.set(newPos.x, newPos.y);
 			});
 		}
