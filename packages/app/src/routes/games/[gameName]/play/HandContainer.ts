@@ -23,6 +23,7 @@ export class HandContainer {
 	}
 
 	addItem(item: BoardGameItemNew) {
+		item.isInHand = true;
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);
@@ -42,12 +43,24 @@ export class HandContainer {
 		this.container.addChild(wrapper);
 	}
 
-	removeItem(item: BoardGameItemNew) {
+	async removeItem(item: BoardGameItemNew) {
 		this.boardGameItems.delete(item);
+		// item.isInHand = false;
 		const wrapper = item.parent;
-		if (wrapper && wrapper.parent === this.container) {
-			this.container.removeChild(wrapper);
-		}
+        console.log(wrapper);
+        console.log(wrapper?.parent == this.container);
+        console.log(wrapper?.parent?.parent == this.container);
+        console.log(wrapper?.parent?.parent?.parent == this.container);
+        if (wrapper) {
+            // wrapper.parent?.removeChild(wrapper);
+            // await new Promise((resolve) => setTimeout(resolve, 1000));
+            // wrapper.destroy();
+            const topWrapper = wrapper.parent?.parent;
+            // this.container.removeChild(topWrapper);
+        }
+		// if (wrapper && wrapper.parent === this.container) {
+		// 	this.container.removeChild(wrapper);
+		// }
 	}
 
 	hasItem(item: BoardGameItemNew): boolean {

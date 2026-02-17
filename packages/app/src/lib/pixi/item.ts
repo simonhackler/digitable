@@ -11,6 +11,7 @@ export class BoardGameItemNew extends Container {
 	public readonly clientPosition: ClientPosition | null;
 	public readonly clientFlippable: ClientFlippable | null;
 	public readonly clientStack: ClientStack | null;
+	public isInHand = false;
 
 	constructor(
 		itemContainer: Container,
@@ -32,6 +33,7 @@ export class BoardGameItemNew extends Container {
 		if (clientPosition) {
 			clientPosition.onPositionChanged.subscribe((newPos) => {
 				if (this.destroyed) return;
+				if (this.isInHand) return;
 				const position = this.position;
 				if (!position) return;
                 this.visible = true;
