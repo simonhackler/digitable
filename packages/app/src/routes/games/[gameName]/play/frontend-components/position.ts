@@ -47,6 +47,7 @@ export class ClientPosition {
 		this.clientPositionState = new Positionable(position.x, position.y, position.visible);
 
 		sharedValues.s(position).onChange(() => {
+			console.log('position changed', position.x, position.y);
 			this.clientPositionState.x = position.x;
 			this.clientPositionState.y = position.y;
 			this.onPositionChanged.emit(position);
@@ -69,6 +70,7 @@ export class ClientPosition {
 		this.clientPositionState.x = x;
 		this.clientPositionState.y = y;
 		this.onPositionChanged.emit(this.clientPositionState);
+		console.log('moveTo', x, y);
 		this.sharedValues.room.send('cmd', {
 			commandType: 'move',
 			payload: {
@@ -146,9 +148,9 @@ export class ClientStack {
 		this.clientStackState = new Stack([...stack.componentIds]);
 
 		sharedValues.s(stack.componentIds).onRemove((item, index) => {
-            const removed = this.clientStackState.componentIds.splice(index, 1)[0];
-            assert(removed == item);
-            this.onRemoved.emit(removed);
+			const removed = this.clientStackState.componentIds.splice(index, 1)[0];
+			assert(removed == item);
+			this.onRemoved.emit(removed);
 		});
 	}
 }

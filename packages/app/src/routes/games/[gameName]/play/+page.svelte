@@ -285,6 +285,8 @@
 
 							if (cardCenterY < handTop) {
 								handContainer.removeItem(boardItem);
+								boardContainer.addChild(boardItem);
+
 								boardItem.scale.set(0.5);
 								boardItem.rotation = 0;
 								boardItem.pivot.set(0, 0);
@@ -300,7 +302,7 @@
 									.subtract(offset)
 									.subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2));
 
-								boardContainer.addChild(boardItem);
+								// boardItem.layout?.forceUpdate();
 							}
 						}
 					} else {
@@ -417,21 +419,21 @@
 	});
 
 	function handleDrawCard(item: BoardGameItemNew) {
-        const stack = item.clientStack;
-        const ogId = item.id;
-        console.log("has stack", stack);
-        if (stack) {
-            const flippable = item.clientFlippable;
-            let id = stack.clientStackState.componentIds[stack.clientStackState.componentIds.length - 1];
-            if (flippable && flippable.clientFlippableState.isFaceUp) {
-                id = stack.clientStackState.componentIds[0];
-            }
-            const newItem = boardGameItems.get(id);
-            assert(newItem, "item is empty");
-            newItem.visible = true;
-            item = newItem;
-            console.log(`drawing stack item id ${newItem.id}`);
-        }
+		const stack = item.clientStack;
+		const ogId = item.id;
+		console.log('has stack', stack);
+		if (stack) {
+			const flippable = item.clientFlippable;
+			let id = stack.clientStackState.componentIds[stack.clientStackState.componentIds.length - 1];
+			if (flippable && flippable.clientFlippableState.isFaceUp) {
+				id = stack.clientStackState.componentIds[0];
+			}
+			const newItem = boardGameItems.get(id);
+			assert(newItem, 'item is empty');
+			newItem.visible = true;
+			item = newItem;
+			console.log(`drawing stack item id ${newItem.id}`);
+		}
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);
 		sendCmd(room, 'draw', { cardId: ogId });

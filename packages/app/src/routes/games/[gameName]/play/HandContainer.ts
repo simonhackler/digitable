@@ -45,19 +45,20 @@ export class HandContainer {
 
 	async removeItem(item: BoardGameItemNew) {
 		this.boardGameItems.delete(item);
-		// item.isInHand = false;
+		item.isInHand = false;
 		const wrapper = item.parent;
-        console.log(wrapper);
-        console.log(wrapper?.parent == this.container);
-        console.log(wrapper?.parent?.parent == this.container);
-        console.log(wrapper?.parent?.parent?.parent == this.container);
-        if (wrapper) {
-            // wrapper.parent?.removeChild(wrapper);
-            // await new Promise((resolve) => setTimeout(resolve, 1000));
-            // wrapper.destroy();
-            const topWrapper = wrapper.parent?.parent;
-            // this.container.removeChild(topWrapper);
-        }
+		console.log(wrapper);
+		console.log(wrapper?.parent == this.container);
+		console.log(wrapper?.parent?.parent == this.container);
+		console.log(wrapper?.parent?.parent?.parent == this.container);
+		if (wrapper) {
+			wrapper.removeChild(item);
+			wrapper.parent?.removeChild(wrapper);
+			// await new Promise((resolve) => setTimeout(resolve, 1000));
+			// wrapper.destroy();
+			const topWrapper = wrapper.parent?.parent;
+			// this.container.removeChild(topWrapper);
+		}
 		// if (wrapper && wrapper.parent === this.container) {
 		// 	this.container.removeChild(wrapper);
 		// }
