@@ -34,6 +34,7 @@
 	import { initComponent, type ParsedSvg } from './initComponent';
 
 	const projectName = $derived(requireParam('gameName'));
+	// TODO load all components
 	const cardName = $derived(page.params.deckName || 'western');
 	const fileSystem = getFileSystemContext();
 	const client = new Client('ws://localhost:2567');
@@ -121,7 +122,7 @@
 
 	// Can init stacks, or singular components with ids and containers
 	// So one map of components and one map of stacks with stacks having maps of components
-    // I will need a better init system probably.
+	// I will need a better init system probably.
 	function parsePayload(parsedSvgs: ParsedSvg[]): InitGamePayload {
 		const res = parsedSvgs.map((x) => {
 			return x.id;
