@@ -70,7 +70,8 @@ export class ClientPosition {
 		this.clientPositionState.x = x;
 		this.clientPositionState.y = y;
 		this.onPositionChanged.emit(this.clientPositionState);
-		console.log('moveTo', x, y);
+		console.log(this.sharedValues.component.owner);
+
 		this.sharedValues.room.send('cmd', {
 			commandType: 'move',
 			payload: {
@@ -105,9 +106,11 @@ export class ClientFlippable {
 		this.sharedValues = sharedValues;
 		this.clientFlippableState = new Flippable(flippable.isFaceUp);
 
+		console.log(`Initial flippable state: ${flippable.isFaceUp}`);
 		sharedValues.s(flippable).onChange(() => {
 			this.clientFlippableState.isFaceUp = flippable.isFaceUp;
 			this.onFlipped.emit(flippable);
+			console.log(`Card flipped to ${flippable.isFaceUp}`);
 		});
 	}
 	// IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client

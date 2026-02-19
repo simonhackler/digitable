@@ -127,7 +127,7 @@ export class InitCommand extends Command<
 				const cardId = stack.componentIds[i];
 				const cardComponent = new Component(cardId, '', 'card');
 				const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, true);
-				const cardFlip = new Flippable(true);
+				const cardFlip = new Flippable(false);
 				const _card = new Item(cardComponent, cardPosition, cardFlip);
 
 				this.state.positions.set(cardId, cardPosition);
@@ -209,17 +209,19 @@ export class DrawCommand extends Command<
 	execute(payload: this['payload']) {
 		const component = this.state.components.get(payload.cardId);
 		const player = this.state.players.get(payload.sessionId);
-        let cardId = payload.cardId;
-        const stack = this.state.stacks.get(payload.cardId);
-        if (stack) {
-            const flippable = this.state.flippable.get(payload.cardId);
-            console.log("stack and flippable", flippable);
-            if (flippable.isFaceUp) {
-                cardId = stack.componentIds.splice(0, 1)[0]
-            } else {
-                cardId = stack.componentIds.splice(stack.componentIds.length - 1, 1)[0];
-            }
-        }
+		let cardId = payload.cardId;
+		const stack = this.state.stacks.get(payload.cardId);
+		if (stack) {
+			const flippable = this.state.flippable.get(payload.cardId);
+			if (flippable.isFaceUp) {
+				cardId = stack.componentIds.splice(0, 1)[0];
+			} else {
+				cardId = stack.componentIds.splice(stack.componentIds.length - 1, 1)[0];
+			}
+		}
+		const flippable = this.state.flippable.get(cardId);
+		flippable.isFaceUp = true;
+
 		player.hand.add(cardId);
 		component.owner = payload.sessionId;
 		const position = this.state.positions.get(payload.cardId);
