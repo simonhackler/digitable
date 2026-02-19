@@ -6,7 +6,6 @@
 		FederatedPointerEvent,
 		Point,
 		Rectangle,
-		Sprite,
 		type Renderer
 	} from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
@@ -32,7 +31,6 @@
 	import { assert, requireParam } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
-	import TtsPreview from '../export/tts-preview.svelte';
 	import { initComponent, type ParsedSvg } from './initComponent';
 
 	const projectName = $derived(requireParam('gameName'));
@@ -107,7 +105,6 @@
 
 	let drag: DragState = null;
 
-	// I am fighting against pixi's event target system here. This can probably be done more elegantly
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
 			if (
@@ -124,6 +121,7 @@
 
 	// Can init stacks, or singular components with ids and containers
 	// So one map of components and one map of stacks with stacks having maps of components
+    // I will need a better init system probably.
 	function parsePayload(parsedSvgs: ParsedSvg[]): InitGamePayload {
 		const res = parsedSvgs.map((x) => {
 			return x.id;
@@ -286,6 +284,7 @@
 							if (cardCenterY < handTop) {
 								handContainer.removeItem(boardItem);
 								boardContainer.addChild(boardItem);
+								boardItem.resetLayoutTransform();
 
 								boardItem.scale.set(0.5);
 								boardItem.rotation = 0;
@@ -301,8 +300,6 @@
 								boardItem.position = worldPos
 									.subtract(offset)
 									.subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2));
-
-								// boardItem.layout?.forceUpdate();
 							}
 						}
 					} else {

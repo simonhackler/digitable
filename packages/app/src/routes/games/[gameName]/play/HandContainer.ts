@@ -22,6 +22,8 @@ export class HandContainer {
 		this.container.zIndex = 10;
 	}
 
+	// Having to set scale 1 here is a problem. Scale should never have to be set seperately and should always be 1.
+	// I have to find a better system for the sizing of the items
 	addItem(item: BoardGameItemNew) {
 		item.isInHand = true;
 		item.scale.set(1);
@@ -46,18 +48,20 @@ export class HandContainer {
 	async removeItem(item: BoardGameItemNew) {
 		this.boardGameItems.delete(item);
 		item.isInHand = false;
-		const wrapper = item.parent;
-		console.log(wrapper);
-		console.log(wrapper?.parent == this.container);
-		console.log(wrapper?.parent?.parent == this.container);
-		console.log(wrapper?.parent?.parent?.parent == this.container);
-		if (wrapper) {
-			wrapper.removeChild(item);
-			wrapper.parent?.removeChild(wrapper);
-			// await new Promise((resolve) => setTimeout(resolve, 1000));
-			// wrapper.destroy();
-			const topWrapper = wrapper.parent?.parent;
-			// this.container.removeChild(topWrapper);
+		const overflowWrapper = item.parent;
+
+		if (overflowWrapper) {
+			overflowWrapper.removeChild(item);
+
+			const layoutWrapper = overflowWrapper.parent;
+
+			if (layoutWrapper) {
+				const removed = this.container.removeChild(layoutWrapper);
+
+				setTimeout(() => {
+					removed.destroy();
+				}, 1);
+			}
 		}
 		// if (wrapper && wrapper.parent === this.container) {
 		// 	this.container.removeChild(wrapper);
