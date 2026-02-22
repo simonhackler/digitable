@@ -3,65 +3,46 @@ import type {
 	Component,
 	Stack
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
-import { type SchemaCallbackProxy } from '@colyseus/schema';
 import { Room } from 'colyseus.js';
-import type { BoardGameItem } from '$lib/pixi/item';
-
-export class FrontendStack {
-	component: Component;
-	room: Room<BoardGameRoomState>;
-	sessionId: string;
-	stack: Stack;
-
-	constructor(
-		room: Room<BoardGameRoomState>,
-		component: Component,
-		_stacks: BoardGameItem[],
-		stack: Stack,
-		s: SchemaCallbackProxy<BoardGameRoomState>
-	) {
-		// This will be the same on every single one of these classes.
-		this.room = room;
-		this.sessionId = room.sessionId;
-		this.component = component;
-		this.stack = stack;
-
-		s(stack).componentIds.onRemove((_id, _sessionId) => {
-			// For this it feels like I will need to have essentially global state that is passed to these classed. Ugly.
-		});
-	}
-}
+import type { BoardGameItemNew } from '$lib/pixi/item';
+import { assert } from '$lib/utils/assert';
 
 interface StackState {
-	stacks: BoardGameItem[];
-	isFaceUp: boolean;
+	readonly serverStack: Stack;
+	readonly sessionId: string;
+	readonly room: Room<BoardGameRoomState>;
+	readonly component: Component;
+	items: BoardGameItemNew[]; // state;
+	isFaceUp: boolean; // state;
 }
 
-interface Flippable<T> {
-	flip(state: T, setFaceUp: boolean): T;
-}
-
+// Drawable is a client site "nicety" for moving something onto the server
 interface Drawable<T> {
-	draw(state: T): { state: T; drawnItem: BoardGameItem | null };
+	draw(component: Component, state: T): BoardGameItemNew | null;
 }
 
-export class StackFlip implements Flippable<StackState> {
-	flip(state: StackState, setFaceUp: boolean) {
-		const newState = { ...state, isFaceUp: setFaceUp };
-		return newState;
-	}
-}
-
-export class StackDraw implements Drawable<StackState> {
-	draw(state: StackState) {
-		if (state.stacks.length === 0) {
-			throw new Error('Cannot draw from an empty stack');
+export const stackDraw: Drawable<StackState> = {
+	draw(component: Component, state: StackState) {
+		if (component.owner !== state.sessionId && component.owner !== '') {
+			console.warn(`Component ${component.id} is currently owned by another player.`);
+			return null;
 		}
-		const drawIndex = state.isFaceUp ? 0 : state.stacks.length - 1;
-		const drawnItem = state.stacks[drawIndex];
-		const remaining = state.isFaceUp
-			? state.stacks.slice(1) // drop first
-			: state.stacks.slice(0, -1);
-		return { state: { ...state, stacks: remaining }, drawnItem };
+		assert(state.serverStack.componentIds.length !== 0, 'Cannot draw from an empty stack');
+		assert(
+			state.items.length === state.serverStack.componentIds.length,
+			`Mismatch between stack component IDs and items length for component ${component.id}, frontend: ${state.items.length}, backend: ${state.serverStack.componentIds.length}`
+		);
+		assert(
+			state.items[state.items.length - 1].id ===
+				state.serverStack.componentIds[state.serverStack.componentIds.length - 1],
+			`Top item ID does not match stack top component ID for component ${component.id}, item ID: ${state.items[state.items.length - 1].id}, stack top ID: ${state.serverStack.componentIds[state.serverStack.componentIds.length - 1]}`
+		);
+		state.room.send('cmd', {
+			commandType: 'draw',
+			payload: {
+				componentId: component.id
+			}
+		});
+		return state.items.pop()!;
 	}
-}
+};

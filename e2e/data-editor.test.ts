@@ -13,7 +13,10 @@ async function writeBufferToOPFS(page: Page, dest: string, buf: Buffer) {
 			console.log(bytes);
 
 			// Walk/create directories, then create/write the file
-			const root = await (navigator as any).storage.getDirectory();
+			const storage = navigator.storage as StorageManager & {
+				getDirectory: () => Promise<FileSystemDirectoryHandle>;
+			};
+			const root = await storage.getDirectory();
 			const parts = destPath.replace(/^\/+/, '').split('/');
 			const fileName = parts.pop()!;
 			let dir = root;
