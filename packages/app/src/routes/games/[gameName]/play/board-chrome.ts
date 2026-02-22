@@ -29,33 +29,41 @@ function makeCanvasTexture(
 }
 
 function makeNoiseTexture(size = 128) {
-	return makeCanvasTexture((ctx, w, h) => {
-		const img = ctx.createImageData(w, h);
-		for (let i = 0; i < img.data.length; i += 4) {
-			const v = 200 + Math.floor(Math.random() * 56);
-			const a = Math.floor(Math.random() * 22);
-			img.data[i] = v;
-			img.data[i + 1] = v;
-			img.data[i + 2] = v;
-			img.data[i + 3] = a;
-		}
-		ctx.putImageData(img, 0, 0);
-	}, size, size);
+	return makeCanvasTexture(
+		(ctx, w, h) => {
+			const img = ctx.createImageData(w, h);
+			for (let i = 0; i < img.data.length; i += 4) {
+				const v = 200 + Math.floor(Math.random() * 56);
+				const a = Math.floor(Math.random() * 22);
+				img.data[i] = v;
+				img.data[i + 1] = v;
+				img.data[i + 2] = v;
+				img.data[i + 3] = a;
+			}
+			ctx.putImageData(img, 0, 0);
+		},
+		size,
+		size
+	);
 }
 
 function makeRadialVignetteTexture(w: number, h: number) {
-	return makeCanvasTexture((ctx, cw, ch) => {
-		const cx = cw / 2;
-		const cy = ch * 0.42;
-		const r = Math.max(cw, ch) * 0.75;
-		const g = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
-		g.addColorStop(0, 'rgba(255, 235, 190, 0.16)');
-		g.addColorStop(0.45, 'rgba(255, 220, 160, 0.05)');
-		g.addColorStop(0.75, 'rgba(0, 0, 0, 0.00)');
-		g.addColorStop(1, 'rgba(0, 0, 0, 0.28)');
-		ctx.fillStyle = g;
-		ctx.fillRect(0, 0, cw, ch);
-	}, w, h);
+	return makeCanvasTexture(
+		(ctx, cw, ch) => {
+			const cx = cw / 2;
+			const cy = ch * 0.42;
+			const r = Math.max(cw, ch) * 0.75;
+			const g = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
+			g.addColorStop(0, 'rgba(255, 235, 190, 0.16)');
+			g.addColorStop(0.45, 'rgba(255, 220, 160, 0.05)');
+			g.addColorStop(0.75, 'rgba(0, 0, 0, 0.00)');
+			g.addColorStop(1, 'rgba(0, 0, 0, 0.28)');
+			ctx.fillStyle = g;
+			ctx.fillRect(0, 0, cw, ch);
+		},
+		w,
+		h
+	);
 }
 
 export function createBoardChrome(app: Application<Renderer>): BoardChrome {

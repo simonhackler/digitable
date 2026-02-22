@@ -9,7 +9,7 @@ export async function main(options: Options) {
 
 	console.log('joined successfully!');
 
-	room.onMessage('message-type', (payload) => {
+	room.onMessage('message-type', (_payload) => {
 		// logic
 	});
 
@@ -17,7 +17,7 @@ export async function main(options: Options) {
 		console.log('state change:', state);
 	});
 
-	room.onLeave((code) => {
+	room.onLeave((_code) => {
 		console.log('left');
 	});
 }

@@ -17,7 +17,7 @@ import { randomUUID } from 'crypto';
 
 export class CommandRoom extends Room<BoardGameRoomState> {
 	dispatcher = new Dispatcher(this);
-	roomCommands = new Map<string, new () => Command<CommandRoom, any>>([
+	roomCommands = new Map<string, new () => Command<CommandRoom, unknown>>([
 		['flip', FlipCommand],
 		['init', InitCommand],
 		['move', MoveCommand],
@@ -41,7 +41,7 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 		});
 	}
 
-	onJoin(client: Client, _options: any) {
+	onJoin(client: Client, _options: unknown) {
 		logger.info('Client joined:', client.sessionId);
 		this.dispatcher.dispatch(new OnJoinCommand(), {
 			sessionId: client.sessionId
@@ -209,7 +209,6 @@ export class DrawCommand extends Command<
 	}
 > {
 	execute(payload: this['payload']) {
-		const component = this.state.components.get(payload.cardId);
 		const player = this.state.players.get(payload.sessionId);
 		let cardId = payload.cardId;
 		const stack = this.state.stacks.get(payload.cardId);
@@ -246,8 +245,8 @@ export class DrawCommand extends Command<
 		flippable.isFaceUp = true;
 
 		player.hand.add(cardId);
-        const cardComponent = this.state.components.get(cardId);
-        cardComponent.owner = payload.sessionId;
+		const cardComponent = this.state.components.get(cardId);
+		cardComponent.owner = payload.sessionId;
 		const position = this.state.positions.get(payload.cardId);
 		if (position) {
 			position.visible = false;

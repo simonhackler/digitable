@@ -125,7 +125,7 @@ export async function initComponent(
 		if (flippable) {
 			rebuild();
 			frontendFlip = new ClientFlippable(sharedClientValues, flippable);
-			frontendFlip.onFlipped.subscribe((flippable) => {
+			frontendFlip.onFlipped.subscribe((_flippable) => {
 				rebuild();
 			});
 		}

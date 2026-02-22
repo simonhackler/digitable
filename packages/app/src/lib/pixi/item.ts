@@ -37,10 +37,7 @@ export class BoardGameItemNew extends Container {
 		this.addChild(this.itemContainer);
 		this.clientPosition = clientPosition;
 		if (clientPosition) {
-			this.position.set(
-				clientPosition.clientPositionState.x,
-				clientPosition.clientPositionState.y
-			);
+			this.position.set(clientPosition.clientPositionState.x, clientPosition.clientPositionState.y);
 			this.visible = clientPosition.clientPositionState.visible;
 			clientPosition.onPositionChanged.subscribe((newPos) => {
 				if (this.destroyed) return;
