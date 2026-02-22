@@ -33,6 +33,7 @@
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
 	import { initComponent, type ParsedSvg } from './initComponent';
+	import { createBoardChrome } from './board-chrome';
 
 	const projectName = $derived(requireParam('gameName'));
 	// TODO load all components
@@ -75,6 +76,7 @@
 
 	let boardContainer: Container;
 	let handContainer: HandContainer;
+	let tableChrome: Container;
 
 	let viewport: Viewport;
 
@@ -194,6 +196,14 @@
 	}
 
 	function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
+		const boardChrome = createBoardChrome(app);
+		tableChrome = boardChrome.container;
+		app.stage.addChild(tableChrome);
+		boardChrome.draw();
+		app.renderer.on('resize', () => {
+			boardChrome.draw();
+		});
+
 		viewport = createViewport(app);
 		app.stage.eventMode = 'static';
 		app.stage.hitArea = app.screen;
