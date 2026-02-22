@@ -120,6 +120,51 @@
 		return null;
 	}
 
+	function findStackTarget(dragged: BoardGameItemNew): BoardGameItemNew | null {
+		const bounds = dragged.getBounds();
+		const center = new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+		for (const item of boardGameItems.values()) {
+			if (item === dragged) continue;
+			if (!item.visible) continue;
+			if (handContainer.hasItem(item)) continue;
+			const itemBounds = item.getBounds();
+			if (
+				center.x >= itemBounds.x &&
+				center.x <= itemBounds.x + itemBounds.width &&
+				center.y >= itemBounds.y &&
+				center.y <= itemBounds.y + itemBounds.height
+			) {
+				return item;
+			}
+		}
+		return null;
+	}
+
+	function tryStackSelection(): boolean {
+		if (selectionManager.size !== 1) return false;
+		const iterator = selectionManager.values();
+		const item = iterator.next().value as BoardGameItemNew | undefined;
+		if (!item) return false;
+		if (item.clientStack) return false;
+		if (handContainer.hasItem(item)) return false;
+
+		const target = findStackTarget(item);
+		if (!target) return false;
+		const sourceFlip = item.clientFlippable?.clientFlippableState.isFaceUp;
+		const targetFlip = target.clientFlippable?.clientFlippableState.isFaceUp;
+		if (sourceFlip !== undefined && targetFlip !== undefined && sourceFlip !== targetFlip) {
+			return false;
+		}
+
+		sendCmd(room, 'stack', {
+			sourceId: item.id,
+			targetId: target.id,
+			x: target.x,
+			y: target.y
+		});
+		return true;
+	}
+
 	// Can init stacks, or singular components with ids and containers
 	// So one map of components and one map of stacks with stacks having maps of components
 	// I will need a better init system probably.
@@ -216,15 +261,22 @@
 						c.cursor = 'pointer';
 					}
 				}
+				if (tryStackSelection()) {
+					selectionManager.clear();
+				}
 			} else if (drag.dragType == 'handToBoard') {
+				const stacked = tryStackSelection();
 				for (const c of selectionManager.values()) {
 					if (handContainer.hasItem(c)) {
 						c.x = 0;
 						c.y = 0;
-					} else {
+					} else if (!stacked) {
 						handlePlayCard(c);
 					}
 					c.cursor = 'pointer';
+				}
+				if (stacked) {
+					selectionManager.clear();
 				}
 			}
 			drag = null;

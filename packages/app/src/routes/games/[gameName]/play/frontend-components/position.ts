@@ -144,15 +144,36 @@ export class ClientFlippable {
 export class ClientStack {
 	sharedValues: SharedClientValues;
 	clientStackState: Stack;
+	onAdded: Event<{ id: string; index: number }> = new Event();
 	onRemoved: Event<string> = new Event();
 
 	constructor(sharedValues: SharedClientValues, stack: Stack) {
 		this.sharedValues = sharedValues;
 		this.clientStackState = new Stack([...stack.componentIds]);
 
+		sharedValues.s(stack.componentIds).onAdd((item, index) => {
+			const next = [...this.clientStackState.componentIds];
+			const existingIndex = next.indexOf(item);
+			if (existingIndex === index) return;
+			if (existingIndex !== -1) {
+				next.splice(existingIndex, 1);
+			}
+			next.splice(index, 0, item);
+			this.clientStackState.componentIds.length = 0;
+			this.clientStackState.componentIds.push(...next);
+			this.onAdded.emit({ id: item, index });
+		});
+
 		sharedValues.s(stack.componentIds).onRemove((item, index) => {
-			const removed = this.clientStackState.componentIds.splice(index, 1)[0];
-			assert(removed == item);
+			const next = [...this.clientStackState.componentIds];
+			let removed = next.splice(index, 1)[0];
+			if (removed !== item) {
+				const fallbackIndex = next.indexOf(item);
+				if (fallbackIndex === -1) return;
+				removed = next.splice(fallbackIndex, 1)[0];
+			}
+			this.clientStackState.componentIds.length = 0;
+			this.clientStackState.componentIds.push(...next);
 			this.onRemoved.emit(removed);
 		});
 	}

@@ -131,6 +131,13 @@ export async function initComponent(
 		}
 
 		const clientStack = new ClientStack(sharedClientValues, stack);
+		clientStack.onAdded.subscribe(({ id, index }) => {
+			const newItem = boardGameItems.get(id);
+			assert(newItem, `Stack item ${id} not found`);
+			newItem.visible = false;
+			stacks.splice(index, 0, newItem);
+			rebuild();
+		});
 		clientStack.onRemoved.subscribe((item) => {
 			stacks.splice(
 				stacks.findIndex((x) => x.id == item),
