@@ -93,6 +93,9 @@
 	keys.onKeys('D', () => {
 		selectionManager.forEach((item) => handleDrawCard(item));
 	});
+	keys.onKeys('S', () => {
+		selectionManager.forEach((item) => handleShuffleStack(item));
+	});
 	keys.onKeys('alt', () => {
 		if (hoverItem) {
 			previewer.showPreview(hoverItem);
@@ -507,6 +510,11 @@
 		sendCmd(room, 'draw', { cardId: ogId });
 	}
 
+	function handleShuffleStack(item: BoardGameItemNew) {
+		if (!item.clientStack) return;
+		item.clientStack.shuffle();
+	}
+
 	function handlePlayCard(item: BoardGameItemNew) {
 		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
 	}
@@ -534,6 +542,10 @@
 			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleDrawCard(item))}
 				>Draw Card
 				<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
+			</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleShuffleStack(item))}
+				>Shuffle Stack
+				<ContextMenu.Shortcut>S</ContextMenu.Shortcut>
 			</ContextMenu.Item>
 		</ContextMenu.Content>
 	</ContextMenu.Root>

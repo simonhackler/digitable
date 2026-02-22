@@ -145,6 +145,17 @@ export async function initComponent(
 			);
 			rebuild();
 		});
+		clientStack.onReordered.subscribe((nextIds) => {
+			const nextItems: BoardGameItemNew[] = [];
+			for (const id of nextIds) {
+				const item = boardGameItems.get(id);
+				assert(item, `Stack item ${id} not found`);
+				nextItems.push(item);
+			}
+			stacks.length = 0;
+			stacks.push(...nextItems);
+			rebuild();
+		});
 
 		boardGameItem = new BoardGameItemNew(
 			stackContainer,

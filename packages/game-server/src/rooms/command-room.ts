@@ -24,7 +24,8 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 		['moveend', MoveEndCommand],
 		['draw', DrawCommand],
 		['play', PlayCommand],
-		['stack', StackCommand]
+		['stack', StackCommand],
+		['shuffle', ShuffleCommand]
 	]);
 
 	onCreate() {
@@ -245,7 +246,8 @@ export class DrawCommand extends Command<
 		flippable.isFaceUp = true;
 
 		player.hand.add(cardId);
-		component.owner = payload.sessionId;
+        const cardComponent = this.state.components.get(cardId);
+        cardComponent.owner = payload.sessionId;
 		const position = this.state.positions.get(payload.cardId);
 		if (position) {
 			position.visible = false;
@@ -406,6 +408,38 @@ export class StackCommand extends Command<
 			console.warn(`Card ${payload.sourceId} is already in stack ${payload.targetId}`);
 			return false;
 		}
+		return true;
+	}
+}
+
+export class ShuffleCommand extends Command<
+	CommandRoom,
+	{
+		sessionId: string;
+		stackId: string;
+	}
+> {
+	execute(payload: this['payload']) {
+		const stack = this.state.stacks.get(payload.stackId);
+		if (!stack) return;
+
+		const ids = stack.componentIds;
+		for (let i = ids.length - 1; i > 0; i -= 1) {
+			const j = Math.floor(Math.random() * (i + 1));
+			const temp = ids[i];
+			ids[i] = ids[j];
+			ids[j] = temp;
+		}
+	}
+
+	validate(payload: this['payload']) {
+		const component = getValidComponent(this.state, payload.stackId, payload.sessionId, true);
+		if (!component) return false;
+		if (component.type !== 'stack') return false;
+
+		const stack = this.state.stacks.get(payload.stackId);
+		if (!stack) return false;
+		if (stack.componentIds.length < 2) return false;
 		return true;
 	}
 }

@@ -146,6 +146,7 @@ export class ClientStack {
 	clientStackState: Stack;
 	onAdded: Event<{ id: string; index: number }> = new Event();
 	onRemoved: Event<string> = new Event();
+	onReordered: Event<string[]> = new Event();
 
 	constructor(sharedValues: SharedClientValues, stack: Stack) {
 		this.sharedValues = sharedValues;
@@ -175,6 +176,22 @@ export class ClientStack {
 			this.clientStackState.componentIds.length = 0;
 			this.clientStackState.componentIds.push(...next);
 			this.onRemoved.emit(removed);
+		});
+
+		sharedValues.s(stack.componentIds).onChange(() => {
+			const next = [...stack.componentIds];
+			this.clientStackState.componentIds.length = 0;
+			this.clientStackState.componentIds.push(...next);
+			this.onReordered.emit(next);
+		});
+	}
+
+	shuffle() {
+		this.sharedValues.room.send('cmd', {
+			commandType: 'shuffle',
+			payload: {
+				stackId: this.sharedValues.component.id
+			}
 		});
 	}
 }
