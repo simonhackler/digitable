@@ -9,6 +9,7 @@
 	"scripts": {
 		"dev": "concurrently \"bun run --filter=@svg-table/app dev\" \"bun run --filter=boardgame-server start\"",
 		"dev:app": "bun run --filter=@svg-table/app dev",
+		"dev:studio": "bun run --filter=studio dev",
 		"dev:server": "bun run --filter=boardgame-server start",
 		"build": "bun run --filter=@svg-table/app build",
 		"preview": "bun run --filter=@svg-table/app preview",
