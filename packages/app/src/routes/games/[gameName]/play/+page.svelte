@@ -213,7 +213,7 @@
 
 		app.stage.addChild(screenContainer);
 
-		handContainer = new HandContainer();
+		handContainer = new HandContainer(app);
 		screenContainer.addChild(handContainer.container);
 
 		const width = 200;
