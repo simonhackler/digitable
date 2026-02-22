@@ -212,12 +212,33 @@ export class DrawCommand extends Command<
 		const player = this.state.players.get(payload.sessionId);
 		let cardId = payload.cardId;
 		const stack = this.state.stacks.get(payload.cardId);
+		const stackPosition = this.state.positions.get(payload.cardId);
 		if (stack) {
 			const flippable = this.state.flippable.get(payload.cardId);
 			if (flippable.isFaceUp) {
 				cardId = stack.componentIds.splice(0, 1)[0];
 			} else {
 				cardId = stack.componentIds.splice(stack.componentIds.length - 1, 1)[0];
+			}
+			if (stack.componentIds.length <= 1) {
+				const remainingId = stack.componentIds[0];
+				if (remainingId) {
+					const remainingPosition = this.state.positions.get(remainingId);
+					if (remainingPosition && stackPosition) {
+						remainingPosition.x = stackPosition.x;
+						remainingPosition.y = stackPosition.y;
+						remainingPosition.visible = true;
+					}
+					const stackFlip = this.state.flippable.get(payload.cardId);
+					const remainingFlip = this.state.flippable.get(remainingId);
+					if (stackFlip && remainingFlip) {
+						remainingFlip.isFaceUp = stackFlip.isFaceUp;
+					}
+				}
+				this.state.stacks.delete(payload.cardId);
+				this.state.positions.delete(payload.cardId);
+				this.state.flippable.delete(payload.cardId);
+				this.state.components.delete(payload.cardId);
 			}
 		}
 		const flippable = this.state.flippable.get(cardId);
@@ -226,7 +247,9 @@ export class DrawCommand extends Command<
 		player.hand.add(cardId);
 		component.owner = payload.sessionId;
 		const position = this.state.positions.get(payload.cardId);
-		position.visible = false;
+		if (position) {
+			position.visible = false;
+		}
 	}
 
 	validate(payload: this['payload']) {
@@ -302,6 +325,8 @@ export class StackCommand extends Command<
 			player.hand.delete(payload.sourceId);
 		}
 
+		const sourcePosition = this.state.positions.get(payload.sourceId);
+		const targetPosition = this.state.positions.get(payload.targetId);
 		const sourceFlippable = this.state.flippable.get(payload.sourceId);
 		const sourceFaceUp = sourceFlippable?.isFaceUp ?? false;
 
@@ -316,13 +341,15 @@ export class StackCommand extends Command<
 			} else {
 				targetStack.componentIds.push(payload.sourceId);
 			}
+			if (sourcePosition) {
+				sourcePosition.visible = false;
+			}
 			sourceComponent.owner = '';
 			return;
 		}
 
 		const stackId = randomUUID();
 		const stackComponent = new Component(stackId, '', 'stack');
-		const targetPosition = this.state.positions.get(payload.targetId);
 		const stackPosition = new Positionable(
 			targetPosition?.x ?? payload.x,
 			targetPosition?.y ?? payload.y,
@@ -338,6 +365,12 @@ export class StackCommand extends Command<
 		this.state.flippable.set(stackId, stackFlippable);
 		this.state.stacks.set(stackId, stack);
 
+		if (sourcePosition) {
+			sourcePosition.visible = false;
+		}
+		if (targetPosition) {
+			targetPosition.visible = false;
+		}
 		sourceComponent.owner = '';
 		targetComponent.owner = '';
 	}

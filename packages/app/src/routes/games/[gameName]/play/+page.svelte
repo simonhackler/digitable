@@ -11,6 +11,7 @@
 	import { MarqueeSelection } from '@pixi/marquee-selection';
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
@@ -39,7 +40,7 @@
 	const fileSystem = getFileSystemContext();
 	const client = new Client('ws://localhost:2567');
 
-	let boardGameItems: Map<string, BoardGameItemNew> = new Map();
+	let boardGameItems: SvelteMap<string, BoardGameItemNew> = new SvelteMap();
 	function sendCmd<T extends string, P>(
 		room: Room<BoardGameRoomState>,
 		commandType: T,
@@ -435,6 +436,13 @@
 				s,
 				room
 			);
+		});
+		s(room.state).components.onRemove((component, _key) => {
+			const boardItem = boardGameItems.get(component.id);
+			if (!boardItem) return;
+			boardContainer.removeChild(boardItem);
+			boardItem.destroy({ children: true });
+			boardGameItems.delete(component.id);
 		});
 		sendCmd(room, 'init', parsePayload(hybridResults));
 		return room;

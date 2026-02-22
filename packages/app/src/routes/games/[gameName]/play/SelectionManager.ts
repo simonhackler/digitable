@@ -14,7 +14,9 @@ export class SelectionManager {
 		if (!this.selectedItems.has(item)) return;
 		this.selectedItems.delete(item);
 		// TODO this is does not scale
-		item.removeChildren(1);
+		if (item.children.length > 1) {
+			item.removeChildren(1);
+		}
 	}
 
 	selectOnly(item: BoardGameItemNew) {
