@@ -1,4 +1,7 @@
 <script lang="ts">
+	import * as NavigationMenu from '$lib/components/ui/navigation-menu/index.js';
+	import { navigationMenuTriggerStyle } from '$lib/components/ui/navigation-menu/navigation-menu-trigger.svelte';
+
 	const tabIds = ['design', 'playtest', 'publish'] as const;
 	type TabId = (typeof tabIds)[number];
 
@@ -40,27 +43,45 @@
 </svelte:head>
 
 <main class="page">
-	<header class="site-header">
-		<div class="header-inner container">
-			<div class="brand">
-				<div class="logo-mark" aria-hidden="true"></div>
-				<div>
-					<p class="brand-name">Digitable</p>
-					<p class="brand-tag">A free and open source boardgame engine</p>
-				</div>
-			</div>
-			<nav class="header-actions">
-				<a class="header-link" href="#design">Design</a>
-				<a class="header-link" href="#playtest">Playtest</a>
-				<a class="header-link" href="#publish">Publish</a>
-			</nav>
-		</div>
+	<header class="flex w-full justify-end">
+		<!-- <div class="header-inner container"> -->
+		<!-- 	<div class="brand"> -->
+		<!-- 		<div class="logo-mark" aria-hidden="true"></div> -->
+		<!-- 		<div> -->
+		<!-- 			<p class="brand-name">Digitable</p> -->
+		<!-- 			<p class="brand-tag">A free and open source boardgame engine</p> -->
+		<!-- 		</div> -->
+		<!-- 	</div> -->
+		<!-- </div> -->
+		<NavigationMenu.Root class="flex w-full justify-end">
+			<NavigationMenu.List>
+				<NavigationMenu.Item>
+					<NavigationMenu.Link>
+						{#snippet child()}
+							<a href="/blog" class={navigationMenuTriggerStyle()}>Blog</a>
+						{/snippet}
+					</NavigationMenu.Link>
+				</NavigationMenu.Item>
+				<NavigationMenu.Item>
+					<NavigationMenu.Link>
+						{#snippet child()}
+							<a href="/vision" class={navigationMenuTriggerStyle()}>Vision</a>
+						{/snippet}
+					</NavigationMenu.Link>
+				</NavigationMenu.Item>
+				<NavigationMenu.Item class="w-full">
+					<NavigationMenu.Link class="w-full">Link</NavigationMenu.Link>
+				</NavigationMenu.Item>
+				<NavigationMenu.Item>
+					<NavigationMenu.Trigger>Item Two</NavigationMenu.Trigger>
+				</NavigationMenu.Item>
+			</NavigationMenu.List>
+		</NavigationMenu.Root>
 	</header>
 
 	<section class="hero">
 		<div class="hero-stack container">
 			<div class="hero-header reveal">
-				<p class="eyebrow">Primary actions</p>
 				<h1 class="hero-title">Design, playtest, and publish your next boardgame.</h1>
 				<p class="hero-subtitle">
 					Digitable keeps your prototype, rules, and feedback in one place so you can iterate
@@ -221,10 +242,6 @@
 		max-width: 1120px;
 		margin: 0 auto;
 		padding: 0 1.5rem;
-	}
-
-	.site-header {
-		padding: 1.75rem 0 1.25rem;
 	}
 
 	.header-inner {
