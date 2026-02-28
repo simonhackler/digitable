@@ -57,5 +57,20 @@ export default ts.config(
 			}
 		}
 	},
+	{
+		files: [
+			'packages/studio/**/*.svelte',
+			'packages/studio/**/*.svelte.ts',
+			'packages/studio/**/*.svelte.js'
+		],
+		languageOptions: {
+			parserOptions: {
+				projectService: true,
+				extraFileExtensions: ['.svelte'],
+				parser: ts.parser,
+				svelteConfig: './packages/studio/svelte.config.js'
+			}
+		}
+	},
 	storybook.configs['flat/recommended']
 );

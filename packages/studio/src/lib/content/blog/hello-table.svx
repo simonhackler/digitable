@@ -1,0 +1,32 @@
+---
+title: "Building the First Table"
+description: "A short recap of our first playtest sprint and the framework that keeps the feedback loop tight."
+date: "2026-02-20"
+tags: ["Playtesting", "Product Design", "Field Notes"]
+ogImage: "/og/hello-table.svg"
+---
+
+<script lang="ts">
+	import Callout from '$lib/components/blog/Callout.svelte';
+</script>
+
+We wanted the first public playtest to feel like a studio session, not a bug report. That meant treating the table as a living workspace, and keeping the loop from feedback to edit as short as a single round.
+
+## What we learned fast
+
+- People narrate decisions out loud when the table looks like a real board.
+- Dragging a component is not enough; players want to swap a rule card at the same time.
+- Playtesters will happily leave notes if the note lives where the moment happened.
+
+<Callout title="Playtest ritual">
+	Write one rule you expect to change at the top of the session. Every time the group mentions it, mark a tally. The tallies become your next edit list.
+</Callout>
+
+## The loop we are betting on
+
+1. Design a round, not a rulebook.
+2. Playtest with the timer visible.
+3. Capture friction inside the component.
+4. Ship a refreshed table before the next session.
+
+That cadence is the heartbeat we are building toward. The next post will break down how we wire those notes directly into the editor.
