@@ -32,13 +32,19 @@
 		"eslint-plugin-storybook": "^10.1.4",
 		"eslint-plugin-svelte": "^3.13.1",
 		"globals": "^16.5.0",
+		"mdsvex": "^0.12.6",
+		"studio": "workspace:*",
+		"super-sitemap": "^1.0.7",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.48.1"
 	},
 	"dependencies": {
 		"@pixi/devtools": "^2.0.1",
 		"@pixi/layout": "^3.2.0",
+		"feed": "^5.2.0",
 		"pixi-viewport": "^6.0.3",
-		"pixi.js": "^8.14.3"
+		"pixi.js": "^8.14.3",
+		"studio": "workspace:*",
+		"svelte-meta-tags": "^4.5.0"
 	}
 }

@@ -8,6 +8,7 @@ This project is a boardgame design and testing tool
 - **Root**: Main package.json with workspace configuration
 - **packages/app/**: SvelteKit application (main frontend)
 - **packages/game-server/**: Colyseus game server
+- **packages/studio/**: Homepage, blog, overview
 - **projects/**: Game project files and assets
 
 ## Build/Test Commands (use bun)
@@ -31,6 +32,7 @@ This project is a boardgame design and testing tool
 - **Package Manager**: Bun (always use bun, not npm)
 
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
+ALWAYS use tailwindcss when possible. Prefer xs sm md lg xl over explicit sizes.
 
 ## Available MCP Tools:
 
@@ -47,7 +49,7 @@ After calling the list-sections tool, you MUST analyze the returned documentatio
 ### 3. svelte-autofixer
 
 Analyzes Svelte code and returns issues and suggestions.
-You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
+Only run this tool on larger svelte code changes. You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
 
 ### 4. playground-link
 
