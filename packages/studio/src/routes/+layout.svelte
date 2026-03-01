@@ -3,6 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
+	import Footer from '$lib/components/Footer.svelte';
 
 	let { children } = $props();
 
@@ -79,3 +80,5 @@
 </header>
 
 {@render children()}
+
+<Footer />
