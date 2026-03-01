@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
 	import Footer from '$lib/components/Footer.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
 
 	let { children } = $props();
 
@@ -39,41 +40,51 @@
 			class="flex w-full flex-wrap items-center justify-center gap-3 rounded-full bg-white/70 px-3 py-2 shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] backdrop-blur md:w-auto md:flex-nowrap"
 			aria-label="Primary"
 		>
-			<a
+			<Button
 				href={resolve('/blog')}
+				variant="ghost"
+				size="default"
 				class={`${navBaseClass} ${isActive('/blog') ? 'bg-black/10 text-[#0d0d0f]' : ''}`}
 				aria-current={isActive('/blog') ? 'page' : undefined}
 			>
 				Blog
-			</a>
-			<a
+			</Button>
+			<Button
 				href={resolve('/philosophy')}
+				variant="ghost"
+				size="default"
 				class={`${navBaseClass} ${isActive('/philosophy') ? 'bg-black/10 text-[#0d0d0f]' : ''}`}
 				aria-current={isActive('/philosophy') ? 'page' : undefined}
 			>
 				Philosophy
-			</a>
-			<a
+			</Button>
+			<Button
 				href={resolve('/showcase')}
+				variant="ghost"
+				size="default"
 				class={`${navBaseClass} ${isActive('/showcase') ? 'bg-black/10 text-[#0d0d0f]' : ''}`}
 				aria-current={isActive('/showcase') ? 'page' : undefined}
 			>
 				Showcase
-			</a>
-			<a
+			</Button>
+			<Button
 				href={resolve('/roadmap')}
+				variant="ghost"
+				size="default"
 				class={`${navBaseClass} ${isActive('/roadmap') ? 'bg-black/10 text-[#0d0d0f]' : ''}`}
 				aria-current={isActive('/roadmap') ? 'page' : undefined}
 			>
 				Roadmap
-			</a>
-			<a
+			</Button>
+			<Button
 				href={resolve('/contact')}
+				variant="ghost"
+				size="default"
 				class={`${navBaseClass} ${isActive('/contact') ? 'bg-black/10 text-[#0d0d0f]' : ''}`}
 				aria-current={isActive('/contact') ? 'page' : undefined}
 			>
 				Contact
-			</a>
+			</Button>
 		</nav>
 		<div class="min-h-[44px]" aria-hidden="true"></div>
 	</div>

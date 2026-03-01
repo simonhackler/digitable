@@ -1,4 +1,10 @@
 <script lang="ts">
+	import type { PageData } from './$types';
+	import SubscribeForm from './subscribe/SubscribeForm.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+
+	let { data }: { data: PageData } = $props();
+
 	const tabIds = ['design', 'playtest', 'publish'] as const;
 	type TabId = (typeof tabIds)[number];
 
@@ -53,16 +59,21 @@
 					aria-label="Primary actions"
 				>
 					{#each tabIds as tab (tab)}
-						<button
+						<Button
 							type="button"
-							class="tab-button rounded-full border-0 bg-transparent px-[1.2rem] py-2 text-xl font-semibold text-[#33363f] transition-colors hover:bg-black/10"
-							class:tab-active={activeTab === tab}
+							variant="ghost"
+							size="default"
+							class={`rounded-full bg-transparent px-[1.2rem] text-xl font-semibold transition-colors ${
+								activeTab === tab
+									? 'bg-[#121212] text-[#f6f6f6] shadow-[0_8px_18px_rgba(0,0,0,0.2)] hover:bg-[#121212] hover:text-[#f6f6f6]'
+									: 'text-[#33363f] hover:bg-black/10'
+							}`}
 							role="tab"
 							aria-selected={activeTab === tab}
 							onclick={() => (activeTab = tab)}
 						>
 							{tab === 'design' ? '1. Design' : tab === 'playtest' ? '2. Playtest' : '3. Publish'}
-						</button>
+						</Button>
 					{/each}
 				</div>
 
@@ -130,12 +141,13 @@
 					{/each}
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
-					<button
-						class="rounded-full bg-[#151515] px-7 py-3.5 text-xl font-semibold text-[#f8f8f8] shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
-						type="button"
+					<Button
+						variant="default"
+						size="lg"
+						class="rounded-full text-xl font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
 					>
 						Start creating now
-					</button>
+					</Button>
 				</div>
 			</div>
 		</div>
@@ -238,6 +250,35 @@
 			</div>
 		</div>
 	</section>
+
+	<section id="newsletter" class="section-soft py-16">
+		<div class="mx-auto grid max-w-[1120px] items-center gap-10 px-6 md:grid-cols-[1.05fr_0.95fr]">
+			<div class="reveal">
+				<p class="text-sm tracking-[0.35em] text-[#4b4b57] uppercase">Newsletter</p>
+				<h2 class="mt-3 text-3xl font-semibold md:text-4xl">Get the playtest log</h2>
+				<p class="mt-4 text-xl text-[#4b4b57]">
+					Monthly design notes, new tooling drops, and open-source releases for table-top builders.
+				</p>
+				<ul class="mt-6 grid gap-3 text-lg text-[#2d2d36]">
+					<li>Product updates &amp; upcoming roadmaps</li>
+					<li>Playtest frameworks and facilitator tips</li>
+					<li>Early access to studio experiments</li>
+				</ul>
+			</div>
+			<div class="reveal md:justify-self-end">
+				<div class="grid max-w-md gap-3">
+					<p class="text-sm tracking-[0.25em] text-[#4b4b57] uppercase">Stay in the loop</p>
+					<p class="text-lg text-[#2d2d36]">
+						No spam, unsubscribe anytime. We send one thoughtful note a month.
+					</p>
+					<SubscribeForm {data} />
+					<p class="text-xs text-[#6b6b76]">
+						By subscribing, you agree to receive Digitable Studio email updates.
+					</p>
+				</div>
+			</div>
+		</div>
+	</section>
 </main>
 
 <style>
@@ -286,12 +327,6 @@
 
 	.section-soft.section-publish {
 		background: #f2c9d1;
-	}
-
-	.tab-button.tab-active {
-		background: #121212;
-		color: #f6f6f6;
-		box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
 	}
 
 	@keyframes rise {

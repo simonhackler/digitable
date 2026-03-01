@@ -3,6 +3,7 @@
 	import Seo from '$lib/components/Seo.svelte';
 	import { formatDate } from '$lib/blog/format';
 	import { site, siteUrl } from '$lib/blog/site';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import type { PageProps } from './$types';
 
 	let { data } = $props<PageProps>();
@@ -42,18 +43,22 @@
 			</h1>
 			<p class="mt-4 max-w-2xl text-lg text-[#49424c]">{site.tagline}</p>
 			<div class="mt-6 flex flex-wrap items-center gap-4 text-sm font-semibold">
-				<a
+				<Button
 					href={resolve('/')}
-					class="rounded-full border border-black/10 bg-white/80 px-4 py-2 shadow-[0_12px_24px_rgba(15,15,15,0.08)]"
+					variant="outline"
+					size="sm"
+					class="rounded-full border-black/10 bg-white/80 font-semibold shadow-[0_12px_24px_rgba(15,15,15,0.08)]"
 				>
 					Back to studio
-				</a>
-				<a
+				</Button>
+				<Button
 					href={resolve('/rss.xml')}
-					class="rounded-full border border-black/10 bg-[#141414] px-4 py-2 text-white shadow-[0_12px_24px_rgba(15,15,15,0.08)]"
+					variant="default"
+					size="sm"
+					class="rounded-full font-semibold shadow-[0_12px_24px_rgba(15,15,15,0.08)]"
 				>
 					RSS feed
-				</a>
+				</Button>
 			</div>
 		</div>
 	</header>
