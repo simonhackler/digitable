@@ -110,7 +110,7 @@
 			>
 				<svg
 					viewBox="0 0 24 24"
-					class="h-4 w-4 text-[#1c1c20] transition group-hover:text-[#0d0d0f]"
+					class="h-5 w-5 text-[#1c1c20] transition group-hover:text-[#0d0d0f]"
 					aria-hidden="true"
 				>
 					<path
@@ -120,7 +120,7 @@
 				</svg>
 				<svg
 					viewBox="0 0 24 24"
-					class="h-4 w-4 text-[#1c1c20] transition group-hover:text-[#0d0d0f]"
+					class="h-5 w-5 text-[#1c1c20] transition group-hover:text-[#0d0d0f]"
 					aria-hidden="true"
 				>
 					<path

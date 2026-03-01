@@ -50,14 +50,14 @@
 	<article class="mx-auto max-w-3xl px-6 pt-14 pb-16">
 		<a
 			href={resolve('/blog')}
-			class="text-xs font-semibold tracking-[0.3em] text-[#6e5b3a] uppercase"
+			class="text-sm font-semibold tracking-[0.3em] text-[#6e5b3a] uppercase"
 		>
 			← Back to blog
 		</a>
-		<h1 class="mt-4 text-4xl leading-tight font-semibold">{title}</h1>
-		<p class="mt-4 text-lg text-[#4a424a]">{description}</p>
+		<h1 class="mt-4 text-5xl leading-tight font-semibold">{title}</h1>
+		<p class="mt-4 text-xl text-[#4a424a]">{description}</p>
 		<div
-			class="mt-6 flex flex-wrap items-center gap-3 text-xs font-semibold tracking-[0.2em] text-[#6d5c3e] uppercase"
+			class="mt-6 flex flex-wrap items-center gap-3 text-sm font-semibold tracking-[0.2em] text-[#6d5c3e] uppercase"
 		>
 			<span>{formatDate(data.metadata.date)}</span>
 			{#if data.metadata.tags?.length}
@@ -65,7 +65,7 @@
 				<span>{data.metadata.tags.join(' · ')}</span>
 			{/if}
 		</div>
-		<div class="mt-10 space-y-6 text-base leading-relaxed text-[#2d2d36]">
+		<div class="mt-10 space-y-6 text-lg leading-relaxed text-[#2d2d36]">
 			<Post />
 		</div>
 	</article>

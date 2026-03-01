@@ -55,7 +55,11 @@
 				<article
 					class="group overflow-hidden rounded-3xl border border-black/10 bg-white/80 shadow-[0_24px_60px_rgba(15,15,15,0.08)] transition hover:-translate-y-1"
 				>
-					<div class="flex flex-col gap-5 p-5 md:flex-row md:items-center">
+					<a
+						href={resolve(`/blog/${post.slug}`)}
+						class="flex h-full flex-col gap-5 p-5 md:flex-row md:items-center"
+						aria-label={`Read ${post.title}`}
+					>
 						{#if post.ogImage}
 							<div
 								class="relative h-40 w-full overflow-hidden rounded-2xl bg-[#efe6d9] md:h-36 md:w-56"
@@ -70,7 +74,7 @@
 						{/if}
 						<div class="flex-1">
 							<div
-								class="flex flex-wrap items-center gap-3 text-xs font-semibold tracking-[0.2em] text-[#6d5c3e] uppercase"
+								class="flex flex-wrap items-center gap-3 text-sm font-semibold tracking-[0.2em] text-[#6d5c3e] uppercase"
 							>
 								<span>{formatDate(post.date)}</span>
 								{#if post.tags?.length}
@@ -78,17 +82,14 @@
 									<span>{post.tags.join(' · ')}</span>
 								{/if}
 							</div>
-							<h2 class="mt-4 text-2xl leading-tight font-semibold">{post.title}</h2>
-							<p class="mt-3 text-base text-[#3f3a42]">{post.description}</p>
-							<a
-								href={resolve(`/blog/${post.slug}`)}
-								class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#111]"
-							>
+							<h2 class="mt-4 text-3xl leading-tight font-semibold">{post.title}</h2>
+							<p class="mt-3 text-lg text-[#3f3a42]">{post.description}</p>
+							<span class="mt-5 inline-flex items-center gap-2 text-base font-semibold text-[#111]">
 								Read the post
 								<span class="text-lg">→</span>
-							</a>
+							</span>
 						</div>
-					</div>
+					</a>
 				</article>
 			{/each}
 		</div>
