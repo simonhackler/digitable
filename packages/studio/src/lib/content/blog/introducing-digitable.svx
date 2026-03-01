@@ -9,9 +9,26 @@ ogImage: "/og/hello-table.svg"
 Digitable is a free and open source board game engine. The core idea of digitable is having one place for designing the game,
 playtesting the game and publishing the game. It is born out of a frustration with exisiting tooling.
 
-The main goal is to reduce the amount of iteration needed between designing and playtesting. It's focus is hereby on fast protoyping.
+The main goal is to reduce the amount of iteration needed between designing and playtesting. Digitables focus is fast protoyping.
 You can start out with a first idea in digitable. Create a card template, then a couple of cards that use it template.
 Then it is just one click to create a playtesting link and another to share the link with your friends to start playtesting.
 My games are usually perfect on the first try, but if yours aren't you can edit your design, change the cards add more or remove them
-and jump back into playtesting. The goal here is to get an experience that is like playtesting with flash cards.
+and jump back into playtesting. This helps you try out ideas faster and should lead to designing more games that are better designed
+in a shorter time. After you finished your playtesting round you can publish the boardgame online.
+
+All the code for digitable is free and open source. This means anybody can edit the source code and change it.
+It is sort of a guarantee against me turning evil and if I ever turn evil you can just take the project and fork it.
+This openness is the foundation that digitable is built on. This also means that you can just use normal files. Nothing is
+locked on a cloud server. This of course leads to other advantages like being able to use whatever software you want
+to design your cards as long as it can create svgs. You can just use normal excel to edit the csv files! No vendor lockin.
+
+This open source focus is the main motivation for me to create digitable. I almost exclusively use open source software (nixos btw)
+and never want to use some SAAS with a monthly subscription fee. Blender has become the go to software for a lot of 3d designers
+everybody can start using it immedieately without having to worry about someone trying to extract their value later.
+This is what I want for boardgames as well. I don't want the future of boardgames to be different projects extracting rent from you.
+Instead I hope for the future of boardgame design to be built on openness. My take on that is digitable.
+
+If you have any ideas, feedback or just want to chat about boardgame design, join the discord. For software developers checkout the
+repository.
+
 

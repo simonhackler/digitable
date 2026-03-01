@@ -14,15 +14,24 @@
 					'bg-background hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50 border shadow-xs',
 				secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-xs',
 				ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
-				link: 'text-primary underline-offset-4 hover:underline'
+				link: 'text-primary underline-offset-4 hover:underline',
+				nav: 'rounded-full bg-transparent px-3.5 py-1.5 text-lg font-semibold text-[#1c1c20] transition hover:-translate-y-0.5 hover:bg-black/10 hover:text-[#0d0d0f] aria-[current=page]:bg-black/10 aria-[current=page]:text-[#0d0d0f]',
+				tab: 'rounded-full bg-transparent px-5 py-2 text-xl font-semibold text-[#33363f] transition-colors hover:bg-black/10 aria-[selected=true]:bg-[#121212] aria-[selected=true]:text-[#f6f6f6] aria-[selected=true]:shadow-[0_8px_18px_rgba(0,0,0,0.2)] aria-[selected=true]:hover:bg-[#121212]',
+				hero: 'rounded-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.18)]',
+				'pill-outline':
+					'rounded-full border border-black/10 bg-white/80 text-[#1c1c20] font-semibold hover:bg-white shadow-[0_12px_24px_rgba(15,15,15,0.08)]',
+				'pill-dark':
+					'rounded-full bg-[#151515] text-[#f8f8f8] font-semibold hover:bg-black/90 shadow-[0_12px_24px_rgba(15,15,15,0.08)]'
 			},
 			size: {
-				default: 'h-9 px-4 py-2 has-[>svg]:px-3',
-				sm: 'h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5',
-				lg: 'h-10 rounded-md px-6 has-[>svg]:px-4',
+				default: 'h-9 px-4 py-2 text-sm has-[>svg]:px-3',
+				sm: 'h-8 gap-1.5 rounded-md px-3 text-sm has-[>svg]:px-2.5',
+				lg: 'h-11 rounded-md px-6 text-lg has-[>svg]:px-4',
+				xl: 'h-12 rounded-md px-7 text-xl has-[>svg]:px-5',
 				icon: 'size-9',
 				'icon-sm': 'size-8',
-				'icon-lg': 'size-10'
+				'icon-lg': 'size-10',
+				unset: ''
 			}
 		},
 		defaultVariants: {
@@ -42,6 +51,8 @@
 </script>
 
 <script lang="ts">
+	import { resolve } from '$app/paths';
+
 	let {
 		class: className,
 		variant = 'default',
@@ -53,24 +64,36 @@
 		children,
 		...restProps
 	}: ButtonProps = $props();
+
+	const attachRef = (node: HTMLElement) => {
+		ref = node;
+		return () => {
+			if (ref === node) {
+				ref = null;
+			}
+		};
+	};
+
+	const anchorProps = $derived.by(() => ({
+		href: disabled || !href ? undefined : resolve(href)
+	}));
 </script>
 
 {#if href}
 	<a
-		bind:this={ref}
+		{@attach attachRef}
 		data-slot="button"
 		class={cn(buttonVariants({ variant, size }), className)}
-		href={disabled ? undefined : href}
+		{...anchorProps}
 		aria-disabled={disabled}
 		role={disabled ? 'link' : undefined}
-		tabindex={disabled ? -1 : undefined}
 		{...restProps}
 	>
 		{@render children?.()}
 	</a>
 {:else}
 	<button
-		bind:this={ref}
+		{@attach attachRef}
 		data-slot="button"
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}

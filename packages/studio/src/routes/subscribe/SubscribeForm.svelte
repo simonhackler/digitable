@@ -7,13 +7,13 @@
 	} from '$lib/components/ui/form/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { subscribeSchema } from './schema';
-	import { superForm } from 'sveltekit-superforms/client';
-	import { zod4Client } from 'sveltekit-superforms/adapters';
+	import { superForm } from 'sveltekit-superforms';
+	import { zod4 } from 'sveltekit-superforms/adapters';
 
-	const pageProps = $props();
+	const props = $props();
 
-	const sf = superForm(pageProps.data.form, {
-		validators: zod4Client(subscribeSchema)
+	const sf = superForm(props.data.form, {
+		validators: zod4(subscribeSchema)
 	});
 
 	const { form, enhance, message } = sf;
@@ -58,9 +58,7 @@
 		bind:value={$form.company}
 	/>
 
-	<FormButton variant="default" size="lg" class="w-full rounded-full text-lg font-semibold">
-		Subscribe
-	</FormButton>
+	<FormButton variant="pill-dark" size="lg" class="w-full">Subscribe</FormButton>
 
 	{#if $message}
 		<p

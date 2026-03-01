@@ -61,13 +61,8 @@
 					{#each tabIds as tab (tab)}
 						<Button
 							type="button"
-							variant="ghost"
-							size="default"
-							class={`rounded-full bg-transparent px-[1.2rem] text-xl font-semibold transition-colors ${
-								activeTab === tab
-									? 'bg-[#121212] text-[#f6f6f6] shadow-[0_8px_18px_rgba(0,0,0,0.2)] hover:bg-[#121212] hover:text-[#f6f6f6]'
-									: 'text-[#33363f] hover:bg-black/10'
-							}`}
+							variant="tab"
+							size="unset"
 							role="tab"
 							aria-selected={activeTab === tab}
 							onclick={() => (activeTab = tab)}
@@ -141,13 +136,7 @@
 					{/each}
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
-					<Button
-						variant="default"
-						size="lg"
-						class="rounded-full text-xl font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
-					>
-						Start creating now
-					</Button>
+					<Button variant="hero" size="xl">Start creating now</Button>
 				</div>
 			</div>
 		</div>
