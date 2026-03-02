@@ -163,7 +163,7 @@
 			<div class="reveal order-1 md:order-2">
 				<h2 class="mb-4 text-3xl font-semibold">Design</h2>
 				<p class="mb-4 text-xl text-[#4b4b57]">
-					Create modular components, snap pieces into place, and prototype rules in minutes.
+					Create templates for cards and generate concrete cards based on spreadsheets
 				</p>
 				<ul class="grid gap-2 pl-5 text-xl text-[#2d2d36]">
 					<li>Component library with quick duplication</li>
@@ -181,10 +181,10 @@
 			<div class="reveal order-1 md:order-1">
 				<h2 class="mb-4 text-3xl font-semibold">Playtest</h2>
 				<p class="mb-4 text-xl text-[#4b4b57]">
-					Bring your table online, invite testers, and record outcomes with every turn.
+					Just one click to turn your design into a playtest.
 				</p>
 				<ul class="grid gap-2 pl-5 text-xl text-[#2d2d36]">
-					<li>Shared state for remote sessions</li>
+					<li>Sensible default</li>
 					<li>Quick restart and scenario presets</li>
 					<li>Feedback tied to components</li>
 				</ul>
@@ -228,9 +228,7 @@
 			</div>
 			<div class="reveal order-1 md:order-2">
 				<h2 class="mb-4 text-3xl font-semibold">Publish</h2>
-				<p class="mb-4 text-xl text-[#4b4b57]">
-					Export production-ready assets and publish updates with a single click.
-				</p>
+				<p class="mb-4 text-xl text-[#4b4b57]">Publish your game online for the world to play.</p>
 				<ul class="grid gap-2 pl-5 text-xl text-[#2d2d36]">
 					<li>Print, web, and tabletop simulator outputs</li>
 					<li>Versioned changelogs for testers</li>
@@ -244,27 +242,14 @@
 		<div class="mx-auto grid max-w-[1120px] items-center gap-10 px-6 md:grid-cols-[1.05fr_0.95fr]">
 			<div class="reveal">
 				<p class="text-sm tracking-[0.35em] text-[#4b4b57] uppercase">Newsletter</p>
-				<h2 class="mt-3 text-3xl font-semibold md:text-4xl">Get the playtest log</h2>
-				<p class="mt-4 text-xl text-[#4b4b57]">
-					Monthly design notes, new tooling drops, and open-source releases for table-top builders.
+				<h2 class="mt-2 text-3xl font-semibold md:text-4xl">
+					Stay up to date with the development
+				</h2>
+				<p class="mt-4 mb-2 text-xl text-[#4b4b57]">
+					I send out a monthly Newsletter for updates on digitable. 100% written by me. No lazy ai
+					content.
 				</p>
-				<ul class="mt-6 grid gap-3 text-lg text-[#2d2d36]">
-					<li>Product updates &amp; upcoming roadmaps</li>
-					<li>Playtest frameworks and facilitator tips</li>
-					<li>Early access to studio experiments</li>
-				</ul>
-			</div>
-			<div class="reveal md:justify-self-end">
-				<div class="grid max-w-md gap-3">
-					<p class="text-sm tracking-[0.25em] text-[#4b4b57] uppercase">Stay in the loop</p>
-					<p class="text-lg text-[#2d2d36]">
-						No spam, unsubscribe anytime. We send one thoughtful note a month.
-					</p>
-					<SubscribeForm {data} />
-					<p class="text-xs text-[#6b6b76]">
-						By subscribing, you agree to receive Digitable Studio email updates.
-					</p>
-				</div>
+				<SubscribeForm {data} />
 			</div>
 		</div>
 	</section>

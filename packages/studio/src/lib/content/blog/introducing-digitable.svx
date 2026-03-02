@@ -11,7 +11,7 @@ playtesting the game and publishing the game in one platform.
 <!-- Increase the iteration speed or decrease the time between designing and playtesting. -->
 The main goal of Digitable is to reduce the amount of iteration needed between designing and playtesting. Digitables focus is fast protoyping.
 You can start out with a first idea in Digitable. Create a card template and a couple of cards that use that template.
-Then it is just one click to create a playtesting link share with your friends to start playtesting.
+Then it is just one click to create a playtesting link and share it with your friends to start playtesting.
 My games are usually perfect on the first try, but if yours aren't you can then edit your design, change the cards add more or remove them
 and jump right back into playtesting. This helps you to try out ideas faster and leads to creating more games that are better designed
 in a shorter time. After you finished playtesting you can publish the boardgame online and share it with the world
