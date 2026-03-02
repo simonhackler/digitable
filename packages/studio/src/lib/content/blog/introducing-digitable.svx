@@ -6,29 +6,34 @@ tags: ["Progress Report", "Product Design", "Field Notes"]
 ogImage: "/og/hello-table.svg"
 ---
 
-Digitable is a free and open source board game engine. The core idea of digitable is having one place for designing the game,
-playtesting the game and publishing the game. It is born out of a frustration with exisiting tooling.
+Digitable is a free and open source board game engine. It combines designing the game,
+playtesting the game and publishing the game in one platform.
+<!-- Increase the iteration speed or decrease the time between designing and playtesting. -->
+The main goal of Digitable is to reduce the amount of iteration needed between designing and playtesting. Digitables focus is fast protoyping.
+You can start out with a first idea in Digitable. Create a card template and a couple of cards that use that template.
+Then it is just one click to create a playtesting link share with your friends to start playtesting.
+My games are usually perfect on the first try, but if yours aren't you can then edit your design, change the cards add more or remove them
+and jump right back into playtesting. This helps you to try out ideas faster and leads to creating more games that are better designed
+in a shorter time. After you finished playtesting you can publish the boardgame online and share it with the world
 
-The main goal is to reduce the amount of iteration needed between designing and playtesting. Digitables focus is fast protoyping.
-You can start out with a first idea in digitable. Create a card template, then a couple of cards that use it template.
-Then it is just one click to create a playtesting link and another to share the link with your friends to start playtesting.
-My games are usually perfect on the first try, but if yours aren't you can edit your design, change the cards add more or remove them
-and jump back into playtesting. This helps you try out ideas faster and should lead to designing more games that are better designed
-in a shorter time. After you finished your playtesting round you can publish the boardgame online.
+All the code for Digitable is free and open source. This means anybody can edit the source code and change it.
+It is a guarantee against me turning evil and if I ever turn evil you can just take the project and fork it.
+This openness is the foundation that Digitable is built on. This also means that you can just use normal files. Nothing is
+locked on a cloud server. Digitable uses svg files for designs and csv files for data.
+So you can use whatever software you want to design your cards as long as it can create svgs. E.g. TODO more examples here
+You can just use normal excel to edit the csv files! No vendor lockin.
 
-All the code for digitable is free and open source. This means anybody can edit the source code and change it.
-It is sort of a guarantee against me turning evil and if I ever turn evil you can just take the project and fork it.
-This openness is the foundation that digitable is built on. This also means that you can just use normal files. Nothing is
-locked on a cloud server. This of course leads to other advantages like being able to use whatever software you want
-to design your cards as long as it can create svgs. You can just use normal excel to edit the csv files! No vendor lockin.
-
-This open source focus is the main motivation for me to create digitable. I almost exclusively use open source software (nixos btw)
+This open source focus is the main motivation for me to create Digitable. I almost exclusively use open source software (nixos btw)
 and never want to use some SAAS with a monthly subscription fee. Blender has become the go to software for a lot of 3d designers
-everybody can start using it immedieately without having to worry about someone trying to extract their value later.
+everybody can start using it immediately without having to worry about someone trying to extract their value later. It isn't locked behind
+institutional access. It doesn't matter who you are or where you are you can start making movies. It is something that is true
+about writing software as well. I am not limited by outside factors, like an architect might be. There are no excuses not to build
+what I want.
 This is what I want for boardgames as well. I don't want the future of boardgames to be different projects extracting rent from you.
 Instead I hope for the future of boardgame design to be built on openness. My take on that is digitable.
 
 If you have any ideas, feedback or just want to chat about boardgame design, join the discord. For software developers checkout the
-repository.
+repository. To keep up with the progress of Digitable subscribe to the Newsletter. It will be sent every 4 weeks or when something
+big has happened.
 
 

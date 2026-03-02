@@ -13,9 +13,24 @@
 		return path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`);
 	};
 
-	const discordUrl = 'https://discord.gg/your-server';
+	async function fetchStars(o: string, r: string): Promise<number | null> {
+		// if (!browser) return null; // client-only
+		const res = await fetch(`https://api.github.com/repos/${o}/${r}`, {
+			headers: {
+				Accept: 'application/vnd.github+json',
+				'X-GitHub-Api-Version': '2022-11-28'
+			}
+		});
+		if (!res.ok) return null;
+		const { stargazers_count } = await res.json();
+		return Number(stargazers_count ?? 0);
+	}
+
+	let githubStars = $derived(await fetchStars('RightNow-AI', 'openfang'));
+
+	const discordUrl = 'https://discord.gg/sasxJ5MRWX';
 	const githubUrl = 'https://github.com/your-org/your-repo';
-	const githubStars = '2.3k';
+	// const githubStars = '2.3k';
 </script>
 
 <svelte:head>
