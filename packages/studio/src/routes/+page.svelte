@@ -165,11 +165,11 @@
 				<p class="mb-4 text-xl text-[#4b4b57]">
 					Create templates for cards and generate concrete cards based on spreadsheets
 				</p>
-				<ul class="grid gap-2 pl-5 text-xl text-[#2d2d36]">
-					<li>Component library with quick duplication</li>
-					<li>Token, board, and card templates</li>
-					<li>Live rule annotations alongside layout</li>
-				</ul>
+				<p class="mb-4 text-xl text-[#4b4b57]">
+					Uses normal files, svg and csv. Use our inbuilt editors or edit them with whatever program
+					you like.
+				</p>
+				<p class="mb-4 text-xl text-[#4b4b57]">Your game and your data. All files stay with you.</p>
 			</div>
 		</div>
 	</section>
@@ -181,13 +181,15 @@
 			<div class="reveal order-1 md:order-1">
 				<h2 class="mb-4 text-3xl font-semibold">Playtest</h2>
 				<p class="mb-4 text-xl text-[#4b4b57]">
-					Just one click to turn your design into a playtest.
+					Just one click to turn your design into a playtest. No need for a bunch of setup.
 				</p>
-				<ul class="grid gap-2 pl-5 text-xl text-[#2d2d36]">
-					<li>Sensible default</li>
-					<li>Quick restart and scenario presets</li>
-					<li>Feedback tied to components</li>
-				</ul>
+				<p class="mb-4 text-xl text-[#4b4b57]">
+					Share a link with your friends to playtest online.
+				</p>
+				<p class="mb-4 text-xl text-[#4b4b57]">
+					Or go old school and print out your design on paper. Digitable makes it easy to print out
+					all components or only the components that changed.
+				</p>
 			</div>
 			<div class="reveal order-2 md:order-2">
 				<div
