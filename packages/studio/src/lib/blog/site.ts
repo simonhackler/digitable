@@ -1,9 +1,9 @@
 import { env } from '$env/dynamic/public';
 
 export const site = {
-	name: 'Digitable Studio',
-	tagline: 'Design notes, playtest stories, and product updates for Digitable Studio.',
-	blogTitle: 'Digitable Studio Blog'
+	name: 'Digitable blog',
+	tagline: 'Product updates, roadmap updates and the occasional rambling on boardgame design.',
+	blogTitle: 'Digitable Blog'
 };
 
 export const siteUrl = env.PUBLIC_SITE_URL ?? 'https://digitable.studio';

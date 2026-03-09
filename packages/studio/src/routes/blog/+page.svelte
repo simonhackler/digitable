@@ -37,9 +37,9 @@
 			></div>
 		</div>
 		<div class="relative mx-auto max-w-5xl px-6 pt-14 pb-10">
-			<p class="text-xs font-semibold tracking-[0.3em] text-[#6e5b3a] uppercase">Studio blog</p>
+			<p class="text-xs font-semibold tracking-[0.3em] text-[#6e5b3a] uppercase">Digitable blog</p>
 			<h1 class="mt-4 max-w-2xl text-4xl leading-tight font-semibold">
-				Design notes from the table
+				Stay up to date with the development of digitable.
 			</h1>
 			<p class="mt-4 max-w-2xl text-lg text-[#49424c]">{site.tagline}</p>
 			<div class="mt-6 flex flex-wrap items-center gap-4 text-sm font-semibold">

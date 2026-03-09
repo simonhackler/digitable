@@ -231,11 +231,9 @@
 			<div class="reveal order-1 md:order-2">
 				<h2 class="mb-4 text-3xl font-semibold">Publish</h2>
 				<p class="mb-4 text-xl text-[#4b4b57]">Publish your game online for the world to play.</p>
-				<ul class="grid gap-2 pl-5 text-xl text-[#2d2d36]">
-					<li>Print, web, and tabletop simulator outputs</li>
-					<li>Versioned changelogs for testers</li>
-					<li>Shareable build links</li>
-				</ul>
+				<p class="mb-4 text-xl text-[#4b4b57]">
+					Sell your print and play files or host them free to download.
+				</p>
 			</div>
 		</div>
 	</section>
