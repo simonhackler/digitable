@@ -166,8 +166,8 @@
 					Create templates for cards and generate concrete cards based on spreadsheets
 				</p>
 				<p class="mb-4 text-xl text-[#4b4b57]">
-					Uses normal files, svg and csv. Use our inbuilt editors or edit them with whatever program
-					you like.
+					Digitable uses normal files, svg and csv. Use our inbuilt editors or edit them with
+					whatever program you like.
 				</p>
 				<p class="mb-4 text-xl text-[#4b4b57]">Your game and your data. All files stay with you.</p>
 			</div>
@@ -187,8 +187,8 @@
 					Share a link with your friends to playtest online.
 				</p>
 				<p class="mb-4 text-xl text-[#4b4b57]">
-					Or go old school and print out your design on paper. Digitable makes it easy to print out
-					all components or only the components that changed.
+					Go old school and print out your design on paper. Digitable makes it easy to print out all
+					components or only the components that changed.
 				</p>
 			</div>
 			<div class="reveal order-2 md:order-2">
@@ -255,6 +255,8 @@
 			</div>
 		</div>
 	</section>
+
+	<!-- TODO join the Community. Github/Discord. I am always open to feature requests, feedback and suggestions. -->
 </main>
 
 <style>
