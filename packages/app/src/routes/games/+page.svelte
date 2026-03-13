@@ -8,6 +8,7 @@
 	import { Plus, FolderOpen } from '@lucide/svelte';
 	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import { resolve } from '$app/paths';
+	import CreateGamePopover from './create-game-popover.svelte';
 
 	const fileSystem = getFileSystemContext();
 
@@ -62,11 +63,6 @@
 		await goto(resolve(`/games/${gameName}`));
 	}
 
-	function createNewGame() {
-		// TODO: Implement create game functionality
-		console.log('Create new game clicked');
-	}
-
 	onMount(() => {
 		loadGames();
 	});
@@ -75,10 +71,46 @@
 <div class="container mx-auto max-w-4xl p-6">
 	<div class="mb-6 flex items-center justify-between">
 		<h1 class="text-3xl font-bold">Board Games</h1>
-		<Button onclick={createNewGame} class="flex items-center gap-2">
-			<Plus class="h-4 w-4" />
-			Create Game
-		</Button>
+		<CreateGamePopover>
+			{#snippet trigger(props)}
+				<Button {...props} class="flex items-center gap-2">
+					<Plus class="h-4 w-4" />
+					Create Game
+				</Button>
+			{/snippet}
+		</CreateGamePopover>
+		<!-- <Popover.Root> -->
+		<!-- 	<Popover.Trigger> -->
+		<!-- 		<Button class="flex items-center gap-2"> -->
+		<!-- 			<Plus class="h-4 w-4" /> -->
+		<!-- 			Create Game -->
+		<!-- 		</Button> -->
+		<!-- 	</Popover.Trigger> -->
+		<!-- 	<Popover.Content> -->
+		<!-- 		<form use:enhance class="space-y-6"> -->
+		<!-- 			<Form.Field {form} name="name"> -->
+		<!-- 				<Form.Control> -->
+		<!-- 					{#snippet children({ props })} -->
+		<!-- 						<Form.Label>Gamename</Form.Label> -->
+		<!-- 						<Input -->
+		<!-- 							{...props} -->
+		<!-- 							bind:value={$formData.name} -->
+		<!-- 							placeholder="" -->
+		<!-- 							maxlength={80} -->
+		<!-- 							class="w-full" -->
+		<!-- 						/> -->
+		<!-- 					{/snippet} -->
+		<!-- 				</Form.Control> -->
+		<!-- 				<Form.Description class="text-muted-foreground flex justify-between text-xs"> -->
+		<!-- 					<span>up to 80 characters · required</span> -->
+		<!-- 					<span>{$formData.name?.length || 0}/80</span> -->
+		<!-- 				</Form.Description> -->
+		<!-- 				<Form.FieldErrors /> -->
+		<!-- 			</Form.Field> -->
+		<!-- 			<Button type="submit">Create</Button> -->
+		<!-- 		</form> -->
+		<!-- 	</Popover.Content> -->
+		<!-- </Popover.Root> -->
 	</div>
 
 	{#if loading}
