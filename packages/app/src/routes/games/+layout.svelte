@@ -10,7 +10,9 @@
 
 	let fileSystemState: { adapter: Adapter | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
-	let games: Game[] = $state([]);
+	const gamesState: { existingGames: Game[] } = $state({ existingGames: [] });
+	const games = $derived(gamesState.existingGames);
+	// let games: Game[] = $state([]);
 
 	setFileSystemContext(fileSystemState);
 
@@ -21,7 +23,7 @@
 
 		const folder = await fileSystem?.getRootFolder();
 		if (folder?.result) {
-			games = folder.result.children
+			gamesState.existingGames = folder.result.children
 				.filter(isFolder)
 				.filter((f) => f.children.find((file) => file.name == 'game.json'))
 				.map((f) => {

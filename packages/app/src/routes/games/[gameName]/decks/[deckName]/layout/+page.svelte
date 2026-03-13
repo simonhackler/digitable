@@ -1,4 +1,5 @@
 <script lang="ts">
+	import placeholderFrontSvg from '../../../../../../../static/placeholder.svg?raw';
 	import { getToLoadSvgsContext } from '../svg-context.svelte';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
@@ -98,12 +99,14 @@
 			templateBack = svg as SVGSVGElement;
 		}
 
-		// Convert SVG to File and upload
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
 
-		// Upload the file
 		fileSystem.upload(svgFile, fullFolderPath, true);
+		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
+			type: 'image/svg+xml'
+		});
+		fileSystem.upload(file, `${currentProject}/files`);
 	}
 
 	function attachSVG(svg: SVGSVGElement): Attachment {
@@ -176,11 +179,10 @@
 					{:else}
 						<Popover.Root>
 							<Popover.Trigger>
-								<Button class="w-full">Create empty</Button>
+								<Button class="w-full" onclick={() => ($formData.side = side)}>Create empty</Button>
 							</Popover.Trigger>
 							<Popover.Content>
 								<form use:enhance>
-									<input type="hidden" name="side" value={side} />
 									<div class="class flex flex-col">
 										<Form.Field {form} name="width" class="grid grid-cols-4 gap-2">
 											<Form.Control>
