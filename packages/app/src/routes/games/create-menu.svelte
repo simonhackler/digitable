@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -15,6 +16,7 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
+	import DataTable from '$lib/components/file-browser/browser-ui/data-table.svelte';
 
 	let { activeGame }: { activeGame: Game | null } = $props();
 	let openCreateDeckDialog = $state(false);
@@ -23,7 +25,9 @@
 		deckName: z
 			.string()
 			.min(3, 'Deck name must be at least 3 characters long')
-			.regex(/^[A-Za-z0-9_-]+$/, 'Deck name can only contain letters and numbers without spaces')
+			.regex(/^[A-Za-z0-9_-]+$/, 'Deck name can only contain letters and numbers without spaces'),
+		width: z.number().min(10).max(300),
+		height: z.number().min(10).max(300)
 	});
 
 	const form = superForm(defaults(zod4(newDeckSchema)), {
@@ -44,7 +48,7 @@
 		openCreateDeckDialog = false;
 	}
 
-	const { form: formData, enhance } = form;
+	const { form: formData, enhance, constraints } = form;
 </script>
 
 <Sidebar.Group>
@@ -69,12 +73,11 @@
 							<Dialog.Root bind:open={openCreateDeckDialog}>
 								<Dialog.Content>
 									<Dialog.Header>
-										<Dialog.Title>New deck name</Dialog.Title>
+										<Dialog.Title>New deck</Dialog.Title>
 										<form use:enhance>
 											<Form.Field {form} name="deckName">
 												<Form.Control>
 													{#snippet children({ props })}
-														<Form.Label>Email</Form.Label>
 														<Input
 															{...props}
 															placeholder="deck name"
@@ -85,6 +88,44 @@
 												<Form.Description />
 												<Form.FieldErrors />
 											</Form.Field>
+											<div class="flex gap-2">
+												<Form.Field {form} name="width">
+													<Form.Control>
+														{#snippet children({ props })}
+															<div class="flex flex-row gap-1">
+																<Form.Label>width:</Form.Label>
+																<Input
+																	{...props}
+																	placeholder="width"
+																	bind:value={$formData.width}
+																	{...$constraints.width}
+																	type="number"
+																/>
+															</div>
+														{/snippet}
+													</Form.Control>
+													<Form.Description />
+													<Form.FieldErrors />
+												</Form.Field>
+												<Form.Field {form} name="height">
+													<Form.Control>
+														{#snippet children({ props })}
+															<div class="flex flex-row gap-1">
+																<Form.Label>height:</Form.Label>
+																<Input
+																	{...props}
+																	placeholder="height"
+																	bind:value={$formData.height}
+																	{...$constraints.height}
+																	type="number"
+																/>
+															</div>
+														{/snippet}
+													</Form.Control>
+													<Form.Description />
+													<Form.FieldErrors />
+												</Form.Field>
+											</div>
 											<Button type="submit">
 												<PlusIcon /> Create new deck
 											</Button>

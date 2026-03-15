@@ -16,4 +16,4 @@ export function getFileSystemContext(): Adapter {
 	return context.adapter;
 }
 
-export const [setGamesContext, getGamesContext] = createContext<{ existingGames: Game[] }>();
+export const [getGamesContext, setGamesContext] = createContext<{ existingGames: Game[] }>();

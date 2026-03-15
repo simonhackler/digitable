@@ -5,16 +5,16 @@
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import type { Game } from './types';
-	import { setFileSystemContext } from './context';
+	import { setFileSystemContext, setGamesContext } from './context';
 	import { generateAgentFiles } from '$lib/utils/agent-generator.js';
 
 	let fileSystemState: { adapter: Adapter | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
+	setFileSystemContext(fileSystemState);
 	const gamesState: { existingGames: Game[] } = $state({ existingGames: [] });
 	const games = $derived(gamesState.existingGames);
+	setGamesContext(gamesState);
 	// let games: Game[] = $state([]);
-
-	setFileSystemContext(fileSystemState);
 
 	async function onSetOpfsAdapter(adapter: Adapter) {
 		fileSystemState.adapter = adapter;
@@ -23,24 +23,39 @@
 
 		const folder = await fileSystem?.getRootFolder();
 		if (folder?.result) {
-			gamesState.existingGames = folder.result.children
-				.filter(isFolder)
-				.filter((f) => f.children.find((file) => file.name == 'game.json'))
-				.map((f) => {
-					const systemFolder = f.children.find((child) => child.name === 'system');
-					if (!systemFolder || !isFolder(systemFolder)) {
-						return { name: f.name, decks: [] };
-					}
+			gamesState.existingGames = await Promise.all(
+				folder.result.children
+					.filter(isFolder)
+					.filter((f) => f.children.find((file) => file.name == 'game.json'))
+					.map(async (f) => {
+						const systemFolder = f.children.find((child) => child.name === 'system');
+						const gameJsonPath = `${f.name}/game.json`;
+						const [gameFileResult] = await fileSystem!.download([gameJsonPath]);
+						let description = '';
+						let tags = [];
+						if (gameFileResult.result?.data) {
+							const gameFileText = await gameFileResult.result.data.text();
+							const gameData = JSON.parse(gameFileText);
+							description = gameData.description;
+							tags = gameData.tags || [];
+						}
 
-					const decks = systemFolder.children
-						.filter((f) => isFolder(f))
-						.map((deck) => ({ name: deck.name }));
+						if (!systemFolder || !isFolder(systemFolder)) {
+							return { name: f.name, decks: [], description, tags };
+						}
 
-					return {
-						name: f.name,
-						decks
-					};
-				});
+						const decks = systemFolder.children
+							.filter((f) => isFolder(f))
+							.map((deck) => ({ name: deck.name }));
+
+						return {
+							name: f.name,
+							decks,
+							description,
+							tags
+						};
+					})
+			);
 		}
 	}
 
