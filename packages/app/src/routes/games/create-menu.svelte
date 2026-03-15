@@ -1,4 +1,5 @@
 <script lang="ts">
+	import placeholderFrontSvg from '../../../static/placeholder.svg?raw';
 	import { resolve } from '$app/paths';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -17,8 +18,11 @@
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
 	import DataTable from '$lib/components/file-browser/browser-ui/data-table.svelte';
+	import type { Adapter } from '$lib/components/file-browser/adapters/adapter.js';
+	import FileUpload from '$lib/components/file-browser/browser-ui/file-upload.svelte';
+	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 
-	let { activeGame }: { activeGame: Game | null } = $props();
+	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: Adapter } = $props();
 	let openCreateDeckDialog = $state(false);
 
 	const newDeckSchema = z.object({
@@ -35,20 +39,83 @@
 		validators: zod4(newDeckSchema),
 		onUpdate({ form }) {
 			if (form.valid) {
-				const path = `/games/${activeGame?.name}/decks/${form.data.deckName}/data`;
-				switchPath(path);
+				switchPathAndCreateSvgs(
+					activeGame!.name,
+					form.data.deckName,
+					form.data.width,
+					form.data.height
+				);
 			}
 		}
 	});
 
-	async function switchPath(path: string) {
+	async function switchPathAndCreateSvgs(
+		gameName: string,
+		deckName: string,
+		width: number,
+		height: number
+	) {
+		const path = `/games/${gameName}/decks/${deckName}/data`;
+		const frontSvg = createEmptySvg(width, height);
+		const backSvg = createEmptySvg(width, height);
+		await Promise.all([
+			uploadSvgAsSide(fileSystem, gameName, deckName, frontSvg, 'front'),
+			uploadSvgAsSide(fileSystem, gameName, deckName, backSvg, 'back')
+		]);
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
 		await goto(resolve(path));
 		openCreateDeckDialog = false;
 	}
 
+	async function uploadSvgAsSide(
+		fileSystem: Adapter,
+		currentProject: string,
+		deckName: string,
+		svg: SVGElement,
+		side: 'front' | 'back'
+	) {
+		const svgString = new XMLSerializer().serializeToString(svg);
+		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
+		const fullFolderPath = `/${currentProject}/system/${deckName}`;
+		await fileSystem.upload(svgFile, fullFolderPath, false);
+
+		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
+			type: 'image/svg+xml'
+		});
+		await fileSystem.upload(file, `${currentProject}/files`);
+	}
+
+	const cardFormats = {
+		poker: { name: 'Poker / Euro Poker', width: 63, height: 88 },
+		bridge: { name: 'Bridge', width: 56, height: 88 },
+		tarot: { name: 'Tarot', width: 70, height: 121 },
+		usGame: { name: 'US game', width: 55.9, height: 87.1 },
+		miniUs: { name: 'Mini US / Mini American', width: 41, height: 63 },
+		miniEuro: { name: 'Mini Euro / Mini European', width: 44, height: 67 },
+		skat: { name: 'Skat', width: 58.9, height: 90.9 },
+		domino: { name: 'Domino cards', width: 44, height: 89 },
+		square50: { name: 'Square cards 50', width: 50, height: 50 },
+		square63: { name: 'Square cards 63', width: 63, height: 63 },
+		square70: { name: 'Square cards 70', width: 70, height: 70 },
+		square89: { name: 'Square cards 89', width: 89, height: 89 }
+	} as const;
+
+	const cardFormatEntries = Object.entries(cardFormats) as [
+		keyof typeof cardFormats,
+		(typeof cardFormats)[keyof typeof cardFormats]
+	][];
+
 	const { form: formData, enhance, constraints } = form;
+	let selectedCardFormat = $state<keyof typeof cardFormats>('poker');
+	const selectedCardLabel = $derived(cardFormats[selectedCardFormat].name);
+
+	$effect(() => {
+		if (!selectedCardFormat) return;
+		const card = cardFormats[selectedCardFormat];
+		$formData.width = card.width;
+		$formData.height = card.height;
+	});
 </script>
 
 <Sidebar.Group>
@@ -88,6 +155,16 @@
 												<Form.Description />
 												<Form.FieldErrors />
 											</Form.Field>
+											<Select.Root type="single" bind:value={selectedCardFormat}>
+												<Select.Trigger class="mb-2 w-full">
+													{selectedCardLabel}
+												</Select.Trigger>
+												<Select.Content>
+													{#each cardFormatEntries as [card, format] (card)}
+														<Select.Item value={card}>{format.name}</Select.Item>
+													{/each}
+												</Select.Content>
+											</Select.Root>
 											<div class="flex gap-2">
 												<Form.Field {form} name="width">
 													<Form.Control>

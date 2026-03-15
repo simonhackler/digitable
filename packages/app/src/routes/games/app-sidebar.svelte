@@ -8,8 +8,9 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import PlayMenu from './play-menu.svelte';
+	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
-	let { games }: { games: Game[] } = $props();
+	let { games, fileSystem }: { games: Game[]; fileSystem: Adapter } = $props();
 
 	// We'll need to track the active project to get its decks
 	let activeProject = $derived.by(() => {
@@ -29,7 +30,7 @@
 		<ProjectSwitcher {games} {activeProject} {onProjectChange} />
 	</Sidebar.Header>
 	<Sidebar.Content>
-		<CreateMenu activeGame={activeProject} />
+		<CreateMenu activeGame={activeProject} {fileSystem} />
 		<ExportMenu activeGame={activeProject} />
 		<PlayMenu activeGame={activeProject} />
 		<Sidebar.Group />

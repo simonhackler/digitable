@@ -101,8 +101,8 @@
 
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-
 		fileSystem.upload(svgFile, fullFolderPath, true);
+
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});

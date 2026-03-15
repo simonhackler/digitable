@@ -14,7 +14,6 @@
 	const gamesState: { existingGames: Game[] } = $state({ existingGames: [] });
 	const games = $derived(gamesState.existingGames);
 	setGamesContext(gamesState);
-	// let games: Game[] = $state([]);
 
 	async function onSetOpfsAdapter(adapter: Adapter) {
 		fileSystemState.adapter = adapter;
@@ -63,7 +62,9 @@
 </script>
 
 <Sidebar.Provider>
-	<AppSidebar {games} />
+	{#if fileSystem}
+		<AppSidebar {games} {fileSystem} />
+	{/if}
 	<Sidebar.Trigger class="z-50" />
 	<main class="w-full">
 		{#if !fileSystem}
