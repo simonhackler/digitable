@@ -66,7 +66,7 @@ async function seedOPFS(page: Page, mappings: Mapping[]) {
 	);
 }
 
-test('uploads local files into OPFS', async ({ page }) => {
+test('insert rows in data editor', async ({ page }) => {
 	const here = path.dirname(test.info().file); // absolute dir of THIS test file
 	const projectsDir = path.resolve(here, '../projects');
 
@@ -74,17 +74,14 @@ test('uploads local files into OPFS', async ({ page }) => {
 
 	// Get all subfolders in projects and upload each one to root level
 	const projectEntries = await fs.readdir(projectsDir, { withFileTypes: true });
-
 	const mappingsPromises = projectEntries
 		.filter((entry) => entry.isDirectory())
 		.map(async (entry) => {
 			const subfolderPath = path.join(projectsDir, entry.name);
 			return walkDirectory(subfolderPath, `/${entry.name}`);
 		});
-
 	const allMappingsArrays = await Promise.all(mappingsPromises);
 	const allMappings = allMappingsArrays.flat();
-
 	await seedOPFS(page, allMappings);
 
 	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();

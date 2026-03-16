@@ -59,6 +59,7 @@
 			)
 		}))
 	);
+	$inspect(cards.length);
 
 	// Ideally this would be set directly from a reactive value from the spreadsheet
 	let deletedSvgColumns = $derived(

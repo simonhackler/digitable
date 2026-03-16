@@ -63,7 +63,7 @@
 
 <Sidebar.Provider>
 	{#if fileSystem}
-		<AppSidebar {games} {fileSystem} />
+		<AppSidebar {games} {fileSystem} {onSetOpfsAdapter} />
 	{/if}
 	<Sidebar.Trigger class="z-50" />
 	<main class="w-full">
