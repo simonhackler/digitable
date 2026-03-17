@@ -13,16 +13,7 @@ This project is a boardgame design and testing tool
 
 ## Build/Test Commands (use bun)
 
-- `bun dev` - Start both app and game server
-- `bun dev:app` - Start SvelteKit app only
-- `bun dev:server` - Start game server only
-- `bun build` - Build app for production
-- `bun test` - Run e2e tests (Playwright)
-- `bun test:e2e` - Run specific e2e test
-- `bun lint` - Check prettier and ESLint
-- `bun format` - Format with prettier
-- `bun check` - TypeScript and Svelte check
-- `bun storybook` - Run Storybook dev server
+See `instructions/testing.md`.
 
 ## Key Technologies
 
@@ -33,6 +24,8 @@ This project is a boardgame design and testing tool
 
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
 ALWAYS use tailwindcss when possible. Prefer xs sm md lg xl over explicit sizes.
+
+When writing tests ALWAYS read `instructions/testing.md` first.
 
 ## Available MCP Tools:
 
