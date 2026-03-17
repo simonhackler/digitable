@@ -10,63 +10,12 @@
 	import { resolve } from '$app/paths';
 	import CreateGamePopover from './create-game-popover.svelte';
 
-	const fileSystem = getFileSystemContext();
 	const games = getGamesContext();
-
-	let gamesOld = $state<Array<{ name: string; description?: string; tags?: string[] }>>([]);
 	let loading = $state(true);
-
-	async function loadGames() {
-		try {
-			loading = true;
-			const root = await fileSystem.getRootFolder();
-			const res = root.result;
-
-			if (res) {
-				const gamePromises = res.children
-					.filter((child) => isFolder(child))
-					.map(async (folder) => {
-						try {
-							// Try to download game.json from the folder
-							const gameJsonPath = `${folder.name}/game.json`;
-							const [gameFileResult] = await fileSystem.download([gameJsonPath]);
-
-							if (gameFileResult.result?.data) {
-								const gameFileText = await gameFileResult.result.data.text();
-								const gameData = JSON.parse(gameFileText);
-								return {
-									name: folder.name,
-									description: gameData.description,
-									tags: gameData.tags || []
-								};
-							}
-						} catch (error) {
-							console.log(`No game.json found for ${folder.name}:`, error);
-						}
-
-						// If no game.json, still show the folder as a game
-						return {
-							name: folder.name
-						};
-					});
-
-				const gameResults = await Promise.all(gamePromises);
-				gamesOld = gameResults.filter((game) => game !== null);
-			}
-		} catch (error) {
-			console.error('Failed to load games:', error);
-		} finally {
-			loading = false;
-		}
-	}
 
 	async function navigateToGame(gameName: string) {
 		await goto(resolve(`/games/${gameName}`));
 	}
-
-	onMount(() => {
-		loadGames();
-	});
 </script>
 
 <div class="container mx-auto max-w-4xl p-6">
@@ -82,17 +31,16 @@
 		</CreateGamePopover>
 	</div>
 
-	{#if loading}
+	{#if games.existingGames === null}
 		<div class="flex items-center justify-center py-12">
 			<div class="text-muted-foreground">Loading games...</div>
 		</div>
-	{:else if gamesOld.length === 0}
+	{:else if games.existingGames.length === 0}
 		<Card.Root class="py-12">
 			<Card.Content class="text-center">
 				<FolderOpen class="text-muted-foreground mx-auto mb-4 h-12 w-12" />
 				<h3 class="mb-2 text-lg font-medium">No games found</h3>
 				<p class="text-muted-foreground mb-4">Get started by creating your first board game.</p>
-				<!-- TODO Create game popover -->
 				<CreateGamePopover>
 					{#snippet trigger(props)}
 						<Button {...props} class="flex items-center gap-2">

@@ -66,13 +66,7 @@ async function seedOPFS(page: Page, mappings: Mapping[]) {
 	);
 }
 
-test('insert rows in data editor', async ({ page }) => {
-	const here = path.dirname(test.info().file); // absolute dir of THIS test file
-	const projectsDir = path.resolve(here, '../projects');
-
-	await page.goto('/games');
-
-	// Get all subfolders in projects and upload each one to root level
+async function fullOpfsSeed(page: Page, projectsDir: string) {
 	const projectEntries = await fs.readdir(projectsDir, { withFileTypes: true });
 	const mappingsPromises = projectEntries
 		.filter((entry) => entry.isDirectory())
@@ -83,6 +77,14 @@ test('insert rows in data editor', async ({ page }) => {
 	const allMappingsArrays = await Promise.all(mappingsPromises);
 	const allMappings = allMappingsArrays.flat();
 	await seedOPFS(page, allMappings);
+}
+
+test('insert rows in data editor', async ({ page }) => {
+	const here = path.dirname(test.info().file); // absolute dir of THIS test file
+	const projectsDir = path.resolve(here, '../projects');
+
+	await page.goto('/games');
+    await fullOpfsSeed(page, projectsDir);
 
 	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
@@ -103,14 +105,11 @@ test('insert rows in data editor', async ({ page }) => {
 
 	await page.getByRole('cell', { name: '1', exact: true }).click({ button: 'right' });
 	await page.getByRole('menuitem', { name: 'Insert a new row before' }).click();
-
-	await page.waitForTimeout(1000); // wait for folder to be picked
 });
 
 test('go to data editor', async ({ page }) => {
 	await page.goto('/games');
 	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
-	await page.waitForTimeout(1000); // wait for folder to be picked
 	await expect(page.locator('h1')).toBeVisible();
 });
