@@ -84,7 +84,7 @@ test('insert rows in data editor', async ({ page }) => {
 	const projectsDir = path.resolve(here, '../projects');
 
 	await page.goto('/games');
-    await fullOpfsSeed(page, projectsDir);
+	await fullOpfsSeed(page, projectsDir);
 
 	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
