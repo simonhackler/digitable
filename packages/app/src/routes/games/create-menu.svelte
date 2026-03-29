@@ -17,9 +17,7 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
-	import DataTable from '$lib/components/file-browser/browser-ui/data-table.svelte';
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter.js';
-	import FileUpload from '$lib/components/file-browser/browser-ui/file-upload.svelte';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 
 	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: Adapter } = $props();
@@ -39,32 +37,29 @@
 		validators: zod4(newDeckSchema),
 		onUpdate({ form }) {
 			if (form.valid) {
-				switchPathAndCreateSvgs(
-					activeGame!.name,
-					form.data.deckName,
-					form.data.width,
-					form.data.height
-				);
+				switchPathAndCreateSvgs(activeGame!, form.data.deckName, form.data.width, form.data.height);
 			}
 		}
 	});
 
 	async function switchPathAndCreateSvgs(
-		gameName: string,
+		activeGame: Game,
 		deckName: string,
 		width: number,
 		height: number
 	) {
-		const path = `/games/${gameName}/decks/${deckName}/data`;
+		const path = `/games/${activeGame.name}/decks/${deckName}/data`;
 		const frontSvg = createEmptySvg(width, height);
 		const backSvg = createEmptySvg(width, height);
 		await Promise.all([
-			uploadSvgAsSide(fileSystem, gameName, deckName, frontSvg, 'front'),
-			uploadSvgAsSide(fileSystem, gameName, deckName, backSvg, 'back')
+			uploadSvgAsSide(fileSystem, activeGame.name, deckName, frontSvg, 'front'),
+			uploadSvgAsSide(fileSystem, activeGame.name, deckName, backSvg, 'back')
 		]);
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
 		await goto(resolve(path));
+		activeGame.decks.push({ name: deckName });
+
 		openCreateDeckDialog = false;
 	}
 
