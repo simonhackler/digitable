@@ -97,7 +97,9 @@
 		!interactionDisabled && controller.isReady && !isEditableActive();
 
 	const canHandleTextFormatting = () =>
-		!interactionDisabled && controller.isReady && controller.mode === 'text';
+		!interactionDisabled &&
+		controller.isReady &&
+		(controller.mode === 'text' || controller.mode === 'flowtext');
 
 	const hasNonShiftModifier = () => keys.has('meta') || keys.has('control') || keys.has('alt');
 
@@ -154,7 +156,9 @@
 	keys.onKeys('p', () =>
 		runIfPlainKey(() => controller.setMode('fhpath'), { requireShift: true, allowInTree: false })
 	);
-	keys.onKeys('t', () => runIfPlainKey(() => controller.setMode('text'), { allowInTree: false }));
+	keys.onKeys('t', () =>
+		runIfPlainKey(() => controller.setMode('flowtext'), { allowInTree: false })
+	);
 	keys.onKeys('i', () => runIfPlainKey(() => controller.setMode('image'), { allowInTree: false }));
 
 	onModCombo(['z'], () =>
@@ -251,7 +255,7 @@
 		const modKey = event.metaKey || event.ctrlKey;
 		const isEditable = isEditableTarget(event.target);
 		const isTextFormatting =
-			controller.mode === 'text' &&
+			(controller.mode === 'text' || controller.mode === 'flowtext') &&
 			modKey &&
 			(!event.shiftKey
 				? key === 'b' || key === 'i'

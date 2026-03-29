@@ -5,6 +5,8 @@ import type {
 	SvgCanvasConfig,
 	SvgEditorApi
 } from './types';
+import { DEFAULT_TEXT_STYLE } from '../reference/text-defaults';
+import { isFlowForeignObject, serializeFlowText, syncFlowText } from './flowText';
 
 export type SvgCanvasConstructor = new (
 	container: HTMLElement,
@@ -207,6 +209,14 @@ export const createSvgCanvas = ({
 	let treeIdCounter = 1;
 	const lockedPointerEvents = new WeakMap<Element, string | null>();
 	const hiddenDisplay = new WeakMap<Element, string | null>();
+	let isSyncingFlowText = false;
+	let flowTransitionFrame: number | null = null;
+	let customMode: EditorMode | null = null;
+	let flowDrag: {
+		active: boolean;
+		start: { x: number; y: number };
+		rect: SVGRectElement | null;
+	} | null = null;
 
 	const isGroupElement = (elem: Element) => {
 		const tag = elem.tagName.toLowerCase();
@@ -216,7 +226,19 @@ export const createSvgCanvas = ({
 	const isRenderableElement = (elem: Element) => {
 		const tag = elem.tagName.toLowerCase();
 		if (excludedTags.has(tag)) return false;
+		if (isFlowForeignObject(elem)) return false;
+		if (tag === 'rect' && elem.getAttribute('data-flow-box') === 'true') return false;
+		if (tag === 'rect' && elem.getAttribute('data-flow-draft') === 'true') return false;
 		return true;
+	};
+
+	const updateFlowBoxPointerEvents = (mode: EditorMode) => {
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgContent) return;
+		const pointerEvents = mode === 'flowtext' ? 'none' : 'all';
+		svgContent
+			.querySelectorAll('rect[data-flow-box="true"]')
+			.forEach((node) => ((node as SVGRectElement).style.pointerEvents = pointerEvents));
 	};
 
 	const getElementId = (elem: Element) => {
@@ -249,6 +271,125 @@ export const createSvgCanvas = ({
 		const mapped = treeIdReverse.get(id);
 		if (mapped && svgContent.contains(mapped)) return mapped;
 		return queryById(svgContent, id);
+	};
+
+	const escapeId = (value: string) => {
+		if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+			return CSS.escape(value);
+		}
+		return value.replace(/\"/g, '\\"');
+	};
+
+	const ensureUniqueId = (root: Element, base: string) => {
+		let id = base;
+		let counter = 1;
+		while (root.querySelector(`#${escapeId(id)}`)) {
+			id = `${base}_${counter++}`;
+		}
+		return id;
+	};
+
+	const ensureDefs = (svgRoot: SVGSVGElement) => {
+		const doc = svgRoot.ownerDocument;
+		if (!doc) return null;
+		return (
+			svgRoot.querySelector('defs') ??
+			svgRoot.insertBefore(doc.createElementNS(SVG_NS, 'defs'), svgRoot.firstChild)
+		);
+	};
+
+	const createFlowTextElement = (box: { x: number; y: number; width: number; height: number }) => {
+		const svgRoot = getSvgRoot();
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgRoot || !svgContent) return null;
+		const defs = ensureDefs(svgRoot);
+		if (!defs) return null;
+		const doc = svgRoot.ownerDocument!;
+		const textId = ensureUniqueId(svgRoot, 'flow_text');
+		const rectId = ensureUniqueId(svgRoot, `rect_${textId}`);
+
+		const rect = doc.createElementNS(SVG_NS, 'rect') as SVGRectElement;
+		rect.setAttribute('id', rectId);
+		rect.setAttribute('x', box.x.toString());
+		rect.setAttribute('y', box.y.toString());
+		rect.setAttribute('width', box.width.toString());
+		rect.setAttribute('height', box.height.toString());
+		rect.setAttribute('data-flow-owner', textId);
+		defs.appendChild(rect);
+
+		const text = doc.createElementNS(SVG_NS, 'text') as SVGTextElement;
+		text.setAttribute('id', textId);
+		text.setAttribute('x', box.x.toString());
+		text.setAttribute('y', box.y.toString());
+		text.setAttribute('xml:space', 'preserve');
+		text.setAttribute('font-family', DEFAULT_TEXT_STYLE.fontFamily);
+		text.setAttribute('font-size', DEFAULT_TEXT_STYLE.fontSize.toString());
+		text.setAttribute('font-weight', DEFAULT_TEXT_STYLE.fontWeight);
+		text.setAttribute('font-style', DEFAULT_TEXT_STYLE.fontStyle);
+		text.setAttribute('letter-spacing', DEFAULT_TEXT_STYLE.letterSpacing);
+		text.setAttribute(
+			'text-anchor',
+			DEFAULT_TEXT_STYLE.textAlign === 'center'
+				? 'middle'
+				: DEFAULT_TEXT_STYLE.textAlign === 'right'
+					? 'end'
+					: 'start'
+		);
+		text.setAttribute(
+			'style',
+			[
+				`shape-inside:url(#${rectId})`,
+				'white-space:pre',
+				'display:inline',
+				`text-align:${DEFAULT_TEXT_STYLE.textAlign}`,
+				`line-height:${DEFAULT_TEXT_STYLE.lineHeight}`,
+				`fill:${DEFAULT_TEXT_STYLE.fill}`
+			].join(';')
+		);
+		text.textContent = '';
+
+		const layers = Array.from(svgContent.querySelectorAll('g.layer'));
+		const currentLayer =
+			svgContent.querySelector('#current_layer') ??
+			(layers.length ? layers[layers.length - 1] : null);
+		(currentLayer ?? svgContent).appendChild(text);
+		canvas.selectOnly?.([text], true);
+		return text;
+	};
+
+	const getSvgPoint = (event: PointerEvent) => {
+		const svgRoot = getSvgRoot();
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgRoot || !svgContent) return null;
+		const ctm = svgContent.getScreenCTM?.();
+		if (!ctm) return null;
+		const pt = svgRoot.createSVGPoint();
+		pt.x = event.clientX;
+		pt.y = event.clientY;
+		const result = pt.matrixTransform(ctm.inverse());
+		return { x: result.x, y: result.y };
+	};
+
+	const ensureFlowDraftRect = (svgContent: SVGSVGElement | SVGGElement) => {
+		let rect = svgContent.querySelector('rect[data-flow-draft="true"]') as SVGRectElement | null;
+		if (!rect) {
+			rect = svgContent.ownerDocument!.createElementNS(SVG_NS, 'rect') as SVGRectElement;
+			rect.setAttribute('data-flow-draft', 'true');
+			rect.setAttribute('fill', 'none');
+			rect.setAttribute('stroke', '#94a3b8');
+			rect.setAttribute('stroke-dasharray', '4,4');
+			rect.setAttribute('stroke-width', '0.5');
+			rect.setAttribute('vector-effect', 'non-scaling-stroke');
+			rect.style.pointerEvents = 'none';
+			svgContent.append(rect);
+		}
+		return rect;
+	};
+
+	const clearFlowDraftRect = (svgContent: SVGSVGElement | SVGGElement | null) => {
+		if (!svgContent) return;
+		const rect = svgContent.querySelector('rect[data-flow-draft="true"]') as SVGRectElement | null;
+		rect?.remove();
 	};
 
 	const buildElementTree = (): ElementTreeNode[] => {
@@ -727,7 +868,59 @@ export const createSvgCanvas = ({
 	};
 
 	const changeHandler = () => {
+		const svgContent = canvas.getSvgContent?.();
+		if (svgContent && !isSyncingFlowText) {
+			isSyncingFlowText = true;
+			syncFlowText(svgContent, { updateFallback: false });
+			isSyncingFlowText = false;
+			onChange?.(serializeFlowText(svgContent));
+			return;
+		}
 		onChange?.(canvas.getSvgString());
+	};
+
+	const transitionHandler = () => {
+		if (flowTransitionFrame !== null) return;
+		flowTransitionFrame = requestAnimationFrame(() => {
+			flowTransitionFrame = null;
+			const svgContent = canvas.getSvgContent?.();
+			if (!svgContent || isSyncingFlowText) return;
+			const selected = canvas.getSelectedElements?.() ?? [];
+			if (selected.length === 1) {
+				const selectedElement = selected[0];
+				if (
+					selectedElement?.tagName.toLowerCase() === 'rect' &&
+					selectedElement.getAttribute('data-flow-box') === 'true'
+				) {
+					const owner = selectedElement.getAttribute('data-flow-for');
+					if (owner) {
+						const foreign = svgContent.querySelector(
+							`foreignObject[data-flow-for="${escapeId(owner)}"]`
+						) as SVGForeignObjectElement | null;
+						if (foreign) {
+							const x = selectedElement.getAttribute('x');
+							const y = selectedElement.getAttribute('y');
+							const width = selectedElement.getAttribute('width');
+							const height = selectedElement.getAttribute('height');
+							if (x) foreign.setAttribute('x', x);
+							if (y) foreign.setAttribute('y', y);
+							if (width) foreign.setAttribute('width', width);
+							if (height) foreign.setAttribute('height', height);
+							const transform = selectedElement.getAttribute('transform');
+							if (transform) {
+								foreign.setAttribute('transform', transform);
+							} else {
+								foreign.removeAttribute('transform');
+							}
+							return;
+						}
+					}
+				}
+			}
+			isSyncingFlowText = true;
+			syncFlowText(svgContent, { updateFallback: false, respectTransform: true });
+			isSyncingFlowText = false;
+		});
 	};
 
 	const selectionHandler = () => {
@@ -741,14 +934,21 @@ export const createSvgCanvas = ({
 	const modeHandler = (event: Event) => {
 		if (!onModeChange) return;
 		if (event instanceof CustomEvent && typeof event.detail?.getMode === 'function') {
-			onModeChange(event.detail.getMode());
+			const baseMode = event.detail.getMode();
+			const nextMode = customMode ?? baseMode;
+			onModeChange(nextMode);
+			updateFlowBoxPointerEvents(nextMode);
 			return;
 		}
-		onModeChange(canvas.getMode());
+		const baseMode = canvas.getMode();
+		const nextMode = customMode ?? baseMode;
+		onModeChange(nextMode);
+		updateFlowBoxPointerEvents(nextMode);
 	};
 
 	canvas.bind?.('changed', changeHandler);
 	canvas.bind?.('selected', selectionHandler);
+	canvas.bind?.('transition', transitionHandler);
 	document.addEventListener('modeChange', modeHandler);
 
 	canvas.textActions?.setInputElem?.(textInput);
@@ -757,12 +957,114 @@ export const createSvgCanvas = ({
 		if (!target) return;
 		canvas.setTextContent?.(target.value);
 	};
+	const handleTextBlur = () => {
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgContent || isSyncingFlowText) return;
+		isSyncingFlowText = true;
+		syncFlowText(svgContent, { updateFallback: false });
+		isSyncingFlowText = false;
+		onChange?.(serializeFlowText(svgContent));
+	};
 	textInput.addEventListener('input', forwardTextInput);
 	textInput.addEventListener('keyup', forwardTextInput);
+	textInput.addEventListener('blur', handleTextBlur);
 
 	if (rulerElements.x || rulerElements.y) {
 		container.addEventListener('scroll', syncRulerScroll);
 	}
+
+	const handleFlowPointerDown = (event: PointerEvent) => {
+		if (event.button !== 0) return;
+		if (customMode !== 'flowtext') return;
+		event.preventDefault();
+		event.stopPropagation();
+		const target = event.target as Element | null;
+		if (target) {
+			if (target.closest('text')) return;
+			if (target.closest('rect[data-flow-box="true"]')) return;
+		}
+		const point = getSvgPoint(event);
+		if (!point) return;
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgContent) return;
+		flowDrag = { active: true, start: point, rect: null };
+		const rect = ensureFlowDraftRect(svgContent);
+		rect.setAttribute('x', point.x.toString());
+		rect.setAttribute('y', point.y.toString());
+		rect.setAttribute('width', '0');
+		rect.setAttribute('height', '0');
+		flowDrag.rect = rect;
+	};
+
+	const handleFlowPointerMove = (event: PointerEvent) => {
+		if (!flowDrag?.active) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const point = getSvgPoint(event);
+		if (!point) return;
+		const rect = flowDrag.rect;
+		if (!rect) return;
+		const x = Math.min(flowDrag.start.x, point.x);
+		const y = Math.min(flowDrag.start.y, point.y);
+		const width = Math.abs(point.x - flowDrag.start.x);
+		const height = Math.abs(point.y - flowDrag.start.y);
+		rect.setAttribute('x', x.toString());
+		rect.setAttribute('y', y.toString());
+		rect.setAttribute('width', width.toString());
+		rect.setAttribute('height', height.toString());
+	};
+
+	const handleFlowPointerUp = (event: PointerEvent) => {
+		if (!flowDrag?.active) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgContent) return;
+		const point = getSvgPoint(event);
+		if (!point) return;
+		const x = Math.min(flowDrag.start.x, point.x);
+		const y = Math.min(flowDrag.start.y, point.y);
+		const width = Math.abs(point.x - flowDrag.start.x);
+		const height = Math.abs(point.y - flowDrag.start.y);
+		if (width > 4 && height > 4) {
+			const text = createFlowTextElement({ x, y, width, height });
+			const svgRoot = getSvgRoot();
+			if (svgRoot && !isSyncingFlowText) {
+				isSyncingFlowText = true;
+				syncFlowText(svgRoot, { updateFallback: false });
+				isSyncingFlowText = false;
+				onChange?.(serializeFlowText(svgRoot));
+			}
+			if (text) {
+				const svgContent = canvas.getSvgContent?.();
+				const flowBox = svgContent?.querySelector(
+					`rect[data-flow-box=\"true\"][data-flow-for=\"${escapeId(text.id)}\"]`
+				) as SVGRectElement | null;
+				if (flowBox) {
+					canvas.selectOnly?.([flowBox], true);
+				}
+			}
+			customMode = null;
+			canvas.setMode('select');
+			updateFlowBoxPointerEvents('select');
+			canvas.call?.('changed', [canvas.getSvgContent?.()]);
+		}
+		clearFlowDraftRect(svgContent);
+		flowDrag = null;
+	};
+
+	container.addEventListener('pointerdown', handleFlowPointerDown, true);
+	container.addEventListener('pointermove', handleFlowPointerMove, true);
+	container.addEventListener('pointerup', handleFlowPointerUp, true);
+
+	const cleanupFlowDrag = () => {
+		container.removeEventListener('pointerdown', handleFlowPointerDown, true);
+		container.removeEventListener('pointermove', handleFlowPointerMove, true);
+		container.removeEventListener('pointerup', handleFlowPointerUp, true);
+		const svgContent = canvas.getSvgContent?.();
+		clearFlowDraftRect(svgContent ?? null);
+		flowDrag = null;
+	};
 
 	const initialWidth =
 		container.clientWidth ||
@@ -779,6 +1081,11 @@ export const createSvgCanvas = ({
 
 	const ok = canvas.setSvgString(value, true);
 	if (ok) {
+		const svgContent = canvas.getSvgContent?.();
+		if (svgContent) {
+			syncFlowText(svgContent, { updateFallback: false });
+			updateFlowBoxPointerEvents(customMode ?? canvas.getMode());
+		}
 		canvas.undoMgr?.resetUndoStack?.();
 	}
 	if (!ok) {
@@ -821,6 +1128,13 @@ export const createSvgCanvas = ({
 			if (loadOk && opts?.preventUndo) {
 				canvas.undoMgr?.resetUndoStack?.();
 			}
+			if (loadOk) {
+				const svgContent = canvas.getSvgContent?.();
+				if (svgContent) {
+					syncFlowText(svgContent, { updateFallback: false });
+					updateFlowBoxPointerEvents(customMode ?? canvas.getMode());
+				}
+			}
 			if (loadOk && opts?.center) {
 				refreshLayout({ center: true });
 			}
@@ -833,19 +1147,44 @@ export const createSvgCanvas = ({
 			return loadOk;
 		},
 		getSvg() {
+			const svgContent = canvas.getSvgContent?.();
+			if (svgContent) return serializeFlowText(svgContent);
 			return canvas.getSvgString();
 		},
 		setMode(mode) {
+			if (mode === 'flowtext') {
+				customMode = 'flowtext';
+				canvas.setMode('select');
+				updateFlowBoxPointerEvents('flowtext');
+				return;
+			}
+			customMode = null;
 			canvas.setMode(mode);
+			updateFlowBoxPointerEvents(mode);
 		},
 		getMode() {
-			return canvas.getMode() as EditorMode;
+			return (customMode ?? canvas.getMode()) as EditorMode;
 		},
 		clear() {
 			canvas.clear?.();
 			refreshLayout({ center: true });
 		},
 		deleteSelection() {
+			const svgContent = canvas.getSvgContent?.();
+			const selected = canvas.getSelectedElements?.() ?? [];
+			if (svgContent && selected.length && typeof canvas.selectOnly === 'function') {
+				const mapped = selected.map((el) => {
+					if (el.tagName?.toLowerCase() === 'rect' && el.getAttribute('data-flow-box') === 'true') {
+						const owner = el.getAttribute('data-flow-for');
+						if (owner) {
+							const ownerEl = resolveElementById(owner);
+							if (ownerEl) return ownerEl;
+						}
+					}
+					return el;
+				});
+				canvas.selectOnly(mapped, true);
+			}
 			canvas.deleteSelectedElements?.();
 		},
 		zoomIn() {
@@ -1069,11 +1408,14 @@ export const createSvgCanvas = ({
 			canvas.call?.('changed', [canvas.getSvgContent?.()]);
 		},
 		destroy() {
+			cleanupFlowDrag();
 			canvas.unbind?.('changed', changeHandler);
 			canvas.unbind?.('selected', selectionHandler);
+			canvas.unbind?.('transition', transitionHandler);
 			document.removeEventListener('modeChange', modeHandler);
 			textInput.removeEventListener('input', forwardTextInput);
 			textInput.removeEventListener('keyup', forwardTextInput);
+			textInput.removeEventListener('blur', handleTextBlur);
 			if (rulerElements.x || rulerElements.y) {
 				container.removeEventListener('scroll', syncRulerScroll);
 			}

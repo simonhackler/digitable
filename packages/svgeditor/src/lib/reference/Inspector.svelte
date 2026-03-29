@@ -6,6 +6,7 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$svgeditor/components/ui/card/index.js';
 	import { Input } from '$svgeditor/components/ui/input/index.js';
 	import { Label } from '$svgeditor/components/ui/label/index.js';
+	import { Textarea } from '$svgeditor/components/ui/textarea/index.js';
 
 	type EditorController = ReturnType<typeof createEditorController>;
 
@@ -28,6 +29,8 @@
 	let fontItalic = $state(false);
 	let fontUnderline = $state(false);
 	let fontFamily = $state('serif');
+	let fontSizeInput: HTMLInputElement | null = $state(null);
+	let textValue = $state('');
 
 	type BBox = { x: number; y: number; width: number; height: number };
 
@@ -185,7 +188,36 @@
 		})
 	);
 	const hasTextSelection = $derived(textElements.length > 0);
-	const primaryTextElement = $derived.by(() => textElements[0] ?? null);
+	const isFlowBoxSelection = $derived.by(
+		() =>
+			!!selectedElement &&
+			selectedElement.tagName.toLowerCase() === 'rect' &&
+			selectedElement.getAttribute('data-flow-box') === 'true'
+	);
+	const resolveTextTarget = (element: Element | null) => {
+		if (!element) return null;
+		const tag = element.tagName.toLowerCase();
+		if (tag === 'text') return element as SVGTextElement;
+		if (tag === 'rect' && element.getAttribute('data-flow-box') === 'true') {
+			const owner = element.getAttribute('data-flow-for');
+			if (!owner) return null;
+			const root = element.ownerSVGElement;
+			if (!root) return null;
+			const selector =
+				typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+					? `#${CSS.escape(owner)}`
+					: `#${owner.replace(/\"/g, '\\\"')}`;
+			return root.querySelector(selector) as SVGTextElement | null;
+		}
+		return null;
+	};
+	const primaryTextElement = $derived.by(() => {
+		if (hasSingleSelection) {
+			const resolved = resolveTextTarget(selectedElement);
+			if (resolved) return resolved;
+		}
+		return textElements[0] ?? null;
+	});
 	const canEditSize = $derived.by(() => {
 		if (!hasSingleSelection) return false;
 		const tag = selectedElement?.tagName.toLowerCase();
@@ -207,7 +239,7 @@
 	const canEditBlur = $derived(hasSingleSelection);
 	const canEditOpacity = $derived(hasSelection);
 	const canEditStroke = $derived(hasSelection);
-	const canEditText = $derived(hasTextSelection);
+	const canEditText = $derived(Boolean(primaryTextElement));
 	const fontFamilyOptionsWithCustom = $derived.by(() => {
 		const current = fontFamily.trim();
 		if (!current) return fontFamilyOptions;
@@ -324,11 +356,29 @@
 		return 'none';
 	};
 
+	const getTextValue = (element: SVGTextElement) => {
+		const tspans = Array.from(element.querySelectorAll(':scope > tspan')) as SVGTSpanElement[];
+		if (tspans.length) {
+			return tspans.map((span) => span.textContent ?? '').join('\n');
+		}
+		return element.textContent ?? '';
+	};
+
+	const applyTextValue = () => {
+		if (!primaryTextElement) return;
+		primaryTextElement.textContent = textValue;
+		const rawCanvas = controller.api?._unsafe?.rawCanvas?.() as {
+			call?: (event: string, args: unknown[]) => void;
+			getSvgContent?: () => SVGSVGElement;
+		} | null;
+		rawCanvas?.call?.('changed', [rawCanvas.getSvgContent?.()]);
+	};
+
 	const isImmediateNumberInput = (event: Event) =>
 		event instanceof InputEvent && event.inputType === 'insertReplacementText';
 
-	const handleDeferredNumberInput = (event: Event, apply: () => void) => {
-		if (isImmediateNumberInput(event)) {
+	const handleDeferredNumberInput = (event: Event, apply: () => void, forceImmediate = false) => {
+		if (forceImmediate || isImmediateNumberInput(event)) {
 			apply();
 		}
 	};
@@ -424,18 +474,23 @@
 
 		if (primaryTextElement) {
 			const rawCanvas = getRawCanvas();
+			const isEditingFontSize =
+				typeof document !== 'undefined' && document.activeElement === fontSizeInput;
 			const nextSize = getCurrentFontSize();
-			if (Number.isFinite(nextSize) && nextSize > 0) {
+			if (!isEditingFontSize && Number.isFinite(nextSize) && nextSize > 0) {
 				fontSize = roundTo(nextSize, 2);
 			}
 			const nextFamily = coerceFontFamilyValue(getCurrentFontFamily());
 			if (nextFamily) {
 				fontFamily = nextFamily;
 			}
-			const isBold =
-				rawCanvas?.getBold?.() ?? primaryTextElement.getAttribute('font-weight') === 'bold';
-			const isItalic =
-				rawCanvas?.getItalic?.() ?? primaryTextElement.getAttribute('font-style') === 'italic';
+			const useCanvasTextApi = !isFlowBoxSelection;
+			const isBold = useCanvasTextApi
+				? (rawCanvas?.getBold?.() ?? primaryTextElement.getAttribute('font-weight') === 'bold')
+				: primaryTextElement.getAttribute('font-weight') === 'bold';
+			const isItalic = useCanvasTextApi
+				? (rawCanvas?.getItalic?.() ?? primaryTextElement.getAttribute('font-style') === 'italic')
+				: primaryTextElement.getAttribute('font-style') === 'italic';
 			const underlineAttr = primaryTextElement.getAttribute('text-decoration') ?? '';
 			const computedStyle =
 				typeof window !== 'undefined' ? window.getComputedStyle(primaryTextElement) : null;
@@ -446,10 +501,12 @@
 			fontBold = isBold;
 			fontItalic = isItalic;
 			fontUnderline = isUnderline;
+			textValue = getTextValue(primaryTextElement);
 		} else {
 			fontBold = false;
 			fontItalic = false;
 			fontUnderline = false;
+			textValue = '';
 		}
 	};
 
@@ -590,17 +647,21 @@
 	};
 
 	const getCurrentFontSize = () => {
-		const rawCanvas = getRawCanvas();
-		const fromApi = rawCanvas?.getFontSize?.();
-		if (Number.isFinite(fromApi)) return fromApi;
+		if (!isFlowBoxSelection) {
+			const rawCanvas = getRawCanvas();
+			const fromApi = rawCanvas?.getFontSize?.();
+			if (Number.isFinite(fromApi)) return fromApi;
+		}
 		const attr = primaryTextElement?.getAttribute('font-size');
 		return toNumber(attr, fontSize);
 	};
 
 	const getCurrentFontFamily = () => {
-		const rawCanvas = getRawCanvas();
-		const fromApi = rawCanvas?.getFontFamily?.();
-		if (fromApi) return fromApi;
+		if (!isFlowBoxSelection) {
+			const rawCanvas = getRawCanvas();
+			const fromApi = rawCanvas?.getFontFamily?.();
+			if (fromApi) return fromApi;
+		}
 		const attr = primaryTextElement?.getAttribute('font-family');
 		if (attr) return attr;
 		if (primaryTextElement) {
@@ -610,31 +671,58 @@
 		return fontFamily;
 	};
 
+	const applyTextAttribute = (name: string, value: string) => {
+		if (!primaryTextElement) return;
+		primaryTextElement.setAttribute(name, value);
+		const rawCanvas = controller.api?._unsafe?.rawCanvas?.() as {
+			call?: (event: string, args: unknown[]) => void;
+			getSvgContent?: () => SVGSVGElement;
+		} | null;
+		rawCanvas?.call?.('changed', [rawCanvas.getSvgContent?.()]);
+	};
+
 	const applyFontSize = () => {
 		if (!canEditText) return;
 		const next = Math.max(1, toNumber(fontSize, getCurrentFontSize()));
 		fontSize = roundTo(next, 2);
-		controller.setFontSize(fontSize);
+		if (selectedElement?.tagName.toLowerCase() === 'text') {
+			controller.setFontSize(fontSize);
+		} else {
+			applyTextAttribute('font-size', fontSize.toString());
+		}
 	};
 
 	const applyFontFamily = () => {
 		if (!canEditText) return;
 		const next = normalizeFontFamily(fontFamily);
 		if (!next) return;
-		controller.setFontFamily(next);
+		if (selectedElement?.tagName.toLowerCase() === 'text') {
+			controller.setFontFamily(next);
+		} else {
+			applyTextAttribute('font-family', next);
+		}
 	};
 
 	const applyFontStyle = () => {
 		if (!canEditText) return;
-		controller.setBold(fontBold);
-		controller.setItalic(fontItalic);
+		if (selectedElement?.tagName.toLowerCase() === 'text') {
+			controller.setBold(fontBold);
+			controller.setItalic(fontItalic);
+		} else {
+			applyTextAttribute('font-weight', fontBold ? 'bold' : 'normal');
+			applyTextAttribute('font-style', fontItalic ? 'italic' : 'normal');
+		}
 	};
 
 	const applyFontUnderline = () => {
 		if (!canEditText) return;
-		const rawCanvas = getRawCanvas();
-		if (!rawCanvas?.changeSelectedAttribute) return;
-		rawCanvas.changeSelectedAttribute('text-decoration', fontUnderline ? 'underline' : 'none');
+		if (selectedElement?.tagName.toLowerCase() === 'text') {
+			const rawCanvas = getRawCanvas();
+			if (!rawCanvas?.changeSelectedAttribute) return;
+			rawCanvas.changeSelectedAttribute('text-decoration', fontUnderline ? 'underline' : 'none');
+		} else {
+			applyTextAttribute('text-decoration', fontUnderline ? 'underline' : 'none');
+		}
 	};
 
 	const toggleBold = () => {
@@ -661,7 +749,11 @@
 		if (!Number.isFinite(current)) return;
 		const next = Math.max(1, stepFontSize(current, step));
 		fontSize = roundTo(next, 2);
-		controller.setFontSize(fontSize);
+		if (isFlowBoxSelection || selectedElement?.tagName.toLowerCase() !== 'text') {
+			applyTextAttribute('font-size', fontSize.toString());
+		} else {
+			controller.setFontSize(fontSize);
+		}
 	};
 
 	const alignSelection = (mode: string) => {
@@ -902,6 +994,17 @@
 					<p class="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Text</p>
 					<div class="mt-3 grid gap-3">
 						<div class="grid gap-1.5">
+							<Label for="inspector-text-content">Content</Label>
+							<Textarea
+								id="inspector-text-content"
+								rows="3"
+								class="min-h-[96px]"
+								bind:value={textValue}
+								disabled={!canEditText}
+								oninput={applyTextValue}
+							/>
+						</div>
+						<div class="grid gap-1.5">
 							<Label for="inspector-font-family">Family</Label>
 							<select
 								id="inspector-font-family"
@@ -941,9 +1044,11 @@
 									min="1"
 									step="1"
 									bind:value={fontSize}
+									bind:ref={fontSizeInput}
 									class="text-lg font-semibold"
 									disabled={!canEditText}
-									oninput={(event) => handleDeferredNumberInput(event, applyFontSize)}
+									oninput={(event) =>
+										handleDeferredNumberInput(event, applyFontSize, isFlowBoxSelection)}
 									onkeydown={(event) => handleNumberCommit(event, applyFontSize)}
 									onblur={handleNumberBlur}
 								/>

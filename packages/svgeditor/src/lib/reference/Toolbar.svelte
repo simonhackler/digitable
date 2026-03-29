@@ -67,7 +67,7 @@
 		{ id: 'ellipse', label: 'Ellipse', icon: CircleDot, shortcut: 'E' },
 		{ id: 'line', label: 'Line', icon: Minus, shortcut: 'L' },
 		{ id: 'path', label: 'Path', icon: PenTool, shortcut: 'P' },
-		{ id: 'text', label: 'Text', icon: TypeIcon, shortcut: 'T' },
+		{ id: 'flowtext', label: 'Flow Text', icon: TypeIcon, shortcut: 'T' },
 		{ id: 'image', label: 'Image', icon: ImageIcon, shortcut: 'I' }
 	];
 
