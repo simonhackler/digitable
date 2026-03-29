@@ -3,6 +3,8 @@
 @import 'jsuites/dist/jsuites.css';
 @import 'jspreadsheet-ce/dist/jspreadsheet.css';
 
+@source '../../svgeditor/src/lib/**/*.{svelte,ts,js}';
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

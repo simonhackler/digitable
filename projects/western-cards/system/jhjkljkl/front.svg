@@ -1,1 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><image id="background" href="/placeholder.svg" width="63px" height="88px"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+ <g class="layer">
+  <title>Layer 1</title>
+  <image height="88px" href="/placeholder.svg" id="background" width="63px"/>
+  <rect fill="#d23232" height="20.68" id="svg_1" stroke="#000000" transform="matrix(1 0 0 1 13.6693 -10.5148)" width="13.67" x="23.26" y="24.72"/>
+  <circle cx="18.01" cy="24.02" fill="#FFFFFF" id="svg_2" r="10.89" stroke="#000000"/>
+  <text fill="#000000" font-family="serif" font-size="24" id="svg_3" stroke="#000000" stroke-width="0" text-anchor="middle" x="30.33" xml:space="preserve" y="63.78"/>
+  <text fill="#000000" font-family="serif" font-size="12" id="svg_4" stroke="#000000" stroke-width="0" text-anchor="middle" transform="matrix(1 0 0 0.912522 -2.42202 0.110758)" x="50.76" xml:space="preserve" y="52.21">fdsfsd</text>
+  <ellipse cx="42" cy="71" fill="#000000" id="svg_5" rx="9" ry="3" stroke="#000000" stroke-width="0"/>
+ </g>
+</svg>

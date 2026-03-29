@@ -1,0 +1,176 @@
+<script lang="ts">
+	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
+	import { ReferenceEditor } from '@svg-table/svgeditor';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Card, CardContent } from '$lib/components/ui/card/index.js';
+	import { useDebounce } from 'runed';
+	import { getFileSystemContext } from '../../../../context';
+
+	type Side = 'front' | 'back';
+	type SvgMeta = {
+		width?: string;
+		height?: string;
+		viewBox?: string;
+	};
+
+	const fileSystem = getFileSystemContext();
+	const game = $derived(page.params.gameName);
+	const deck = $derived(page.params.deckName);
+	const folder = $derived(`/${game}/system/${deck}`);
+	const layoutPath = $derived(resolve(`/games/${game}/decks/${deck}/layout`));
+	const dataPath = $derived(resolve(`/games/${game}/decks/${deck}/data`));
+
+	const getSvgMeta = (value: string | null | undefined): SvgMeta => {
+		if (!value) return {};
+		const doc = new DOMParser().parseFromString(value, 'image/svg+xml');
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return {};
+		return {
+			width: root.getAttribute('width') ?? undefined,
+			height: root.getAttribute('height') ?? undefined,
+			viewBox: root.getAttribute('viewBox') ?? undefined
+		};
+	};
+
+	const applySvgMeta = (value: string, meta: SvgMeta): string => {
+		if (!value) return value;
+		if (!meta.width && !meta.height && !meta.viewBox) return value;
+		const doc = new DOMParser().parseFromString(value, 'image/svg+xml');
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+		if (meta.width) root.setAttribute('width', meta.width);
+		if (meta.height) root.setAttribute('height', meta.height);
+		if (meta.viewBox) root.setAttribute('viewBox', meta.viewBox);
+		if (!meta.viewBox && meta.width && meta.height) {
+			const w = Number.parseFloat(meta.width);
+			const h = Number.parseFloat(meta.height);
+			if (Number.isFinite(w) && Number.isFinite(h)) {
+				root.setAttribute('viewBox', `0 0 ${w} ${h}`);
+			}
+		}
+		return new XMLSerializer().serializeToString(doc);
+	};
+
+	const config = {
+		imgPath: '/svgedit/images/',
+		initFill: { color: 'FFFFFF', opacity: 1 },
+		initStroke: { color: '000000', opacity: 1, width: 1 },
+		text: { stroke_width: 0, font_size: 24, font_family: 'serif' },
+		initOpacity: 1,
+		baseUnit: 'px'
+	};
+
+	async function loadSvgs(path: string) {
+		const [frontRes, backRes] = await fileSystem.download([
+			`${path}/front.svg`,
+			`${path}/back.svg`
+		]);
+		if (frontRes?.error) {
+			console.error('Failed to load front.svg', frontRes.error);
+		}
+		if (backRes?.error) {
+			console.error('Failed to load back.svg', backRes.error);
+		}
+		const front = await frontRes?.result?.data.text();
+		const back = await backRes?.result?.data.text();
+		return {
+			front: front ?? '',
+			back: back ?? '',
+			meta: {
+				front: getSvgMeta(front),
+				back: getSvgMeta(back)
+			}
+		};
+	}
+
+	const svgsProm = $derived(loadSvgs(folder));
+	const svgs = $derived(await svgsProm);
+
+	let front = $derived(svgs.front);
+	let back = $derived(svgs.back);
+	const meta = $derived(svgs.meta);
+	let side = $state<Side>('front');
+
+	const svg = $derived(side === 'front' ? front : back);
+
+	const saveSvg = async (nextSide: Side, value: string) => {
+		if (!value) return;
+		const nextMeta = nextSide === 'front' ? meta.front : meta.back;
+		const nextValue = nextMeta ? applySvgMeta(value, nextMeta) : value;
+		const file = new File([nextValue], `${nextSide}.svg`, { type: 'image/svg+xml' });
+		const error = await fileSystem.upload(file, folder, true);
+		if (error) {
+			console.error(`Upload failed for ${nextSide}.svg`, error);
+		}
+	};
+
+	const saveDebounced = useDebounce(saveSvg, 600);
+
+	const handleChange = (event: CustomEvent<{ svg: string; source: 'user' | 'external' }>) => {
+		const { svg: value, source } = event.detail;
+		if (source !== 'user') return;
+		if (side === 'front') {
+			front = value;
+		}
+		if (side === 'back') {
+			back = value;
+		}
+		saveDebounced(side, value);
+	};
+</script>
+
+<main class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
+	<div class="flex flex-col gap-4">
+		<div class="flex flex-col gap-2">
+			<h1 class="text-2xl font-semibold tracking-tight">Deck SVG editor</h1>
+			<div class="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
+				<span>Assets:</span>
+				<Badge variant="outline">/svgedit/images</Badge>
+				<Badge variant="outline">{game}</Badge>
+				<Badge variant="outline">{deck}</Badge>
+			</div>
+		</div>
+		<div class="flex flex-wrap items-center gap-2">
+			<Button variant={side === 'front' ? 'default' : 'outline'} onclick={() => (side = 'front')}>
+				Front
+			</Button>
+			<Button variant={side === 'back' ? 'default' : 'outline'} onclick={() => (side = 'back')}>
+				Back
+			</Button>
+			<Button variant="ghost" href={layoutPath}>Layout</Button>
+			<Button variant="ghost" href={dataPath}>Data</Button>
+		</div>
+	</div>
+
+	{#if svg}
+		<Card>
+			<CardContent class="pt-6">
+				{#key side}
+					<ReferenceEditor
+						value={svg}
+						{config}
+						assetBasePath="/svgedit/images/"
+						initialZoom="fit"
+						on:change={handleChange}
+					/>
+				{/key}
+			</CardContent>
+		</Card>
+	{/if}
+
+	{#if !svg}
+		<Card>
+			<CardContent class="flex flex-col gap-3 pt-6">
+				<p class="text-muted-foreground text-sm">
+					Upload front/back SVGs in the layout editor to start editing.
+				</p>
+				<div class="flex items-center gap-2">
+					<Button href={layoutPath}>Go to layout</Button>
+					<Button variant="outline" href={dataPath}>Go to data</Button>
+				</div>
+			</CardContent>
+		</Card>
+	{/if}
+</main>
