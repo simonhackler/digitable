@@ -15,14 +15,10 @@
 	const games = $derived(gamesState.existingGames);
 	setGamesContext(gamesState);
 
-	async function onSetOpfsAdapter(adapter: Adapter) {
-		fileSystemState.adapter = adapter;
-
-		await generateAgentFiles(adapter);
-
+	async function getGames(fileSystem: Readonly<Adapter>) {
 		const folder = await fileSystem?.getRootFolder();
 		if (folder?.result) {
-			gamesState.existingGames = await Promise.all(
+			const games: Game[] = await Promise.all(
 				folder.result.children
 					.filter(isFolder)
 					.filter((f) => f.children.find((file) => file.name == 'game.json'))
@@ -55,7 +51,15 @@
 						};
 					})
 			);
+			return games;
 		}
+		return [];
+	}
+
+	async function onSetOpfsAdapter(adapter: Adapter) {
+		fileSystemState.adapter = adapter;
+		await generateAgentFiles(adapter);
+		gamesState.existingGames = await getGames(adapter);
 	}
 
 	let { children } = $props();

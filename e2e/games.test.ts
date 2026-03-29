@@ -30,3 +30,25 @@ test('create new game', async ({ page }) => {
 
 	await expect(page.getByText('Game created successfully!')).toBeVisible();
 });
+
+test('create new deck', async ({ page }) => {
+	const here = path.dirname(test.info().file); // absolute dir of THIS test file
+	const projectsDir = path.resolve(here, '../projects');
+	const deckName = 'e2e_deck';
+
+	await page.goto('/games');
+	await fullOpfsSeed(page, projectsDir);
+
+	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
+	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+
+	await page.getByRole('main').getByText('western-cards').click();
+	await page.getByRole('button', { name: 'Decks' }).click();
+	await page.getByRole('button', { name: 'New' }).click();
+
+	await page.getByPlaceholder('deck name').fill(deckName);
+	await page.getByRole('button', { name: 'Create new deck' }).click();
+
+	await expect(page).toHaveURL(new RegExp(`/games/western-cards/decks/${deckName}/data`));
+	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
+});

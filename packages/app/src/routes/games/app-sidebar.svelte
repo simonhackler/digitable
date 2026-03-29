@@ -20,7 +20,6 @@
 	}: { games: Game[]; fileSystem: Adapter; onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } =
 		$props();
 
-	// We'll need to track the active project to get its decks
 	let activeProject = $derived.by(() => {
 		const game = games.find((game) => game.name === page.params.gameName);
 		if (game) return game;
