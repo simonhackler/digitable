@@ -4,8 +4,9 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
-	import PlusIcon from '@lucide/svelte/icons/plus';
+	import { Plus } from '@lucide/svelte';
 	import type { Game } from './types.js';
+	import CreateGamePopover from './create-game-popover.svelte';
 
 	let {
 		games,
@@ -65,13 +66,20 @@
 					<DropdownMenu.Separator />
 					<DropdownMenu.Item class="gap-2 p-2">
 						<div class="flex size-6 items-center justify-center rounded-md border bg-transparent">
-							<PlusIcon class="size-4" />
+							<Plus class="size-4" />
 						</div>
 						<div class="text-muted-foreground font-medium">New Game</div>
 					</DropdownMenu.Item>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		{/if}
-		<Button class="w-full" variant="default"><PlusIcon /> Create Game</Button>
+		<CreateGamePopover>
+			{#snippet trigger(props)}
+				<Button {...props} class="flex w-full items-center gap-2">
+					<Plus class="h-4 w-4" />
+					Create Game
+				</Button>
+			{/snippet}
+		</CreateGamePopover>
 	</Sidebar.MenuItem>
 </Sidebar.Menu>

@@ -1,11 +1,19 @@
 import { z } from 'zod';
 
+const gameName = z
+	.string()
+	.min(1, 'Game name is required')
+	.max(80, 'Game name must be 80 characters or less');
+
+export const navigateToCreateGameSchema = z.object({
+	name: gameName
+});
+
+export type NavigateToCreateGameSchema = z.infer<typeof navigateToCreateGameSchema>;
+
 export const createGameSchema = z
 	.object({
-		name: z
-			.string()
-			.min(1, 'Game name is required')
-			.max(80, 'Game name must be 80 characters or less'),
+		name: gameName,
 		minPlayers: z
 			.number()
 			.int()

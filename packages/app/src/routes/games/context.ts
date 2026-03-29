@@ -1,5 +1,6 @@
 import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
-import { getContext, setContext } from 'svelte';
+import { getContext, setContext, createContext } from 'svelte';
+import type { Game } from './types';
 
 const key = 'filesystem';
 
@@ -14,3 +15,5 @@ export function getFileSystemContext(): Adapter {
 	}
 	return context.adapter;
 }
+
+export const [getGamesContext, setGamesContext] = createContext<{ existingGames: Game[] | null }>();

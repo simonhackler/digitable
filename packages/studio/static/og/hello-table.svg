@@ -1,0 +1,18 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+	<defs>
+		<linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+			<stop stop-color="#F6EFE4" />
+			<stop offset="1" stop-color="#F2C39B" />
+		</linearGradient>
+	</defs>
+	<rect width="1200" height="630" fill="url(#bg)" />
+	<rect x="80" y="90" width="1040" height="450" rx="36" fill="#ffffff" fill-opacity="0.85" />
+	<rect x="120" y="130" width="220" height="18" rx="9" fill="#D6B17C" />
+	<text x="120" y="240" fill="#1A1716" font-size="58" font-family="'Space Grotesk', 'Trebuchet MS', sans-serif" font-weight="600">
+		Building the First Table
+	</text>
+	<text x="120" y="310" fill="#4A3F3B" font-size="30" font-family="'Newsreader', 'Times New Roman', serif">
+		Playtest notes from the Digitable Studio team
+	</text>
+	<rect x="120" y="360" width="280" height="6" rx="3" fill="#1A1716" fill-opacity="0.2" />
+</svg>

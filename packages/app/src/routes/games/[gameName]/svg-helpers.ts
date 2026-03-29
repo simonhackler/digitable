@@ -85,8 +85,7 @@ export function initialSetupForSvgItem(
 	if (!el) {
 		return null;
 	} else if (el.tagName === 'image') {
-		const path = imagePaths.get(data);
-		assert(path, `Image path for key ${data} not found.`);
+		const path = imagePaths.get(data) || '';
 		updateSvgImageLink(el, path);
 	}
 	if (el.tagName !== 'text') return null;
@@ -208,8 +207,7 @@ export async function updateSvg(
 		}
 		div.textContent = newText;
 	} else if (el.tagName == 'image') {
-		const path = imagePaths.get(newText);
-		assert(path, `Image path for key ${newText} not found.`);
+		const path = imagePaths.get(newText) || '';
 		updateSvgImageLink(el, path);
 	}
 }

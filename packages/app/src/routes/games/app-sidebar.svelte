@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { get, set } from 'idb-keyval';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import CreateMenu from './create-menu.svelte';
 	import ExportMenu from './export-menu.svelte';
@@ -8,15 +9,29 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import PlayMenu from './play-menu.svelte';
+	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 
-	let { games }: { games: Game[] } = $props();
+	let {
+		games,
+		fileSystem,
+		onSetOpfsAdapter
+	}: { games: Game[]; fileSystem: Adapter; onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } =
+		$props();
 
-	// We'll need to track the active project to get its decks
 	let activeProject = $derived.by(() => {
 		const game = games.find((game) => game.name === page.params.gameName);
 		if (game) return game;
 		return games.length > 0 ? games[0] : null;
 	});
+
+	async function pickFolder() {
+		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
+		await set('saved-folder', folderHandle);
+		const opfsAdapter = new OPFSAdapter(folderHandle);
+		onSetOpfsAdapter(opfsAdapter);
+	}
 
 	function onProjectChange(project: Game) {
 		activeProject = project;
@@ -29,10 +44,12 @@
 		<ProjectSwitcher {games} {activeProject} {onProjectChange} />
 	</Sidebar.Header>
 	<Sidebar.Content>
-		<CreateMenu activeGame={activeProject} />
+		<CreateMenu activeGame={activeProject} {fileSystem} />
 		<ExportMenu activeGame={activeProject} />
 		<PlayMenu activeGame={activeProject} />
 		<Sidebar.Group />
 	</Sidebar.Content>
-	<Sidebar.Footer />
+	<Sidebar.Footer>
+		<Button onclick={pickFolder}>Change Projects Folder</Button>
+	</Sidebar.Footer>
 </Sidebar.Root>

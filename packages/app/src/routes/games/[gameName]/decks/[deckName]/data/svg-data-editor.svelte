@@ -207,7 +207,7 @@
 					front: generateSvg(svgTemplateFront, headers, row, imagePaths),
 					back: generateSvg(svgTemplateBack, headers, row, imagePaths)
 				}));
-				cards.splice(minRow, 0, ...newCards);
+				cards = [...cards.slice(0, minRow), ...newCards, ...cards.slice(minRow, cards.length)];
 			},
 			onafterchanges(_worksheet, _records) {
 				saveDebounced();

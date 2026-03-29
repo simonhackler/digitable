@@ -11,18 +11,23 @@
 	import { Upload, Image } from '@lucide/svelte';
 	import { CircleCheck } from '@lucide/svelte';
 	import { requireParam } from '$lib/utils/assert';
+	import { page } from '$app/state';
 
 	const fileSystem = getFileSystemContext();
-	const gameName = $derived(requireParam('gameName'));
+	const gameNameParsed = $derived(requireParam('gameName'));
+	const gameName = $derived(page.url.searchParams.get('gameName') ?? '');
 
 	// Load game data using top-level await
-	async function loadGameData(gameName: string): Promise<{
+	async function loadGameData(
+		gameNameParsed: string,
+		gameName: string
+	): Promise<{
 		data: CreateGameForm;
 		isEditMode: boolean;
 		thumbnailUrl?: string;
 	}> {
 		try {
-			const gameJsonPath = `${gameName}/game.json`;
+			const gameJsonPath = `${gameNameParsed}/game.json`;
 			const [gameFileResult] = await fileSystem.download([gameJsonPath]);
 
 			if (gameFileResult.result?.data) {
@@ -32,7 +37,7 @@
 				// Try to load existing thumbnail
 				let thumbnailUrl: string | undefined;
 				try {
-					const thumbnailPath = `${gameName}/thumbnail.jpg`;
+					const thumbnailPath = `${gameNameParsed}/thumbnail.jpg`;
 					const [thumbnailResult] = await fileSystem.download([thumbnailPath]);
 					if (thumbnailResult.result?.data) {
 						thumbnailUrl = URL.createObjectURL(thumbnailResult.result.data);
@@ -44,14 +49,14 @@
 				return { data: gameData, isEditMode: true, thumbnailUrl };
 			}
 		} catch (error) {
+			// This is really bad code. It expects the error as normal behaviour
 			console.log('No existing game.json found, creating new game');
 			console.error(error);
 		}
 
-		// Default data for new game
 		return {
 			data: {
-				name: '',
+				name: gameName,
 				minPlayers: 1,
 				maxPlayers: 4,
 				description: '',
@@ -65,7 +70,7 @@
 		data: initialData,
 		isEditMode,
 		thumbnailUrl: initialThumbnailUrl
-	} = $derived(await loadGameData(gameName));
+	} = $derived(await loadGameData(gameNameParsed, gameName));
 
 	const form = $derived(
 		superForm(defaults(initialData, zod4(createGameSchema)), {
@@ -81,27 +86,19 @@
 					const gameData = JSON.stringify(data, null, 2);
 					const gameFile = new File([gameData], 'game.json', { type: 'application/json' });
 
-					const error = await fileSystem.upload(gameFile, gameName, true);
+					const error = await fileSystem.upload(gameFile, gameNameParsed, true);
 					if (error) {
 						console.error('Failed to save game:', error);
 						isSubmitting = false;
 						return;
 					}
 
-					// Upload thumbnail if one was selected
 					if (selectedThumbnail) {
 						const thumbnailError = await fileSystem.upload(selectedThumbnail, folderName, true);
 						if (thumbnailError) {
 							console.error('Failed to save thumbnail:', thumbnailError);
 						}
 					}
-
-					// Maybe for later
-					// if (folderName !== gameName) {
-					// 	const res = await fileSystem.move([{ filePath: `/${gameName}`, path: `/${folderName}` }]);
-					//                    console.log('Move result:', res);
-					// 	await goto(`/games/${folderName}`);
-					// }
 
 					isSubmitting = false;
 					showSuccessMessage = true;
