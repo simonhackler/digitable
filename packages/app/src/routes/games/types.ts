@@ -2,9 +2,9 @@ export interface Game {
 	name: string;
 	description?: string;
 	tags?: string;
-	decks: Component[];
+	decks: ComponentFileStructure[];
 }
 
-export interface Component {
+export interface ComponentFileStructure {
     name: string;
 }
