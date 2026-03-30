@@ -82,6 +82,10 @@
 		await fileSystem.upload(file, `${currentProject}/files`);
 	}
 
+    async function deleteDeck(component: Component) {
+
+    }
+
 	const cardFormats = {
 		poker: { name: 'Poker / Euro Poker', width: 63, height: 88 },
 		bridge: { name: 'Bridge', width: 56, height: 88 },
@@ -243,18 +247,46 @@
 										{/snippet}
 									</DropdownMenu.Trigger>
 									<DropdownMenu.Content class="w-24 rounded-lg">
+										{@const path = `/games/${activeGame!.name}/decks/${deck.name}`}
 										<DropdownMenu.Item>
-											<Pencil />
-											<span>Editor</span>
+											{#snippet child({ props })}
+												<Button
+													href={`${path}/editor`}
+													{...props}
+													variant="ghost"
+													class="flex w-full justify-start gap-2"
+												>
+													<Pencil />
+													<span>Editor</span>
+												</Button>
+											{/snippet}
 										</DropdownMenu.Item>
 										<DropdownMenu.Item>
-											<Table />
-											<span>Table</span>
+											{#snippet child({ props })}
+												<Button
+													href={`${path}/data`}
+													{...props}
+													variant="ghost"
+													class="flex w-full justify-start gap-2"
+												>
+													<Table />
+													<span>Data</span>
+												</Button>
+											{/snippet}
 										</DropdownMenu.Item>
 										<DropdownMenu.Separator />
 										<DropdownMenu.Item variant="destructive">
-											<Trash2 />
-											<span>Delete</span>
+											{#snippet child({ props })}
+												<Button
+													{...props}
+													variant="destructive"
+													class="flex w-full justify-start gap-2"
+                                                    onclick={deleteDeck(deck)}
+												>
+													<Trash2 />
+													<span>Delete</span>
+												</Button>
+											{/snippet}
 										</DropdownMenu.Item>
 									</DropdownMenu.Content>
 								</DropdownMenu.Root>
