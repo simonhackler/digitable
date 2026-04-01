@@ -6,5 +6,5 @@ export interface Game {
 }
 
 export interface ComponentFileStructure {
-    name: string;
+	name: string;
 }

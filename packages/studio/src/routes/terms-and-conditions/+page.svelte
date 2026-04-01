@@ -1,10 +1,10 @@
-<svelte:head>
-	<title>Digitable Studio | Terms &amp; Conditions</title>
-</svelte:head>
-
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
 </script>
+
+<svelte:head>
+	<title>Digitable Studio | Terms &amp; Conditions</title>
+</svelte:head>
 
 <main class="min-h-[60vh] bg-[#f7f2ea] text-[#151515]">
 	<div class="mx-auto grid max-w-4xl gap-4 px-6 py-16">

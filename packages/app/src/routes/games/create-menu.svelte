@@ -10,7 +10,7 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { Ellipsis, Layers, Pencil, Table, Trash2 } from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import type { Game } from './types.js';
+	import type { ComponentFileStructure, Game } from './types.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { z } from 'zod';
@@ -82,8 +82,15 @@
 		await fileSystem.upload(file, `${currentProject}/files`);
 	}
 
-    async function deleteDeck(component: Component) {
-
+	async function deleteDeck(fileSystem: Adapter, projectName: string, component: ComponentFileStructure) {
+		const fullFolderPath = `/${projectName}/system/${component.name}`;
+        console.log("deleting for", fullFolderPath);
+        const error = await fileSystem.delete([fullFolderPath]);
+        if (error) {
+            console.error(error);
+        } else {
+            activeGame!.decks = activeGame!.decks.filter(x => x.name !== component.name);
+        }
     }
 
 	const cardFormats = {
@@ -248,45 +255,28 @@
 									</DropdownMenu.Trigger>
 									<DropdownMenu.Content class="w-24 rounded-lg">
 										{@const path = `/games/${activeGame!.name}/decks/${deck.name}`}
-										<DropdownMenu.Item>
-											{#snippet child({ props })}
-												<Button
-													href={`${path}/editor`}
-													{...props}
-													variant="ghost"
-													class="flex w-full justify-start gap-2"
-												>
-													<Pencil />
-													<span>Editor</span>
-												</Button>
-											{/snippet}
+										<DropdownMenu.Item
+											onSelect={() => goto(`${path}/editor`)}
+											class="flex w-full justify-start gap-2"
+										>
+											<Pencil />
+											<span>Editor</span>
 										</DropdownMenu.Item>
-										<DropdownMenu.Item>
-											{#snippet child({ props })}
-												<Button
-													href={`${path}/data`}
-													{...props}
-													variant="ghost"
-													class="flex w-full justify-start gap-2"
-												>
-													<Table />
-													<span>Data</span>
-												</Button>
-											{/snippet}
+										<DropdownMenu.Item
+											onSelect={() => goto(`${path}/data`)}
+											class="flex w-full justify-start gap-2"
+										>
+											<Table />
+											<span>Data</span>
 										</DropdownMenu.Item>
 										<DropdownMenu.Separator />
-										<DropdownMenu.Item variant="destructive">
-											{#snippet child({ props })}
-												<Button
-													{...props}
-													variant="destructive"
-													class="flex w-full justify-start gap-2"
-                                                    onclick={deleteDeck(deck)}
-												>
-													<Trash2 />
-													<span>Delete</span>
-												</Button>
-											{/snippet}
+										<DropdownMenu.Item
+											variant="destructive"
+											onSelect={() => deleteDeck(fileSystem, activeGame!.name, deck)}
+											class="flex w-full justify-start gap-2"
+										>
+											<Trash2 />
+											<span>Delete</span>
 										</DropdownMenu.Item>
 									</DropdownMenu.Content>
 								</DropdownMenu.Root>
