@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ConfirmDeleteDialog, confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button';
@@ -332,6 +333,29 @@
 								<span>Game {isEditMode ? 'updated' : 'created'} successfully!</span>
 							</div>
 						{/if}
+
+						<ConfirmDeleteDialog />
+
+						<div class="flex items-center justify-center">
+							<Button
+								variant="destructive"
+								size="lg"
+								onclick={() => {
+									confirmDelete({
+										title: 'Delete',
+										description: 'Are you sure you want to delete this item?',
+										input: {
+											confirmationText: gameNameParsed
+										},
+										onConfirm: async () => {
+                                            await fileSystem.delete([`/${gameNameParsed}`]);
+										}
+									});
+								}}
+							>
+								Delete
+							</Button>
+						</div>
 
 						<Button type="submit" class="w-full" disabled={isSubmitting}>
 							{#if isSubmitting}
