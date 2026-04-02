@@ -163,6 +163,30 @@
 			<Card.Title class="text-center text-2xl font-bold">
 				{isEditMode ? 'Edit Board Game' : 'Create New Board Game'}
 			</Card.Title>
+			{#if isEditMode}
+				<ConfirmDeleteDialog />
+
+				<div class="flex items-center justify-center">
+					<Button
+						variant="destructive"
+						size="lg"
+						onclick={() => {
+							confirmDelete({
+								title: 'Delete',
+								description: 'Are you sure you want to delete this item?',
+								input: {
+									confirmationText: gameNameParsed
+								},
+								onConfirm: async () => {
+									await fileSystem.delete([`/${gameNameParsed}`]);
+								}
+							});
+						}}
+					>
+						Delete
+					</Button>
+				</div>
+			{/if}
 			<hr class="border-t border-gray-300" />
 		</Card.Header>
 		<Card.Content>
@@ -333,29 +357,6 @@
 								<span>Game {isEditMode ? 'updated' : 'created'} successfully!</span>
 							</div>
 						{/if}
-
-						<ConfirmDeleteDialog />
-
-						<div class="flex items-center justify-center">
-							<Button
-								variant="destructive"
-								size="lg"
-								onclick={() => {
-									confirmDelete({
-										title: 'Delete',
-										description: 'Are you sure you want to delete this item?',
-										input: {
-											confirmationText: gameNameParsed
-										},
-										onConfirm: async () => {
-                                            await fileSystem.delete([`/${gameNameParsed}`]);
-										}
-									});
-								}}
-							>
-								Delete
-							</Button>
-						</div>
 
 						<Button type="submit" class="w-full" disabled={isSubmitting}>
 							{#if isSubmitting}
