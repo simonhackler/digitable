@@ -49,6 +49,7 @@
 	let workarea: HTMLDivElement | null = null;
 	let canvasRoot: HTMLDivElement | null = null;
 	let textInput: HTMLInputElement | null = null;
+	let multilineTextInput: HTMLTextAreaElement | null = null;
 	let rulerFrame: HTMLDivElement | null = null;
 	let rulerX: HTMLDivElement | null = null;
 	let rulerY: HTMLDivElement | null = null;
@@ -94,7 +95,16 @@
 	};
 
 	onMount(async () => {
-		if (!workarea || !canvasRoot || !textInput) return;
+		if (!workarea || !canvasRoot || !textInput || !multilineTextInput) return;
+
+		multilineTextInput.spellcheck = false;
+		multilineTextInput.setAttribute('autocomplete', 'off');
+		multilineTextInput.setAttribute('autocorrect', 'off');
+		multilineTextInput.setAttribute('autocapitalize', 'off');
+
+		if (multilineTextInput.parentElement !== document.body) {
+			document.body.append(multilineTextInput);
+		}
 
 		const strictAssets = Boolean((resolvedConfig as { strict?: boolean } | undefined)?.strict);
 		warnMissingAssets(strictAssets);
@@ -109,6 +119,7 @@
 				container: workarea,
 				canvasContainer: canvasRoot,
 				textInput,
+				multilineTextInput,
 				value: normalizedInitial,
 				config: resolvedConfig,
 				centerOnLoad,
@@ -280,12 +291,23 @@
 		</div>
 	</div>
 	<input
+		id="text"
 		class="svgcanvas-text-input"
 		type="text"
 		bind:this={textInput}
 		aria-hidden="true"
 		tabindex="-1"
 	/>
+	<textarea
+		id="text_multiline"
+		class="svgcanvas-text-multiline"
+		bind:this={multilineTextInput}
+		rows="4"
+		cols="35"
+		placeholder="Multiline text"
+		aria-hidden="true"
+		tabindex="-1"
+	></textarea>
 </div>
 
 <style>
@@ -382,6 +404,31 @@
 		height: 0;
 		opacity: 0;
 		pointer-events: none;
+	}
+
+	.svgcanvas-text-multiline {
+		display: none;
+		visibility: hidden;
+		opacity: 0;
+		pointer-events: none;
+		position: fixed;
+		left: -10000px;
+		top: -10000px;
+		min-width: 1px;
+		min-height: 1px;
+		margin: 0;
+		padding: 0;
+		border: none;
+		background: transparent;
+		color: transparent;
+		box-sizing: border-box;
+		outline: none;
+		resize: none;
+		overflow: hidden;
+		white-space: pre-wrap;
+		caret-color: #111;
+		-webkit-text-fill-color: transparent;
+		z-index: 10;
 	}
 
 	:global(#svgroot) {

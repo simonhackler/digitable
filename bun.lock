@@ -24,7 +24,6 @@
         "eslint-plugin-svelte": "^3.13.1",
         "globals": "^16.5.0",
         "mdsvex": "^0.12.6",
-        "studio": "workspace:*",
         "super-sitemap": "^1.0.7",
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.48.1",
@@ -163,7 +162,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@lucide/svelte": "^0.561.0",
-        "@svgedit/svgcanvas": "^7.2.6",
+        "@svgedit/svgcanvas": "link:@svgedit/svgcanvas",
         "bits-ui": "^2.14.4",
         "clsx": "^2.1.1",
         "runed": "^0.37.0",
@@ -543,7 +542,7 @@
 
     "@svg-table/svgeditor": ["@svg-table/svgeditor@workspace:packages/svgeditor"],
 
-    "@svgedit/svgcanvas": ["@svgedit/svgcanvas@7.4.1", "", {}, "sha512-YuQZUa1KGruIcHSr2EKuYdwdowt+dlEKpUH+6Rpzmlfm6l68MHDLpifb45f28KOhCu/JdglYGRzeJkSsWVLkkg=="],
+    "@svgedit/svgcanvas": ["@svgedit/svgcanvas@link:@svgedit/svgcanvas", {}],
 
     "@swc/helpers": ["@swc/helpers@0.5.17", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-5IKx/Y13RsYd+sauPb2x+U/xZikHjolzfuDgTAl/Tdf3Q8rslRvC19NKDLgAJQ6wsqADk10ntlv08nPFw/gO/A=="],
 

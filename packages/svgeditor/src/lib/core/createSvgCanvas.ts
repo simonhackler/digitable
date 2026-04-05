@@ -59,16 +59,20 @@ type SvgCanvasLike = {
 	};
 	textActions?: {
 		setInputElem?: (elem: HTMLInputElement) => void;
+		setMultilineInputElem?: (elem: HTMLTextAreaElement) => void;
+		setCursor?: (index?: number) => void;
 	};
 	setTextContent?: (text: string) => void;
 	contentW?: number;
 	contentH?: number;
+	useMultilineText?: boolean;
 };
 
 type CreateSvgCanvasArgs = {
 	container: HTMLElement;
 	canvasContainer?: HTMLElement | null;
 	textInput: HTMLInputElement;
+	multilineTextInput: HTMLTextAreaElement;
 	value: string;
 	config?: SvgCanvasConfig;
 	centerOnLoad?: boolean;
@@ -124,6 +128,7 @@ export const createSvgCanvas = ({
 	container,
 	canvasContainer,
 	textInput,
+	multilineTextInput,
 	value,
 	config,
 	centerOnLoad = true,
@@ -730,6 +735,19 @@ export const createSvgCanvas = ({
 		onChange?.(canvas.getSvgString());
 	};
 
+	const enableMultilineTextElements = () => {
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgContent || !canvas.useMultilineText) return;
+		for (const textElement of svgContent.querySelectorAll('text')) {
+			if (!textElement.hasAttribute('data-svgedit-multiline')) {
+				textElement.setAttribute('data-svgedit-multiline', 'true');
+			}
+			if (!textElement.hasAttribute('data-svgedit-raw-text')) {
+				textElement.setAttribute('data-svgedit-raw-text', textElement.textContent ?? '');
+			}
+		}
+	};
+
 	const selectionHandler = () => {
 		const selected = canvas.getSelectedElements?.() ?? [];
 		onSelectionChange?.({
@@ -751,14 +769,58 @@ export const createSvgCanvas = ({
 	canvas.bind?.('selected', selectionHandler);
 	document.addEventListener('modeChange', modeHandler);
 
+	canvas.useMultilineText = true;
 	canvas.textActions?.setInputElem?.(textInput);
+	canvas.textActions?.setMultilineInputElem?.(multilineTextInput);
 	const forwardTextInput = (event: Event) => {
-		const target = event.currentTarget as HTMLInputElement | null;
+		const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
 		if (!target) return;
 		canvas.setTextContent?.(target.value);
 	};
+	const forwardMultilineCursor = (event?: Event) => {
+		const target = event?.currentTarget as HTMLTextAreaElement | null;
+		const selected = canvas.getSelectedElements?.()?.[0];
+		if ((event?.type === 'keyup' || event?.type === 'input') && selected?.tagName === 'text') {
+			selected.setAttribute('data-svgedit-multiline', 'true');
+			if (!selected.hasAttribute('data-svgedit-raw-text')) {
+				selected.setAttribute('data-svgedit-raw-text', target?.value ?? selected.textContent ?? '');
+			}
+		}
+		canvas.textActions?.setCursor?.();
+	};
+	const handleMultilineEnter = (event: KeyboardEvent) => {
+		if (event.key !== 'Enter' || event.altKey || event.ctrlKey || event.metaKey) return;
+
+		event.preventDefault();
+
+		const input = event.currentTarget as HTMLTextAreaElement | null;
+		if (!input) return;
+
+		const start = input.selectionStart ?? input.value.length;
+		const end = input.selectionEnd ?? start;
+		const nextValue = `${input.value.slice(0, start)}\n${input.value.slice(end)}`;
+		const nextIndex = start + 1;
+		const selected = canvas.getSelectedElements?.()?.[0];
+
+		input.value = nextValue;
+		input.setSelectionRange(nextIndex, nextIndex);
+
+		if (selected?.tagName === 'text') {
+			selected.setAttribute('data-svgedit-multiline', 'true');
+			canvas.setTextContent?.(nextValue);
+		}
+
+		canvas.textActions?.setCursor?.(nextIndex);
+	};
 	textInput.addEventListener('input', forwardTextInput);
 	textInput.addEventListener('keyup', forwardTextInput);
+	multilineTextInput.addEventListener('keydown', handleMultilineEnter);
+	multilineTextInput.addEventListener('input', forwardTextInput);
+	multilineTextInput.addEventListener('keyup', forwardMultilineCursor);
+	multilineTextInput.addEventListener('input', forwardMultilineCursor);
+	multilineTextInput.addEventListener('click', forwardMultilineCursor);
+	multilineTextInput.addEventListener('mouseup', forwardMultilineCursor);
+	multilineTextInput.addEventListener('select', forwardMultilineCursor);
 
 	if (rulerElements.x || rulerElements.y) {
 		container.addEventListener('scroll', syncRulerScroll);
@@ -779,6 +841,7 @@ export const createSvgCanvas = ({
 
 	const ok = canvas.setSvgString(value, true);
 	if (ok) {
+		enableMultilineTextElements();
 		canvas.undoMgr?.resetUndoStack?.();
 	}
 	if (!ok) {
@@ -818,6 +881,9 @@ export const createSvgCanvas = ({
 	const api: SvgEditorApi = {
 		loadSvg(svg, opts) {
 			const loadOk = canvas.setSvgString(svg, opts?.preventUndo);
+			if (loadOk) {
+				enableMultilineTextElements();
+			}
 			if (loadOk && opts?.preventUndo) {
 				canvas.undoMgr?.resetUndoStack?.();
 			}
@@ -907,7 +973,7 @@ export const createSvgCanvas = ({
 			canvas.setItalic?.(value);
 		},
 		focusTextInput() {
-			textInput.focus();
+			multilineTextInput.focus();
 		},
 		refreshLayout(opts) {
 			refreshLayout(opts);
@@ -1074,6 +1140,13 @@ export const createSvgCanvas = ({
 			document.removeEventListener('modeChange', modeHandler);
 			textInput.removeEventListener('input', forwardTextInput);
 			textInput.removeEventListener('keyup', forwardTextInput);
+			multilineTextInput.removeEventListener('keydown', handleMultilineEnter);
+			multilineTextInput.removeEventListener('input', forwardTextInput);
+			multilineTextInput.removeEventListener('keyup', forwardMultilineCursor);
+			multilineTextInput.removeEventListener('input', forwardMultilineCursor);
+			multilineTextInput.removeEventListener('click', forwardMultilineCursor);
+			multilineTextInput.removeEventListener('mouseup', forwardMultilineCursor);
+			multilineTextInput.removeEventListener('select', forwardMultilineCursor);
 			if (rulerElements.x || rulerElements.y) {
 				container.removeEventListener('scroll', syncRulerScroll);
 			}

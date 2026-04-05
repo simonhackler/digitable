@@ -47,6 +47,9 @@ const getDetail = <T>(event: CustomEvent<T> | T): T =>
 		? (event as CustomEvent<T>).detail
 		: event;
 
+const normalizeMode = (mode: EditorMode): EditorMode =>
+	mode === 'textedit' || mode === 'textmultiline' ? 'text' : mode;
+
 class EditorController {
 	api = $state<SvgEditorApi | null>(null);
 	mode = $state<EditorMode>('select');
@@ -74,7 +77,7 @@ class EditorController {
 		this.api = detail.api;
 		this.isReady = true;
 		this.zoom = detail.api.getZoom();
-		this.mode = detail.api.getMode();
+		this.mode = normalizeMode(detail.api.getMode());
 		const grid = detail.api.getGridSettings();
 		this.gridVisible = grid.show;
 		this.gridSnapping = grid.snapping;
@@ -110,7 +113,7 @@ class EditorController {
 
 	handleModeChange = (event: CustomEvent<ModeChangeEvent> | ModeChangeEvent) => {
 		const detail = getDetail(event);
-		this.mode = detail.mode;
+		this.mode = normalizeMode(detail.mode);
 	};
 
 	handleError = (event: CustomEvent<EditorError> | EditorError) => {
@@ -119,7 +122,7 @@ class EditorController {
 
 	setMode = (mode: EditorMode) => {
 		this.api?.setMode(mode);
-		this.mode = mode;
+		this.mode = normalizeMode(mode);
 		if (mode === 'text') {
 			this.api?.focusTextInput();
 		}

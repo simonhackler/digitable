@@ -96,8 +96,9 @@
 	const canHandleGlobalShortcut = () =>
 		!interactionDisabled && controller.isReady && !isEditableActive();
 
-	const canHandleTextFormatting = () =>
-		!interactionDisabled && controller.isReady && controller.mode === 'text';
+	const isTextMode = () => controller.mode === 'text';
+
+	const canHandleTextFormatting = () => !interactionDisabled && controller.isReady && isTextMode();
 
 	const hasNonShiftModifier = () => keys.has('meta') || keys.has('control') || keys.has('alt');
 
@@ -220,7 +221,7 @@
 	keys.onKeys('enter', () =>
 		runIfPlainKey(
 			() => {
-				if (controller.mode === 'text') {
+				if (isTextMode()) {
 					controller.api?.focusTextInput();
 				}
 			},
@@ -251,7 +252,7 @@
 		const modKey = event.metaKey || event.ctrlKey;
 		const isEditable = isEditableTarget(event.target);
 		const isTextFormatting =
-			controller.mode === 'text' &&
+			isTextMode() &&
 			modKey &&
 			(!event.shiftKey
 				? key === 'b' || key === 'i'
@@ -301,7 +302,7 @@
 				event.preventDefault();
 				return;
 			}
-			if (key === 'enter' && controller.mode === 'text') {
+			if (key === 'enter' && isTextMode()) {
 				event.preventDefault();
 			}
 		}
