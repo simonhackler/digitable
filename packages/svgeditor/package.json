@@ -12,7 +12,7 @@
 	},
 	"dependencies": {
 		"@lucide/svelte": "^0.561.0",
-		"@svgedit/svgcanvas": "link:@svgedit/svgcanvas",
+		"@svgedit/svgcanvas": "workspace:*",
 		"bits-ui": "^2.14.4",
 		"clsx": "^2.1.1",
 		"runed": "^0.37.0",

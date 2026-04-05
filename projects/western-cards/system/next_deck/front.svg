@@ -5,11 +5,7 @@
   <text data-svgedit-multiline="true" data-svgedit-raw-text="ffffffffffffffffffffffff ffff  ffffffffff fdsfs" data-svgedit-text-overflow="false" data-svgedit-wrap-height="17.13" data-svgedit-wrap-width="61.25" fill="#000000" font-family="serif" font-size="3" id="svg_3" stroke="#000000" stroke-width="0" text-anchor="start" transform="matrix(1 0 0 0.950658 6.25 -34.5633)" x="10.19" xml:space="preserve" y="25.13">
    <tspan id="svg_1" x="10.19" y="25.13">ffffffffffffffffffffffff ffff  ffffffffff fdsfs</tspan>
   </text>
-  <text data-svgedit-multiline="true" data-svgedit-raw-text="gdfgdfg ffffffffffffffffffffffff" data-svgedit-text-overflow="false" data-svgedit-wrap-height="21.13" data-svgedit-wrap-width="22" fill="#000000" font-family="serif" font-size="3" id="svg_16" stroke="#000000" stroke-width="0" text-anchor="start" transform="matrix(1 0 0 1.16741 4.75 -12.0419)" x="-4.75" xml:space="preserve" y="29.11">
-   <tspan font-size="3" id="svg_2" x="-4.75" y="29.11">gdfgdfg</tspan>
-   <tspan font-size="3" id="svg_5" x="-4.75" y="32.71">ffffffffffffffffffffff</tspan>
-   <tspan font-size="3" id="svg_9" x="-4.75" y="36.31">ff</tspan>
-  </text>
+  <text data-svgedit-multiline="true" data-svgedit-shape-inside-ref="#svg_2" data-svgedit-wrap-height="7.25" data-svgedit-wrap-width="240" fill="#000000" font-family="serif" font-size="3" id="svg_5" stroke="#000000" stroke-width="0" text-anchor="start" x="14.31" xml:space="preserve" y="14.88"/>
  </g>
  <defs>
   <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_4" opacity="0.5" width="240" x="11.44" y="42.63"/>
@@ -27,6 +23,7 @@
   <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_23" opacity="0.5" stroke-width="0" width="240" x="30.19" y="14.38"/>
   <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_25" opacity="0.5" stroke-width="0" width="240" x="7.56" y="13.63"/>
   <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_27" opacity="0.5" stroke-width="0" width="240" x="61.56" y="22.75"/>
-  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_18" opacity="0.5" pointer-events="none" stroke-width="0" visibility="hidden" width="240" x="9.69" y="5.38"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_18" opacity="0.5" stroke-width="0" width="240" x="9.69" y="5.38"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="7.25" id="svg_2" opacity="0.5" stroke-width="0" width="240" x="14.31" y="11.88"/>
  </defs>
 </svg>
