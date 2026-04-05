@@ -7,18 +7,18 @@
 		"packages/*"
 	],
 	"scripts": {
-		"dev": "concurrently \"bun run --filter=@svg-table/app dev\" \"bun run --filter=boardgame-server start\"",
-		"dev:app": "bun run --filter=@svg-table/app dev",
+		"dev": "concurrently \"bun run dev:app\" \"bun run --filter=boardgame-server start\"",
+		"dev:app": "bun --env-file=.env run --filter=@svg-table/app dev",
 		"dev:studio": "bun run --filter=studio dev",
 		"dev:server": "bun run --filter=boardgame-server start",
 		"build": "bun run --filter=@svg-table/app build",
-		"preview": "bun run --filter=@svg-table/app preview",
+		"preview": "bun --env-file=.env run --filter=@svg-table/app preview",
 		"check": "bun run --filter=@svg-table/app check",
 		"check:watch": "bun run --filter=@svg-table/app check:watch",
 		"format": "bun run --filter=@svg-table/app format",
 		"lint": "bun run --filter=@svg-table/app lint",
-		"test": "bun run --filter=@svg-table/app test",
-		"test:e2e": "bun run --filter=@svg-table/app test:e2e",
+		"test": "bun --env-file=.env run --filter=@svg-table/app test",
+		"test:e2e": "bun --env-file=.env run --filter=@svg-table/app test:e2e",
 		"storybook": "bun run --filter=@svg-table/app storybook",
 		"build-storybook": "bun run --filter=@svg-table/app build-storybook"
 	},

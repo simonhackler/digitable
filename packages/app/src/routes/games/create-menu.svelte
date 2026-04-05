@@ -82,16 +82,21 @@
 		await fileSystem.upload(file, `${currentProject}/files`);
 	}
 
-	async function deleteDeck(fileSystem: Adapter, projectName: string, component: ComponentFileStructure) {
+	async function deleteDeck(
+		fileSystem: Adapter,
+		projectName: string,
+		component: ComponentFileStructure
+	) {
 		const fullFolderPath = `/${projectName}/system/${component.name}`;
-        console.log("deleting for", fullFolderPath);
-        const error = await fileSystem.delete([fullFolderPath]);
-        if (error) {
-            console.error(error);
-        } else {
-            activeGame!.decks = activeGame!.decks.filter(x => x.name !== component.name);
-        }
-    }
+		console.log('deleting for', fullFolderPath);
+		const error = await fileSystem.delete([fullFolderPath]);
+		if (error) {
+			console.error(error);
+		} else {
+			activeGame!.decks = activeGame!.decks.filter((x) => x.name !== component.name);
+			await goto(resolve('/games'));
+		}
+	}
 
 	const cardFormats = {
 		poker: { name: 'Poker / Euro Poker', width: 63, height: 88 },

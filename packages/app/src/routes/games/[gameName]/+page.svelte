@@ -175,7 +175,7 @@
 								title: 'Delete',
 								description: 'Are you sure you want to delete this item?',
 								input: {
-									confirmationText: gameNameParsed
+									confirmationText: gameName
 								},
 								onConfirm: async () => {
 									await fileSystem.delete([`/${gameNameParsed}`]);
