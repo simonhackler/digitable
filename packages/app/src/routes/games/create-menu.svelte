@@ -261,14 +261,14 @@
 									<DropdownMenu.Content class="w-24 rounded-lg">
 										{@const path = `/games/${activeGame!.name}/decks/${deck.name}`}
 										<DropdownMenu.Item
-											onSelect={() => goto(`${path}/editor`)}
+											onSelect={() => goto(resolve(`${path}/editor`))}
 											class="flex w-full justify-start gap-2"
 										>
 											<Pencil />
 											<span>Editor</span>
 										</DropdownMenu.Item>
 										<DropdownMenu.Item
-											onSelect={() => goto(`${path}/data`)}
+											onSelect={() => goto(resolve(`${path}/data`))}
 											class="flex w-full justify-start gap-2"
 										>
 											<Table />

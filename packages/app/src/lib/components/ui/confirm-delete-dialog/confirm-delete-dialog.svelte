@@ -101,7 +101,7 @@
 			{#if dialogState.options?.input}
 				<Input
 					bind:value={dialogState.inputText}
-					placeholder={`Enter \"${dialogState.options.input.confirmationText}\" to confirm.`}
+					placeholder={`Enter "${dialogState.options.input.confirmationText}" to confirm.`}
 					onkeydown={(e) => {
 						if (e.key === 'Enter') {
 							// for some reason without this the form will submit and the dialog will close immediately
