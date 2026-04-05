@@ -8,13 +8,16 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import TagSelector from './tag-selector.svelte';
 	import { createGameSchema, type CreateGameForm } from '../schemas.js';
-	import { getFileSystemContext } from '../context.js';
+	import { getFileSystemContext, getGamesContext } from '../context.js';
 	import { Upload, Image } from '@lucide/svelte';
 	import { CircleCheck } from '@lucide/svelte';
 	import { requireParam } from '$lib/utils/assert';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	const fileSystem = getFileSystemContext();
+	const games = getGamesContext();
 	const gameNameParsed = $derived(requireParam('gameName'));
 	const gameName = $derived(page.url.searchParams.get('gameName') ?? '');
 
@@ -155,6 +158,20 @@
 			input.value = '';
 		}
 	}
+
+	async function deleteGame() {
+		const error = await fileSystem.delete([`/${gameNameParsed}`]);
+		if (error) {
+			console.error('Failed to delete game:', error);
+			return;
+		}
+
+		if (games.existingGames) {
+			games.existingGames = games.existingGames.filter((game) => game.name !== gameNameParsed);
+		}
+
+		await goto(resolve('/games'));
+	}
 </script>
 
 <div class="mx-auto max-w-4xl p-6">
@@ -177,9 +194,7 @@
 								input: {
 									confirmationText: gameName
 								},
-								onConfirm: async () => {
-									await fileSystem.delete([`/${gameNameParsed}`]);
-								}
+								onConfirm: deleteGame
 							});
 						}}
 					>

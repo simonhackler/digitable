@@ -38,11 +38,11 @@ test('create new game and delete it', async ({ page }) => {
 		gameDescription
 	);
 	await expect(page.getByRole('button', { name: 'Fantasy', exact: true })).toBeDisabled();
-    await page.getByRole('button', { name: 'Delete' }).click();
-    await page.getByRole('textbox', { name: 'Enter "Create Game Test" to' }).fill(gameName);
-    await page.getByRole('button', { name: 'Delete' }).nth(1).click();
+	await page.getByRole('button', { name: 'Delete' }).click();
+	await page.getByRole('textbox', { name: 'Enter "Create Game Test" to' }).fill(gameName);
+	await page.getByRole('button', { name: 'Delete' }).nth(1).click();
 	await expect(page).toHaveURL(/\/games$/);
-    await page.waitForTimeout(1000);
+	await page.waitForTimeout(1000);
 });
 
 test('create new deck and delete it', async ({ page }) => {
@@ -67,10 +67,10 @@ test('create new deck and delete it', async ({ page }) => {
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
 	await page.reload();
 	await expect(page).toHaveURL(new RegExp(`/games/western-cards/decks/${deckName}/data`));
-    await page.getByRole('button', { name: 'Decks' }).click();
+	await page.getByRole('button', { name: 'Decks' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
-    await page.locator('#bits-c23').click();
-    await page.getByRole('menuitem', { name: 'Delete' }).click();
+	await page.locator('#bits-c23').click();
+	await page.getByRole('menuitem', { name: 'Delete' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).not.toBeVisible();
 	await expect(page).toHaveURL(new RegExp(`/games/western-cards$`));
 });

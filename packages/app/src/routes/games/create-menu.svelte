@@ -94,7 +94,7 @@
 			console.error(error);
 		} else {
 			activeGame!.decks = activeGame!.decks.filter((x) => x.name !== component.name);
-			await goto(resolve('/games'));
+			await goto(resolve(`/games/${projectName}`));
 		}
 	}
 
