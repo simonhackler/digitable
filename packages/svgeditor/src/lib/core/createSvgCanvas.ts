@@ -185,8 +185,8 @@ export const createSvgCanvas = ({
 		container.querySelector('#svgcanvas') || canvasContainer || container;
 
 	const gridState = {
-		show: Boolean((config as { showGrid?: boolean } | undefined)?.showGrid),
-		snapping: Boolean((config as { gridSnapping?: boolean } | undefined)?.gridSnapping),
+		show: (config as { showGrid?: boolean } | undefined)?.showGrid ?? true,
+		snapping: (config as { gridSnapping?: boolean } | undefined)?.gridSnapping ?? true,
 		step: normalizeStep(
 			typeof (config as { snappingStep?: number } | undefined)?.snappingStep === 'number'
 				? (config as { snappingStep?: number }).snappingStep

@@ -79,8 +79,8 @@ class EditorController {
 	zoom = $state(1);
 	isReady = $state(false);
 	lastError = $state<EditorError | null>(null);
-	gridVisible = $state(false);
-	gridSnapping = $state(false);
+	gridVisible = $state(true);
+	gridSnapping = $state(true);
 	gridStep = $state(10);
 	gridColor = $state('#000000');
 	rulersVisible = $state(false);
