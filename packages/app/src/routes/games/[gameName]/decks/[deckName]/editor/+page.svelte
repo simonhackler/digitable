@@ -15,12 +15,52 @@
 		viewBox?: string;
 	};
 
+	const DEFAULT_TEXT_FONT_SIZE = 24;
+
 	const fileSystem = getFileSystemContext();
 	const game = $derived(page.params.gameName);
 	const deck = $derived(page.params.deckName);
 	const folder = $derived(`/${game}/system/${deck}`);
 	const layoutPath = $derived(resolve(`/games/${game}/decks/${deck}/layout`));
 	const dataPath = $derived(resolve(`/games/${game}/decks/${deck}/data`));
+
+	const roundTo = (value: number, precision = 2) => {
+		const factor = 10 ** precision;
+		return Math.round(value * factor) / factor;
+	};
+
+	const parseSvgDimension = (value: string | undefined): number | null => {
+		if (!value) return null;
+		const parsed = Number.parseFloat(value);
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+	};
+
+	const getSvgCanvasSize = (meta: SvgMeta | undefined) => {
+		if (!meta) return null;
+		if (meta.viewBox) {
+			const parts = meta.viewBox.split(/[ ,]+/).map((part) => Number(part));
+			const width = parts[2];
+			const height = parts[3];
+			if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+				return { width, height };
+			}
+		}
+
+		const width = parseSvgDimension(meta.width);
+		const height = parseSvgDimension(meta.height);
+		if (width && height) {
+			return { width, height };
+		}
+
+		return null;
+	};
+
+	const getDefaultTextFontSize = (meta: SvgMeta | undefined) => {
+		const size = getSvgCanvasSize(meta);
+		if (!size) return DEFAULT_TEXT_FONT_SIZE;
+		const scaled = Math.sqrt(size.width * size.height) / 9;
+		return roundTo(Math.min(DEFAULT_TEXT_FONT_SIZE, Math.max(1, scaled)));
+	};
 
 	const getSvgMeta = (value: string | null | undefined): SvgMeta => {
 		if (!value) return {};
@@ -51,15 +91,6 @@
 			}
 		}
 		return new XMLSerializer().serializeToString(doc);
-	};
-
-	const config = {
-		imgPath: '/svgedit/images/',
-		initFill: { color: 'FFFFFF', opacity: 1 },
-		initStroke: { color: '000000', opacity: 1, width: 1 },
-		text: { stroke_width: 0, font_size: 24, font_family: 'serif' },
-		initOpacity: 1,
-		baseUnit: 'px'
 	};
 
 	async function loadSvgs(path: string) {
@@ -94,6 +125,19 @@
 	let side = $state<Side>('front');
 
 	const svg = $derived(side === 'front' ? front : back);
+	const activeMeta = $derived(side === 'front' ? meta.front : meta.back);
+	const config = $derived.by(() => ({
+		imgPath: '/svgedit/images/',
+		initFill: { color: 'FFFFFF', opacity: 1 },
+		initStroke: { color: '000000', opacity: 1, width: 1 },
+		text: {
+			stroke_width: 0,
+			font_size: getDefaultTextFontSize(activeMeta),
+			font_family: 'serif'
+		},
+		initOpacity: 1,
+		baseUnit: 'px'
+	}));
 
 	const saveSvg = async (nextSide: Side, value: string) => {
 		if (!value) return;

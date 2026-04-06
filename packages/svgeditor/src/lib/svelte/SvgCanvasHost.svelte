@@ -281,6 +281,7 @@
 			</div>
 		</div>
 		<div
+			id="workarea"
 			class="svgcanvas-workarea"
 			bind:this={workarea}
 			role="region"
@@ -383,6 +384,7 @@
 		height: 100%;
 		background: var(--workarea-bg, #1f2a37);
 		overflow: auto;
+		text-align: center;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
 		position: relative;
@@ -396,6 +398,9 @@
 	.svgcanvas-canvas {
 		position: relative;
 		display: inline-block;
+		line-height: normal;
+		text-align: center;
+		vertical-align: middle;
 	}
 
 	.svgcanvas-text-input {
@@ -432,6 +437,10 @@
 	}
 
 	:global(#svgroot) {
+		user-select: none;
+		position: absolute;
+		top: 0;
+		left: 0;
 		overflow: hidden;
 	}
 </style>

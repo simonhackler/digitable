@@ -28,6 +28,7 @@ export type EditorMode =
 	| 'ellipse'
 	| 'line'
 	| 'text'
+	| 'textmultiline'
 	| 'path'
 	| 'fhpath'
 	| 'image'

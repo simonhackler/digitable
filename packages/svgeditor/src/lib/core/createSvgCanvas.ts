@@ -62,6 +62,12 @@ type SvgCanvasLike = {
 		setMultilineInputElem?: (elem: HTMLTextAreaElement) => void;
 		setCursor?: (index?: number) => void;
 	};
+	selectorManager?: {
+		requestSelector?: (elem: Element) => {
+			resize?: () => void;
+			showGrips?: (show: boolean) => void;
+		};
+	};
 	setTextContent?: (text: string) => void;
 	contentW?: number;
 	contentH?: number;
@@ -902,7 +908,17 @@ export const createSvgCanvas = ({
 			return canvas.getSvgString();
 		},
 		setMode(mode) {
-			canvas.setMode(mode);
+			const nextMode = mode === 'text' && canvas.useMultilineText ? 'textmultiline' : mode;
+			canvas.setMode(nextMode);
+
+			if (nextMode !== 'textmultiline') return;
+
+			const selected = canvas.getSelectedElements?.()?.[0];
+			if (selected?.tagName !== 'text') return;
+
+			const selector = canvas.selectorManager?.requestSelector?.(selected);
+			selector?.resize?.();
+			selector?.showGrips?.(true);
 		},
 		getMode() {
 			return canvas.getMode() as EditorMode;
