@@ -260,6 +260,7 @@
 									</DropdownMenu.Trigger>
 									<DropdownMenu.Content class="w-24 rounded-lg">
 										{@const path = `/games/${activeGame!.name}/decks/${deck.name}`}
+										{/* @ts-expect-error paths*/ null}
 										<DropdownMenu.Item
 											onSelect={() => goto(resolve(`${path}/editor`))}
 											class="flex w-full justify-start gap-2"
@@ -267,6 +268,7 @@
 											<Pencil />
 											<span>Editor</span>
 										</DropdownMenu.Item>
+										{/* @ts-expect-error paths*/ null}
 										<DropdownMenu.Item
 											onSelect={() => goto(resolve(`${path}/data`))}
 											class="flex w-full justify-start gap-2"
