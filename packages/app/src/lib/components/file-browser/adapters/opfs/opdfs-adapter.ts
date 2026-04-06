@@ -122,7 +122,7 @@ export class OPFSAdapter implements Adapter {
 			for (const path of paths) {
 				const { parent, name } = this._splitPath(path);
 				const dir = parent ? await this._getDirectoryHandle(parent) : this.root;
-				await dir.removeEntry(name);
+				await dir.removeEntry(name, { recursive: true });
 			}
 			return null;
 		} catch (error) {

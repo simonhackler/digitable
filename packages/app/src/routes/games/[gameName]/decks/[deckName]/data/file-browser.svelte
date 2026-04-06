@@ -1,25 +1,29 @@
 <script lang="ts">
 	import AdapterFileBrowser from '$lib/components/file-browser/browser-ui/adapter-file-browser.svelte';
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
+	import {
+		loadFolderHandle,
+		loadStoragePreference,
+		saveFolderHandle
+	} from '$lib/components/file-browser/adapters/opfs/storage-preference';
 	import { onMount } from 'svelte';
-	import { get, set } from 'idb-keyval';
-	import { assert } from '$lib/utils/assert';
 
 	const homePath = '';
 
-	let opfsAdapter: OPFSAdapter;
+	let opfsAdapter: OPFSAdapter | null = $state(null);
 
 	async function pickFolder() {
 		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-		await saveFolder(folderHandle);
+		await saveFolderHandle(folderHandle);
 		opfsAdapter = new OPFSAdapter(folderHandle);
 	}
 
-	let dirPicker = false;
+	let dirPicker = $state(false);
 
 	onMount(async () => {
 		dirPicker = 'showDirectoryPicker' in window;
-		if (!dirPicker) {
+		const storagePreference = await loadStoragePreference();
+		if (!dirPicker || storagePreference === 'opfs') {
 			opfsAdapter = await OPFSAdapter.create();
 		} else {
 			const dirHandle = await initDirectory();
@@ -37,25 +41,18 @@
 		return false;
 	}
 
-	async function saveFolder(handle: FileSystemDirectoryHandle) {
-		await set('saved-folder', handle);
-	}
-
 	async function loadFolder() {
-		const folder = await get('saved-folder');
-		if (folder) {
-			return folder as FileSystemDirectoryHandle;
-		} else {
-			return null;
-		}
+		return loadFolderHandle();
 	}
 
 	async function initDirectory() {
-		let dirHandle = await loadFolder();
-		assert(dirHandle != null, 'No saved directory handle found.');
+		const dirHandle = await loadFolder();
+		if (!dirHandle) {
+			return null;
+		}
 		const ok = await verifyPermission(dirHandle, true);
 		if (!ok) {
-			throw new Error('Access to the directory was denied.');
+			return null;
 		}
 		return dirHandle;
 	}

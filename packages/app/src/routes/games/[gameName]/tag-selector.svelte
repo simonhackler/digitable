@@ -114,7 +114,6 @@
 
 		{#if selectedTags.length > 0}
 			<div class="space-y-2">
-				<div class="text-muted-foreground text-xs">Selected:</div>
 				<div class="flex flex-wrap gap-2">
 					{#each selectedTags as tag (tag)}
 						<Badge variant="secondary" class="flex items-center gap-1">

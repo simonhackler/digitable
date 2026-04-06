@@ -2,10 +2,13 @@ import { expect, test } from '@playwright/test';
 import * as path from 'node:path';
 import { fullOpfsSeed } from './helpers/opfs';
 
-test('create new game', async ({ page }) => {
+test.describe.configure({ mode: 'parallel' });
+
+test('create new game and delete it', async ({ page }) => {
 	const here = path.dirname(test.info().file); // absolute dir of THIS test file
 	const projectsDir = path.resolve(here, '../projects');
 	const gameName = 'Create Game Test';
+	const gameDescription = 'A quick test game description that is long enough for validation.';
 
 	await page.goto('/games');
 	await fullOpfsSeed(page, projectsDir);
@@ -22,16 +25,27 @@ test('create new game', async ({ page }) => {
 	await expect(page.getByText('Create New Board Game')).toBeVisible();
 	await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(gameName);
 
-	await page
-		.getByRole('textbox', { name: 'Game Description' })
-		.fill('A quick test game description that is long enough for validation.');
+	await page.getByRole('textbox', { name: 'Game Description' }).fill(gameDescription);
 	await page.getByRole('button', { name: 'Fantasy', exact: true }).click();
 	await page.getByRole('main').getByRole('button', { name: 'Create', exact: true }).click();
 
 	await expect(page.getByText('Game created successfully!')).toBeVisible();
+	await page.reload();
+	await expect(page).toHaveURL(/\/games\/Create_Game_Test/);
+	await expect(page.getByText('Edit Board Game')).toBeVisible();
+	await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(gameName);
+	await expect(page.getByRole('textbox', { name: 'Game Description' })).toHaveValue(
+		gameDescription
+	);
+	await expect(page.getByRole('button', { name: 'Fantasy', exact: true })).toBeDisabled();
+	await page.getByRole('button', { name: 'Delete' }).click();
+	await page.getByRole('textbox', { name: 'Enter "Create Game Test" to' }).fill(gameName);
+	await page.getByRole('button', { name: 'Delete' }).nth(1).click();
+	await expect(page).toHaveURL(/\/games$/);
+	await page.waitForTimeout(1000);
 });
 
-test('create new deck', async ({ page }) => {
+test('create new deck and delete it', async ({ page }) => {
 	const here = path.dirname(test.info().file); // absolute dir of THIS test file
 	const projectsDir = path.resolve(here, '../projects');
 	const deckName = 'e2e_deck';
@@ -51,4 +65,12 @@ test('create new deck', async ({ page }) => {
 
 	await expect(page).toHaveURL(new RegExp(`/games/western-cards/decks/${deckName}/data`));
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
+	await page.reload();
+	await expect(page).toHaveURL(new RegExp(`/games/western-cards/decks/${deckName}/data`));
+	await page.getByRole('button', { name: 'Decks' }).click();
+	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
+	await page.locator('#bits-c23').click();
+	await page.getByRole('menuitem', { name: 'Delete' }).click();
+	await expect(page.getByRole('link', { name: deckName, exact: true })).not.toBeVisible();
+	await expect(page).toHaveURL(new RegExp(`/games/western-cards$`));
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ConfirmDeleteDialog, confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button';
@@ -7,13 +8,16 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import TagSelector from './tag-selector.svelte';
 	import { createGameSchema, type CreateGameForm } from '../schemas.js';
-	import { getFileSystemContext } from '../context.js';
+	import { getFileSystemContext, getGamesContext } from '../context.js';
 	import { Upload, Image } from '@lucide/svelte';
 	import { CircleCheck } from '@lucide/svelte';
 	import { requireParam } from '$lib/utils/assert';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	const fileSystem = getFileSystemContext();
+	const games = getGamesContext();
 	const gameNameParsed = $derived(requireParam('gameName'));
 	const gameName = $derived(page.url.searchParams.get('gameName') ?? '');
 
@@ -154,6 +158,20 @@
 			input.value = '';
 		}
 	}
+
+	async function deleteGame() {
+		const error = await fileSystem.delete([`/${gameNameParsed}`]);
+		if (error) {
+			console.error('Failed to delete game:', error);
+			return;
+		}
+
+		if (games.existingGames) {
+			games.existingGames = games.existingGames.filter((game) => game.name !== gameNameParsed);
+		}
+
+		await goto(resolve('/games'));
+	}
 </script>
 
 <div class="mx-auto max-w-4xl p-6">
@@ -162,6 +180,28 @@
 			<Card.Title class="text-center text-2xl font-bold">
 				{isEditMode ? 'Edit Board Game' : 'Create New Board Game'}
 			</Card.Title>
+			{#if isEditMode}
+				<ConfirmDeleteDialog />
+
+				<div class="flex items-center justify-center">
+					<Button
+						variant="destructive"
+						size="lg"
+						onclick={() => {
+							confirmDelete({
+								title: 'Delete',
+								description: 'Are you sure you want to delete this item?',
+								input: {
+									confirmationText: gameName
+								},
+								onConfirm: deleteGame
+							});
+						}}
+					>
+						Delete
+					</Button>
+				</div>
+			{/if}
 			<hr class="border-t border-gray-300" />
 		</Card.Header>
 		<Card.Content>
