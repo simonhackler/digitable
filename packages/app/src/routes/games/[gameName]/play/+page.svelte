@@ -502,6 +502,7 @@
 			const newItem = boardGameItems.get(id);
 			assert(newItem, 'item is empty');
 			newItem.visible = true;
+			newItem.renderable = true;
 			item = newItem;
 			console.log(`drawing stack item id ${newItem.id}`);
 		}

@@ -30,14 +30,18 @@ export interface InitComponentDependencies {
 
 async function buildStack(app: Application, topItem: BoardGameItemNew) {
 	topItem.visible = true;
-	topItem.position.set(-9999, -9999);
+	topItem.renderable = true;
+	// TODO full on refactor that reuses textures.
+	// topItem.position.set(-9999, -9999);
 	// This has to be more robust
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
+	// await new Promise(requestAnimationFrame);
+	// await new Promise(requestAnimationFrame);
+	// await new Promise(requestAnimationFrame);
+	// await new Promise(requestAnimationFrame);
+	// await new Promise(requestAnimationFrame);
+	app.renderer.layout.update(topItem);
 	const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
+	console.log('texs: ', tex.width, tex.height);
 	topItem.visible = false;
 
 	const topSprite = new Sprite(tex);
@@ -99,10 +103,12 @@ export async function initComponent(
 		await new Promise(requestAnimationFrame);
 
 		for (const item of stacks) {
-			item.visible = false;
+			// item.visible = false;
+			item.renderable = false;
 		}
 
 		function rebuild() {
+			console.log('rebuilding');
 			stackContainer.removeChildren();
 			const flippable = state.flippable.get(component.id);
 			const index = !flippable || flippable.isFaceUp ? 0 : stacks.length - 1;
@@ -126,6 +132,7 @@ export async function initComponent(
 			rebuild();
 			frontendFlip = new ClientFlippable(sharedClientValues, flippable);
 			frontendFlip.onFlipped.subscribe((_flippable) => {
+				console.log('flipped');
 				rebuild();
 			});
 		}
