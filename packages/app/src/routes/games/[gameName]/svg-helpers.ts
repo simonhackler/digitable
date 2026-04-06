@@ -3,9 +3,42 @@ import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import type { ColumnWithData } from './types';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const SVG_TEXT_STYLE_ATTRS = [
+	'font-family',
+	'font-size',
+	'font-weight',
+	'font-style',
+	'text-align',
+	'text-decoration',
+	'letter-spacing',
+	'line-height',
+	'text-transform',
+	'fill'
+] as const;
 
 const getTextColumnValue = (text: SVGTextElement) =>
 	text.getAttribute('data-svgedit-raw-text') ?? text.textContent ?? '';
+
+const normalizeCssLength = (value: string) => {
+	const trimmed = value.trim();
+	if (!trimmed) return '';
+	return /^-?\d*\.?\d+$/.test(trimmed) ? `${trimmed}px` : trimmed;
+};
+
+const applyTextStyle = (target: HTMLElement, property: string, value: string | null | undefined) => {
+	if (!value) return;
+	const trimmed = value.trim();
+	if (!trimmed || trimmed === 'normal' || trimmed === 'none') return;
+	if (property === 'fill') {
+		target.style.color = trimmed;
+		return;
+	}
+	if (property === 'font-size' || property === 'letter-spacing' || property === 'line-height') {
+		target.style.setProperty(property, normalizeCssLength(trimmed));
+		return;
+	}
+	target.style.setProperty(property, trimmed);
+};
 
 const getShapeInsideRef = (text: SVGTextElement) => {
 	const explicit = text.getAttribute('data-svgedit-shape-inside-ref');
@@ -47,9 +80,7 @@ const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => {
 	const hasWrapBox = x && rawY && wrapWidth && wrapHeight;
 	if (hasWrapBox) {
 		const y =
-			Number.isFinite(fontSize) && fontSize > 0
-				? String(Number.parseFloat(rawY) - fontSize)
-				: rawY;
+			Number.isFinite(fontSize) && fontSize > 0 ? String(Number.parseFloat(rawY) - fontSize) : rawY;
 		return {
 			x,
 			y,
@@ -185,33 +216,19 @@ export function initialSetupForSvgItem(
 	div.style.height = '100%';
 	div.style.overflow = 'hidden';
 	div.style.whiteSpace = 'pre-wrap';
+	div.style.boxSizing = 'border-box';
+
+	for (const attr of SVG_TEXT_STYLE_ATTRS) {
+		applyTextStyle(div, attr, text.getAttribute(attr));
+	}
 
 	// Copy styles from the original SVG text element
 	const computedStyle = window.getComputedStyle(text);
-	const stylesToCopy = [
-		'font-family',
-		'font-size',
-		'font-weight',
-		'font-style',
-		'color',
-		'fill',
-		'text-align',
-		'text-decoration',
-		'letter-spacing',
-		'line-height',
-		'text-transform'
-	];
+	const stylesToCopy = [...SVG_TEXT_STYLE_ATTRS, 'color'];
 
 	stylesToCopy.forEach((prop) => {
 		const value = computedStyle.getPropertyValue(prop);
-		if (value && value !== 'normal' && value !== 'none') {
-			// Convert SVG 'fill' to CSS 'color' for HTML text
-			if (prop === 'fill') {
-				div.style.color = value;
-			} else {
-				div.style.setProperty(prop, value);
-			}
-		}
+		applyTextStyle(div, prop, value);
 	});
 
 	// Also copy any inline style attribute
@@ -222,11 +239,7 @@ export function initialSetupForSvgItem(
 		styleDeclarations.forEach((declaration) => {
 			const [prop, value] = declaration.split(':').map((s) => s.trim());
 			if (prop && value && stylesToCopy.includes(prop)) {
-				if (prop === 'fill') {
-					div.style.color = value;
-				} else {
-					div.style.setProperty(prop, value);
-				}
+				applyTextStyle(div, prop, value);
 			}
 		});
 	}
