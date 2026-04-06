@@ -1,40 +1,53 @@
 <script lang="ts">
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
+	import {
+		loadFolderHandle,
+		loadStoragePreference,
+		saveFolderHandle,
+		saveOpfsPreference
+	} from '$lib/components/file-browser/adapters/opfs/storage-preference';
 	import { onMount } from 'svelte';
-	import { get, set } from 'idb-keyval';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button';
 
 	let { onSetOpfsAdapter }: { onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } = $props();
 
 	let opfsAdapter: OPFSAdapter | null = $state(null);
-	$effect(() => {
-		if (opfsAdapter) {
-			onSetOpfsAdapter(opfsAdapter);
-		}
-	});
-	let permissions = $state(false);
-	let dirPicker = $state(false);
+	let dirPicker: boolean | null = $state(null);
+
+	function applyAdapter(adapter: OPFSAdapter) {
+		opfsAdapter = adapter;
+		onSetOpfsAdapter(adapter);
+	}
 
 	async function pickFolder() {
 		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
-		await saveFolder(folderHandle);
-		opfsAdapter = new OPFSAdapter(folderHandle);
+		await saveFolderHandle(folderHandle);
+		applyAdapter(new OPFSAdapter(folderHandle));
 	}
 
 	async function useOpfs() {
-		opfsAdapter = await OPFSAdapter.create();
+		await saveOpfsPreference();
+		applyAdapter(await OPFSAdapter.create());
 	}
 
 	onMount(async () => {
 		dirPicker = 'showDirectoryPicker' in window;
-		if (dirPicker) {
-			const dirHandle = await loadFolder();
-			if (dirHandle) {
-				permissions = await verifyPermission(dirHandle);
-				if (permissions) {
-					opfsAdapter = new OPFSAdapter(dirHandle);
-				}
+		if (!dirPicker) {
+			applyAdapter(await OPFSAdapter.create());
+			return;
+		}
+
+		const storagePreference = await loadStoragePreference();
+		if (storagePreference === 'opfs') {
+			applyAdapter(await OPFSAdapter.create());
+			return;
+		}
+
+		const dirHandle = await loadFolderHandle();
+		if (dirHandle) {
+			if (await verifyPermission(dirHandle)) {
+				applyAdapter(new OPFSAdapter(dirHandle));
 			}
 		}
 	});
@@ -45,19 +58,6 @@
 			return true;
 		}
 		return false;
-	}
-
-	async function saveFolder(handle: FileSystemDirectoryHandle) {
-		await set('saved-folder', handle);
-	}
-
-	async function loadFolder() {
-		const folder = await get('saved-folder');
-		if (folder) {
-			return folder as FileSystemDirectoryHandle;
-		} else {
-			return null;
-		}
 	}
 </script>
 
@@ -75,7 +75,7 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 
-	{#if dirPicker && !opfsAdapter}
+	{#if dirPicker === true && !opfsAdapter}
 		<div class="flex w-full flex-col items-center justify-center gap-4">
 			<p>Get started by picking a folder to store your projects</p>
 			<div class="flex flex-row gap-2">
@@ -83,7 +83,7 @@
 				<Button onclick={() => pickFolder()}>Pick folder</Button>
 			</div>
 		</div>
-	{:else if dirPicker}
+	{:else if dirPicker === false && !opfsAdapter}
 		<div class="flex flex-col items-center gap-2">
 			<p>Your browser does not support picking a local folder</p>
 			<p>Use Chrome if you want to use a local folder</p>

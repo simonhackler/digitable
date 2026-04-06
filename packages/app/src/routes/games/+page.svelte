@@ -2,16 +2,13 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import { getFileSystemContext, getGamesContext } from './context.js';
+	import { getGamesContext } from './context.js';
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
 	import { Plus, FolderOpen } from '@lucide/svelte';
-	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import { resolve } from '$app/paths';
 	import CreateGamePopover from './create-game-popover.svelte';
 
 	const games = getGamesContext();
-	let loading = $state(true);
 
 	async function navigateToGame(gameName: string) {
 		await goto(resolve(`/games/${gameName}`));

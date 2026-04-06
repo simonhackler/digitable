@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { get, set } from 'idb-keyval';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import { saveFolderHandle } from '$lib/components/file-browser/adapters/opfs/storage-preference';
 	import CreateMenu from './create-menu.svelte';
 	import ExportMenu from './export-menu.svelte';
 	import ProjectSwitcher from './project-switcher.svelte';
@@ -28,7 +28,7 @@
 
 	async function pickFolder() {
 		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
-		await set('saved-folder', folderHandle);
+		await saveFolderHandle(folderHandle);
 		const opfsAdapter = new OPFSAdapter(folderHandle);
 		onSetOpfsAdapter(opfsAdapter);
 	}

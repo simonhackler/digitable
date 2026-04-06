@@ -74,19 +74,19 @@ export interface FaceState<T> {
 	possibleValues: T[];
 }
 
-export class FaceStateImpl extends Schema implements FaceState<'up' | 'down'> {
-	@type('number') currentIndex: number;
-	@type(['string']) possibleValues: ArraySchema<'up' | 'down'> = new ArraySchema<'up' | 'down'>([
-		'up',
-		'down'
-	]);
-
-	constructor(startIndex: number) {
-		super();
-		this.currentIndex = startIndex;
-	}
-}
-
+// export class FaceStateImpl extends Schema implements FaceState<'up' | 'down'> {
+// 	@type('number') currentIndex: number;
+// 	@type(['string']) possibleValues: ArraySchema<'up' | 'down'> = new ArraySchema<'up' | 'down'>([
+// 		'up',
+// 		'down'
+// 	]);
+//
+// 	constructor(startIndex: number) {
+// 		super();
+// 		this.currentIndex = startIndex;
+// 	}
+// }
+//
 export class Stack extends Schema {
 	@type(['string']) componentIds: ArraySchema<string>;
 
