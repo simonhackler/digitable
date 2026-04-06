@@ -2,6 +2,65 @@ import { assert } from '$lib/utils/assert';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import type { ColumnWithData } from './types';
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+const getTextColumnValue = (text: SVGTextElement) =>
+	text.getAttribute('data-svgedit-raw-text') ?? text.textContent ?? '';
+
+const getShapeInsideRef = (text: SVGTextElement) => {
+	const explicit = text.getAttribute('data-svgedit-shape-inside-ref');
+	if (explicit) {
+		const normalized = explicit.trim();
+		if (normalized.startsWith('#')) return normalized.slice(1);
+		const explicitMatch = /url\(\s*#([^)]+)\)/i.exec(normalized);
+		if (explicitMatch) return explicitMatch[1];
+		return normalized;
+	}
+
+	const styleAttr = text.getAttribute('style') ?? '';
+	const styleMatch = /shape-inside\s*:\s*url\(\s*#([^)]+)\)/i.exec(styleAttr);
+	return styleMatch?.[1] ?? null;
+};
+
+const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => {
+	const shapeId = getShapeInsideRef(text);
+	if (shapeId) {
+		const shapeEl = svg.getElementById(shapeId) as SVGGraphicsElement | null;
+		if (shapeEl) {
+			const x = shapeEl.getAttribute('x');
+			const y = shapeEl.getAttribute('y');
+			const width = shapeEl.getAttribute('width');
+			const height = shapeEl.getAttribute('height');
+			if (x && y && width && height) {
+				return { x, y, width, height };
+			}
+		} else {
+			console.warn(`shape-inside target #${shapeId} not found; falling back to text metadata`);
+		}
+	}
+
+	const x = text.getAttribute('x');
+	const wrapWidth = text.getAttribute('data-svgedit-wrap-width');
+	const wrapHeight = text.getAttribute('data-svgedit-wrap-height');
+	const rawY = text.getAttribute('y');
+	const fontSize = Number.parseFloat(text.getAttribute('font-size') ?? '');
+	const hasWrapBox = x && rawY && wrapWidth && wrapHeight;
+	if (hasWrapBox) {
+		const y =
+			Number.isFinite(fontSize) && fontSize > 0
+				? String(Number.parseFloat(rawY) - fontSize)
+				: rawY;
+		return {
+			x,
+			y,
+			width: wrapWidth,
+			height: wrapHeight
+		};
+	}
+
+	return null;
+};
+
 export function loadSvgTemplate(svgText: string) {
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -28,7 +87,7 @@ export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
 		return {
 			title: t.id,
 			type: 'text',
-			data: [t.textContent || '']
+			data: [getTextColumnValue(t)]
 		} as ColumnWithData;
 	});
 	const imageColumns = images.map((im) => {
@@ -90,46 +149,35 @@ export function initialSetupForSvgItem(
 	}
 	if (el.tagName !== 'text') return null;
 
-	const styleAttr = el.getAttribute('style') ?? '';
-	const shapeMatch = /shape-inside\s*:\s*url\(\s*#([^)]+)\)/i.exec(styleAttr);
-
-	let x = el.getAttribute('x');
-	let y = el.getAttribute('y');
-	let width = el.getAttribute('width');
-	let height = el.getAttribute('height');
-
-	if (shapeMatch) {
-		const shapeId = shapeMatch[1];
-		const shapeEl = svg.getElementById(shapeId) as SVGGraphicsElement | null;
-		if (shapeEl) {
-			x = shapeEl.getAttribute('x');
-			y = shapeEl.getAttribute('y');
-			width = shapeEl.getAttribute('width');
-			height = shapeEl.getAttribute('height');
-		} else {
-			console.warn(`shape-inside target #${shapeId} not found; using glyph bbox`);
-		}
-	}
+	const text = el as SVGTextElement;
+	const frameBounds = getTextFrameBounds(svg, text);
+	let x = frameBounds?.x ?? text.getAttribute('x');
+	let y = frameBounds?.y ?? text.getAttribute('y');
+	let width = frameBounds?.width ?? text.getAttribute('width');
+	let height = frameBounds?.height ?? text.getAttribute('height');
 
 	if (width === null || height === null) {
-		const bbox = el.getBBox();
+		const bbox = text.getBBox();
 		width = bbox.width.toString();
 		height = bbox.height.toString();
 	}
 
-	const fo = document.createElementNS(svg.namespaceURI, 'foreignObject') as SVGForeignObjectElement;
 	if (!x || !y) {
 		throw new Error(`Element ${elementId} is missing x or y attributes`);
 	}
+	const fo = document.createElementNS(
+		svg.namespaceURI || SVG_NS,
+		'foreignObject'
+	) as SVGForeignObjectElement;
 	fo.setAttribute('x', x.toString());
 	fo.setAttribute('y', y.toString());
 	fo.setAttribute('width', width.toString());
 	fo.setAttribute('height', height.toString());
 	fo.id = elementId;
-	const transform = el.getAttribute('transform');
+	const transform = text.getAttribute('transform');
 	if (transform) fo.setAttribute('transform', transform);
-	el.parentNode!.appendChild(fo);
-	el.parentNode!.removeChild(el);
+	text.parentNode!.appendChild(fo);
+	text.parentNode!.removeChild(text);
 
 	const div = document.createElement('div');
 	div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
@@ -139,7 +187,7 @@ export function initialSetupForSvgItem(
 	div.style.whiteSpace = 'pre-wrap';
 
 	// Copy styles from the original SVG text element
-	const computedStyle = window.getComputedStyle(el);
+	const computedStyle = window.getComputedStyle(text);
 	const stylesToCopy = [
 		'font-family',
 		'font-size',
@@ -167,7 +215,7 @@ export function initialSetupForSvgItem(
 	});
 
 	// Also copy any inline style attribute
-	const inlineStyle = el.getAttribute('style');
+	const inlineStyle = text.getAttribute('style');
 	if (inlineStyle) {
 		// Parse and apply relevant inline styles
 		const styleDeclarations = inlineStyle.split(';').filter(Boolean);
