@@ -2,7 +2,6 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ReferenceEditor } from '@svg-table/svgeditor';
-	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { useDebounce } from 'runed';
@@ -166,26 +165,15 @@
 </script>
 
 <main class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-	<div class="flex flex-col gap-4">
-		<div class="flex flex-col gap-2">
-			<h1 class="text-2xl font-semibold tracking-tight">Deck SVG editor</h1>
-			<div class="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-				<span>Assets:</span>
-				<Badge variant="outline">/svgedit/images</Badge>
-				<Badge variant="outline">{game}</Badge>
-				<Badge variant="outline">{deck}</Badge>
-			</div>
-		</div>
-		<div class="flex flex-wrap items-center gap-2">
-			<Button variant={side === 'front' ? 'default' : 'outline'} onclick={() => (side = 'front')}>
-				Front
-			</Button>
-			<Button variant={side === 'back' ? 'default' : 'outline'} onclick={() => (side = 'back')}>
-				Back
-			</Button>
-			<Button variant="ghost" href={layoutPath}>Layout</Button>
-			<Button variant="ghost" href={dataPath}>Data</Button>
-		</div>
+	<div class="flex flex-wrap items-center gap-2">
+		<Button variant={side === 'front' ? 'default' : 'outline'} onclick={() => (side = 'front')}>
+			Front
+		</Button>
+		<Button variant={side === 'back' ? 'default' : 'outline'} onclick={() => (side = 'back')}>
+			Back
+		</Button>
+		<Button variant="ghost" href={layoutPath}>Layout</Button>
+		<Button variant="ghost" href={dataPath}>Data</Button>
 	</div>
 
 	{#if svg}

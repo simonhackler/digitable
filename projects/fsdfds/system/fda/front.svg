@@ -1,19 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+ <!-- Created with SVG-edit - https://github.com/SVG-Edit/svgedit-->
  <g class="layer">
   <title>Layer 1</title>
-  <image height="88px" href="/placeholder.svg" id="background" width="63px"/>
-  <text data-svgedit-multiline="true" data-svgedit-raw-text="fsdff" data-svgedit-shape-inside-ref="#svg_1" data-svgedit-text-overflow="false" data-svgedit-wrap-height="57.06" data-svgedit-wrap-width="28.66" fill="#000000" font-family="serif" font-size="8" id="svg_2" stroke="#000000" stroke-width="0" text-anchor="start" transform="matrix(1 0 0 1 -12.7156 -35.1193)" x="19.69" xml:space="preserve" y="48.22">
-   <tspan id="svg_4" x="19.69" y="48.22">fsdff</tspan>
-  </text>
-  <text data-svgedit-multiline="true" data-svgedit-raw-text="fsdfasfd fdasfdsa" data-svgedit-shape-inside-ref="#svg_5" data-svgedit-text-overflow="false" data-svgedit-wrap-height="42.79" data-svgedit-wrap-width="44.81" fill="#000000" font-family="serif" font-size="8.27" id="svg_6" stroke="#000000" stroke-width="0" text-anchor="start" x="9.4" xml:space="preserve" y="38.75">
-   <tspan x="9.4" y="38.75">fsdfasfd</tspan>
-   <tspan x="9.4" y="48.67">fdasfdsa</tspan>
-  </text>
  </g>
- <defs>
-  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="57.06" id="svg_1" opacity="0.5" width="28.66" x="19.69" y="40.22"/>
-  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="42.59" id="svg_3" opacity="0.5" width="18.97" x="3.95" y="0.81"/>
-  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="42.79" id="svg_5" opacity="0.5" pointer-events="none" visibility="hidden" width="44.81" x="9.4" y="30.48"/>
-  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_7" opacity="0.5" pointer-events="none" visibility="hidden" width="240" x="34.43" y="46.22"/>
- </defs>
 </svg>

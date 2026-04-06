@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { PressedKeys } from 'runed';
-	import { Badge } from '$svgeditor/components/ui/badge/index.js';
 	import { Card, CardContent } from '$svgeditor/components/ui/card/index.js';
 	import type { ChangeEvent, ReadyEvent, SvgCanvasConfig, SvgEditorApi } from '../core/types';
 	import { createEditorController } from '../svelte/createEditorController.svelte.ts';
@@ -312,22 +311,6 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="flex flex-col gap-4">
-	<div class="bg-card flex flex-col gap-3 rounded-xl border p-4 shadow-sm">
-		<div class="flex flex-wrap items-start justify-between gap-4">
-			<div>
-				<h2 class="text-lg font-semibold">SVG Editor</h2>
-				<p class="text-muted-foreground text-sm">
-					Reference interface for SvgCanvas-based workflows.
-				</p>
-			</div>
-			<div class="flex flex-wrap items-center gap-2">
-				<Badge variant="secondary">Mode: {modeLabel}</Badge>
-				<Badge variant="outline">Selection: {selectionCount}</Badge>
-				<Badge variant="outline">Zoom: {zoomPercent}%</Badge>
-			</div>
-		</div>
-	</div>
-
 	<div class="grid gap-4 lg:grid-cols-[88px_minmax(0,1fr)_260px]">
 		<Card class="h-fit overflow-hidden">
 			<CardContent class="p-2">
