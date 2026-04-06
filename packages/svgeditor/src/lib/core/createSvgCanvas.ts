@@ -51,6 +51,17 @@ type SvgCanvasLike = {
 	undoMgr?: {
 		undo?: () => void;
 		redo?: () => void;
+		addCommandToHistory?: (command: {
+			apply: (handler?: {
+				handleHistoryEvent?: (eventType: string, command: unknown) => void;
+			}) => void;
+			unapply: (handler?: {
+				handleHistoryEvent?: (eventType: string, command: unknown) => void;
+			}) => void;
+			elements: () => Element[];
+			getText: () => string;
+			type: () => string;
+		}) => void;
 		resetUndoStack?: () => void;
 		getUndoStackSize?: () => number;
 		getRedoStackSize?: () => number;
@@ -129,6 +140,9 @@ const normalizeGridColor = (value: unknown) => {
 
 const normalizeStep = (value: number) =>
 	Number.isFinite(value) && value > 0 ? value : DEFAULT_GRID_STEP;
+
+const escapeXmlAttribute = (value: string) =>
+	value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 
 export const createSvgCanvas = ({
 	container,
@@ -754,6 +768,37 @@ export const createSvgCanvas = ({
 		}
 	};
 
+	const createBlankSvgFromCanvas = () => {
+		const svgContent = canvas.getSvgContent?.();
+		const width = svgContent?.getAttribute('width')?.trim() || '300';
+		const height = svgContent?.getAttribute('height')?.trim() || '150';
+		const viewBox =
+			svgContent?.getAttribute('viewBox')?.trim() || `0 0 ${width} ${height}`;
+		return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="${SVG_NS}" width="${escapeXmlAttribute(width)}" height="${escapeXmlAttribute(height)}" viewBox="${escapeXmlAttribute(viewBox)}"></svg>`;
+	};
+
+	const applySvgString = (
+		svg: string,
+		{ center = true, emitChange = false }: { center?: boolean; emitChange?: boolean } = {}
+	) => {
+		const loadOk = canvas.setSvgString(svg, true);
+		if (!loadOk) return false;
+		enableMultilineTextElements();
+		if (center) {
+			refreshLayout({ center: true });
+		}
+		if (gridState.show) {
+			updateGrid(canvas.getZoom() || 1);
+		}
+		if (rulerState.show) {
+			updateRulers(canvas.getZoom() || 1);
+		}
+		if (emitChange) {
+			canvas.call?.('changed', [canvas.getSvgContent?.()]);
+		}
+		return true;
+	};
+
 	const selectionHandler = () => {
 		const selected = canvas.getSelectedElements?.() ?? [];
 		onSelectionChange?.({
@@ -924,8 +969,43 @@ export const createSvgCanvas = ({
 			return canvas.getMode() as EditorMode;
 		},
 		clear() {
-			canvas.clear?.();
-			refreshLayout({ center: true });
+			const previousSvg = canvas.getSvgString();
+			const clearedSvg = createBlankSvgFromCanvas();
+
+			const command = {
+				text: 'Clear canvas',
+				getText() {
+					return this.text;
+				},
+				type() {
+					return 'ClearSvgCommand';
+				},
+				elements() {
+					const current = canvas.getSvgContent?.();
+					return current ? [current] : [];
+				},
+				apply(handler?: { handleHistoryEvent?: (eventType: string, command: unknown) => void }) {
+					handler?.handleHistoryEvent?.('before_apply', this);
+					applySvgString(clearedSvg, { center: true });
+					handler?.handleHistoryEvent?.('after_apply', this);
+				},
+				unapply(
+					handler?: { handleHistoryEvent?: (eventType: string, command: unknown) => void }
+				) {
+					handler?.handleHistoryEvent?.('before_unapply', this);
+					applySvgString(previousSvg, { center: true });
+					handler?.handleHistoryEvent?.('after_unapply', this);
+				}
+			};
+
+			const applied = applySvgString(clearedSvg, { center: true, emitChange: true });
+			if (!applied) {
+				canvas.clear?.();
+				refreshLayout({ center: true });
+				return;
+			}
+
+			canvas.undoMgr?.addCommandToHistory?.(command);
 		},
 		deleteSelection() {
 			canvas.deleteSelectedElements?.();

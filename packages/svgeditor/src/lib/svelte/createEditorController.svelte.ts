@@ -20,8 +20,26 @@ const isPositiveNumber = (value: unknown): value is number =>
 const normalizeDimension = (value: number, fallback: number) =>
 	isPositiveNumber(value) ? value : fallback;
 
+const escapeXmlAttribute = (value: string) =>
+	value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+
+const createBlankSvgDocument = ({
+	width,
+	height,
+	viewBox
+}: {
+	width: string;
+	height: string;
+	viewBox: string;
+}) =>
+	`<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${escapeXmlAttribute(width)}" height="${escapeXmlAttribute(height)}" viewBox="${escapeXmlAttribute(viewBox)}"></svg>`;
+
 const createBlankSvg = (width: number, height: number, unit: SvgUnit) =>
-	`<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${width}${unit}" height="${height}${unit}" viewBox="0 0 ${width} ${height}"></svg>`;
+	createBlankSvgDocument({
+		width: `${width}${unit}`,
+		height: `${height}${unit}`,
+		viewBox: `0 0 ${width} ${height}`
+	});
 
 const normalizeGridColor = (value: unknown) => {
 	if (typeof value !== 'string' || !value.trim()) return '#000000';
@@ -155,6 +173,9 @@ class EditorController {
 
 	clear = () => {
 		this.api?.clear();
+		this.selection = [];
+		this.multiselect = false;
+		this.selectedIds = [];
 		this.refreshElementTree();
 		this.refreshHistory();
 	};

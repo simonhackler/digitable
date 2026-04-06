@@ -1,6 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
- <!-- Created with SVG-edit - https://github.com/SVG-Edit/svgedit-->
  <g class="layer">
   <title>Layer 1</title>
+  <rect fill="#FFFFFF" height="24.42" id="svg_1" stroke="#000000" transform="matrix(0.583781 0 0 0.53594 19.5225 10.1832)" width="35.12" x="13.84" y="23.01"/>
+  <text data-svgedit-multiline="true" data-svgedit-raw-text="fdsfds fdasfa" data-svgedit-shape-inside-ref="#svg_2" data-svgedit-text-overflow="false" data-svgedit-wrap-height="28.73" data-svgedit-wrap-width="28.29" fill="#000000" font-family="serif" font-size="8.27" id="svg_3" stroke="#000000" stroke-width="0" text-anchor="start" x="12.89" xml:space="preserve" y="51.62">
+   <tspan id="svg_4" x="12.89" y="51.62">fdsfds</tspan>
+   <tspan id="svg_5" x="12.89" y="61.54">fdasfa</tspan>
+  </text>
+  <path d="m31.32,24.72l-15.9,-18.06c0.13,0.19 -2.67,12.46 -2.67,12.81c0,0.35 18.58,5.26 18.58,5.26z" fill="#FFFFFF" id="svg_10" stroke="#000000" transform="rotate(-19.312 22.0367 15.6911)"/>
  </g>
+ <defs>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="28.73" id="svg_2" opacity="0.5" width="28.29" x="12.89" y="43.35"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="122" id="svg_6" opacity="0.5" pointer-events="none" visibility="hidden" width="135" x="-34" y="-27"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="30.14" id="svg_8" opacity="0.5" pointer-events="none" visibility="hidden" width="24.89" x="9.94" y="9.3"/>
+ </defs>
 </svg>
