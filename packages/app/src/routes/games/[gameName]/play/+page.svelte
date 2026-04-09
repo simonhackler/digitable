@@ -431,6 +431,7 @@
 
 	async function createRoom(_init: boolean) {
 		const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
+        console.log("results are in: ", hybridResults);
 		const roomName = 'my_room';
 		const room = await client.joinOrCreate<BoardGameRoomState>(roomName);
 		let s = getStateCallbacks(room);

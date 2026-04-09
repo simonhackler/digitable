@@ -1,3 +1,4 @@
+import { toBlob } from 'html-to-image';
 import type { SchemaCallbackProxy } from '@colyseus/schema';
 import type { Room } from 'colyseus.js';
 import { Container, Sprite, type Application } from 'pixi.js';
