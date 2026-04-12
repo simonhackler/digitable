@@ -5,39 +5,6 @@ import '@pixi/layout';
 import { LayoutContainer } from '@pixi/layout/components';
 import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
-function createImagesOnlySvg(sourceSvg: SVGSVGElement): SVGSVGElement {
-	const NS = 'http://www.w3.org/2000/svg';
-	const XLINK_NS = 'http://www.w3.org/1999/xlink';
-	const newSvg = document.createElementNS(NS, 'svg');
-
-	newSvg.setAttribute('xmlns', NS);
-	newSvg.setAttribute('xmlns:xlink', XLINK_NS);
-
-	for (const attr of ['width', 'height', 'viewBox', 'preserveAspectRatio']) {
-		const value = sourceSvg.getAttribute(attr);
-		if (value) {
-			newSvg.setAttribute(attr, value);
-		}
-	}
-
-	for (const img of sourceSvg.querySelectorAll('image')) {
-		const href = img.getAttribute('href') || img.getAttribute('xlink:href') || '';
-		if (!href.trim()) {
-			continue;
-		}
-		newSvg.appendChild(img.cloneNode(true));
-	}
-
-	return newSvg;
-}
-
-function stripImagesFromSvg(svg: SVGSVGElement): SVGSVGElement {
-	const svgClone = svg.cloneNode(true) as SVGSVGElement;
-	const images = svgClone.querySelectorAll('image');
-	images.forEach((img) => img.remove());
-	return svgClone;
-}
-
 async function svgToTexture(svg: SVGSVGElement, cardIndex?: number) {
 	const svgClone = svg.cloneNode(true) as SVGSVGElement;
 	const svgData = new XMLSerializer().serializeToString(svgClone);
@@ -59,24 +26,14 @@ async function svgToTexture(svg: SVGSVGElement, cardIndex?: number) {
 }
 
 export async function createHybridContainer(svg: SVGSVGElement) {
-	const imagesOnlySvg = createImagesOnlySvg(svg);
-	const strippedSvg = stripImagesFromSvg(svg);
-	const svgTexture = await svgToTexture(strippedSvg);
-	let imageBackground: Sprite | undefined;
-
-	const hasImageLayer = imagesOnlySvg.querySelector('image') !== null;
-	if (hasImageLayer) {
-		const imageTexture = await svgToTexture(imagesOnlySvg);
-		imageBackground = new Sprite(imageTexture);
-	}
+	const svgTexture = await svgToTexture(svg);
 
 	const container = new LayoutContainer({
 		layout: {
 			aspectRatio: svgTexture.width / svgTexture.height,
 			objectFit: 'contain',
 			objectPosition: 'center'
-		},
-		background: imageBackground
+		}
 	});
 
 	const svgSprite = new Sprite({

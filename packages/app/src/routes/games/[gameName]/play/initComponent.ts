@@ -1,4 +1,3 @@
-import { toBlob } from 'html-to-image';
 import type { SchemaCallbackProxy } from '@colyseus/schema';
 import type { Room } from 'colyseus.js';
 import { Container, Sprite, type Application } from 'pixi.js';
@@ -35,11 +34,11 @@ async function buildStack(app: Application, topItem: BoardGameItemNew) {
 	// TODO full on refactor that reuses textures.
 	// topItem.position.set(-9999, -9999);
 	// This has to be more robust
-	// await new Promise(requestAnimationFrame);
-	// await new Promise(requestAnimationFrame);
-	// await new Promise(requestAnimationFrame);
-	// await new Promise(requestAnimationFrame);
-	// await new Promise(requestAnimationFrame);
+	await new Promise(requestAnimationFrame);
+	await new Promise(requestAnimationFrame);
+	await new Promise(requestAnimationFrame);
+	await new Promise(requestAnimationFrame);
+	await new Promise(requestAnimationFrame);
 	app.renderer.layout.update(topItem);
 	const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
 	console.log('texs: ', tex.width, tex.height);
