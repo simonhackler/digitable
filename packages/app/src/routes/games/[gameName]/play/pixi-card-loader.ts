@@ -28,14 +28,14 @@ async function svgToTexture(svg: SVGSVGElement, cardIndex?: number) {
 export async function createHybridContainer(svg: SVGSVGElement) {
 	const svgTexture = await svgToTexture(svg);
 
-	const container = new LayoutContainer({
-		layout: {
-			aspectRatio: svgTexture.width / svgTexture.height,
-			objectFit: 'contain',
-			objectPosition: 'center'
-		}
-	});
-
+	// const container = new LayoutContainer({
+	// 	layout: {
+	// 		aspectRatio: svgTexture.width / svgTexture.height,
+	// 		objectFit: 'contain',
+	// 		objectPosition: 'center'
+	// 	}
+	// });
+	//
 	const svgSprite = new Sprite({
 		texture: svgTexture,
 		layout: {
@@ -46,9 +46,10 @@ export async function createHybridContainer(svg: SVGSVGElement) {
 		}
 	});
 
-	container.addChild(svgSprite);
+    return svgSprite;
+	// container.addChild(svgSprite);
 
-	return container;
+	// return container;
 }
 
 // Parsing the text to svg and then the images seperately, to get svg scaling and to be able to change the text later

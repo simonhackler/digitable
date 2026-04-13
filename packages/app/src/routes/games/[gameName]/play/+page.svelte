@@ -439,7 +439,6 @@
 		s(room.state).components.onAdd((component, _index) => {
 			initComponent(
 				{
-					app,
 					boardContainer,
 					boardGameItems,
 					isDragging: () => drag !== null
