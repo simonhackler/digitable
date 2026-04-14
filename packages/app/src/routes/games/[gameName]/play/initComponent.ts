@@ -86,16 +86,13 @@ export async function initComponent(
 
 		const stackContainer = new Container();
 
-		await new Promise(requestAnimationFrame);
-		await new Promise(requestAnimationFrame);
 		for (const item of stacks) {
 			item.visible = false;
+            item.renderable = false;
 		}
-
 		function rebuild(frontendFlip: ClientFlippable | null ) {
 			stackContainer.removeChildren();
             const isFaceUp = frontendFlip !== null ? frontendFlip.clientFlippableState.isFaceUp : true;
-			const flippable = state.flippable.get(component.id);
 			const index = isFaceUp ? 0 : stacks.length - 1;
 			const item = stacks[index];
 			buildStack(isFaceUp, item).then((stackSprites) => {
