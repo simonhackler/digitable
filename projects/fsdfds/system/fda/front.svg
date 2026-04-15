@@ -1,6 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
- <!-- Created with SVG-edit - https://github.com/SVG-Edit/svgedit-->
  <g class="layer">
   <title>Layer 1</title>
+  <circle cx="10" cy="30" fill="#000000" id="svg_1" r="40" stroke="#000000" stroke-width="0" transform="matrix(1 0 0 1 13 8)"/>
  </g>
+ <defs>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="28.73" id="svg_2" opacity="0.5" width="28.29" x="12.89" y="43.35"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="122" id="svg_6" opacity="0.5" width="135" x="-34" y="-27"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="30.14" id="svg_8" opacity="0.5" width="24.89" x="9.94" y="9.3"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="30" id="svg_12" opacity="0.5" width="30" x="10" y="40"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_14" opacity="0.5" width="240" x="20" y="60"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="20" id="svg_18" opacity="0.5" stroke-width="0" width="30" x="0" y="40"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_20" opacity="0.5" stroke-width="0" width="240" x="10" y="50"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="100" id="svg_22" opacity="0.5" stroke-width="0" width="90" x="-20" y="-10"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="40" id="svg_25" opacity="0.5" stroke-width="0" width="50" x="10" y="10"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_27" opacity="0.5" stroke-width="0" width="20" x="20" y="20"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_29" opacity="0.5" stroke-width="0" width="240" x="20" y="20"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="20" id="svg_31" opacity="0.5" stroke-width="0" width="240" x="20" y="10"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="20" id="svg_33" opacity="0.5" stroke-width="0" width="20" x="10" y="10"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="10" id="svg_35" opacity="0.5" stroke-width="0" width="10" x="10" y="10"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_37" opacity="0.5" stroke-width="0" width="240" x="20" y="10"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="30" id="svg_3" opacity="0.5" stroke-width="0" width="50" x="10" y="50"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_7" opacity="0.5" width="20" x="-10" y="50"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="30" id="svg_10" opacity="0.5" stroke-width="0" width="50" x="10" y="50"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_13" opacity="0.5" stroke-width="0" width="240" x="20" y="60"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_16" opacity="0.5" stroke-width="0" width="240" x="20" y="50"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_19" opacity="0.5" stroke-width="0" width="240" x="30" y="20"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_5" opacity="0.5" stroke-width="0" width="240" x="20" y="60"/>
+ </defs>
 </svg>
