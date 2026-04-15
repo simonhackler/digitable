@@ -1,4 +1,3 @@
-import { assert } from '$lib/utils/assert';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import type { ColumnWithData } from './types';
 

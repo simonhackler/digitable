@@ -15,38 +15,39 @@
 		"dev:studio": "bun run --filter=studio dev",
 		"dev:server": "bun run --filter=boardgame-server start",
 		"build": "bun run --filter=@svg-table/app build",
-		"preview": "bun run --filter=@svg-table/app preview",
+		"preview": "bun --env-file=.env run --filter=@svg-table/app preview",
 		"check": "bun run --filter=@svg-table/app check",
 		"check:watch": "bun run --filter=@svg-table/app check:watch",
 		"format": "bun run --filter=@svg-table/app format",
 		"lint": "bun run --filter=@svg-table/app lint",
-		"test": "bun run --filter=@svg-table/app test",
-		"test:e2e": "bun run --filter=@svg-table/app test:e2e",
+		"test": "bun --env-file=.env run --filter=@svg-table/app test",
+		"test:e2e": "bun --env-file=.env run --filter=@svg-table/app test:e2e",
 		"storybook": "bun run --filter=@svg-table/app storybook",
 		"build-storybook": "bun run --filter=@svg-table/app build-storybook"
 	},
 	"devDependencies": {
-		"@eslint/js": "^9.39.1",
-		"@j178/prek": "^0.2.25",
-		"@types/debug": "^4.1.12",
-		"@types/node": "^24.10.1",
+		"@eslint/js": "^9.39.4",
+		"@j178/prek": "^0.2.30",
+		"@types/debug": "^4.1.13",
+		"@types/node": "^24.12.2",
 		"concurrently": "^9.2.1",
 		"eslint-config-prettier": "^10.1.8",
-		"eslint-plugin-storybook": "^10.1.4",
-		"eslint-plugin-svelte": "^3.13.1",
+		"eslint-plugin-storybook": "^10.3.4",
+		"eslint-plugin-svelte": "^3.17.0",
 		"globals": "^16.5.0",
-		"mdsvex": "^0.12.6",
+		"mdsvex": "^0.12.7",
+		"studio": "workspace:*",
 		"super-sitemap": "^1.0.7",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.48.1"
+		"typescript-eslint": "^8.58.0"
 	},
 	"dependencies": {
 		"@pixi/devtools": "^2.0.1",
 		"@pixi/layout": "^3.2.0",
 		"feed": "^5.2.0",
 		"pixi-viewport": "^6.0.3",
-		"pixi.js": "^8.14.3",
+		"pixi.js": "^8.17.1",
 		"studio": "workspace:*",
-		"svelte-meta-tags": "^4.5.0"
+		"svelte-meta-tags": "^4.5.2"
 	}
 }

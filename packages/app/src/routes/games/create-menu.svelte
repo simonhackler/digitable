@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import placeholderFrontSvg from '../../../static/placeholder.svg?raw';
 	import { resolve } from '$app/paths';
 	import * as Select from '$lib/components/ui/select/index.js';
@@ -7,9 +8,9 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { Layers } from '@lucide/svelte';
+	import { Ellipsis, Layers, Pencil, Table, Trash2 } from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import type { Game } from './types.js';
+	import type { ComponentFileStructure, Game } from './types.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { z } from 'zod';
@@ -79,6 +80,22 @@
 			type: 'image/svg+xml'
 		});
 		await fileSystem.upload(file, `${currentProject}/files`);
+	}
+
+	async function deleteDeck(
+		fileSystem: Adapter,
+		projectName: string,
+		component: ComponentFileStructure
+	) {
+		const fullFolderPath = `/${projectName}/system/${component.name}`;
+		console.log('deleting for', fullFolderPath);
+		const error = await fileSystem.delete([fullFolderPath]);
+		if (error) {
+			console.error(error);
+		} else {
+			activeGame!.decks = activeGame!.decks.filter((x) => x.name !== component.name);
+			await goto(resolve(`/games/${projectName}`));
+		}
 	}
 
 	const cardFormats = {
@@ -229,6 +246,47 @@
 										</a>
 									{/snippet}
 								</Sidebar.MenuSubButton>
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Sidebar.MenuAction
+												{...props}
+												class="data-[state=open]:bg-accent rounded-sm opacity-0 group-hover/menu-sub-item:opacity-100 data-[state=open]:opacity-100"
+											>
+												<Ellipsis />
+												<span class="sr-only">More</span>
+											</Sidebar.MenuAction>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content class="w-24 rounded-lg">
+										{@const path = `/games/${activeGame!.name}/decks/${deck.name}`}
+										{/* @ts-expect-error paths*/ null}
+										<DropdownMenu.Item
+											onSelect={() => goto(resolve(`${path}/editor`))}
+											class="flex w-full justify-start gap-2"
+										>
+											<Pencil />
+											<span>Editor</span>
+										</DropdownMenu.Item>
+										{/* @ts-expect-error paths*/ null}
+										<DropdownMenu.Item
+											onSelect={() => goto(resolve(`${path}/data`))}
+											class="flex w-full justify-start gap-2"
+										>
+											<Table />
+											<span>Data</span>
+										</DropdownMenu.Item>
+										<DropdownMenu.Separator />
+										<DropdownMenu.Item
+											variant="destructive"
+											onSelect={() => deleteDeck(fileSystem, activeGame!.name, deck)}
+											class="flex w-full justify-start gap-2"
+										>
+											<Trash2 />
+											<span>Delete</span>
+										</DropdownMenu.Item>
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
 							</Sidebar.MenuSubItem>
 						{/each}
 					</Sidebar.MenuSub>
