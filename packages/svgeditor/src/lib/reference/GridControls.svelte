@@ -41,6 +41,15 @@
 				onCheckedChange={(checked) => controller.setGridSnapping(checked)}
 			/>
 		</div>
+		<div class="flex items-center justify-between gap-3">
+			<Label for="page-border-snap">Snap to page</Label>
+			<Switch
+				id="page-border-snap"
+				checked={controller.pageBorderSnapping}
+				disabled={!controller.isReady}
+				onCheckedChange={(checked) => controller.setPageBorderSnapping(checked)}
+			/>
+		</div>
 		<div class="grid gap-2">
 			<Label for="grid-step">Grid step</Label>
 			<Input

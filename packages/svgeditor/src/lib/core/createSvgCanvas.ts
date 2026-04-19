@@ -184,14 +184,15 @@ export const createSvgCanvas = ({
 	const getCanvasElement = (): HTMLElement | null =>
 		container.querySelector('#svgcanvas') || canvasContainer || container;
 
+	const configuredStep = (config as { snappingStep?: number } | undefined)?.snappingStep;
+	const snappingStep = typeof configuredStep === 'number' ? configuredStep : DEFAULT_GRID_STEP;
+
 	const gridState = {
 		show: (config as { showGrid?: boolean } | undefined)?.showGrid ?? true,
 		snapping: (config as { gridSnapping?: boolean } | undefined)?.gridSnapping ?? true,
-		step: normalizeStep(
-			typeof (config as { snappingStep?: number } | undefined)?.snappingStep === 'number'
-				? (config as { snappingStep?: number }).snappingStep
-				: DEFAULT_GRID_STEP
-		),
+		pageBorderSnapping:
+			(config as { pageBorderSnapping?: boolean } | undefined)?.pageBorderSnapping ?? false,
+		step: normalizeStep(snappingStep),
 		color: normalizeGridColor((config as { gridColor?: string } | undefined)?.gridColor)
 	};
 	const rulerState = {
@@ -772,8 +773,7 @@ export const createSvgCanvas = ({
 		const svgContent = canvas.getSvgContent?.();
 		const width = svgContent?.getAttribute('width')?.trim() || '300';
 		const height = svgContent?.getAttribute('height')?.trim() || '150';
-		const viewBox =
-			svgContent?.getAttribute('viewBox')?.trim() || `0 0 ${width} ${height}`;
+		const viewBox = svgContent?.getAttribute('viewBox')?.trim() || `0 0 ${width} ${height}`;
 		return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="${SVG_NS}" width="${escapeXmlAttribute(width)}" height="${escapeXmlAttribute(height)}" viewBox="${escapeXmlAttribute(viewBox)}"></svg>`;
 	};
 
@@ -904,6 +904,7 @@ export const createSvgCanvas = ({
 
 	canvas.setConfig?.({
 		gridSnapping: gridState.snapping,
+		pageBorderSnapping: gridState.pageBorderSnapping,
 		snappingStep: gridState.step,
 		gridColor: gridState.color
 	});
@@ -989,9 +990,7 @@ export const createSvgCanvas = ({
 					applySvgString(clearedSvg, { center: true });
 					handler?.handleHistoryEvent?.('after_apply', this);
 				},
-				unapply(
-					handler?: { handleHistoryEvent?: (eventType: string, command: unknown) => void }
-				) {
+				unapply(handler?: { handleHistoryEvent?: (eventType: string, command: unknown) => void }) {
 					handler?.handleHistoryEvent?.('before_unapply', this);
 					applySvgString(previousSvg, { center: true });
 					handler?.handleHistoryEvent?.('after_unapply', this);
@@ -1084,6 +1083,10 @@ export const createSvgCanvas = ({
 		setGridSnapping(enabled) {
 			gridState.snapping = enabled;
 			canvas.setConfig?.({ gridSnapping: enabled });
+		},
+		setPageBorderSnapping(enabled) {
+			gridState.pageBorderSnapping = enabled;
+			canvas.setConfig?.({ pageBorderSnapping: enabled });
 		},
 		setSnappingStep(step) {
 			const safeStep = normalizeStep(step);

@@ -75,11 +75,13 @@ export type SvgEditorApi = {
 	getGridSettings(): {
 		show: boolean;
 		snapping: boolean;
+		pageBorderSnapping: boolean;
 		step: number;
 		color: string;
 	};
 	setGridVisible(show: boolean): void;
 	setGridSnapping(enabled: boolean): void;
+	setPageBorderSnapping(enabled: boolean): void;
 	setSnappingStep(step: number): void;
 	setGridColor(color: string): void;
 	getRulerSettings(): {

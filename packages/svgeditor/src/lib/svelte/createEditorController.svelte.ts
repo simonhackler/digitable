@@ -81,6 +81,7 @@ class EditorController {
 	lastError = $state<EditorError | null>(null);
 	gridVisible = $state(true);
 	gridSnapping = $state(true);
+	pageBorderSnapping = $state(false);
 	gridStep = $state(10);
 	gridColor = $state('#000000');
 	rulersVisible = $state(false);
@@ -99,6 +100,7 @@ class EditorController {
 		const grid = detail.api.getGridSettings();
 		this.gridVisible = grid.show;
 		this.gridSnapping = grid.snapping;
+		this.pageBorderSnapping = grid.pageBorderSnapping;
 		this.gridStep = grid.step;
 		this.gridColor = normalizeGridColor(grid.color);
 		this.rulersVisible = detail.api.getRulerSettings().show;
@@ -265,6 +267,11 @@ class EditorController {
 	setGridSnapping = (enabled: boolean) => {
 		this.api?.setGridSnapping(enabled);
 		this.gridSnapping = enabled;
+	};
+
+	setPageBorderSnapping = (enabled: boolean) => {
+		this.api?.setPageBorderSnapping(enabled);
+		this.pageBorderSnapping = enabled;
 	};
 
 	setGridStep = (step: number) => {
