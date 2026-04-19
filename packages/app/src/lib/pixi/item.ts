@@ -1,4 +1,4 @@
-import { Container } from 'pixi.js';
+import { Container, Sprite } from 'pixi.js';
 import type { LayoutStyles } from '@pixi/layout';
 import type {
 	ClientFlippable,
@@ -8,7 +8,7 @@ import type {
 
 export class BoardGameItemNew extends Container {
 	public readonly id: string;
-	private readonly itemContainer: Container;
+	public readonly itemContainer: Container;
 	private readonly baseLayoutStyle: LayoutStyles;
 	public readonly clientPosition: ClientPosition | null;
 	public readonly clientFlippable: ClientFlippable | null;
@@ -63,16 +63,21 @@ export class BoardGameItemNew extends Container {
 
 // This could extend Flippable?
 export class CardContainer extends Container {
-	constructor(frontContainer: Container, backContainer: Container) {
+    public readonly frontSprite: Sprite;
+    public readonly backSprite: Sprite;
+
+	constructor(frontSprite: Sprite, backSprite: Sprite) {
 		super({
 			layout: {
-				aspectRatio: frontContainer.width / frontContainer.height
+				aspectRatio: frontSprite.width / frontSprite.height
 			}
 		});
 		this.layout = true;
-		this.addChild(frontContainer);
-		this.addChild(backContainer);
+        this.frontSprite = frontSprite;
+        this.backSprite = backSprite;
+		this.addChild(frontSprite);
+		this.addChild(backSprite);
 
-		backContainer.visible = false;
+		backSprite.visible = false;
 	}
 }

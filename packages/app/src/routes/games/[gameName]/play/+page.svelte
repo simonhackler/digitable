@@ -431,6 +431,7 @@
 
 	async function createRoom(_init: boolean) {
 		const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
+        console.log("results are in: ", hybridResults);
 		const roomName = 'my_room';
 		const room = await client.joinOrCreate<BoardGameRoomState>(roomName);
 		let s = getStateCallbacks(room);
@@ -438,7 +439,6 @@
 		s(room.state).components.onAdd((component, _index) => {
 			initComponent(
 				{
-					app,
 					boardContainer,
 					boardGameItems,
 					isDragging: () => drag !== null
@@ -502,6 +502,7 @@
 			const newItem = boardGameItems.get(id);
 			assert(newItem, 'item is empty');
 			newItem.visible = true;
+			newItem.renderable = true;
 			item = newItem;
 			console.log(`drawing stack item id ${newItem.id}`);
 		}

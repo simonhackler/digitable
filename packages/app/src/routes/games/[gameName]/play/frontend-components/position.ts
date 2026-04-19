@@ -10,6 +10,14 @@ import { Room } from 'colyseus.js';
 
 type Handler<T> = (payload: T) => void;
 
+function arraysEqual<T>(a: ArrayLike<T>, b: ArrayLike<T>): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i += 1) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
+}
+
 export class Event<T> {
 	private handlers = new Set<Handler<T>>();
 
@@ -107,9 +115,10 @@ export class ClientFlippable {
 
 		console.log(`Initial flippable state: ${flippable.isFaceUp}`);
 		sharedValues.s(flippable).onChange(() => {
-			this.clientFlippableState.isFaceUp = flippable.isFaceUp;
-			this.onFlipped.emit(flippable);
-			console.log(`Card flipped to ${flippable.isFaceUp}`);
+			if (this.clientFlippableState.isFaceUp != flippable.isFaceUp) {
+				this.clientFlippableState.isFaceUp = flippable.isFaceUp;
+				this.onFlipped.emit(flippable);
+			}
 		});
 	}
 	// IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client
@@ -179,6 +188,9 @@ export class ClientStack {
 
 		sharedValues.s(stack.componentIds).onChange(() => {
 			const next = [...stack.componentIds];
+			if (arraysEqual(this.clientStackState.componentIds, next)) {
+				return;
+			}
 			this.clientStackState.componentIds.length = 0;
 			this.clientStackState.componentIds.push(...next);
 			this.onReordered.emit(next);

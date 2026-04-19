@@ -17,28 +17,19 @@ import {
 
 export interface ParsedSvg {
 	id: string;
-	front: LayoutContainer;
-	back: LayoutContainer;
+	front: Sprite;
+	back: Sprite;
 }
 
 export interface InitComponentDependencies {
-	app: Application;
 	boardContainer: Container;
 	boardGameItems: Map<string, BoardGameItemNew>;
 	isDragging: () => boolean;
 }
 
-async function buildStack(app: Application, topItem: BoardGameItemNew) {
-	topItem.visible = true;
-	topItem.position.set(-9999, -9999);
-	// This has to be more robust
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
-	await new Promise(requestAnimationFrame);
-	const tex = app.renderer.generateTexture({ target: topItem, resolution: 2 });
-	topItem.visible = false;
+async function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
+    const cardContainer = topItem.itemContainer as CardContainer;
+    const tex = !isFaceUp ? cardContainer.backSprite.texture : cardContainer.frontSprite.texture;
 
 	const topSprite = new Sprite(tex);
 	topSprite.setSize(topItem.getSize());
@@ -64,7 +55,7 @@ export async function initComponent(
 	s: SchemaCallbackProxy<BoardGameRoomState>,
 	room: Room<BoardGameRoomState>
 ) {
-	const { app, boardContainer, boardGameItems, isDragging } = deps;
+	const { boardContainer, boardGameItems, isDragging } = deps;
 
 	const sharedClientValues: SharedClientValues = {
 		component,
@@ -95,25 +86,16 @@ export async function initComponent(
 
 		const stackContainer = new Container();
 
-		await new Promise(requestAnimationFrame);
-		await new Promise(requestAnimationFrame);
-
 		for (const item of stacks) {
 			item.visible = false;
+            item.renderable = false;
 		}
-
-		function rebuild() {
+		function rebuild(frontendFlip: ClientFlippable | null ) {
 			stackContainer.removeChildren();
-			const flippable = state.flippable.get(component.id);
-			const index = !flippable || flippable.isFaceUp ? 0 : stacks.length - 1;
+            const isFaceUp = frontendFlip !== null ? frontendFlip.clientFlippableState.isFaceUp : true;
+			const index = isFaceUp ? 0 : stacks.length - 1;
 			const item = stacks[index];
-			if (flippable) {
-				const front = item.children[0].children[0];
-				const back = item.children[0].children[1];
-				front.visible = flippable.isFaceUp;
-				back.visible = !flippable.isFaceUp;
-			}
-			buildStack(app, item).then((stackSprites) => {
+			buildStack(isFaceUp, item).then((stackSprites) => {
 				for (const sprite of stackSprites) {
 					stackContainer.addChild(sprite);
 				}
@@ -123,12 +105,13 @@ export async function initComponent(
 		const flippable = state.flippable.get(component.id);
 		let frontendFlip: ClientFlippable | null = null;
 		if (flippable) {
-			rebuild();
 			frontendFlip = new ClientFlippable(sharedClientValues, flippable);
 			frontendFlip.onFlipped.subscribe((_flippable) => {
-				rebuild();
+				console.log('flipped');
+				rebuild(frontendFlip);
 			});
 		}
+		rebuild(frontendFlip);
 
 		const clientStack = new ClientStack(sharedClientValues, stack);
 		clientStack.onAdded.subscribe(({ id, index }) => {
@@ -136,14 +119,14 @@ export async function initComponent(
 			assert(newItem, `Stack item ${id} not found`);
 			newItem.visible = false;
 			stacks.splice(index, 0, newItem);
-			rebuild();
+			rebuild(frontendFlip);
 		});
 		clientStack.onRemoved.subscribe((item) => {
 			stacks.splice(
 				stacks.findIndex((x) => x.id == item),
 				1
 			);
-			rebuild();
+			rebuild(frontendFlip);
 		});
 		clientStack.onReordered.subscribe((nextIds) => {
 			const nextItems: BoardGameItemNew[] = [];
@@ -154,7 +137,7 @@ export async function initComponent(
 			}
 			stacks.length = 0;
 			stacks.push(...nextItems);
-			rebuild();
+			rebuild(frontendFlip);
 		});
 
 		boardGameItem = new BoardGameItemNew(
