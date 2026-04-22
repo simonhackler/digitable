@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
 	import { ReferenceEditor } from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
@@ -20,8 +19,8 @@
 	const game = $derived(page.params.gameName);
 	const deck = $derived(page.params.deckName);
 	const folder = $derived(`/${game}/system/${deck}`);
-	const layoutPath = $derived(resolve(`/games/${game}/decks/${deck}/layout`));
-	const dataPath = $derived(resolve(`/games/${game}/decks/${deck}/data`));
+	const layoutPath = $derived(`/games/${game}/decks/${deck}/layout`);
+	const dataPath = $derived(`/games/${game}/decks/${deck}/data`);
 
 	const roundTo = (value: number, precision = 2) => {
 		const factor = 10 ** precision;

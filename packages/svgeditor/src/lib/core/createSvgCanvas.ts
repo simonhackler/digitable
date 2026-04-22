@@ -3,6 +3,7 @@ import type {
 	EditorMode,
 	ElementTreeNode,
 	SvgCanvasConfig,
+	SvgCanvasRawApi,
 	SvgEditorApi
 } from './types';
 
@@ -11,78 +12,16 @@ export type SvgCanvasConstructor = new (
 	config?: SvgCanvasConfig
 ) => SvgCanvasLike;
 
-type SvgCanvasLike = {
-	bind?: (event: string, callback: (...args: unknown[]) => void) => void;
-	unbind?: (event: string, callback: (...args: unknown[]) => void) => void;
-	updateCanvas?: (width: number, height: number) => { x: number; y: number } | void;
-	setSvgString: (xmlString: string, preventUndo?: boolean) => boolean;
-	getSvgString: () => string;
-	setMode: (name: string) => void;
-	getMode: () => string;
-	getZoom: () => number;
-	setZoom: (zoomLevel: number) => void;
-	setConfig?: (opts: SvgCanvasConfig) => void;
+type SvgCanvasLike = SvgCanvasRawApi & {
 	getBaseUnit?: () => string;
+	getRotationAngle?: (elem: Element) => number;
 	getTypeMap?: () => Record<string, number>;
-	getSvgContent?: () => SVGSVGElement;
-	getSvgRoot?: () => SVGSVGElement;
-	setHref?: (elem: Element, href: string) => void;
-	addExtension?: (
-		name: string,
-		extInitFunc: (args: Record<string, unknown>) => unknown,
-		opts?: { importLocale?: unknown }
-	) => Promise<unknown>;
-	getFontSize?: () => number;
-	setFontSize?: (val: number) => void;
-	getFontFamily?: () => string;
-	setFontFamily?: (val: string) => void;
-	getBold?: () => boolean;
-	setBold?: (val: boolean) => void;
-	getItalic?: () => boolean;
-	setItalic?: (val: boolean) => void;
-	changeSelectedAttribute?: (attr: string, val: string | number, elems?: Element[]) => void;
-	deleteSelectedElements?: () => void;
-	clear?: () => void;
-	getSelectedElements?: () => Element[];
-	clearSelection?: (noUndo?: boolean) => void;
-	addToSelection?: (elems: Element[], showGrips?: boolean) => void;
-	selectOnly?: (elems: Element[], showGrips?: boolean) => void;
-	call?: (event: string, args: unknown[]) => void;
-	undoMgr?: {
-		undo?: () => void;
-		redo?: () => void;
-		addCommandToHistory?: (command: {
-			apply: (handler?: {
-				handleHistoryEvent?: (eventType: string, command: unknown) => void;
-			}) => void;
-			unapply: (handler?: {
-				handleHistoryEvent?: (eventType: string, command: unknown) => void;
-			}) => void;
-			elements: () => Element[];
-			getText: () => string;
-			type: () => string;
-		}) => void;
-		resetUndoStack?: () => void;
-		getUndoStackSize?: () => number;
-		getRedoStackSize?: () => number;
-		getNextUndoCommandText?: () => string;
-		getNextRedoCommandText?: () => string;
-	};
-	textActions?: {
-		setInputElem?: (elem: HTMLInputElement) => void;
-		setMultilineInputElem?: (elem: HTMLTextAreaElement) => void;
-		setCursor?: (index?: number) => void;
-	};
 	selectorManager?: {
 		requestSelector?: (elem: Element) => {
 			resize?: () => void;
 			showGrips?: (show: boolean) => void;
 		};
 	};
-	setTextContent?: (text: string) => void;
-	contentW?: number;
-	contentH?: number;
-	useMultilineText?: boolean;
 };
 
 type CreateSvgCanvasArgs = {
@@ -683,16 +622,13 @@ export const createSvgCanvas = ({
 		if (!wOrig || !hOrig) return;
 
 		const zoom = canvas.getZoom() || 1;
-		const expansion =
-			typeof (config as { canvas_expansion?: number } | undefined)?.canvas_expansion === 'number'
-				? (config as { canvas_expansion?: number }).canvas_expansion
-				: 1;
+		const expansion = typeof config?.canvas_expansion === 'number' ? config.canvas_expansion : 1;
 
 		const contentW = typeof canvas.contentW === 'number' ? canvas.contentW : wOrig;
 		const contentH = typeof canvas.contentH === 'number' ? canvas.contentH : hOrig;
 
-		let width = Math.max(wOrig, contentW * zoom * expansion);
-		let height = Math.max(hOrig, contentH * zoom * expansion);
+		const width = Math.max(wOrig, contentW * zoom * expansion);
+		const height = Math.max(hOrig, contentH * zoom * expansion);
 
 		workarea.style.overflow = width === wOrig && height === hOrig ? 'hidden' : 'auto';
 
@@ -877,16 +813,9 @@ export const createSvgCanvas = ({
 		container.addEventListener('scroll', syncRulerScroll);
 	}
 
-	const initialWidth =
-		container.clientWidth ||
-		(typeof (config as { dimensions?: number[] } | undefined)?.dimensions?.[0] === 'number'
-			? (config as { dimensions?: number[] }).dimensions?.[0]
-			: 300);
-	const initialHeight =
-		container.clientHeight ||
-		(typeof (config as { dimensions?: number[] } | undefined)?.dimensions?.[1] === 'number'
-			? (config as { dimensions?: number[] }).dimensions?.[1]
-			: 150);
+	const configDimensions = config?.dimensions;
+	const initialWidth = container.clientWidth || configDimensions?.[0] || 300;
+	const initialHeight = container.clientHeight || configDimensions?.[1] || 150;
 
 	canvas.updateCanvas?.(initialWidth, initialHeight);
 

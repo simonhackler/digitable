@@ -179,7 +179,7 @@
 	const hasSingleSelection = $derived(selectionCount === 1);
 	const selectedElement = $derived.by(() => selectedElements[0] ?? null);
 	const textElements = $derived.by(() =>
-		selectedElements.filter((element) => {
+		selectedElements.filter((element: Element) => {
 			const tag = element.tagName.toLowerCase();
 			return tag === 'text' || tag === 'tspan';
 		})
@@ -241,7 +241,9 @@
 		let merged: BBox | null = null;
 		for (const element of elements) {
 			try {
-				const bbox = rawCanvas?.getStrokedBBox?.([element]) ?? element.getBBox?.();
+				const bbox =
+					rawCanvas?.getStrokedBBox?.([element]) ??
+					(element instanceof SVGGraphicsElement ? element.getBBox() : null);
 				if (!bbox) continue;
 				const normalized = {
 					x: toNumber(bbox.x, 0),
@@ -425,7 +427,7 @@
 		if (primaryTextElement) {
 			const rawCanvas = getRawCanvas();
 			const nextSize = getCurrentFontSize();
-			if (Number.isFinite(nextSize) && nextSize > 0) {
+			if (typeof nextSize === 'number' && Number.isFinite(nextSize) && nextSize > 0) {
 				fontSize = roundTo(nextSize, 2);
 			}
 			const nextFamily = coerceFontFamilyValue(getCurrentFontFamily());
@@ -658,7 +660,7 @@
 	const nudgeFontSize = (step: number) => {
 		if (!canEditText) return;
 		const current = getCurrentFontSize();
-		if (!Number.isFinite(current)) return;
+		if (typeof current !== 'number' || !Number.isFinite(current)) return;
 		const next = Math.max(1, stepFontSize(current, step));
 		fontSize = roundTo(next, 2);
 		controller.setFontSize(fontSize);
@@ -672,8 +674,8 @@
 	};
 
 	$effect(() => {
-		controller.elementTree;
-		controller.selection;
+		void controller.elementTree;
+		void controller.selection;
 		syncFromSelection();
 	});
 </script>

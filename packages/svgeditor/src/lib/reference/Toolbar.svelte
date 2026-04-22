@@ -115,19 +115,6 @@
 	);
 </script>
 
-{#snippet gridTrigger({ props })}
-	<Button
-		{...props}
-		size="sm"
-		variant="ghost"
-		class={`rounded-lg px-3 text-xs font-semibold tracking-wide uppercase ${props.class ?? ''}`}
-		title="Grid settings (Ctrl/Cmd+')"
-	>
-		<Grid3x3 class="size-4" />
-		Grid
-	</Button>
-{/snippet}
-
 <div class={toolbarClass} role="toolbar" aria-label="Editor tools">
 	{#if showModes}
 		<ButtonGroup.Root {orientation} class={modeGroupClass}>
@@ -209,7 +196,17 @@
 					{copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy SVG'}
 				</Button>
 				<Popover>
-					<PopoverTrigger child={gridTrigger} />
+					<PopoverTrigger>
+						<Button
+							size="sm"
+							variant="ghost"
+							class="rounded-lg px-3 text-xs font-semibold tracking-wide uppercase"
+							title="Grid settings (Ctrl/Cmd+')"
+						>
+							<Grid3x3 class="size-4" />
+							Grid
+						</Button>
+					</PopoverTrigger>
 					<PopoverContent align="end" class="w-80 border-none p-0 shadow-none">
 						<GridControls {controller} />
 					</PopoverContent>

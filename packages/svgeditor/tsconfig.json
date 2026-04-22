@@ -2,6 +2,7 @@
 	"extends": "../app/tsconfig.json",
 	"compilerOptions": {
 		"composite": true,
+		"allowImportingTsExtensions": true,
 		"baseUrl": ".",
 		"paths": {
 			"$svgeditor/*": ["src/lib/*"]

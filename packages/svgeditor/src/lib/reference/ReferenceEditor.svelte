@@ -31,17 +31,12 @@
 		centerOnLoad = true,
 		initialZoom,
 		assetBasePath
-	} = $props<ReferenceEditorProps>();
+	}: ReferenceEditorProps = $props();
 
 	const dispatch = createEventDispatcher<{ change: ChangeEvent }>();
 	const controller = createEditorController();
 	const keys = new PressedKeys();
 
-	const selectionCount = $derived(controller.selection.length);
-	const zoomPercent = $derived(Math.round((controller.zoom || 1) * 100));
-	const modeLabel = $derived(
-		controller.mode ? `${controller.mode[0].toUpperCase()}${controller.mode.slice(1)}` : 'Select'
-	);
 	const interactionDisabled = $derived(disabled || readonly);
 	const resolvedConfig = $derived.by(() => ({
 		canvas_expansion: 1,

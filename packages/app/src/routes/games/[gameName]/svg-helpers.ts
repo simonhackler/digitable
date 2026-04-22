@@ -24,7 +24,11 @@ const normalizeCssLength = (value: string) => {
 	return /^-?\d*\.?\d+$/.test(trimmed) ? `${trimmed}px` : trimmed;
 };
 
-const applyTextStyle = (target: HTMLElement, property: string, value: string | null | undefined) => {
+const applyTextStyle = (
+	target: HTMLElement,
+	property: string,
+	value: string | null | undefined
+) => {
 	if (!value) return;
 	const trimmed = value.trim();
 	if (!trimmed || trimmed === 'normal' || trimmed === 'none') return;
@@ -181,8 +185,8 @@ export function initialSetupForSvgItem(
 
 	const text = el as SVGTextElement;
 	const frameBounds = getTextFrameBounds(svg, text);
-	let x = frameBounds?.x ?? text.getAttribute('x');
-	let y = frameBounds?.y ?? text.getAttribute('y');
+	const x = frameBounds?.x ?? text.getAttribute('x');
+	const y = frameBounds?.y ?? text.getAttribute('y');
 	let width = frameBounds?.width ?? text.getAttribute('width');
 	let height = frameBounds?.height ?? text.getAttribute('height');
 

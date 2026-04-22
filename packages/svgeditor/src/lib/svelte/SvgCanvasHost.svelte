@@ -35,8 +35,8 @@
 		initialZoom,
 		assetBasePath,
 		class: className = '',
-		api = $bindable<SvgEditorApi | null>(null)
-	} = $props<SvgCanvasHostProps>();
+		api = $bindable(null)
+	}: SvgCanvasHostProps = $props();
 
 	const dispatch = createEventDispatcher<{
 		ready: ReadyEvent;
@@ -76,7 +76,7 @@
 	};
 
 	const warnMissingAssets = (strict: boolean) => {
-		const imgPath = (resolvedConfig as { imgPath?: string } | undefined)?.imgPath;
+		const imgPath = resolvedConfig?.imgPath;
 		if (imgPath) return;
 
 		const error: EditorError = {
@@ -89,37 +89,39 @@
 			return;
 		}
 
-		if (import.meta.env?.DEV) {
-			console.warn(error.message);
-		}
+		console.warn(error.message);
 	};
 
 	onMount(async () => {
-		if (!workarea || !canvasRoot || !textInput || !multilineTextInput) return;
+		const workareaEl = workarea;
+		const canvasRootEl = canvasRoot;
+		const textInputEl = textInput;
+		const multilineTextInputEl = multilineTextInput;
+		if (!workareaEl || !canvasRootEl || !textInputEl || !multilineTextInputEl) return;
 
-		multilineTextInput.spellcheck = false;
-		multilineTextInput.setAttribute('autocomplete', 'off');
-		multilineTextInput.setAttribute('autocorrect', 'off');
-		multilineTextInput.setAttribute('autocapitalize', 'off');
+		multilineTextInputEl.spellcheck = false;
+		multilineTextInputEl.setAttribute('autocomplete', 'off');
+		multilineTextInputEl.setAttribute('autocorrect', 'off');
+		multilineTextInputEl.setAttribute('autocapitalize', 'off');
 
-		if (multilineTextInput.parentElement !== document.body) {
-			document.body.append(multilineTextInput);
+		if (multilineTextInputEl.parentElement !== document.body) {
+			document.body.append(multilineTextInputEl);
 		}
 
-		const strictAssets = Boolean((resolvedConfig as { strict?: boolean } | undefined)?.strict);
+		const strictAssets = Boolean(resolvedConfig?.strict);
 		warnMissingAssets(strictAssets);
 
 		const normalizedInitial = normalizeSvg(value, resolvedConfig);
 		lastExternalValue = normalizedInitial;
 
 		try {
-			const { default: SvgCanvas } = await import('@svgedit/svgcanvas');
+			const { default: ImportedSvgCanvas } = await import('@svgedit/svgcanvas');
 			suppressChange = true;
 			controller = createSvgCanvas({
-				container: workarea,
-				canvasContainer: canvasRoot,
-				textInput,
-				multilineTextInput,
+				container: workareaEl,
+				canvasContainer: canvasRootEl,
+				textInput: textInputEl,
+				multilineTextInput: multilineTextInputEl,
 				value: normalizedInitial,
 				config: resolvedConfig,
 				centerOnLoad,
@@ -141,7 +143,7 @@
 					dispatch('modechange', { mode });
 				},
 				onError: (error) => emitError(error),
-				svgCanvasCtor: SvgCanvas
+				svgCanvasCtor: ImportedSvgCanvas
 			});
 			api = controller;
 			dispatch('ready', { api: controller });
@@ -181,8 +183,8 @@
 				const size = getSvgSize();
 				if (!size) return null;
 				const padding = 48;
-				const availableWidth = Math.max(1, workarea.clientWidth - padding * 2);
-				const availableHeight = Math.max(1, workarea.clientHeight - padding * 2);
+				const availableWidth = Math.max(1, workareaEl.clientWidth - padding * 2);
+				const availableHeight = Math.max(1, workareaEl.clientHeight - padding * 2);
 				const zoom = Math.min(availableWidth / size.width, availableHeight / size.height);
 				if (!Number.isFinite(zoom) || zoom <= 0) return null;
 				return Math.min(Math.max(zoom, 0.1), 8);
@@ -212,7 +214,7 @@
 			resizeObserver = new ResizeObserver(() => {
 				controller?.refreshLayout();
 			});
-			resizeObserver.observe(workarea);
+			resizeObserver.observe(workareaEl);
 		} catch (cause) {
 			emitError({
 				code: 'INIT_FAILED',
