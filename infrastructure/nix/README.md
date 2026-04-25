@@ -26,6 +26,7 @@ STUDIO_DOMAIN=your-domain.example \
 ```
 
 For IP-only testing, use the server IP as `STUDIO_DOMAIN`.
+For a real domain install, set `STUDIO_DOMAIN` to that domain.
 
 ## VM
 
@@ -44,11 +45,10 @@ VM ports:
 
 ## Deploy
 
-Set the deploy hostname in [flake.nix](./flake.nix), then run:
+`studio-prod` is fixed to `digitable.ink`. Deploy with:
 
 ```bash
 cd infrastructure/nix
-STUDIO_DOMAIN=your-domain.example \
-  nix run github:serokell/deploy-rs -- \
+nix run github:serokell/deploy-rs -- \
   "path:$(realpath ../..)?dir=infrastructure/nix#studio"
 ```
