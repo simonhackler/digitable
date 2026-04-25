@@ -2,13 +2,27 @@
   adminPublicKeys,
   pkgs,
   lib,
+  modulesPath,
   studioDomain,
   studioPackage,
   studioPort,
   ...
-}: {
+}: let
+  isDirectHost =
+    studioDomain == "localhost"
+    || builtins.match "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" studioDomain != null;
+  studioOrigin = "${if isDirectHost then "http" else "https"}://${studioDomain}";
+  caddySiteAddress = if isDirectHost then ":80" else studioDomain;
+in {
+  imports = [
+    (modulesPath + "/profiles/qemu-guest.nix")
+  ];
+
   networking.hostName = "studio";
+  networking.useDHCP = lib.mkDefault true;
   system.stateVersion = "25.11";
+
+  nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 
   nix.settings.experimental-features = ["nix-command" "flakes"];
 
@@ -50,10 +64,21 @@
 
   services.caddy = {
     enable = true;
-    virtualHosts.${studioDomain}.extraConfig = ''
-      encode zstd gzip
-      reverse_proxy 127.0.0.1:${toString studioPort}
+    globalConfig = lib.optionalString isDirectHost ''
+      auto_https off
     '';
+    virtualHosts =
+      {
+        ${caddySiteAddress}.extraConfig = ''
+          encode zstd gzip
+          reverse_proxy 127.0.0.1:${toString studioPort}
+        '';
+      }
+      // lib.optionalAttrs (!isDirectHost) {
+        "www.${studioDomain}".extraConfig = ''
+          redir https://${studioDomain}{uri} permanent
+        '';
+      };
   };
 
   systemd.services.studio = {
@@ -65,7 +90,7 @@
     environment = {
       HOST = "127.0.0.1";
       PORT = toString studioPort;
-      ORIGIN = "http://${studioDomain}";
+      ORIGIN = studioOrigin;
       NODE_ENV = "production";
     };
 

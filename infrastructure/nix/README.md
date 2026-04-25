@@ -1,61 +1,54 @@
 # Nix Infrastructure
 
-This flake supports two workflows:
+Targets:
 
-- local VM testing with `build-vm`
-- fresh-server installation with `nixos-anywhere` and Disko
+- `studio-install`: install with `nixos-anywhere`
+- `studio-vm`: local VM
+- `studio-prod`: deployed system used by `deploy-rs`
 
-Both workflows package the prebuilt `packages/studio/build` output from the
-local checkout, so build Studio first from the repo root:
+Build Studio first:
 
 ```bash
 cd packages/studio
 KIT_API_KEY=dummy KIT_FORM_ID=dummy bun run build
 ```
 
-## Local VM
+## Install
 
-Build the VM from `infrastructure/nix`:
-
-```bash
-cd infrastructure/nix
-nixos-rebuild build-vm --flake .#studio-vm --impure
-```
-
-Start it:
-
-```bash
-./result/bin/run-studio-vm
-```
-
-Forwarded host ports:
-
-- `http://localhost:18080` redirects to HTTPS
-- `https://localhost:8443` serves Studio
-- `ssh demo@localhost -p 2222` connects to the VM
-- `localhost:15432` forwards PostgreSQL
-
-## NixOS Anywhere
-
-The install target is `.#studio`. It imports Disko and uses
-[disko/hetzner.nix](./disko/hetzner.nix) for the disk layout.
-
-Before installing:
-
-1. Verify the target disk path in `disko/hetzner.nix`.
-2. Set `STUDIO_DOMAIN` if the host should not serve `localhost`.
-3. Ensure the root SSH key in `hosts/studio.nix` matches the machine you will
-   install from.
-
-Install with:
+Check the target disk in [disko/hetzner.nix](./disko/hetzner.nix), then run:
 
 ```bash
 cd infrastructure/nix
 STUDIO_DOMAIN=your-domain.example \
   nix run github:nix-community/nixos-anywhere -- \
-  --flake .#studio \
+  --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-install" \
   --target-host root@YOUR_SERVER_IP
 ```
 
-After the machine is installed, the same `.#studio` config is the one used by
-`deploy-rs`.
+For IP-only testing, use the server IP as `STUDIO_DOMAIN`.
+
+## VM
+
+```bash
+cd infrastructure/nix
+nixos-rebuild build-vm --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-vm"
+./result/bin/run-studio-vm
+```
+
+VM ports:
+
+- `http://localhost:18080`
+- `https://localhost:8443`
+- `ssh demo@localhost -p 2222`
+- `localhost:15432`
+
+## Deploy
+
+Set the deploy hostname in [flake.nix](./flake.nix), then run:
+
+```bash
+cd infrastructure/nix
+STUDIO_DOMAIN=your-domain.example \
+  nix run github:serokell/deploy-rs -- \
+  "path:$(realpath ../..)?dir=infrastructure/nix#studio"
+```

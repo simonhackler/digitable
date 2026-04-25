@@ -1,4 +1,16 @@
 {...}: {
+  fileSystems."/" = {
+    device = "tmpfs";
+    fsType = "tmpfs";
+    options = ["mode=755"];
+  };
+
+  fileSystems."/boot" = {
+    device = "tmpfs";
+    fsType = "tmpfs";
+    options = ["mode=0755"];
+  };
+
   virtualisation.vmVariant = {
     virtualisation.memorySize = 2048;
     virtualisation.cores = 2;
