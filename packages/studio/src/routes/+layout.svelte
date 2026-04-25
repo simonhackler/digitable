@@ -14,16 +14,19 @@
 	};
 
 	async function fetchStars(o: string, r: string): Promise<number | null> {
-		// if (!browser) return null; // client-only
-		const res = await fetch(`https://api.github.com/repos/${o}/${r}`, {
-			headers: {
-				Accept: 'application/vnd.github+json',
-				'X-GitHub-Api-Version': '2022-11-28'
-			}
-		});
-		if (!res.ok) return null;
-		const { stargazers_count } = await res.json();
-		return Number(stargazers_count ?? 0);
+		try {
+			const res = await fetch(`https://api.github.com/repos/${o}/${r}`, {
+				headers: {
+					Accept: 'application/vnd.github+json',
+					'X-GitHub-Api-Version': '2022-11-28'
+				}
+			});
+			if (!res.ok) return null;
+			const { stargazers_count } = await res.json();
+			return Number(stargazers_count ?? 0);
+		} catch {
+			return null;
+		}
 	}
 
 	let githubStars = $derived(await fetchStars('RightNow-AI', 'openfang'));
