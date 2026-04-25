@@ -1,23 +1,48 @@
 {
-  description = "Digitable studio server deployed with deploy-rs";
+  description = "Digitable studio server for local VM testing and NixOS Anywhere installs";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     deploy-rs.url = "github:serokell/deploy-rs";
+    disko.url = "github:nix-community/disko";
+    disko.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = {
     self,
     nixpkgs,
     deploy-rs,
+    disko,
     ...
   }: let
     system = "x86_64-linux";
     lib = nixpkgs.lib;
     pkgs = import nixpkgs {inherit system;};
-    repoRoot = /home/simon/projects/digitable/digitable-app/current-1;
+    envOr = name: fallback: let value = builtins.getEnv name; in if value == "" then fallback else value;
+    infraRoot = let
+      explicitInfraRoot = builtins.getEnv "DIGITABLE_INFRA_ROOT";
+      pwd = builtins.getEnv "PWD";
+    in
+      if explicitInfraRoot != ""
+      then /. + explicitInfraRoot
+      else if pwd != ""
+      then /. + pwd
+      else throw ''
+        Set DIGITABLE_INFRA_ROOT to the absolute infrastructure/nix path when evaluating this flake impurely.
+        Example:
+          DIGITABLE_INFRA_ROOT=/abs/path/to/repo/infrastructure/nix nixos-rebuild build-vm --flake .#studio-vm --impure
+      '';
+    repoRoot = /. + envOr "DIGITABLE_REPO_ROOT" "${builtins.toString infraRoot}/../..";
 
-    studioDomain = "localhost";
+    adminPublicKeys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID3iigCfo016qrs9rlsr6uISm/3x6nOa5b66FcwjnnRF simonhackler@gmail.com"
+    ];
+
+    studioInstallDomain = let
+      envDomain = builtins.getEnv "STUDIO_DOMAIN";
+    in
+      if envDomain == "" then "localhost" else envDomain;
+
     studioPort = 3000;
 
     # This path-flake packages prebuilt studio artifacts from the local checkout.
@@ -58,111 +83,35 @@
       '';
     };
 
-    server = lib.nixosSystem {
-      inherit system;
-      specialArgs = {
-        inherit studioDomain studioPackage studioPort;
+    mkStudioSystem = {
+      studioDomain,
+      extraModules ? [],
+    }:
+      lib.nixosSystem {
+        inherit system;
+        specialArgs = {
+          inherit adminPublicKeys studioDomain studioPackage studioPort;
+        };
+        modules =
+          [
+            (infraRoot + "/modules/locale.nix")
+            (infraRoot + "/hosts/studio.nix")
+          ]
+          ++ extraModules;
       };
-      modules = [
-        ./modules/locale.nix
-        ({
-          pkgs,
-          lib,
-          studioDomain,
-          studioPackage,
-          studioPort,
-          ...
-        }: {
-          networking.hostName = "studio";
-          system.stateVersion = "25.11";
 
-          nix.settings.experimental-features = ["nix-command" "flakes"];
+    studioInstall = mkStudioSystem {
+      studioDomain = studioInstallDomain;
+      extraModules = [
+        disko.nixosModules.disko
+        (infraRoot + "/disko/hetzner.nix")
+      ];
+    };
 
-          boot.loader.systemd-boot.enable = true;
-          boot.loader.efi.canTouchEfiVariables = true;
-
-          services.openssh.enable = true;
-
-          users.users.demo = {
-            isNormalUser = true;
-            extraGroups = ["wheel"];
-            initialPassword = "demo";
-          };
-
-          services.postgresql = {
-            enable = true;
-            ensureDatabases = ["app"];
-            ensureUsers = [
-              {
-                name = "app";
-                ensureDBOwnership = true;
-              }
-            ];
-
-            authentication = lib.mkOverride 10 ''
-              local all all trust
-            '';
-          };
-
-          services.caddy = {
-            enable = true;
-            virtualHosts.${studioDomain}.extraConfig = ''
-              encode zstd gzip
-              reverse_proxy 127.0.0.1:${toString studioPort}
-            '';
-          };
-
-          systemd.services.studio = {
-            description = "Digitable Studio";
-            wantedBy = ["multi-user.target"];
-            after = ["network-online.target"];
-            wants = ["network-online.target"];
-
-            environment = {
-              HOST = "127.0.0.1";
-              PORT = toString studioPort;
-              ORIGIN = "http://${studioDomain}";
-              NODE_ENV = "production";
-            };
-
-            serviceConfig = {
-              Type = "simple";
-              WorkingDirectory = "${studioPackage}/packages/studio";
-              ExecStart = "${pkgs.nodejs}/bin/node build";
-              Restart = "on-failure";
-              DynamicUser = true;
-            };
-          };
-
-          networking.firewall.allowedTCPPorts = [22 80 443];
-
-          virtualisation.vmVariant = {
-            virtualisation.memorySize = 2048;
-            virtualisation.cores = 2;
-            virtualisation.forwardPorts = [
-              {
-                from = "host";
-                host.port = 2222;
-                guest.port = 22;
-              }
-              {
-                from = "host";
-                host.port = 5432;
-                guest.port = 5432;
-              }
-              {
-                from = "host";
-                host.port = 8080;
-                guest.port = 80;
-              }
-              {
-                from = "host";
-                host.port = 8443;
-                guest.port = 443;
-              }
-            ];
-          };
-        })
+    studioVm = mkStudioSystem {
+      studioDomain = "localhost";
+      extraModules = [
+        (infraRoot + "/hosts/studio-vm.nix")
       ];
     };
   in {
@@ -171,7 +120,11 @@
       studio = studioPackage;
     };
 
-    nixosConfigurations.studio = server;
+    nixosConfigurations = {
+      studio = studioInstall;
+      "studio-install" = studioInstall;
+      "studio-vm" = studioVm;
+    };
 
     deploy.nodes.studio = {
       hostname = "your-server-ip-or-dns";
@@ -179,7 +132,7 @@
 
       profiles.system = {
         user = "root";
-        path = deploy-rs.lib.${system}.activate.nixos self.nixosConfigurations.studio;
+        path = deploy-rs.lib.${system}.activate.nixos studioInstall;
       };
     };
 
