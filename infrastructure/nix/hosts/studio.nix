@@ -3,6 +3,7 @@
   pkgs,
   lib,
   modulesPath,
+  appPort,
   studioDomain,
   studioPackage,
   studioPort,
@@ -71,7 +72,14 @@ in {
       {
         ${caddySiteAddress}.extraConfig = ''
           encode zstd gzip
-          reverse_proxy 127.0.0.1:${toString studioPort}
+
+          handle /app* {
+            reverse_proxy 127.0.0.1:${toString appPort}
+          }
+
+          handle {
+            reverse_proxy 127.0.0.1:${toString studioPort}
+          }
         '';
       }
       // lib.optionalAttrs (!isDirectHost) {
@@ -97,6 +105,28 @@ in {
     serviceConfig = {
       Type = "simple";
       WorkingDirectory = "${studioPackage}/packages/studio";
+      ExecStart = "${pkgs.nodejs}/bin/node build";
+      Restart = "on-failure";
+      DynamicUser = true;
+    };
+  };
+
+  systemd.services.app = {
+    description = "Digitable App";
+    wantedBy = ["multi-user.target"];
+    after = ["network-online.target"];
+    wants = ["network-online.target"];
+
+    environment = {
+      HOST = "127.0.0.1";
+      PORT = toString appPort;
+      ORIGIN = studioOrigin;
+      NODE_ENV = "production";
+    };
+
+    serviceConfig = {
+      Type = "simple";
+      WorkingDirectory = "${studioPackage}/packages/app";
       ExecStart = "${pkgs.nodejs}/bin/node build";
       Restart = "on-failure";
       DynamicUser = true;

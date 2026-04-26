@@ -19,6 +19,10 @@
     system = "x86_64-linux";
     lib = nixpkgs.lib;
     pkgs = import nixpkgs {inherit system;};
+    repoRoot = let
+      envRepoRoot = builtins.getEnv "DIGITABLE_REPO_ROOT";
+    in
+      if envRepoRoot == "" then ../.. else /. + envRepoRoot;
     adminPublicKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID3iigCfo016qrs9rlsr6uISm/3x6nOa5b66FcwjnnRF simonhackler@gmail.com"
     ];
@@ -30,20 +34,32 @@
       if envDomain == "" then "localhost" else envDomain;
 
     studioPort = 3000;
+    appPort = 3001;
+
+    # This path-flake packages prebuilt app artifacts from the local checkout.
+    appBuild = builtins.path {
+      path = repoRoot + "/packages/app/build";
+      name = "app-build";
+    };
+
+    appPackageJson = builtins.path {
+      path = repoRoot + "/packages/app/package.json";
+      name = "app-package.json";
+    };
 
     # This path-flake packages prebuilt studio artifacts from the local checkout.
     studioBuild = builtins.path {
-      path = ../../packages/studio/build;
+      path = repoRoot + "/packages/studio/build";
       name = "studio-build";
     };
 
     studioPackageJson = builtins.path {
-      path = ../../packages/studio/package.json;
+      path = repoRoot + "/packages/studio/package.json";
       name = "studio-package.json";
     };
 
     rootNodeModules = builtins.path {
-      path = ../../node_modules;
+      path = repoRoot + "/node_modules";
       name = "studio-node-modules";
     };
 
@@ -62,8 +78,9 @@
         cp ${studioPackageJson} $out/packages/studio/package.json
         cp -r ${studioBuild} $out/packages/studio/build
         cp -r ${rootNodeModules} $out/node_modules
-        cp ${../../packages/app/package.json} $out/packages/app/package.json
-        cp ${../../packages/game-server/package.json} $out/packages/game-server/package.json
+        cp ${appPackageJson} $out/packages/app/package.json
+        cp -r ${appBuild} $out/packages/app/build
+        cp ${repoRoot + "/packages/game-server/package.json"} $out/packages/game-server/package.json
 
         runHook postInstall
       '';
@@ -76,7 +93,7 @@
       lib.nixosSystem {
         inherit system;
         specialArgs = {
-          inherit adminPublicKeys studioDomain studioPackage studioPort;
+          inherit adminPublicKeys appPort studioDomain studioPackage studioPort;
         };
         modules =
           [

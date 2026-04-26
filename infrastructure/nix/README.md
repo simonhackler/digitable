@@ -6,12 +6,18 @@ Targets:
 - `studio-vm`: local VM
 - `studio-prod`: deployed system used by `deploy-rs`
 
-Build Studio first:
+Build both SvelteKit apps first:
 
 ```bash
+cd packages/app
+bun run build
+
 cd packages/studio
 KIT_API_KEY=dummy KIT_FORM_ID=dummy bun run build
 ```
+
+The flake reads `packages/app/build`, `packages/studio/build`, and `node_modules` from your checkout via
+`DIGITABLE_REPO_ROOT`, so include it in the commands below.
 
 ## Install
 
@@ -19,6 +25,7 @@ Check the target disk in [disko/hetzner.nix](./disko/hetzner.nix), then run:
 
 ```bash
 cd infrastructure/nix
+DIGITABLE_REPO_ROOT="$(realpath ../..)" \
 STUDIO_DOMAIN=your-domain.example \
   nix run github:nix-community/nixos-anywhere -- \
   --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-install" \
@@ -32,7 +39,8 @@ For a real domain install, set `STUDIO_DOMAIN` to that domain.
 
 ```bash
 cd infrastructure/nix
-nixos-rebuild build-vm --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-vm"
+DIGITABLE_REPO_ROOT="$(realpath ../..)" \
+  nixos-rebuild build-vm --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-vm"
 ./result/bin/run-studio-vm
 ```
 
@@ -49,6 +57,7 @@ VM ports:
 
 ```bash
 cd infrastructure/nix
-nix run github:serokell/deploy-rs -- \
+DIGITABLE_REPO_ROOT="$(realpath ../..)" \
+  nix run github:serokell/deploy-rs -- \
   "path:$(realpath ../..)?dir=infrastructure/nix#studio"
 ```

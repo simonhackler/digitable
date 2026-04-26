@@ -1,3 +1,4 @@
+import { resolve } from '$app/paths';
 import { Ok, Err } from 'wellcrafted/result';
 
 export interface ImagePrompt {
@@ -22,7 +23,7 @@ export async function generateImages(prompts: ImagePrompt[]) {
 	console.log(prompts);
 
 	try {
-		const response = await fetch('/api/generate-images', {
+		const response = await fetch(resolve('/api/generate-images'), {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
