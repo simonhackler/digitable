@@ -1,6 +1,7 @@
 import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 import type { Column } from 'jspreadsheet-ce';
 import { parseCsvFile } from './csv-helper';
+import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import { getSvgDataMap } from './svg-helpers';
 import type { ColumnWithData } from './types';
 
@@ -83,7 +84,21 @@ export async function loadImagePaths(
 	projectName: string,
 	useDataUrls = false
 ) {
-	const imageStrings = Array.from(new Set(spreadsheetData.data.flatMap((row) => row)));
+	const imageColumnIndexes = spreadsheetData.cols.flatMap((col, index) =>
+		col.type === ImageEditor ? [index] : []
+	);
+	const imageStrings = Array.from(
+		new Set(
+			spreadsheetData.data.flatMap((row) =>
+				imageColumnIndexes
+					.map((index) => row[index])
+					.filter((value) => value && value.trim() !== '')
+			)
+		)
+	);
+	if (imageStrings.length === 0) {
+		return new Map<string, string>();
+	}
 	// The download and files api is really bad
 	const files = await fileSystem.download(
 		imageStrings.map((img) => `/${projectName}/files/${img}`)
