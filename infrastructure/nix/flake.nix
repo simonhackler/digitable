@@ -104,7 +104,7 @@
       lib.nixosSystem {
         inherit system;
         specialArgs = {
-          inherit adminPublicKeys appPort repoRoot studioDomain studioPackage studioPort;
+          inherit adminPublicKeys appPort studioDomain studioPackage studioPort;
         };
         modules =
           [

@@ -20,10 +20,32 @@ The flake reads `packages/app/build`, `packages/studio/build`, and `node_modules
 `DIGITABLE_REPO_ROOT`, so include it in the commands below.
 
 Secrets are read through `sops-nix` from `infrastructure/nix/secrets/secrets.yaml`. The host expects an age
-identity at `/var/lib/sops-nix/key.txt` and currently declares `database-url`, `session-secret`, and `api-key`.
-`database-url` and `session-secret` are rendered into `studio.env`, while `api-key` is rendered into `app.env`
-as `REPLICATE_API_TOKEN`.
-Make sure those encrypted keys exist in `infrastructure/nix/secrets/secrets.yaml` before deploying.
+identity derived from the server's SSH host key and currently declares `replicate-api-token`, which is rendered
+into `app.env` as `REPLICATE_API_TOKEN`.
+Make sure that encrypted key exists in `infrastructure/nix/secrets/secrets.yaml` before deploying.
+
+To add a new secret:
+
+1. Edit `infrastructure/nix/secrets/secrets.yaml` with `sops`, for example:
+
+   ```bash
+   sops infrastructure/nix/secrets/secrets.yaml
+   ```
+
+   Then add a new top-level key such as:
+
+   ```yaml
+   replicate-api-token: your-secret-value
+   ```
+
+   and save the file so `sops` re-encrypts it.
+
+2. Declare it in `infrastructure/nix/hosts/studio.nix` as `sops.secrets.<name> = {};`.
+3. If a service needs it as an environment variable, add it to a `sops.templates.*.content` block and wire that
+   template into `systemd.services.<name>.serviceConfig.EnvironmentFile`.
+
+Because the deploy uses checkout-local build artifacts and the secrets file is currently untracked, `deploy-rs`
+must be run with `-- --impure`.
 
 ## Install
 
@@ -65,5 +87,6 @@ VM ports:
 cd infrastructure/nix
 DIGITABLE_REPO_ROOT="$(realpath ../..)" \
   nix run github:serokell/deploy-rs -- \
-  "path:$(realpath ../..)?dir=infrastructure/nix#studio"
+  "path:$(realpath ../..)?dir=infrastructure/nix#studio" \
+  -- --impure
 ```

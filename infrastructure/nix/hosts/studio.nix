@@ -5,7 +5,6 @@
   lib,
   modulesPath,
   appPort,
-  repoRoot,
   studioDomain,
   studioPackage,
   studioPort,
@@ -21,21 +20,13 @@ in {
     (modulesPath + "/profiles/qemu-guest.nix")
   ];
 
-  sops.defaultSopsFile = "${repoRoot}/infrastructure/nix/secrets/secrets.yaml";
+  sops.defaultSopsFile = ../secrets/secrets.yaml;
   sops.defaultSopsFormat = "yaml";
-  sops.age.keyFile = "/var/lib/sops-nix/key.txt";
 
-  sops.secrets.database-url = {};
-  sops.secrets.session-secret = {};
-  sops.secrets.api-key = {};
-
-  sops.templates."studio.env".content = ''
-    DATABASE_URL=${config.sops.placeholder.database-url}
-    SESSION_SECRET=${config.sops.placeholder.session-secret}
-  '';
+  sops.secrets.replicate-api-token = {};
 
   sops.templates."app.env".content = ''
-    REPLICATE_API_TOKEN=${config.sops.placeholder.api-key}
+    REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
   '';
 
   networking.hostName = "studio";
@@ -123,7 +114,6 @@ in {
 
     serviceConfig = {
       Type = "simple";
-      EnvironmentFile = config.sops.templates."studio.env".path;
       WorkingDirectory = "${studioPackage}/packages/studio";
       ExecStart = "${pkgs.nodejs}/bin/node build";
       Restart = "on-failure";

@@ -2,7 +2,6 @@
   # The local VM does not need production secrets to boot.
   sops.defaultSopsFile = lib.mkForce null;
   sops.secrets = lib.mkForce {};
-  sops.templates."studio.env".content = lib.mkForce "";
   sops.templates."app.env".content = lib.mkForce "";
 
   fileSystems."/" = {
