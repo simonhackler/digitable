@@ -7,6 +7,11 @@
     deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
+
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -14,6 +19,7 @@
     nixpkgs,
     deploy-rs,
     disko,
+    sops-nix,
     ...
   }: let
     system = "x86_64-linux";
@@ -22,7 +28,10 @@
     repoRoot = let
       envRepoRoot = builtins.getEnv "DIGITABLE_REPO_ROOT";
     in
-      if envRepoRoot == "" then ../.. else /. + envRepoRoot;
+      if envRepoRoot == ""
+      then builtins.toString ../..
+      else envRepoRoot;
+    repoRootPath = /. + repoRoot;
     adminPublicKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID3iigCfo016qrs9rlsr6uISm/3x6nOa5b66FcwjnnRF simonhackler@gmail.com"
     ];
@@ -31,35 +40,37 @@
     studioInstallDomain = let
       envDomain = builtins.getEnv "STUDIO_DOMAIN";
     in
-      if envDomain == "" then "localhost" else envDomain;
+      if envDomain == ""
+      then "localhost"
+      else envDomain;
 
     studioPort = 3000;
     appPort = 3001;
 
     # This path-flake packages prebuilt app artifacts from the local checkout.
     appBuild = builtins.path {
-      path = repoRoot + "/packages/app/build";
+      path = repoRootPath + "/packages/app/build";
       name = "app-build";
     };
 
     appPackageJson = builtins.path {
-      path = repoRoot + "/packages/app/package.json";
+      path = repoRootPath + "/packages/app/package.json";
       name = "app-package.json";
     };
 
     # This path-flake packages prebuilt studio artifacts from the local checkout.
     studioBuild = builtins.path {
-      path = repoRoot + "/packages/studio/build";
+      path = repoRootPath + "/packages/studio/build";
       name = "studio-build";
     };
 
     studioPackageJson = builtins.path {
-      path = repoRoot + "/packages/studio/package.json";
+      path = repoRootPath + "/packages/studio/package.json";
       name = "studio-package.json";
     };
 
     rootNodeModules = builtins.path {
-      path = repoRoot + "/node_modules";
+      path = repoRootPath + "/node_modules";
       name = "studio-node-modules";
     };
 
@@ -80,7 +91,7 @@
         cp -r ${rootNodeModules} $out/node_modules
         cp ${appPackageJson} $out/packages/app/package.json
         cp -r ${appBuild} $out/packages/app/build
-        cp ${repoRoot + "/packages/game-server/package.json"} $out/packages/game-server/package.json
+        cp ${repoRootPath + "/packages/game-server/package.json"} $out/packages/game-server/package.json
 
         runHook postInstall
       '';
@@ -93,12 +104,13 @@
       lib.nixosSystem {
         inherit system;
         specialArgs = {
-          inherit adminPublicKeys appPort studioDomain studioPackage studioPort;
+          inherit adminPublicKeys appPort repoRoot studioDomain studioPackage studioPort;
         };
         modules =
           [
             ./modules/locale.nix
             ./hosts/studio.nix
+            sops-nix.nixosModules.sops
           ]
           ++ extraModules;
       };

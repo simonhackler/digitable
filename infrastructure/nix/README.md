@@ -19,6 +19,12 @@ KIT_API_KEY=dummy KIT_FORM_ID=dummy bun run build
 The flake reads `packages/app/build`, `packages/studio/build`, and `node_modules` from your checkout via
 `DIGITABLE_REPO_ROOT`, so include it in the commands below.
 
+Secrets are read through `sops-nix` from `infrastructure/nix/secrets/secrets.yaml`. The host expects an age
+identity at `/var/lib/sops-nix/key.txt` and currently declares `database-url`, `session-secret`, and `api-key`.
+`database-url` and `session-secret` are rendered into `studio.env`, while `api-key` is rendered into `app.env`
+as `REPLICATE_API_TOKEN`.
+Make sure those encrypted keys exist in `infrastructure/nix/secrets/secrets.yaml` before deploying.
+
 ## Install
 
 Check the target disk in [disko/hetzner.nix](./disko/hetzner.nix), then run:
