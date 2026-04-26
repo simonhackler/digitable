@@ -1,9 +1,4 @@
-{lib, ...}: {
-  # The local VM does not need production secrets to boot.
-  sops.defaultSopsFile = lib.mkForce null;
-  sops.secrets = lib.mkForce {};
-  sops.templates."app.env".content = lib.mkForce "";
-
+{adminPublicKeys, ...}: {
   fileSystems."/" = {
     device = "tmpfs";
     fsType = "tmpfs";
@@ -14,6 +9,13 @@
     device = "tmpfs";
     fsType = "tmpfs";
     options = ["mode=0755"];
+  };
+
+  users.users.demo = {
+    isNormalUser = true;
+    extraGroups = ["wheel"];
+    initialPassword = "demo";
+    openssh.authorizedKeys.keys = adminPublicKeys;
   };
 
   virtualisation.vmVariant = {

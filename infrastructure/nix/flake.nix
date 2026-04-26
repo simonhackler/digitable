@@ -99,12 +99,13 @@
 
     mkStudioSystem = {
       studioDomain,
+      enableAppSecrets ? true,
       extraModules ? [],
     }:
       lib.nixosSystem {
         inherit system;
         specialArgs = {
-          inherit adminPublicKeys appPort studioDomain studioPackage studioPort;
+          inherit adminPublicKeys appPort enableAppSecrets studioDomain studioPackage studioPort;
         };
         modules =
           [
@@ -126,6 +127,7 @@
     };
 
     studioVm = mkStudioSystem {
+      enableAppSecrets = false;
       studioDomain = "localhost";
       extraModules = [
         ./hosts/studio-vm.nix

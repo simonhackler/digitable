@@ -5,6 +5,7 @@
   lib,
   modulesPath,
   appPort,
+  enableAppSecrets ? true,
   studioDomain,
   studioPackage,
   studioPort,
@@ -15,19 +16,49 @@
     || builtins.match "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" studioDomain != null;
   studioOrigin = "${if isDirectHost then "http" else "https"}://${studioDomain}";
   caddySiteAddress = if isDirectHost then ":80" else studioDomain;
+  mkNodeService = {
+    description,
+    port,
+    workingDirectory,
+    extraServiceConfig ? {},
+  }: {
+    inherit description;
+    wantedBy = ["multi-user.target"];
+    after = ["network-online.target"];
+    wants = ["network-online.target"];
+
+    environment = {
+      HOST = "127.0.0.1";
+      PORT = toString port;
+      ORIGIN = studioOrigin;
+      NODE_ENV = "production";
+    };
+
+    serviceConfig =
+      {
+        Type = "simple";
+        WorkingDirectory = workingDirectory;
+        ExecStart = "${pkgs.nodejs}/bin/node build";
+        Restart = "on-failure";
+        DynamicUser = true;
+      }
+      // extraServiceConfig;
+  };
 in {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
   ];
 
-  sops.defaultSopsFile = ../secrets/secrets.yaml;
-  sops.defaultSopsFormat = "yaml";
+  sops = lib.mkIf enableAppSecrets {
+    defaultSopsFile = ../secrets/secrets.yaml;
+    defaultSopsFormat = "yaml";
 
-  sops.secrets.replicate-api-token = {};
+    secrets.replicate-api-token = {};
 
-  sops.templates."app.env".content = ''
-    REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
-  '';
+    templates."app.env".content = ''
+      REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
+    '';
+  };
 
   networking.hostName = "studio";
   networking.useDHCP = lib.mkDefault true;
@@ -50,13 +81,6 @@ in {
   };
 
   users.users.root.openssh.authorizedKeys.keys = adminPublicKeys;
-
-  users.users.demo = {
-    isNormalUser = true;
-    extraGroups = ["wheel"];
-    initialPassword = "demo";
-    openssh.authorizedKeys.keys = adminPublicKeys;
-  };
 
   services.postgresql = {
     enable = true;
@@ -99,48 +123,18 @@ in {
       };
   };
 
-  systemd.services.studio = {
+  systemd.services.studio = mkNodeService {
     description = "Digitable Studio";
-    wantedBy = ["multi-user.target"];
-    after = ["network-online.target"];
-    wants = ["network-online.target"];
-
-    environment = {
-      HOST = "127.0.0.1";
-      PORT = toString studioPort;
-      ORIGIN = studioOrigin;
-      NODE_ENV = "production";
-    };
-
-    serviceConfig = {
-      Type = "simple";
-      WorkingDirectory = "${studioPackage}/packages/studio";
-      ExecStart = "${pkgs.nodejs}/bin/node build";
-      Restart = "on-failure";
-      DynamicUser = true;
-    };
+    port = studioPort;
+    workingDirectory = "${studioPackage}/packages/studio";
   };
 
-  systemd.services.app = {
+  systemd.services.app = mkNodeService {
     description = "Digitable App";
-    wantedBy = ["multi-user.target"];
-    after = ["network-online.target"];
-    wants = ["network-online.target"];
-
-    environment = {
-      HOST = "127.0.0.1";
-      PORT = toString appPort;
-      ORIGIN = studioOrigin;
-      NODE_ENV = "production";
-    };
-
-    serviceConfig = {
-      Type = "simple";
+    port = appPort;
+    workingDirectory = "${studioPackage}/packages/app";
+    extraServiceConfig = lib.optionalAttrs enableAppSecrets {
       EnvironmentFile = config.sops.templates."app.env".path;
-      WorkingDirectory = "${studioPackage}/packages/app";
-      ExecStart = "${pkgs.nodejs}/bin/node build";
-      Restart = "on-failure";
-      DynamicUser = true;
     };
   };
 
