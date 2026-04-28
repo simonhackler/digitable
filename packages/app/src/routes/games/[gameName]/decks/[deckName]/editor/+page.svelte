@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ReferenceEditor } from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -148,7 +149,42 @@
 		}
 	};
 
-	const saveDebounced = useDebounce(saveSvg, 600);
+	let activeSavePromises = $state<Promise<void>[]>([]);
+
+	const saveSvgAndTrack = (nextSide: Side, value: string) => {
+		const promise = saveSvg(nextSide, value);
+		activeSavePromises = [...activeSavePromises, promise];
+		void promise.finally(() => {
+			activeSavePromises = activeSavePromises.filter((activePromise) => activePromise !== promise);
+		});
+		return promise;
+	};
+
+	const saveFrontDebounced = useDebounce((value: string) => saveSvgAndTrack('front', value), 600);
+	const saveBackDebounced = useDebounce((value: string) => saveSvgAndTrack('back', value), 600);
+
+	const scheduleSave = (nextSide: Side, value: string) => {
+		const promise = nextSide === 'front' ? saveFrontDebounced(value) : saveBackDebounced(value);
+		void promise.catch((error) => {
+			console.error(`Failed to save ${nextSide}.svg`, error);
+		});
+	};
+
+	const flushPendingSaves = async () => {
+		await Promise.all([saveFrontDebounced.runScheduledNow(), saveBackDebounced.runScheduledNow()]);
+		await Promise.allSettled(activeSavePromises);
+	};
+
+	onNavigate(() => {
+		if (
+			!saveFrontDebounced.pending &&
+			!saveBackDebounced.pending &&
+			activeSavePromises.length === 0
+		) {
+			return;
+		}
+		return flushPendingSaves();
+	});
 
 	const handleChange = (event: CustomEvent<{ svg: string; source: 'user' | 'external' }>) => {
 		const { svg: value, source } = event.detail;
@@ -159,7 +195,7 @@
 		if (side === 'back') {
 			back = value;
 		}
-		saveDebounced(side, value);
+		scheduleSave(side, value);
 	};
 </script>
 

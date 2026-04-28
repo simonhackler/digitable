@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { createEditorController } from '../svelte/createEditorController.svelte.ts';
-	import { Minus, Plus } from '@lucide/svelte';
+	import { AlignCenter, AlignLeft, AlignRight, Minus, Plus } from '@lucide/svelte';
 	import { Button } from '$svgeditor/components/ui/button/index.js';
 	import * as ButtonGroup from '$svgeditor/components/ui/button-group/index.js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$svgeditor/components/ui/card/index.js';
@@ -28,8 +28,10 @@
 	let fontItalic = $state(false);
 	let fontUnderline = $state(false);
 	let fontFamily = $state('serif');
+	let textAnchor = $state<TextAnchor>('start');
 
 	type BBox = { x: number; y: number; width: number; height: number };
+	type TextAnchor = 'start' | 'middle' | 'end';
 
 	const fontFamilyOptions = [
 		{ label: 'Sans Serif', value: 'sans-serif' },
@@ -135,6 +137,116 @@
 		return trimmed;
 	};
 
+	const normalizeTextAnchor = (value: string | null | undefined): TextAnchor | null => {
+		if (value === 'start' || value === 'middle' || value === 'end') return value;
+		return null;
+	};
+
+	const textAlignToAnchor = (value: string | null | undefined): TextAnchor | null => {
+		const normalized = value?.trim().toLowerCase();
+		if (normalized === 'left' || normalized === 'start') return 'start';
+		if (normalized === 'center' || normalized === 'middle') return 'middle';
+		if (normalized === 'right' || normalized === 'end') return 'end';
+		return null;
+	};
+
+	const anchorToTextAlign = (value: TextAnchor) => {
+		if (value === 'middle') return 'center';
+		if (value === 'end') return 'right';
+		return 'left';
+	};
+
+	const upsertStyleDeclaration = (
+		style: string | null | undefined,
+		property: string,
+		value: string
+	) => {
+		const declarations: { property: string; value: string }[] = [];
+		for (const declaration of (style ?? '').split(';')) {
+			const separatorIndex = declaration.indexOf(':');
+			if (separatorIndex === -1) continue;
+			const key = declaration.slice(0, separatorIndex).trim();
+			const declarationValue = declaration.slice(separatorIndex + 1).trim();
+			if (!key || !declarationValue) continue;
+			const existing = declarations.find((item) => item.property === key.toLowerCase());
+			if (existing) {
+				existing.value = declarationValue;
+			} else {
+				declarations.push({ property: key.toLowerCase(), value: declarationValue });
+			}
+		}
+		const existing = declarations.find((item) => item.property === property);
+		if (existing) {
+			existing.value = value;
+		} else {
+			declarations.push({ property, value });
+		}
+		return declarations.map((item) => `${item.property}:${item.value}`).join(';');
+	};
+
+	const getStyleDeclaration = (style: string | null | undefined, property: string) => {
+		for (const declaration of (style ?? '').split(';')) {
+			const separatorIndex = declaration.indexOf(':');
+			if (separatorIndex === -1) continue;
+			const key = declaration.slice(0, separatorIndex).trim().toLowerCase();
+			const value = declaration.slice(separatorIndex + 1).trim();
+			if (key === property && value) return value;
+		}
+		return null;
+	};
+
+	const getOwningTextElement = (element: Element): SVGTextElement | null => {
+		const tag = element.tagName.toLowerCase();
+		if (tag === 'text') return element as SVGTextElement;
+		if (tag === 'tspan' && element.parentElement?.tagName.toLowerCase() === 'text') {
+			return element.parentElement as unknown as SVGTextElement;
+		}
+		return null;
+	};
+
+	const uniqueTextRoots = (elements: Element[]) => {
+		const roots: SVGTextElement[] = [];
+		for (const element of elements) {
+			const root = getOwningTextElement(element);
+			if (root && !roots.includes(root)) {
+				roots.push(root);
+			}
+		}
+		return roots;
+	};
+
+	const hasTextFrame = (element: Element) =>
+		element.hasAttribute('data-svgedit-wrap-width') ||
+		element.hasAttribute('data-svgedit-wrap-height') ||
+		element.hasAttribute('data-svgedit-shape-inside-ref') ||
+		getStyleDeclaration(element.getAttribute('style'), 'shape-inside') !== null;
+
+	const getSvgTextLineWidth = (line: SVGTSpanElement) => {
+		try {
+			return line.getComputedTextLength();
+		} catch {
+			return 0;
+		}
+	};
+
+	const reflowFramedTextAlignment = (element: Element, value: TextAnchor) => {
+		if (element.tagName.toLowerCase() !== 'text') return;
+		const text = element as SVGTextElement;
+		const frameX = toNumber(text.getAttribute('x'), 0);
+		const frameWidth = toNumber(text.getAttribute('data-svgedit-wrap-width'), 0);
+		if (frameWidth <= 0) return;
+		for (const line of text.querySelectorAll('tspan')) {
+			const lineWidth = getSvgTextLineWidth(line);
+			const offset =
+				value === 'middle'
+					? Math.max(0, (frameWidth - lineWidth) / 2)
+					: value === 'end'
+						? Math.max(0, frameWidth - lineWidth)
+						: 0;
+			line.setAttribute('x', String(roundTo(frameX + offset, 2)));
+		}
+	};
+
 	const stepFontSize = (current: number, step: number) => {
 		if (!Number.isFinite(current)) return current;
 		const suggested = current + step;
@@ -164,14 +276,33 @@
 			setBlur?: (value: number, complete?: boolean) => void;
 			setBlurNoUndo?: (value: number) => void;
 			setRectRadius?: (value: number) => void;
+			getSelectedElements?: () => Element[];
 			moveSelectedElements?: (
 				dx: number[] | number,
 				dy: number[] | number,
 				undoable?: boolean
 			) => void;
-			changeSelectedAttribute?: (name: string, value: number | string) => void;
+			changeSelectedAttribute?: (name: string, value: number | string, elems?: Element[]) => void;
 			alignSelectedElements?: (type: string, relativeTo: string) => void;
+			call?: (event: string, args: unknown[]) => void;
 		} | null;
+
+	type RawCanvas = NonNullable<ReturnType<typeof getRawCanvas>>;
+
+	const notifyCanvasChanged = (rawCanvas: RawCanvas, elements?: Element[]) => {
+		const changedElements = elements?.length ? elements : (rawCanvas.getSelectedElements?.() ?? []);
+		rawCanvas.call?.('changed', changedElements);
+	};
+
+	const changeSelectedAttribute = (
+		rawCanvas: RawCanvas,
+		name: string,
+		value: number | string,
+		elements?: Element[]
+	) => {
+		rawCanvas.changeSelectedAttribute?.(name, value, elements);
+		notifyCanvasChanged(rawCanvas, elements);
+	};
 
 	const selectedElements = $derived.by(() => controller.selection.filter(Boolean));
 	const selectionCount = $derived(selectedElements.length);
@@ -184,8 +315,9 @@
 			return tag === 'text' || tag === 'tspan';
 		})
 	);
-	const hasTextSelection = $derived(textElements.length > 0);
-	const primaryTextElement = $derived.by(() => textElements[0] ?? null);
+	const textRootElements = $derived.by(() => uniqueTextRoots(textElements));
+	const hasTextSelection = $derived(textRootElements.length > 0);
+	const primaryTextElement = $derived.by(() => textRootElements[0] ?? null);
 	const canEditSize = $derived.by(() => {
 		if (!hasSingleSelection) return false;
 		const tag = selectedElement?.tagName.toLowerCase();
@@ -448,10 +580,20 @@
 			fontBold = isBold;
 			fontItalic = isItalic;
 			fontUnderline = isUnderline;
+			const textAlign =
+				textAlignToAnchor(
+					getStyleDeclaration(primaryTextElement.getAttribute('style'), 'text-align')
+				) ??
+				textAlignToAnchor(primaryTextElement.getAttribute('text-align')) ??
+				textAlignToAnchor(computedStyle?.textAlign);
+			const anchor = normalizeTextAnchor(primaryTextElement.getAttribute('text-anchor'));
+			textAnchor =
+				(hasTextFrame(primaryTextElement) ? textAlign : anchor) ?? textAlign ?? anchor ?? 'start';
 		} else {
 			fontBold = false;
 			fontItalic = false;
 			fontUnderline = false;
+			textAnchor = 'start';
 		}
 	};
 
@@ -485,11 +627,11 @@
 		const nextWidth = Math.max(0, toNumber(width, 0));
 
 		if (tag === 'circle') {
-			rawCanvas.changeSelectedAttribute('r', nextWidth / 2);
+			changeSelectedAttribute(rawCanvas, 'r', nextWidth / 2);
 			return;
 		}
 		if (tag === 'ellipse') {
-			rawCanvas.changeSelectedAttribute('rx', nextWidth / 2);
+			changeSelectedAttribute(rawCanvas, 'rx', nextWidth / 2);
 			return;
 		}
 		if (tag === 'line') {
@@ -502,9 +644,10 @@
 			const newX2 = forward ? newMaxX : minX;
 			rawCanvas.changeSelectedAttribute('x1', newX1);
 			rawCanvas.changeSelectedAttribute('x2', newX2);
+			notifyCanvasChanged(rawCanvas);
 			return;
 		}
-		rawCanvas.changeSelectedAttribute('width', nextWidth);
+		changeSelectedAttribute(rawCanvas, 'width', nextWidth);
 	};
 
 	const applyHeight = () => {
@@ -515,11 +658,11 @@
 		const nextHeight = Math.max(0, toNumber(height, 0));
 
 		if (tag === 'circle') {
-			rawCanvas.changeSelectedAttribute('r', nextHeight / 2);
+			changeSelectedAttribute(rawCanvas, 'r', nextHeight / 2);
 			return;
 		}
 		if (tag === 'ellipse') {
-			rawCanvas.changeSelectedAttribute('ry', nextHeight / 2);
+			changeSelectedAttribute(rawCanvas, 'ry', nextHeight / 2);
 			return;
 		}
 		if (tag === 'line') {
@@ -532,9 +675,10 @@
 			const newY2 = forward ? newMaxY : minY;
 			rawCanvas.changeSelectedAttribute('y1', newY1);
 			rawCanvas.changeSelectedAttribute('y2', newY2);
+			notifyCanvasChanged(rawCanvas);
 			return;
 		}
-		rawCanvas.changeSelectedAttribute('height', nextHeight);
+		changeSelectedAttribute(rawCanvas, 'height', nextHeight);
 	};
 
 	const applyRotation = () => {
@@ -578,7 +722,7 @@
 		if (!canEditStroke) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.changeSelectedAttribute) return;
-		rawCanvas.changeSelectedAttribute('stroke-dasharray', dashToAttr(strokeDash));
+		changeSelectedAttribute(rawCanvas, 'stroke-dasharray', dashToAttr(strokeDash));
 	};
 
 	const applyFillColor = () => {
@@ -636,7 +780,34 @@
 		if (!canEditText) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.changeSelectedAttribute) return;
-		rawCanvas.changeSelectedAttribute('text-decoration', fontUnderline ? 'underline' : 'none');
+		changeSelectedAttribute(rawCanvas, 'text-decoration', fontUnderline ? 'underline' : 'none');
+	};
+
+	const applyTextAnchor = (value: TextAnchor) => {
+		if (!canEditText) return;
+		const rawCanvas = getRawCanvas();
+		if (!rawCanvas?.changeSelectedAttribute) return;
+		textAnchor = value;
+		const align = anchorToTextAlign(value);
+		const framedTextElements = textRootElements.filter(hasTextFrame);
+		const unframedTextElements = textRootElements.filter(
+			(element: Element) => !hasTextFrame(element)
+		);
+		if (framedTextElements.length > 0) {
+			rawCanvas.changeSelectedAttribute('text-anchor', 'start', framedTextElements);
+		}
+		if (unframedTextElements.length > 0) {
+			rawCanvas.changeSelectedAttribute('text-anchor', value, unframedTextElements);
+		}
+		for (const element of framedTextElements) {
+			const nextStyle = upsertStyleDeclaration(element.getAttribute('style'), 'text-align', align);
+			rawCanvas.changeSelectedAttribute('style', nextStyle, [element]);
+			reflowFramedTextAlignment(element, value);
+		}
+		const changedTextElements = [...framedTextElements, ...unframedTextElements];
+		if (changedTextElements.length > 0) {
+			notifyCanvasChanged(rawCanvas, changedTextElements);
+		}
 	};
 
 	const toggleBold = () => {
@@ -1014,6 +1185,61 @@
 								>
 									<span class="text-sm underline">U</span>
 									<span class="sr-only">Underline</span>
+								</Button>
+							</ButtonGroup.Root>
+						</div>
+						<div class="grid gap-1.5">
+							<Label>Align</Label>
+							<ButtonGroup.Root
+								class="bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs"
+							>
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									class={`rounded-md ${
+										textAnchor === 'start'
+											? 'bg-primary text-primary-foreground shadow-sm'
+											: 'text-muted-foreground hover:text-foreground'
+									}`}
+									title="Align text left"
+									aria-pressed={textAnchor === 'start'}
+									disabled={!canEditText}
+									onclick={() => applyTextAnchor('start')}
+								>
+									<AlignLeft class="size-4" />
+									<span class="sr-only">Align text left</span>
+								</Button>
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									class={`rounded-md ${
+										textAnchor === 'middle'
+											? 'bg-primary text-primary-foreground shadow-sm'
+											: 'text-muted-foreground hover:text-foreground'
+									}`}
+									title="Align text center"
+									aria-pressed={textAnchor === 'middle'}
+									disabled={!canEditText}
+									onclick={() => applyTextAnchor('middle')}
+								>
+									<AlignCenter class="size-4" />
+									<span class="sr-only">Align text center</span>
+								</Button>
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									class={`rounded-md ${
+										textAnchor === 'end'
+											? 'bg-primary text-primary-foreground shadow-sm'
+											: 'text-muted-foreground hover:text-foreground'
+									}`}
+									title="Align text right"
+									aria-pressed={textAnchor === 'end'}
+									disabled={!canEditText}
+									onclick={() => applyTextAnchor('end')}
+								>
+									<AlignRight class="size-4" />
+									<span class="sr-only">Align text right</span>
 								</Button>
 							</ButtonGroup.Root>
 						</div>

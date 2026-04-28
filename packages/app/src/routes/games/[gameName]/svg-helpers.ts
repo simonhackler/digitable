@@ -7,6 +7,7 @@ const SVG_TEXT_STYLE_ATTRS = [
 	'font-size',
 	'font-weight',
 	'font-style',
+	'text-anchor',
 	'text-align',
 	'text-decoration',
 	'letter-spacing',
@@ -15,8 +16,30 @@ const SVG_TEXT_STYLE_ATTRS = [
 	'fill'
 ] as const;
 
-const getTextColumnValue = (text: SVGTextElement) =>
-	text.getAttribute('data-svgedit-raw-text') ?? text.textContent ?? '';
+const getDirectTspans = (text: SVGTextElement) =>
+	Array.from(text.childNodes).filter(
+		(child): child is SVGTSpanElement =>
+			child.nodeType === 1 && (child as Element).tagName.toLowerCase() === 'tspan'
+	);
+
+const getTspanValue = (tspan: SVGTSpanElement) => {
+	if (tspan.getAttribute('data-svgedit-empty-line') === 'true') {
+		return '';
+	}
+	return tspan.textContent ?? '';
+};
+
+export const getTextColumnValue = (text: SVGTextElement) => {
+	const rawText = text.getAttribute('data-svgedit-raw-text');
+	if (text.hasAttribute('data-svgedit-raw-text')) return rawText ?? '';
+
+	const tspans = getDirectTspans(text);
+	if (tspans.length > 0) {
+		return tspans.map(getTspanValue).join('\n');
+	}
+
+	return text.textContent ?? '';
+};
 
 const normalizeCssLength = (value: string) => {
 	const trimmed = value.trim();
@@ -36,7 +59,15 @@ const applyTextStyle = (
 		target.style.color = trimmed;
 		return;
 	}
-	if (property === 'font-size' || property === 'letter-spacing' || property === 'line-height') {
+	if (property === 'text-anchor') {
+		target.style.textAlign = trimmed === 'middle' ? 'center' : trimmed === 'end' ? 'right' : 'left';
+		return;
+	}
+	if (property === 'line-height') {
+		target.style.setProperty(property, trimmed);
+		return;
+	}
+	if (property === 'font-size' || property === 'letter-spacing') {
 		target.style.setProperty(property, normalizeCssLength(trimmed));
 		return;
 	}
@@ -58,23 +89,8 @@ const getShapeInsideRef = (text: SVGTextElement) => {
 	return styleMatch?.[1] ?? null;
 };
 
-const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => {
+export const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => {
 	const shapeId = getShapeInsideRef(text);
-	if (shapeId) {
-		const shapeEl = svg.getElementById(shapeId) as SVGGraphicsElement | null;
-		if (shapeEl) {
-			const x = shapeEl.getAttribute('x');
-			const y = shapeEl.getAttribute('y');
-			const width = shapeEl.getAttribute('width');
-			const height = shapeEl.getAttribute('height');
-			if (x && y && width && height) {
-				return { x, y, width, height };
-			}
-		} else {
-			console.warn(`shape-inside target #${shapeId} not found; falling back to text metadata`);
-		}
-	}
-
 	const x = text.getAttribute('x');
 	const wrapWidth = text.getAttribute('data-svgedit-wrap-width');
 	const wrapHeight = text.getAttribute('data-svgedit-wrap-height');
@@ -88,8 +104,24 @@ const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => {
 			x,
 			y,
 			width: wrapWidth,
-			height: wrapHeight
+			height: wrapHeight,
+			shapeId
 		};
+	}
+
+	if (shapeId) {
+		const shapeEl = svg.getElementById(shapeId) as SVGGraphicsElement | null;
+		if (shapeEl) {
+			const x = shapeEl.getAttribute('x');
+			const y = shapeEl.getAttribute('y');
+			const width = shapeEl.getAttribute('width');
+			const height = shapeEl.getAttribute('height');
+			if (x && y && width && height) {
+				return { x, y, width, height, shapeId };
+			}
+		} else {
+			console.warn(`shape-inside target #${shapeId} not found; falling back to text metadata`);
+		}
 	}
 
 	return null;
@@ -108,14 +140,16 @@ export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
 	// Probably easiest to directly modify the ids instead of always parsing with prefix.
 	// If this leads to issues, I can change it later.
 	for (const el of texts) {
-		if (el.id) {
-			el.id = `${prefix}${el.id}`;
+		const currentId = el.getAttribute('id') ?? el.id;
+		if (currentId) {
+			el.id = `${prefix}${currentId}`;
 		} else {
 			el.id = `${prefix}${el.textContent?.replace(/\s+/g, '_') || 'text'}`;
 		}
 	}
 	for (const el of images) {
-		if (el.id) el.id = `${prefix}${el.id}`;
+		const currentId = el.getAttribute('id') ?? el.id;
+		if (currentId) el.id = `${prefix}${currentId}`;
 	}
 	const textColumns = texts.map((t) => {
 		return {
@@ -196,7 +230,7 @@ export function initialSetupForSvgItem(
 		height = bbox.height.toString();
 	}
 
-	if (!x || !y) {
+	if (x == null || x === '' || y == null || y === '') {
 		throw new Error(`Element ${elementId} is missing x or y attributes`);
 	}
 	const fo = document.createElementNS(
@@ -208,6 +242,10 @@ export function initialSetupForSvgItem(
 	fo.setAttribute('width', width.toString());
 	fo.setAttribute('height', height.toString());
 	fo.id = elementId;
+	if (frameBounds?.shapeId) {
+		fo.setAttribute('data-flow-rect', frameBounds.shapeId);
+		fo.setAttribute('data-flow-id', elementId);
+	}
 	const transform = text.getAttribute('transform');
 	if (transform) fo.setAttribute('transform', transform);
 	text.parentNode!.appendChild(fo);

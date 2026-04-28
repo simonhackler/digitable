@@ -57,6 +57,11 @@ const DEFAULT_RULER_SIZE = 16;
 const RULER_LIMIT = 30000;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
+const MULTILINE_ATTR = 'data-svgedit-multiline';
+const RAW_TEXT_ATTR = 'data-svgedit-raw-text';
+const WRAP_WIDTH_ATTR = 'data-svgedit-wrap-width';
+const WRAP_HEIGHT_ATTR = 'data-svgedit-wrap-height';
+const SHAPE_INSIDE_ATTR = 'data-svgedit-shape-inside-ref';
 
 const normalizeGridColor = (value: unknown) => {
 	if (typeof value !== 'string' || !value.trim()) return DEFAULT_GRID_COLOR;
@@ -82,6 +87,88 @@ const normalizeStep = (value: number) =>
 
 const escapeXmlAttribute = (value: string) =>
 	value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+
+const getShapeInsideRef = (textElement: SVGTextElement) => {
+	const explicit = textElement.getAttribute(SHAPE_INSIDE_ATTR);
+	if (explicit) {
+		const normalized = explicit.trim();
+		if (normalized.startsWith('#')) return normalized.slice(1);
+		const explicitMatch = /url\(\s*#([^)]+)\)/i.exec(normalized);
+		if (explicitMatch) return explicitMatch[1];
+		return normalized;
+	}
+
+	const styleAttr = textElement.getAttribute('style') ?? '';
+	const styleMatch = /shape-inside\s*:\s*url\(\s*#([^)]+)\)/i.exec(styleAttr);
+	return styleMatch?.[1] ?? null;
+};
+
+const getDirectTspans = (textElement: SVGTextElement) =>
+	Array.from(textElement.children).filter(
+		(child): child is SVGTSpanElement => child.tagName.toLowerCase() === 'tspan'
+	);
+
+const getImportedRawText = (textElement: SVGTextElement) => {
+	const rawText = textElement.getAttribute(RAW_TEXT_ATTR);
+	if (textElement.hasAttribute(RAW_TEXT_ATTR)) return rawText ?? '';
+
+	const tspans = getDirectTspans(textElement);
+	if (tspans.length > 0) {
+		return tspans
+			.map((tspan) =>
+				tspan.getAttribute('data-svgedit-empty-line') === 'true' ? '' : (tspan.textContent ?? '')
+			)
+			.join('\n');
+	}
+
+	return textElement.textContent ?? '';
+};
+
+const hydrateImportedMultilineText = (svgContent: SVGSVGElement, textElement: SVGTextElement) => {
+	const rawText = getImportedRawText(textElement);
+	const shapeId = getShapeInsideRef(textElement);
+	const isStructuredText = getDirectTspans(textElement).length > 0;
+
+	if (!textElement.hasAttribute(RAW_TEXT_ATTR)) {
+		textElement.setAttribute(RAW_TEXT_ATTR, rawText);
+	}
+	if (shapeId && !textElement.hasAttribute(SHAPE_INSIDE_ATTR)) {
+		textElement.setAttribute(SHAPE_INSIDE_ATTR, `#${shapeId}`);
+	}
+
+	if (shapeId) {
+		const shapeEl = svgContent.getElementById(shapeId) as SVGGraphicsElement | null;
+		const x = shapeEl?.getAttribute('x');
+		const y = shapeEl?.getAttribute('y');
+		const width = shapeEl?.getAttribute('width');
+		const height = shapeEl?.getAttribute('height');
+		const fontSize = Number.parseFloat(textElement.getAttribute('font-size') ?? '');
+
+		if (x && !textElement.getAttribute('x')) {
+			textElement.setAttribute('x', x);
+		}
+		if (y && !textElement.getAttribute('y')) {
+			const baseline =
+				Number.isFinite(fontSize) && fontSize > 0
+					? Number.parseFloat(y) + fontSize
+					: Number.parseFloat(y);
+			textElement.setAttribute('y', String(baseline));
+		}
+		if (width && !textElement.getAttribute(WRAP_WIDTH_ATTR)) {
+			textElement.setAttribute(WRAP_WIDTH_ATTR, width);
+		}
+		if (height && !textElement.getAttribute(WRAP_HEIGHT_ATTR)) {
+			textElement.setAttribute(WRAP_HEIGHT_ATTR, height);
+		}
+	}
+
+	if (
+		!textElement.hasAttribute(MULTILINE_ATTR) &&
+		(shapeId !== null || isStructuredText || rawText.includes('\n') || rawText.includes('\r'))
+	) {
+		textElement.setAttribute(MULTILINE_ATTR, 'true');
+	}
+};
 
 export const createSvgCanvas = ({
 	container,
@@ -696,12 +783,7 @@ export const createSvgCanvas = ({
 		const svgContent = canvas.getSvgContent?.();
 		if (!svgContent || !canvas.useMultilineText) return;
 		for (const textElement of svgContent.querySelectorAll('text')) {
-			if (!textElement.hasAttribute('data-svgedit-multiline')) {
-				textElement.setAttribute('data-svgedit-multiline', 'true');
-			}
-			if (!textElement.hasAttribute('data-svgedit-raw-text')) {
-				textElement.setAttribute('data-svgedit-raw-text', textElement.textContent ?? '');
-			}
+			hydrateImportedMultilineText(svgContent, textElement);
 		}
 	};
 
