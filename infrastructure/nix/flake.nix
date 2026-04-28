@@ -25,12 +25,7 @@
     system = "x86_64-linux";
     lib = nixpkgs.lib;
     pkgs = import nixpkgs {inherit system;};
-    repoRoot = let
-      envRepoRoot = builtins.getEnv "DIGITABLE_REPO_ROOT";
-    in
-      if envRepoRoot == ""
-      then builtins.toString ../..
-      else envRepoRoot;
+    repoRoot = builtins.toString ../..;
     repoRootPath = /. + repoRoot;
     adminPublicKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID3iigCfo016qrs9rlsr6uISm/3x6nOa5b66FcwjnnRF simonhackler@gmail.com"
@@ -47,37 +42,106 @@
     studioPort = 3000;
     appPort = 3001;
 
-    # This path-flake packages prebuilt app artifacts from the local checkout.
-    appBuild = builtins.path {
-      path = repoRootPath + "/packages/app/build";
-      name = "app-build";
+    packageDirs = [
+      "packages/app"
+      "packages/game-server"
+      "packages/studio"
+    ];
+
+    packageSource = builtins.path {
+      path = repoRootPath;
+      name = "digitable-source";
+      filter = path: type: let
+        rel = lib.removePrefix "${repoRoot}/" (toString path);
+        parts = lib.splitString "/" rel;
+        isPackagePath =
+          builtins.any
+          (dir: rel == dir || lib.hasPrefix "${dir}/" rel)
+          packageDirs;
+        isRootFile = builtins.elem rel [
+          ""
+          "bun.lock"
+          "package.json"
+          "tsconfig.json"
+        ];
+      in
+        (isRootFile || rel == "packages" || isPackagePath)
+        && !(builtins.any (part: builtins.elem part [
+            ".git"
+            ".svelte-kit"
+            "build"
+            "node_modules"
+          ])
+          parts);
     };
 
-    appPackageJson = builtins.path {
-      path = repoRootPath + "/packages/app/package.json";
-      name = "app-package.json";
-    };
+    bunDependencies = pkgs.stdenv.mkDerivation {
+      pname = "digitable-bun-dependencies";
+      version = "0.0.1";
+      src = packageSource;
 
-    # This path-flake packages prebuilt studio artifacts from the local checkout.
-    studioBuild = builtins.path {
-      path = repoRootPath + "/packages/studio/build";
-      name = "studio-build";
-    };
+      nativeBuildInputs = [
+        pkgs.bun
+        pkgs.nodejs
+        pkgs.python3
+      ];
 
-    studioPackageJson = builtins.path {
-      path = repoRootPath + "/packages/studio/package.json";
-      name = "studio-package.json";
-    };
+      dontConfigure = true;
+      dontBuild = true;
+      dontFixup = true;
+      outputHashAlgo = "sha256";
+      outputHashMode = "recursive";
+      outputHash = "sha256-6NRvn1Prbt/co31/6xA5OOtH1cG6yIMjvQ0JfuUAREI=";
 
-    rootNodeModules = builtins.path {
-      path = repoRootPath + "/node_modules";
-      name = "studio-node-modules";
+      installPhase = ''
+        runHook preInstall
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+
+        bun install --frozen-lockfile
+        rm -f node_modules/studio node_modules/boardgame-server node_modules/@svg-table/app
+        find node_modules -xtype l -delete
+
+        mkdir -p "$out"
+        cp -a node_modules "$out/node_modules"
+
+        runHook postInstall
+      '';
     };
 
     studioPackage = pkgs.stdenv.mkDerivation {
       pname = "studio";
       version = "0.0.1";
-      dontUnpack = true;
+      src = packageSource;
+
+      nativeBuildInputs = [
+        pkgs.bun
+        pkgs.nodejs
+      ];
+
+      dontConfigure = true;
+
+      buildPhase = ''
+        runHook preBuild
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+
+        cp -a ${bunDependencies}/node_modules ./node_modules
+        chmod -R u+w ./node_modules
+        rm -f node_modules/studio node_modules/boardgame-server node_modules/@svg-table/app
+        ln -s ../packages/studio node_modules/studio
+        ln -s ../packages/game-server node_modules/boardgame-server
+        mkdir -p node_modules/@svg-table
+        ln -s ../../packages/app node_modules/@svg-table/app
+        patchShebangs node_modules
+
+        bun run --filter=@svg-table/app build
+        bun run --filter=studio build
+
+        runHook postBuild
+      '';
 
       installPhase = ''
         runHook preInstall
@@ -86,12 +150,12 @@
         mkdir -p $out/packages/app
         mkdir -p $out/packages/game-server
 
-        cp ${studioPackageJson} $out/packages/studio/package.json
-        cp -r ${studioBuild} $out/packages/studio/build
-        cp -r ${rootNodeModules} $out/node_modules
-        cp ${appPackageJson} $out/packages/app/package.json
-        cp -r ${appBuild} $out/packages/app/build
-        cp ${repoRootPath + "/packages/game-server/package.json"} $out/packages/game-server/package.json
+        cp packages/studio/package.json $out/packages/studio/package.json
+        cp -r packages/studio/build $out/packages/studio/build
+        cp packages/app/package.json $out/packages/app/package.json
+        cp -r packages/app/build $out/packages/app/build
+        cp packages/game-server/package.json $out/packages/game-server/package.json
+        cp -a node_modules $out/node_modules
 
         runHook postInstall
       '';
