@@ -34,7 +34,7 @@ To add a new secret:
 3. If a service needs it as an environment variable, add it to a `sops.templates.*.content` block and wire that
    template into `systemd.services.<name>.serviceConfig.EnvironmentFile`.
 
-Because the secrets file is currently untracked, `deploy-rs` must be run with `-- --impure`.
+The encrypted secrets file is tracked in Git and decrypted on the target through `sops-nix`.
 
 ## Install
 
@@ -73,6 +73,5 @@ VM ports:
 ```bash
 cd infrastructure/nix
 nix run github:serokell/deploy-rs -- \
-  "path:$(realpath ../..)?dir=infrastructure/nix#studio" \
-  -- --impure
+  "path:$(realpath ../..)?dir=infrastructure/nix#studio"
 ```
