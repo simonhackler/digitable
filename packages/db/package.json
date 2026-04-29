@@ -1,0 +1,28 @@
+{
+	"name": "@svg-table/db",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./client": "./src/client.ts",
+		"./schema": "./src/schema/index.ts",
+		"./private-rooms": "./src/private-rooms.ts",
+		"./tickets": "./src/tickets.ts"
+	},
+	"scripts": {
+		"auth:generate": "bunx @better-auth/cli@latest generate --config ../auth/src/cli.ts --output ./src/schema/auth.ts --yes",
+		"db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
+		"db:migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
+		"db:studio": "drizzle-kit studio --config ./drizzle.config.ts"
+	},
+	"dependencies": {
+		"dotenv": "latest",
+		"drizzle-orm": "latest",
+		"pg": "latest"
+	},
+	"devDependencies": {
+		"@types/pg": "latest",
+		"drizzle-kit": "latest"
+	}
+}

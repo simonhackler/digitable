@@ -6,6 +6,7 @@ import { playground } from '@colyseus/playground';
  * Import your Room files
  */
 import { CommandRoom } from './rooms/command-room';
+import { PrivateCommandRoom } from './rooms/private-command-room';
 
 export default config({
 	initializeGameServer: (gameServer) => {
@@ -13,6 +14,7 @@ export default config({
 		 * Define your room handlers:
 		 */
 		gameServer.define('my_room', CommandRoom);
+		gameServer.define('private_room', PrivateCommandRoom).filterBy(['privateRoomId']);
 	},
 
 	initializeExpress: (app) => {
