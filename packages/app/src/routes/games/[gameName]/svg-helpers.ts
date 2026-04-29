@@ -67,6 +67,7 @@ export function generateSvg(
 	const svg = svgTemplate.cloneNode(true) as SVGSVGElement;
 	// add a random id after date
 	svg.id = `generated-svg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+	svg.style.contain = 'layout style paint';
 	headers.forEach((col, idx) => {
 		const data = row[idx] || '';
 		initialSetupForSvgItem(svg, col, data, imagePaths);
@@ -136,6 +137,7 @@ export function initialSetupForSvgItem(
 	div.style.height = '100%';
 	div.style.overflow = 'hidden';
 	div.style.whiteSpace = 'pre-wrap';
+	div.style.contain = 'layout style paint';
 
 	// Copy styles from the original SVG text element
 	const computedStyle = window.getComputedStyle(el);

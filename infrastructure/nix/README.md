@@ -6,18 +6,8 @@ Targets:
 - `studio-vm`: local VM
 - `studio-prod`: deployed system used by `deploy-rs`
 
-Build both SvelteKit apps first:
-
-```bash
-cd packages/app
-bun run build
-
-cd packages/studio
-KIT_API_KEY=dummy KIT_FORM_ID=dummy bun run build
-```
-
-The flake reads `packages/app/build`, `packages/studio/build`, and `node_modules` from your checkout via
-`DIGITABLE_REPO_ROOT`, so include it in the commands below.
+The flake builds both SvelteKit apps from source with Bun. It resolves the repo root relative to
+`infrastructure/nix/flake.nix`, so no repo-root environment variable is required.
 
 Secrets are read through `sops-nix` from `infrastructure/nix/secrets/secrets.yaml`. The host expects an age
 identity derived from the server's SSH host key and currently declares `replicate-api-token`, which is rendered
@@ -44,8 +34,7 @@ To add a new secret:
 3. If a service needs it as an environment variable, add it to a `sops.templates.*.content` block and wire that
    template into `systemd.services.<name>.serviceConfig.EnvironmentFile`.
 
-Because the deploy uses checkout-local build artifacts and the secrets file is currently untracked, `deploy-rs`
-must be run with `-- --impure`.
+The encrypted secrets file is tracked in Git and decrypted on the target through `sops-nix`.
 
 ## Install
 
@@ -53,7 +42,6 @@ Check the target disk in [disko/hetzner.nix](./disko/hetzner.nix), then run:
 
 ```bash
 cd infrastructure/nix
-DIGITABLE_REPO_ROOT="$(realpath ../..)" \
 STUDIO_DOMAIN=your-domain.example \
   nix run github:nix-community/nixos-anywhere -- \
   --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-install" \
@@ -67,8 +55,7 @@ For a real domain install, set `STUDIO_DOMAIN` to that domain.
 
 ```bash
 cd infrastructure/nix
-DIGITABLE_REPO_ROOT="$(realpath ../..)" \
-  nixos-rebuild build-vm --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-vm"
+nixos-rebuild build-vm --flake "path:$(realpath ../..)?dir=infrastructure/nix#studio-vm"
 ./result/bin/run-studio-vm
 ```
 
@@ -85,8 +72,6 @@ VM ports:
 
 ```bash
 cd infrastructure/nix
-DIGITABLE_REPO_ROOT="$(realpath ../..)" \
-  nix run github:serokell/deploy-rs -- \
-  "path:$(realpath ../..)?dir=infrastructure/nix#studio" \
-  -- --impure
+nix run github:serokell/deploy-rs -- \
+  "path:$(realpath ../..)?dir=infrastructure/nix#studio"
 ```
