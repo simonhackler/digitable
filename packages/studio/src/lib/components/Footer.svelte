@@ -1,4 +1,5 @@
 <script lang="ts">
+	import mascot from '$lib/assets/mascot.png';
 	import { resolve } from '$app/paths';
 
 	const year = new Date().getFullYear();
@@ -8,10 +9,11 @@
 	<div class="mx-auto grid max-w-[1120px] gap-10 px-6 py-12 md:grid-cols-[1.3fr_1fr_1fr]">
 		<div class="grid gap-4">
 			<div class="flex items-center gap-3">
-				<div
-					class="h-9 w-9 rounded-[12px] bg-[linear-gradient(135deg,#111_0%,#4b5674_55%,#f2b04f_100%)] shadow-[0_10px_20px_rgba(0,0,0,0.35)]"
-					aria-hidden="true"
-				></div>
+				<img
+					src={mascot}
+					alt=""
+					class="h-9 w-9 rounded-[12px] object-cover shadow-[0_10px_20px_rgba(0,0,0,0.35)]"
+				/>
 				<span class="text-lg font-semibold tracking-[0.02em]">Digitable Studio</span>
 			</div>
 			<p class="max-w-sm text-sm text-white/70">
