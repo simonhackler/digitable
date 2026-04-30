@@ -41,14 +41,18 @@
 	export type ButtonVariant = VariantProps<typeof buttonVariants>['variant'];
 	export type ButtonSize = VariantProps<typeof buttonVariants>['size'];
 
-	export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
-		WithElementRef<HTMLAnchorAttributes> & {
+	export type ButtonProps = WithElementRef<Omit<HTMLButtonAttributes, 'href'>> &
+		WithElementRef<Omit<HTMLAnchorAttributes, 'href'>> & {
+			href?: HTMLAnchorAttributes['href'];
 			variant?: ButtonVariant;
 			size?: ButtonSize;
 		};
 </script>
 
 <script lang="ts">
+	import type { Pathname } from '$app/types';
+	import { resolve } from '$app/paths';
+
 	let {
 		class: className,
 		variant = 'default',
@@ -63,18 +67,32 @@
 </script>
 
 {#if href}
-	<a
-		bind:this={ref}
-		data-slot="button"
-		class={cn(buttonVariants({ variant, size }), className)}
-		href={disabled ? undefined : href}
-		aria-disabled={disabled}
-		role={disabled ? 'link' : undefined}
-		tabindex={disabled ? -1 : undefined}
-		{...restProps}
-	>
-		{@render children?.()}
-	</a>
+	{#if disabled}
+		<a
+			bind:this={ref}
+			data-slot="button"
+			class={cn(buttonVariants({ variant, size }), className)}
+			href={undefined}
+			aria-disabled={true}
+			tabindex={-1}
+			{...restProps}
+		>
+			{@render children?.()}
+		</a>
+	{:else}
+		<a
+			bind:this={ref}
+			data-slot="button"
+			class={cn(buttonVariants({ variant, size }), className)}
+			href={resolve(href as Pathname)}
+			aria-disabled={undefined}
+			role={undefined}
+			tabindex={undefined}
+			{...restProps}
+		>
+			{@render children?.()}
+		</a>
+	{/if}
 {:else}
 	<button
 		bind:this={ref}

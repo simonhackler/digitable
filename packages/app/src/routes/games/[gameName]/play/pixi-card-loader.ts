@@ -2,7 +2,6 @@ import { Assets, Sprite, type Texture } from 'pixi.js';
 import { loadSvgsAndData } from '../data-loader';
 import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 import '@pixi/layout';
-import { LayoutContainer } from '@pixi/layout/components';
 import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 
 async function svgToTexture(svg: SVGSVGElement, cardIndex?: number) {
@@ -46,7 +45,7 @@ export async function createHybridContainer(svg: SVGSVGElement) {
 		}
 	});
 
-    return svgSprite;
+	return svgSprite;
 	// container.addChild(svgSprite);
 
 	// return container;

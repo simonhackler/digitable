@@ -29,8 +29,7 @@
 		};
 	}
 
-	const svgsProm = $derived(loadSvgTemplates(fileSystem, fullFolderPath));
-	setToLoadSvgsContext(() => svgsProm);
+	setToLoadSvgsContext(() => loadSvgTemplates(fileSystem, fullFolderPath));
 </script>
 
 {@render children()}

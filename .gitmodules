@@ -1,0 +1,3 @@
+[submodule "svgedit"]
+	path = svgedit
+	url = git@github.com:simonhackler/svgedit.git

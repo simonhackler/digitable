@@ -1,0 +1,13 @@
+{
+	"extends": "../app/tsconfig.json",
+	"compilerOptions": {
+		"composite": true,
+		"allowImportingTsExtensions": true,
+		"baseUrl": ".",
+		"paths": {
+			"$svgeditor/*": ["src/lib/*"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist"]
+}

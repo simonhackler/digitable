@@ -1,1 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="50mm" height="50mm" viewBox="0 0 50 50"><image id="background" href="/placeholder.svg" width="50px" height="50px"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="50mm" height="50mm" viewBox="0 0 50 50">
+ <g class="layer">
+  <title>Layer 1</title>
+  <image height="50px" href="/placeholder.svg" id="background" width="50px"/>
+  <text data-svgedit-multiline="true" data-svgedit-raw-text="ffffffffffffffffffffffff ffff  ffffffffff fdsfs" data-svgedit-text-overflow="false" data-svgedit-wrap-height="17.13" data-svgedit-wrap-width="61.25" fill="#000000" font-family="serif" font-size="3" id="svg_3" stroke="#000000" stroke-width="0" text-anchor="start" transform="matrix(1 0 0 0.950658 6.25 -34.5633)" x="10.19" xml:space="preserve" y="25.13">
+   <tspan id="svg_1" x="10.19" y="25.13">ffffffffffffffffffffffff ffff  ffffffffff fdsfs</tspan>
+  </text>
+  <text data-svgedit-multiline="true" data-svgedit-shape-inside-ref="#svg_2" data-svgedit-wrap-height="7.25" data-svgedit-wrap-width="240" fill="#000000" font-family="serif" font-size="3" id="svg_5" stroke="#000000" stroke-width="0" text-anchor="start" x="14.31" xml:space="preserve" y="14.88"/>
+  <text data-svgedit-multiline="true" data-svgedit-shape-inside-ref="#svg_9" data-svgedit-wrap-height="9.38" data-svgedit-wrap-width="13.13" fill="#000000" font-family="serif" font-size="24" id="svg_15" stroke="#000000" stroke-width="0" text-anchor="start" x="4.06" xml:space="preserve" y="36.75"/>
+  <text data-svgedit-multiline="true" data-svgedit-raw-text="fff fsd fsdf fdas " data-svgedit-shape-inside-ref="#svg_16" data-svgedit-text-overflow="false" data-svgedit-wrap-height="30.75" data-svgedit-wrap-width="35.5" fill="#000000" font-family="serif" font-size="6" id="svg_20" stroke="#000000" stroke-width="0" text-anchor="start" transform="matrix(1 0 0 1 -0.25 -20.5)" x="6.69" xml:space="preserve" y="29.63">
+   <tspan x="6.69" y="29.63">fff fsd fsdf</tspan>
+   <tspan x="6.69" y="36.83">fdas</tspan>
+  </text>
+  <text data-svgedit-multiline="true" data-svgedit-shape-inside-ref="#svg_22" data-svgedit-wrap-height="120" data-svgedit-wrap-width="240" fill="#000000" font-family="serif" font-size="6" id="svg_24" stroke="#000000" stroke-width="0" text-anchor="start" x="8.94" xml:space="preserve" y="32.38"/>
+  <text data-svgedit-multiline="true" data-svgedit-shape-inside-ref="#svg_32" data-svgedit-wrap-height="120" data-svgedit-wrap-width="240" fill="#000000" font-family="serif" font-size="6" id="svg_33" stroke="#000000" stroke-width="0" text-anchor="start" x="19.69" xml:space="preserve" y="13.25"/>
+ </g>
+ <defs>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_4" opacity="0.5" width="240" x="11.44" y="42.63"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_6" opacity="0.5" stroke-width="0" width="240" x="15.81" y="7.88"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_8" opacity="0.5" stroke-width="0" width="240" x="6.31" y="3.75"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="10" id="svg_10" opacity="0.5" stroke-width="0" width="240" x="10" y="0"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_12" opacity="0.5" stroke-width="0" width="240" x="10" y="10"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_14" opacity="0.5" stroke-width="0" width="240" x="10" y="0"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_13" opacity="0.5" stroke-width="0" width="240" x="8.44" y="7.13"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="13.88" id="svg_7" opacity="0.5" stroke-width="0" width="19.25" x="11.81" y="15.88"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_11" opacity="0.5" stroke-width="0" width="240" x="14.81" y="5.88"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_17" opacity="0.5" stroke-width="0" width="240" x="51.81" y="26.25"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_19" opacity="0.5" stroke-width="0" width="240" x="10.81" y="15.88"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_21" opacity="0.5" stroke-width="0" width="240" x="9.06" y="4.63"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_23" opacity="0.5" stroke-width="0" width="240" x="30.19" y="14.38"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_25" opacity="0.5" stroke-width="0" width="240" x="7.56" y="13.63"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_27" opacity="0.5" stroke-width="0" width="240" x="61.56" y="22.75"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_18" opacity="0.5" stroke-width="0" width="240" x="9.69" y="5.38"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="7.25" id="svg_2" opacity="0.5" stroke-width="0" width="240" x="14.31" y="11.88"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="9.38" id="svg_9" opacity="0.5" width="13.13" x="4.06" y="12.75"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="30.75" id="svg_16" opacity="0.5" width="35.5" x="6.69" y="23.63"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_22" opacity="0.5" width="240" x="8.94" y="26.38"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_28" opacity="0.5" stroke-width="0" width="240" x="23.56" y="37.38"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_30" opacity="0.5" stroke-width="0" width="240" x="9.94" y="26.38"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_32" opacity="0.5" stroke-width="0" width="240" x="19.69" y="7.25"/>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_31" opacity="0.5" pointer-events="none" stroke-width="0" visibility="hidden" width="240" x="36.94" y="29.63"/>
+ </defs>
+</svg>

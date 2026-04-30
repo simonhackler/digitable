@@ -72,5 +72,23 @@ export default ts.config(
 			}
 		}
 	},
+	{
+		files: [
+			'packages/svgeditor/**/*.svelte',
+			'packages/svgeditor/**/*.svelte.ts',
+			'packages/svgeditor/**/*.svelte.js'
+		],
+		languageOptions: {
+			parserOptions: {
+				projectService: true,
+				extraFileExtensions: ['.svelte'],
+				parser: ts.parser,
+				svelteConfig: './packages/svgeditor/svelte.config.js'
+			}
+		},
+		rules: {
+			'svelte/no-navigation-without-resolve': 'off'
+		}
+	},
 	storybook.configs['flat/recommended']
 );

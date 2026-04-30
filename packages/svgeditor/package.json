@@ -1,0 +1,23 @@
+{
+	"name": "@svg-table/svgeditor",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"svelte": "./src/lib/index.ts",
+	"exports": {
+		".": {
+			"svelte": "./src/lib/index.ts",
+			"default": "./src/lib/index.ts"
+		}
+	},
+	"dependencies": {
+		"@lucide/svelte": "^0.561.0",
+		"@svgedit/svgcanvas": "workspace:*",
+		"bits-ui": "^2.14.4",
+		"clsx": "^2.1.1",
+		"runed": "^0.37.0",
+		"svelte-sonner": "^1.0.7",
+		"tailwind-merge": "^3.4.0",
+		"tailwind-variants": "^3.2.2"
+	}
+}
