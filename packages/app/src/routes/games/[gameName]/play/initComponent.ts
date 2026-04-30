@@ -1,7 +1,6 @@
 import type { SchemaCallbackProxy } from '@colyseus/schema';
 import type { Room } from 'colyseus.js';
-import { Container, Sprite, type Application } from 'pixi.js';
-import { LayoutContainer } from '@pixi/layout/components';
+import { Container, Sprite } from 'pixi.js';
 import { BoardGameItemNew, CardContainer } from '$lib/pixi/item';
 import { assert } from '$lib/utils/assert';
 import {
@@ -28,8 +27,8 @@ export interface InitComponentDependencies {
 }
 
 async function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
-    const cardContainer = topItem.itemContainer as CardContainer;
-    const tex = !isFaceUp ? cardContainer.backSprite.texture : cardContainer.frontSprite.texture;
+	const cardContainer = topItem.itemContainer as CardContainer;
+	const tex = !isFaceUp ? cardContainer.backSprite.texture : cardContainer.frontSprite.texture;
 
 	const topSprite = new Sprite(tex);
 	topSprite.setSize(topItem.getSize());
@@ -88,11 +87,11 @@ export async function initComponent(
 
 		for (const item of stacks) {
 			item.visible = false;
-            item.renderable = false;
+			item.renderable = false;
 		}
-		function rebuild(frontendFlip: ClientFlippable | null ) {
+		function rebuild(frontendFlip: ClientFlippable | null) {
 			stackContainer.removeChildren();
-            const isFaceUp = frontendFlip !== null ? frontendFlip.clientFlippableState.isFaceUp : true;
+			const isFaceUp = frontendFlip !== null ? frontendFlip.clientFlippableState.isFaceUp : true;
 			const index = isFaceUp ? 0 : stacks.length - 1;
 			const item = stacks[index];
 			buildStack(isFaceUp, item).then((stackSprites) => {

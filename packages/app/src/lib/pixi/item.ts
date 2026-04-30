@@ -63,8 +63,8 @@ export class BoardGameItemNew extends Container {
 
 // This could extend Flippable?
 export class CardContainer extends Container {
-    public readonly frontSprite: Sprite;
-    public readonly backSprite: Sprite;
+	public readonly frontSprite: Sprite;
+	public readonly backSprite: Sprite;
 
 	constructor(frontSprite: Sprite, backSprite: Sprite) {
 		super({
@@ -73,8 +73,8 @@ export class CardContainer extends Container {
 			}
 		});
 		this.layout = true;
-        this.frontSprite = frontSprite;
-        this.backSprite = backSprite;
+		this.frontSprite = frontSprite;
+		this.backSprite = backSprite;
 		this.addChild(frontSprite);
 		this.addChild(backSprite);
 
