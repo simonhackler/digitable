@@ -35,6 +35,7 @@
 		"@colyseus/playground": "^0.16.0",
 		"@colyseus/schema": "^3.0.70",
 		"@colyseus/tools": "^0.16.15",
+		"@svg-table/db": "workspace:*",
 		"colyseus": "^0.16.5",
 		"debug": "^4.4.3",
 		"express": "^5.2.1"

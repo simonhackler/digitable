@@ -132,11 +132,12 @@ export async function loadSvgsAndData(
 	cardName: string,
 	fileSystem: Adapter,
 	svgTemplateFront: SVGSVGElement,
-	svgTemplateBack: SVGSVGElement
+	svgTemplateBack: SVGSVGElement,
+	useDataUrls = true
 ) {
 	const svgData = getSvgDataMap(svgTemplateFront, svgTemplateBack);
 	const spreadsheetData = await loadSpreadsheetData(svgData, projectName, cardName, fileSystem);
-	const imagePaths = await loadImagePaths(spreadsheetData, fileSystem, projectName, true);
+	const imagePaths = await loadImagePaths(spreadsheetData, fileSystem, projectName, useDataUrls);
 	return {
 		svgData,
 		spreadsheetData,
