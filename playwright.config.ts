@@ -3,9 +3,14 @@ import { fileURLToPath } from 'node:url';
 import { devices, defineConfig } from '@playwright/test';
 
 const envPath = fileURLToPath(new URL('./.env', import.meta.url));
+const devenvPlaywrightEnvPath = fileURLToPath(new URL('./.devenv/playwright.env', import.meta.url));
 
-if (existsSync(envPath)) {
-	for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+const loadEnvFile = (path: string, { override = false } = {}) => {
+	if (!existsSync(path)) {
+		return;
+	}
+
+	for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
 		const trimmedLine = line.trim();
 		if (!trimmedLine || trimmedLine.startsWith('#')) {
 			continue;
@@ -17,20 +22,24 @@ if (existsSync(envPath)) {
 		}
 
 		const [, key, rawValue] = match;
-		if (process.env[key] !== undefined) {
+		if (!override && process.env[key] !== undefined) {
 			continue;
 		}
 
 		const value = rawValue.replace(/^(['"])(.*)\1$/, '$2');
 		process.env[key] = value;
 	}
-}
+};
+
+loadEnvFile(envPath);
+loadEnvFile(devenvPlaywrightEnvPath, { override: true });
 
 const port = process.env.PORT ?? '5173';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
 	use: {
-		baseURL: `http://localhost:${port}`
+		baseURL
 	},
 	testDir: 'e2e',
 	projects: [

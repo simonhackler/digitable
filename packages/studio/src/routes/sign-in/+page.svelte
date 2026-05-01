@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { base, resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -50,7 +49,7 @@
 			return;
 		}
 
-		await goto(resolve('/games'));
+		window.location.assign('/app/games');
 	}
 </script>
 
@@ -58,8 +57,12 @@
 	<title>Sign In | Digitable</title>
 </svelte:head>
 
-<div class="min-h-screen bg-[radial-gradient(circle_at_top_left,#fde7b3_0%,transparent_28%),radial-gradient(circle_at_bottom_right,#cad8ff_0%,transparent_32%),linear-gradient(180deg,#f7f3ea_0%,#fdfcf8_100%)] text-[#171717]">
-	<main class="mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+<div
+	class="min-h-screen bg-[radial-gradient(circle_at_top_left,#fde7b3_0%,transparent_28%),radial-gradient(circle_at_bottom_right,#cad8ff_0%,transparent_32%),linear-gradient(180deg,#f7f3ea_0%,#fdfcf8_100%)] text-[#171717]"
+>
+	<main
+		class="mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center"
+	>
 		<section class="flex flex-col justify-center gap-6">
 			<p class="text-sm font-semibold tracking-[0.3em] text-[#6d5d37] uppercase">Digitable App</p>
 			<div class="max-w-xl space-y-4">
@@ -71,10 +74,14 @@
 				</p>
 			</div>
 			<div class="grid gap-3 text-sm text-[#3f3a32] sm:max-w-md">
-				<div class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur">
+				<div
+					class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur"
+				>
 					Your projects stay in the app, ready to edit or playtest.
 				</div>
-				<div class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur">
+				<div
+					class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur"
+				>
 					Private rooms and game tickets keep collaborative sessions tied to your account.
 				</div>
 			</div>
@@ -90,7 +97,10 @@
 					<h2 class="text-3xl font-semibold">Welcome back</h2>
 					<p class="text-sm text-[#5d584f]">
 						No account yet?
-						<a class="font-medium text-[#171717] underline underline-offset-4" href={resolve('/sign-up')}>
+						<a
+							class="font-medium text-[#171717] underline underline-offset-4"
+							href={resolve('/sign-up')}
+						>
 							Create one here
 						</a>
 					</p>
@@ -121,7 +131,9 @@
 				</div>
 
 				{#if errorMessage}
-					<p class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+					<p
+						class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+					>
 						{errorMessage}
 					</p>
 				{/if}
@@ -132,7 +144,10 @@
 
 				<p class="mt-4 text-center text-sm text-[#5d584f]">
 					Want to start from scratch?
-					<a class="font-medium text-[#171717] underline underline-offset-4" href={resolve('/sign-up')}>
+					<a
+						class="font-medium text-[#171717] underline underline-offset-4"
+						href={resolve('/sign-up')}
+					>
 						Go to sign up
 					</a>
 				</p>

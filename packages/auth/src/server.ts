@@ -2,8 +2,13 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 
 import { db } from '@svg-table/db';
+import * as schema from '@svg-table/db/schema';
 
 type AuthPlugin = NonNullable<Parameters<typeof betterAuth>[0]['plugins']>[number];
+
+type CreateAuthOptions = {
+	baseURL?: string;
+};
 
 function compact(values: Array<string | undefined>) {
 	return values.filter((value): value is string => Boolean(value));
@@ -23,14 +28,16 @@ function env(name: string, fallback: string) {
 	return fallback;
 }
 
-export function createAuth(plugins: AuthPlugin[] = []) {
+export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOptions = {}) {
 	const cookieDomain = process.env.AUTH_COOKIE_DOMAIN;
-	const baseURL = env('BETTER_AUTH_URL', `http://localhost:${process.env.PORT ?? '5173'}/app`);
+	const baseURL =
+		options.baseURL ?? env('BETTER_AUTH_URL', `http://localhost:${process.env.PORT ?? '5173'}/app`);
 
 	return betterAuth({
 		appName: 'Digitable',
 		database: drizzleAdapter(db, {
-			provider: 'pg'
+			provider: 'pg',
+			schema
 		}),
 		baseURL,
 		basePath: '/api/auth',

@@ -26,6 +26,7 @@ You are able to use the Svelte MCP server, where you have access to comprehensiv
 ALWAYS use tailwindcss when possible. Prefer xs sm md lg xl over explicit sizes.
 
 When writing tests ALWAYS read `instructions/testing.md` first.
+When writing e2e tests, NEVER mock app routes, network requests, browser APIs, databases, or backend services. E2E tests must exercise the real integrated flow.
 
 ## Available MCP Tools:
 
