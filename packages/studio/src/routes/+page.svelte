@@ -2,6 +2,7 @@
 	import type { PageData } from './$types';
 	import SubscribeForm from './subscribe/SubscribeForm.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -42,35 +43,31 @@
 </svelte:head>
 
 <main class="page min-h-screen text-[#151515]">
-	<section class="py-12">
-		<div class="mx-auto grid max-w-[1120px] gap-10 px-6">
+	<section class="py-8 sm:py-12">
+		<div class="mx-auto grid max-w-[1120px] gap-8 px-6 sm:gap-10">
 			<div class="reveal mx-auto grid max-w-[720px] gap-4 text-left md:text-center">
 				<h1 class="font-['Newsreader'] text-4xl md:text-5xl lg:text-6xl">
-					<span class="block">Digitable.</span>
 					<span class="block">A free and open source boardgame engine.</span>
 				</h1>
 				<p class="text-xl text-[#4b4b57]">Design, playtest, and publish your next boardgame.</p>
 			</div>
 
 			<div class="reveal grid gap-4">
-				<div
-					class="mx-auto inline-flex flex-wrap gap-2 rounded-full bg-white/80 p-[0.4rem] shadow-[inset_0_0_0_1px_rgba(36,36,42,0.1)] max-sm:justify-start md:justify-center"
-					role="tablist"
-					aria-label="Primary actions"
-				>
-					{#each tabIds as tab (tab)}
-						<Button
-							type="button"
-							variant="tab"
-							size="unset"
-							role="tab"
-							aria-selected={activeTab === tab}
-							onclick={() => (activeTab = tab)}
-						>
-							{tab === 'design' ? '1. Design' : tab === 'playtest' ? '2. Playtest' : '3. Publish'}
-						</Button>
-					{/each}
-				</div>
+				<Tabs.Root bind:value={activeTab} class="mx-auto w-full max-w-[720px] gap-4">
+					<Tabs.List
+						class="grid h-auto w-full grid-cols-3 rounded-[2rem] bg-white/85 p-2 shadow-[inset_0_0_0_1px_rgba(36,36,42,0.1)]"
+						aria-label="Primary actions"
+					>
+						{#each tabIds as tab (tab)}
+							<Tabs.Trigger
+								value={tab}
+								class="h-auto rounded-full px-2 py-3 text-sm font-semibold text-[#33363f] data-[state=active]:bg-[#121212] data-[state=active]:text-[#f6f6f6] data-[state=active]:shadow-[0_8px_18px_rgba(0,0,0,0.2)] sm:px-4 sm:text-base"
+							>
+								{tab === 'design' ? '1. Design' : tab === 'playtest' ? '2. Playtest' : '3. Publish'}
+							</Tabs.Trigger>
+						{/each}
+					</Tabs.List>
+				</Tabs.Root>
 
 				<div
 					class={`relative overflow-hidden rounded-[26px] p-6 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-10 ${
