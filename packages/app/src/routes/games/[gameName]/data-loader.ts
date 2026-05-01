@@ -4,6 +4,35 @@ import { parseCsvFile } from './csv-helper';
 import { getSvgDataMap } from './svg-helpers';
 import type { ColumnWithData } from './types';
 
+const LOCAL_FILE_MARKER = '/files/';
+const TRANSPARENT_IMAGE =
+	'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E';
+
+const blobToDataUrl = (blob: Blob) =>
+	new Promise<string>((resolve) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(reader.result as string);
+		reader.readAsDataURL(blob);
+	});
+
+export const isEmbeddedImageReference = (value: string) =>
+	/^(data|blob|https?|file):/i.test(value.trim());
+
+export function getProjectFilePath(projectName: string, value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed || isEmbeddedImageReference(trimmed)) return null;
+
+	const withoutQuery = trimmed.split(/[?#]/, 1)[0];
+	const filesIndex = withoutQuery.lastIndexOf(LOCAL_FILE_MARKER);
+	const localPath =
+		filesIndex >= 0
+			? withoutQuery.slice(filesIndex + LOCAL_FILE_MARKER.length)
+			: withoutQuery.replace(/^(\.\.\/)+/, '').replace(/^\/+/, '');
+
+	if (!localPath) return null;
+	return `/${projectName}/files/${localPath}`;
+}
+
 export async function loadSpreadsheetData(
 	svgData: Map<string, ColumnWithData>,
 	currentProject: string,
@@ -85,27 +114,36 @@ export async function loadImagePaths(
 ) {
 	const imageStrings = Array.from(new Set(spreadsheetData.data.flatMap((row) => row)));
 	// The download and files api is really bad
-	const files = await fileSystem.download(
-		imageStrings.map((img) => `/${projectName}/files/${img}`)
+	const downloadPaths = imageStrings.map((img) => getProjectFilePath(projectName, img));
+	const files = await Promise.all(
+		downloadPaths.map(async (path) => {
+			if (!path) return { result: null, error: null };
+			const [file] = await fileSystem.download([path]);
+			return file;
+		})
 	);
 	const imagePaths = new Map<string, string>();
 	await Promise.all(
 		imageStrings.map(async (img, i) => {
+			if (!img) {
+				imagePaths.set(img, '');
+				return;
+			}
+			if (isEmbeddedImageReference(img)) {
+				imagePaths.set(img, img);
+				return;
+			}
+
 			const file = files[i];
 			if (file.result) {
 				const result = file.result;
 				if (useDataUrls) {
-					const dataUrl = new Promise<string>((resolve) => {
-						const reader = new FileReader();
-						reader.onload = () => resolve(reader.result as string);
-						reader.readAsDataURL(result.data);
-					});
-					imagePaths.set(img, await dataUrl);
+					imagePaths.set(img, await blobToDataUrl(result.data));
 				} else {
 					imagePaths.set(img, URL.createObjectURL(file.result.data));
 				}
 			} else {
-				imagePaths.set(img, '');
+				imagePaths.set(img, TRANSPARENT_IMAGE);
 			}
 		})
 	);
