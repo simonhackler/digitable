@@ -39,7 +39,7 @@
 		"jsuites": "^5.13.4",
 		"pagedjs": "^0.4.3",
 		"papaparse": "^5.5.3",
-		"pixi.js": "^8.14.3",
+		"pixi.js": "8.17.1",
 		"runed": "^0.37.0",
 		"svelte-sonner": "^1.0.7",
 		"wellcrafted": "^0.26.0"

@@ -2,6 +2,7 @@ import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import type { ColumnWithData } from './types';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
 const SVG_TEXT_STYLE_ATTRS = [
 	'font-family',
 	'font-size',
@@ -317,8 +318,13 @@ export async function updateSvg(
 }
 
 function updateSvgImageLink(el: SVGGraphicsElement, url: string) {
+	const svgRoot =
+		el.ownerSVGElement ?? (el.ownerDocument.documentElement as unknown as SVGSVGElement | null);
 	el.setAttribute('href', url);
-	el.setAttribute('xlink:href', url);
+	if (svgRoot && !svgRoot.hasAttribute('xmlns:xlink')) {
+		svgRoot.setAttribute('xmlns:xlink', XLINK_NS);
+	}
+	el.setAttributeNS(XLINK_NS, 'xlink:href', url);
 }
 
 export function createHighlightRect(

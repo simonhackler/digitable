@@ -9,7 +9,7 @@
         "@pixi/layout": "^3.2.0",
         "feed": "^5.2.0",
         "pixi-viewport": "^6.0.3",
-        "pixi.js": "^8.17.1",
+        "pixi.js": "8.17.1",
         "studio": "workspace:*",
         "svelte-meta-tags": "^4.5.2",
       },
@@ -58,7 +58,7 @@
         "jsuites": "^5.13.4",
         "pagedjs": "^0.4.3",
         "papaparse": "^5.5.3",
-        "pixi.js": "^8.14.3",
+        "pixi.js": "8.17.1",
         "runed": "^0.37.0",
         "svelte-sonner": "^1.0.7",
         "wellcrafted": "^0.26.0",
@@ -1507,7 +1507,7 @@
 
     "pixi-viewport": ["pixi-viewport@6.0.3", "", { "peerDependencies": { "pixi.js": ">=8" } }, "sha512-2+qPJ0/n+8hQYhWvY+795+x9y3MiUrCOWacK0DY53whowWaGdx9iDocy7z1pBwjkZhC52YvrJQuZKK0sdVLtBw=="],
 
-    "pixi.js": ["pixi.js@8.18.1", "", { "dependencies": { "@pixi/colord": "^2.9.6", "@types/earcut": "^3.0.0", "@webgpu/types": "^0.1.69", "@xmldom/xmldom": "^0.8.12", "earcut": "^3.0.2", "eventemitter3": "^5.0.1", "gifuct-js": "^2.1.2", "ismobilejs": "^1.1.1", "parse-svg-path": "^0.1.2", "tiny-lru": "^11.4.7" } }, "sha512-6LUPWYgulZhp/w4kam2XHXB0QedISZIqrJbRdHLLQ3csn5a38uzKxAp6B5j6s89QFYaIJbg95kvgTRcbgpO1ow=="],
+    "pixi.js": ["pixi.js@8.17.1", "", { "dependencies": { "@pixi/colord": "^2.9.6", "@types/earcut": "^3.0.0", "@webgpu/types": "^0.1.69", "@xmldom/xmldom": "^0.8.11", "earcut": "^3.0.2", "eventemitter3": "^5.0.1", "gifuct-js": "^2.1.2", "ismobilejs": "^1.1.1", "parse-svg-path": "^0.1.2", "tiny-lru": "^11.4.7" } }, "sha512-OB4TpZHrP5RYy+7FqmFrAc0IHRhfOoNIfF4sVeinvK3aG1r2pYrSMneJAKi9+WvGKC70Dj7GEpZ2OZGB6o/xdg=="],
 
     "playwright": ["playwright@1.59.1", "", { "dependencies": { "playwright-core": "1.59.1" }, "optionalDependencies": { "fsevents": "2.3.2" }, "bin": { "playwright": "cli.js" } }, "sha512-C8oWjPR3F81yljW9o5OxcWzfh6avkVwDD2VYdwIGqTkl+OGFISgypqzfu7dOe4QNLL2aqcWBmI3PMtLIK233lw=="],
 

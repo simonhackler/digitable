@@ -1,5 +1,4 @@
-import { Client, Room } from 'colyseus';
-import { logger } from '@colyseus/core';
+import { Client, Room, logger } from 'colyseus';
 
 import {
 	BoardGameRoomState as BoardGameRoomState,

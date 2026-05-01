@@ -160,7 +160,7 @@
 					</a>
 				</div>
 				<Button href={resolve('/sign-in')} variant="pill-outline" size="default">Sign in</Button>
-				<Button href={resolve('/sign-up')} variant="pill-dark" size="default">
+				<Button href="/app/games" data-sveltekit-reload variant="pill-dark" size="default">
 					Start creating
 				</Button>
 			</div>

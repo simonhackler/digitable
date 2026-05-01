@@ -18,6 +18,7 @@ export default ts.config(
 			'**/.svelte-kit/**',
 			'**/build/**',
 			'**/dist/**',
+			'projects/**',
 			'**/storybook-static/**'
 		]
 	},
