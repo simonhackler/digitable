@@ -100,7 +100,23 @@
 				Contact
 			</Button>
 		</nav>
-		<div class="flex items-center justify-end gap-3">
+		<div class="flex flex-wrap items-center justify-end gap-3">
+			<Button
+				href="/app/sign-in"
+				data-sveltekit-reload
+				variant="pill-outline"
+				size="default"
+			>
+				Sign in
+			</Button>
+			<Button
+				href="/app/sign-up"
+				data-sveltekit-reload
+				variant="pill-dark"
+				size="default"
+			>
+				Start creating
+			</Button>
 			<a
 				href={discordUrl}
 				class="group inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/70 shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] transition hover:-translate-y-0.5 hover:bg-white"

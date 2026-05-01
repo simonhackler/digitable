@@ -51,8 +51,6 @@
 </script>
 
 <script lang="ts">
-	import { resolve } from '$app/paths';
-
 	let {
 		class: className,
 		variant = 'default',
@@ -75,7 +73,7 @@
 	};
 
 	const anchorProps = $derived.by(() => ({
-		href: disabled || !href ? undefined : resolve(href)
+		href: disabled || !href ? undefined : href
 	}));
 </script>
 

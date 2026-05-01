@@ -136,8 +136,11 @@
 					{/each}
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
-					<Button href="/app" data-sveltekit-reload variant="hero" size="xl">
-						Start creating now
+					<Button href="/app/sign-in" data-sveltekit-reload variant="pill-outline" size="xl">
+						Sign in
+					</Button>
+					<Button href="/app/sign-up" data-sveltekit-reload variant="hero" size="xl">
+						Start creating
 					</Button>
 				</div>
 			</div>
