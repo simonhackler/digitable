@@ -107,27 +107,23 @@
 				</div>
 
 				<div class="mt-6 grid gap-4">
-					<label class="grid gap-2 text-sm font-medium">
-						<span>Email</span>
-						<Input
-							type="email"
-							bind:value={email}
-							autocomplete="email"
-							placeholder="you@studio.com"
-							required
-						/>
-					</label>
+					<Input
+						type="email"
+						bind:value={email}
+						autocomplete="email"
+						aria-label="Email"
+						placeholder="you@studio.com"
+						required
+					/>
 
-					<label class="grid gap-2 text-sm font-medium">
-						<span>Password</span>
-						<Input
-							type="password"
-							bind:value={password}
-							autocomplete="current-password"
-							placeholder="Enter your password"
-							required
-						/>
-					</label>
+					<Input
+						type="password"
+						bind:value={password}
+						autocomplete="current-password"
+						aria-label="Password"
+						placeholder="Enter your password"
+						required
+					/>
 				</div>
 
 				{#if errorMessage}

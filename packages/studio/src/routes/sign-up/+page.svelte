@@ -116,51 +116,43 @@
 				</div>
 
 				<div class="mt-6 grid gap-4">
-					<label class="grid gap-2 text-sm font-medium">
-						<span>Name</span>
-						<Input
-							type="text"
-							bind:value={name}
-							autocomplete="name"
-							placeholder="Ada Lovelace"
-							required
-						/>
-					</label>
+					<Input
+						type="text"
+						bind:value={name}
+						autocomplete="name"
+						aria-label="Name"
+						placeholder="Ada Lovelace"
+						required
+					/>
 
-					<label class="grid gap-2 text-sm font-medium">
-						<span>Email</span>
-						<Input
-							type="email"
-							bind:value={email}
-							autocomplete="email"
-							placeholder="you@studio.com"
-							required
-						/>
-					</label>
+					<Input
+						type="email"
+						bind:value={email}
+						autocomplete="email"
+						aria-label="Email"
+						placeholder="you@studio.com"
+						required
+					/>
 
-					<label class="grid gap-2 text-sm font-medium">
-						<span>Password</span>
-						<Input
-							type="password"
-							bind:value={password}
-							autocomplete="new-password"
-							placeholder="Create a password"
-							minlength={8}
-							required
-						/>
-					</label>
+					<Input
+						type="password"
+						bind:value={password}
+						autocomplete="new-password"
+						aria-label="Password"
+						placeholder="Create a password"
+						minlength={8}
+						required
+					/>
 
-					<label class="grid gap-2 text-sm font-medium">
-						<span>Confirm password</span>
-						<Input
-							type="password"
-							bind:value={confirmPassword}
-							autocomplete="new-password"
-							placeholder="Re-enter your password"
-							minlength={8}
-							required
-						/>
-					</label>
+					<Input
+						type="password"
+						bind:value={confirmPassword}
+						autocomplete="new-password"
+						aria-label="Confirm password"
+						placeholder="Re-enter your password"
+						minlength={8}
+						required
+					/>
 				</div>
 
 				{#if errorMessage}
