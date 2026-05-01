@@ -28,7 +28,7 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 		['shuffle', ShuffleCommand]
 	]);
 
-	onCreate() {
+	onCreate(_options?: unknown) {
 		logger.info('CommandRoom created');
 		this.state = new BoardGameRoomState();
 		this.onMessage('cmd', (client, message) => {
@@ -41,7 +41,7 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 		});
 	}
 
-	onJoin(client: Client, _options: unknown) {
+	onJoin(client: Client, _options: unknown, _auth?: unknown) {
 		logger.info('Client joined:', client.sessionId);
 		this.dispatcher.dispatch(new OnJoinCommand(), {
 			sessionId: client.sessionId

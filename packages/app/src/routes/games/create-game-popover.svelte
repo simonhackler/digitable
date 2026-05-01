@@ -4,6 +4,7 @@
 	import { superForm, defaults } from 'sveltekit-superforms';
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Plus } from '@lucide/svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
@@ -18,10 +19,8 @@
 
 	async function navigateToGame(gameName: string) {
 		const folderName = gameName.replace(/\s+/g, '_');
-		const url = new URL(`/games/${folderName}`, window.location.origin);
-		url.searchParams.set('gameName', gameName);
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		await goto(url);
+		const searchParams = new URLSearchParams({ gameName });
+		await goto(resolve(`/games/${folderName}?${searchParams}`));
 	}
 
 	const form = $derived(

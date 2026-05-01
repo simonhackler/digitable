@@ -136,7 +136,8 @@
 					{/each}
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
-					<Button variant="hero" size="xl">Start creating now</Button>
+					<Button href="/sign-in" variant="pill-outline" size="xl">Sign in</Button>
+					<Button href="/sign-up" variant="hero" size="xl">Start creating</Button>
 				</div>
 			</div>
 		</div>

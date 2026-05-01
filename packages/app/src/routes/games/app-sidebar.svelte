@@ -12,6 +12,7 @@
 	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
+	import { UserRound } from '@lucide/svelte';
 
 	let {
 		games,
@@ -25,6 +26,7 @@
 		if (game) return game;
 		return games.length > 0 ? games[0] : null;
 	});
+	let user = $derived(page.data.user);
 
 	async function pickFolder() {
 		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
@@ -50,6 +52,41 @@
 		<Sidebar.Group />
 	</Sidebar.Content>
 	<Sidebar.Footer>
+		<Sidebar.Menu>
+			{#if user}
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton tooltipContent="User settings">
+						{#snippet child({ props })}
+							<a {...props} href={resolve('/settings')}>
+								<UserRound />
+								<span>{user.name ?? user.email}</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			{:else}
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton tooltipContent="Sign up">
+						{#snippet child({ props })}
+							<a {...props} href={resolve('/sign-up')}>
+								<UserRound />
+								<span>Sign up</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton tooltipContent="Sign in">
+						{#snippet child({ props })}
+							<a {...props} href={resolve('/sign-in')}>
+								<UserRound />
+								<span>Sign in</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			{/if}
+		</Sidebar.Menu>
 		<Button onclick={pickFolder}>Change Projects Folder</Button>
 	</Sidebar.Footer>
 </Sidebar.Root>

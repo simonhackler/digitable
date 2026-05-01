@@ -195,6 +195,7 @@ export function generateSvg(
 	const svg = svgTemplate.cloneNode(true) as SVGSVGElement;
 	// add a random id after date
 	svg.id = `generated-svg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+	svg.style.contain = 'layout style paint';
 	headers.forEach((col, idx) => {
 		const data = row[idx] || '';
 		initialSetupForSvgItem(svg, col, data, imagePaths);
@@ -262,6 +263,7 @@ export function initialSetupForSvgItem(
 	for (const attr of SVG_TEXT_STYLE_ATTRS) {
 		applyTextStyle(div, attr, text.getAttribute(attr));
 	}
+	div.style.contain = 'layout style paint';
 
 	// Copy styles from the original SVG text element
 	const computedStyle = window.getComputedStyle(text);

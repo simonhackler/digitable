@@ -1,0 +1,9 @@
+keys:
+  - &deskotp_simon age1s2x82wv62ydyxsk7v68559r74vfx87znqvsnpp8drqfz29adp98qmcdas8
+  - &prod_server age12xpefpttk7uwzg8crlsr78frkjxhw2k8cayxfl7qfc6jjv07espqfarw0z
+creation_rules:
+  - path_regex: secrets/[^/]+\.(yaml|json|env|ini)$
+    key_groups:
+      - age:
+          - *deskotp_simon
+          - *prod_server

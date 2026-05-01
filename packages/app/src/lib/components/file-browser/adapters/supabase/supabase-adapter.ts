@@ -13,7 +13,9 @@ export class SupabaseAdapter implements Adapter {
 		this.homePath = homePath;
 	}
 
-	async download(paths: string[]) {
+	async download(
+		paths: string[]
+	): Promise<{ result: { path: string; data: Blob } | null; error: Error | null }[]> {
 		const files = await Promise.all(
 			paths.map(async (path) => {
 				const { data, error } = await this.supabase.storage.from('folders').download(`${path}`);
@@ -25,7 +27,7 @@ export class SupabaseAdapter implements Adapter {
 		});
 	}
 
-	async upload(file: File, fullFolderPath: string, overwrite = false) {
+	async upload(file: File, fullFolderPath: string, overwrite = false): Promise<Error | null> {
 		const filepath = `${this.homePath}/${fullFolderPath}/${file.name}`;
 		if (!overwrite) {
 			const { error } = await this.supabase.storage.from('folders').upload(filepath, file);
@@ -45,7 +47,7 @@ export class SupabaseAdapter implements Adapter {
 		return null;
 	}
 
-	async move(files: { filePath: string; path: string }[]) {
+	async move(files: { filePath: string; path: string }[]): Promise<Error | null> {
 		const results = await Promise.all(
 			files.map(async (file) => {
 				return this.supabase.storage.from('folders').move(file.filePath, file.path);
@@ -59,7 +61,7 @@ export class SupabaseAdapter implements Adapter {
 		return null;
 	}
 
-	async copy(files: { filePath: string; path: string }[]) {
+	async copy(files: { filePath: string; path: string }[]): Promise<Error | null> {
 		const results = await Promise.all(
 			files.map(async (file) => {
 				console.log('copying file ' + file.filePath + ' to ' + file.path);
@@ -74,12 +76,12 @@ export class SupabaseAdapter implements Adapter {
 		return null;
 	}
 
-	async delete(paths: string[]) {
+	async delete(paths: string[]): Promise<Error | null> {
 		const { error } = await this.supabase.storage.from('folders').remove(paths);
 		return error;
 	}
 
-	async getRootFolder() {
+	async getRootFolder(): Promise<{ result: Folder | null; error: Error | null }> {
 		if (this.rootFolder) {
 			return { result: this.rootFolder, error: null };
 		}

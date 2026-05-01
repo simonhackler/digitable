@@ -19,6 +19,7 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.test
+.devenv
 
 # Vite
 vite.config.js.timestamp-*
@@ -31,3 +32,7 @@ storybook-static
 # Colyseus
 .colyseus-cloud.json
 .devmode.json
+
+# Nix VM artifacts
+infrastructure/nix/result
+infrastructure/nix/*.qcow2

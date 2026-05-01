@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ExplorerNodeFunctions } from '$lib/components/file-browser/browser-utils/explorer-node-functions';
+	import { page } from '$app/state';
 	import { isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndData } from '../data-loader';
@@ -11,16 +12,16 @@
 
 	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
-
-	const projectData = new ProjectData();
+	const useDataUrls = $derived(page.route.id !== '/games/[gameName]/export/paper');
 
 	const { children } = $props();
 
 	async function getFoldersToExport(
 		fileSystem: Adapter,
 		projectName: string,
-		projectData: ProjectData
+		useDataUrls: boolean
 	) {
+		const projectData = new ProjectData();
 		const root = await fileSystem.getRootFolder();
 		if (!root.result) {
 			throw new Error('No root folder found');
@@ -63,7 +64,8 @@
 									child.name,
 									fileSystem,
 									svgTemplateFront,
-									svgTemplateBack
+									svgTemplateBack,
+									useDataUrls
 								);
 
 								let svgsFront = spreadsheetData.data.flatMap((row) => {
@@ -106,7 +108,7 @@
 		return projectData;
 	}
 
-	const getFoldersProm = $derived(getFoldersToExport(fileSystem, projectName, projectData));
+	const getFoldersProm = $derived(getFoldersToExport(fileSystem, projectName, useDataUrls));
 	setProjectDataContext(() => getFoldersProm);
 </script>
 

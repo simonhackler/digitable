@@ -10,10 +10,10 @@ test('create new game and delete it', async ({ page }) => {
 	const gameName = 'Create Game Test';
 	const gameDescription = 'A quick test game description that is long enough for validation.';
 
-	await page.goto('/games');
+	await page.goto('/app/games');
 	await fullOpfsSeed(page, projectsDir);
 
-	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
 
@@ -21,7 +21,7 @@ test('create new game and delete it', async ({ page }) => {
 	await page.getByRole('textbox', { name: 'Gamename' }).fill(gameName);
 	await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-	await expect(page).toHaveURL(/\/games\/Create_Game_Test/);
+	await expect(page).toHaveURL(/\/app\/games\/Create_Game_Test/);
 	await expect(page.getByText('Create New Board Game')).toBeVisible();
 	await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(gameName);
 
@@ -31,7 +31,7 @@ test('create new game and delete it', async ({ page }) => {
 
 	await expect(page.getByText('Game created successfully!')).toBeVisible();
 	await page.reload();
-	await expect(page).toHaveURL(/\/games\/Create_Game_Test/);
+	await expect(page).toHaveURL(/\/app\/games\/Create_Game_Test/);
 	await expect(page.getByText('Edit Board Game')).toBeVisible();
 	await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(gameName);
 	await expect(page.getByRole('textbox', { name: 'Game Description' })).toHaveValue(
@@ -41,7 +41,7 @@ test('create new game and delete it', async ({ page }) => {
 	await page.getByRole('button', { name: 'Delete' }).click();
 	await page.getByRole('textbox', { name: 'Enter "Create Game Test" to' }).fill(gameName);
 	await page.getByRole('button', { name: 'Delete' }).nth(1).click();
-	await expect(page).toHaveURL(/\/games$/);
+	await expect(page).toHaveURL(/\/app\/games$/);
 	await page.waitForTimeout(1000);
 });
 
@@ -50,10 +50,10 @@ test('create new deck and delete it', async ({ page }) => {
 	const projectsDir = path.resolve(here, '../projects');
 	const deckName = 'e2e_deck';
 
-	await page.goto('/games');
+	await page.goto('/app/games');
 	await fullOpfsSeed(page, projectsDir);
 
-	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
 
 	await page.getByRole('main').getByText('western-cards').click();
@@ -63,14 +63,14 @@ test('create new deck and delete it', async ({ page }) => {
 	await page.getByPlaceholder('deck name').fill(deckName);
 	await page.getByRole('button', { name: 'Create new deck' }).click();
 
-	await expect(page).toHaveURL(new RegExp(`/games/western-cards/decks/${deckName}/data`));
+	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards/decks/${deckName}/data`));
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
 	await page.reload();
-	await expect(page).toHaveURL(new RegExp(`/games/western-cards/decks/${deckName}/data`));
+	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards/decks/${deckName}/data`));
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
 	await page.locator('#bits-c23').click();
 	await page.getByRole('menuitem', { name: 'Delete' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).not.toBeVisible();
-	await expect(page).toHaveURL(new RegExp(`/games/western-cards$`));
+	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards$`));
 });

@@ -1,6 +1,7 @@
 import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
 import type { Column } from 'jspreadsheet-ce';
 import { parseCsvFile } from './csv-helper';
+import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import { getSvgDataMap } from './svg-helpers';
 import type { ColumnWithData } from './types';
 
@@ -112,7 +113,21 @@ export async function loadImagePaths(
 	projectName: string,
 	useDataUrls = false
 ) {
-	const imageStrings = Array.from(new Set(spreadsheetData.data.flatMap((row) => row)));
+	const imageColumnIndexes = spreadsheetData.cols.flatMap((col, index) =>
+		col.type === ImageEditor ? [index] : []
+	);
+	const imageStrings = Array.from(
+		new Set(
+			spreadsheetData.data.flatMap((row) =>
+				imageColumnIndexes
+					.map((index) => row[index])
+					.filter((value) => value && value.trim() !== '')
+			)
+		)
+	);
+	if (imageStrings.length === 0) {
+		return new Map<string, string>();
+	}
 	// The download and files api is really bad
 	const downloadPaths = imageStrings.map((img) => getProjectFilePath(projectName, img));
 	const files = await Promise.all(
@@ -155,11 +170,12 @@ export async function loadSvgsAndData(
 	cardName: string,
 	fileSystem: Adapter,
 	svgTemplateFront: SVGSVGElement,
-	svgTemplateBack: SVGSVGElement
+	svgTemplateBack: SVGSVGElement,
+	useDataUrls = true
 ) {
 	const svgData = getSvgDataMap(svgTemplateFront, svgTemplateBack);
 	const spreadsheetData = await loadSpreadsheetData(svgData, projectName, cardName, fileSystem);
-	const imagePaths = await loadImagePaths(spreadsheetData, fileSystem, projectName, true);
+	const imagePaths = await loadImagePaths(spreadsheetData, fileSystem, projectName, useDataUrls);
 	return {
 		svgData,
 		spreadsheetData,
