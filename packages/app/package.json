@@ -20,6 +20,7 @@
 	},
 	"dependencies": {
 		"@colyseus/schema": "^3.0.70",
+		"@chenglou/pretext": "0.0.3",
 		"@pixi/marquee-selection": "^1.0.2",
 		"@svg-table/auth": "workspace:*",
 		"@svg-table/db": "workspace:*",

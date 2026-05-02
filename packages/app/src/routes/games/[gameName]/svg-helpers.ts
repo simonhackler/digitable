@@ -1,21 +1,8 @@
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
+import { applyPretextSvgText, getTextFontSize } from './pretext-svg-text';
 import type { ColumnWithData } from './types';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
-const SVG_TEXT_STYLE_ATTRS = [
-	'font-family',
-	'font-size',
-	'font-weight',
-	'font-style',
-	'text-anchor',
-	'text-align',
-	'text-decoration',
-	'letter-spacing',
-	'line-height',
-	'text-transform',
-	'fill'
-] as const;
 
 const getDirectTspans = (text: SVGTextElement) =>
 	Array.from(text.childNodes).filter(
@@ -42,39 +29,6 @@ export const getTextColumnValue = (text: SVGTextElement) => {
 	return text.textContent ?? '';
 };
 
-const normalizeCssLength = (value: string) => {
-	const trimmed = value.trim();
-	if (!trimmed) return '';
-	return /^-?\d*\.?\d+$/.test(trimmed) ? `${trimmed}px` : trimmed;
-};
-
-const applyTextStyle = (
-	target: HTMLElement,
-	property: string,
-	value: string | null | undefined
-) => {
-	if (!value) return;
-	const trimmed = value.trim();
-	if (!trimmed || trimmed === 'normal' || trimmed === 'none') return;
-	if (property === 'fill') {
-		target.style.color = trimmed;
-		return;
-	}
-	if (property === 'text-anchor') {
-		target.style.textAlign = trimmed === 'middle' ? 'center' : trimmed === 'end' ? 'right' : 'left';
-		return;
-	}
-	if (property === 'line-height') {
-		target.style.setProperty(property, trimmed);
-		return;
-	}
-	if (property === 'font-size' || property === 'letter-spacing') {
-		target.style.setProperty(property, normalizeCssLength(trimmed));
-		return;
-	}
-	target.style.setProperty(property, trimmed);
-};
-
 const getShapeInsideRef = (text: SVGTextElement) => {
 	const explicit = text.getAttribute('data-svgedit-shape-inside-ref');
 	if (explicit) {
@@ -96,9 +50,9 @@ export const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => 
 	const wrapWidth = text.getAttribute('data-svgedit-wrap-width');
 	const wrapHeight = text.getAttribute('data-svgedit-wrap-height');
 	const rawY = text.getAttribute('y');
-	const fontSize = Number.parseFloat(text.getAttribute('font-size') ?? '');
 	const hasWrapBox = x && rawY && wrapWidth && wrapHeight;
 	if (hasWrapBox) {
+		const fontSize = getTextFontSize(text);
 		const y =
 			Number.isFinite(fontSize) && fontSize > 0 ? String(Number.parseFloat(rawY) - fontSize) : rawY;
 		return {
@@ -127,6 +81,53 @@ export const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => 
 
 	return null;
 };
+
+const toNumber = (value: string | null | undefined) => {
+	const parsed = Number.parseFloat(value ?? '');
+	return Number.isFinite(parsed) ? parsed : null;
+};
+
+const stringifyNumber = (value: number) => Number.parseFloat(value.toFixed(6)).toString();
+
+const getHighlightBounds = (svg: SVGSVGElement, el: SVGGraphicsElement) => {
+	if (el.tagName.toLowerCase() === 'text') {
+		const frameBounds = getTextFrameBounds(svg, el as SVGTextElement);
+		const x = toNumber(frameBounds?.x);
+		const y = toNumber(frameBounds?.y);
+		const width = toNumber(frameBounds?.width);
+		const height = toNumber(frameBounds?.height);
+		if (x !== null && y !== null && width !== null && height !== null) {
+			return { x, y, width, height };
+		}
+	}
+
+	const bb = el.getBBox();
+	return {
+		x: bb.x,
+		y: bb.y,
+		width: bb.width,
+		height: bb.height
+	};
+};
+
+function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string) {
+	const frameBounds = getTextFrameBounds(svg, text);
+	const fontSize = getTextFontSize(text);
+
+	if (frameBounds) {
+		text.setAttribute('x', frameBounds.x);
+		text.setAttribute('y', stringifyNumber((toNumber(frameBounds.y) ?? 0) + fontSize));
+		text.setAttribute('data-svgedit-wrap-width', frameBounds.width);
+		text.setAttribute('data-svgedit-wrap-height', frameBounds.height);
+		if (frameBounds.shapeId) {
+			text.setAttribute('data-svgedit-shape-inside-ref', `#${frameBounds.shapeId}`);
+		}
+	} else if (!text.getAttribute('x') || !text.getAttribute('y')) {
+		throw new Error(`Element ${text.id} is missing x or y attributes`);
+	}
+
+	applyPretextSvgText(text, data);
+}
 
 export function loadSvgTemplate(svgText: string) {
 	const parser = new DOMParser();
@@ -209,7 +210,7 @@ export function initialSetupForSvgItem(
 	elementId: string,
 	data: string,
 	imagePaths: Map<string, string>
-): SVGForeignObjectElement | null {
+): SVGTextElement | null {
 	const el = svg.getElementById(elementId) as SVGGraphicsElement | null;
 	if (!el) {
 		return null;
@@ -220,79 +221,8 @@ export function initialSetupForSvgItem(
 	if (el.tagName !== 'text') return null;
 
 	const text = el as SVGTextElement;
-	const frameBounds = getTextFrameBounds(svg, text);
-	const x = frameBounds?.x ?? text.getAttribute('x');
-	const y = frameBounds?.y ?? text.getAttribute('y');
-	let width = frameBounds?.width ?? text.getAttribute('width');
-	let height = frameBounds?.height ?? text.getAttribute('height');
-
-	if (width === null || height === null) {
-		const bbox = text.getBBox();
-		width = bbox.width.toString();
-		height = bbox.height.toString();
-	}
-
-	if (x == null || x === '' || y == null || y === '') {
-		throw new Error(`Element ${elementId} is missing x or y attributes`);
-	}
-	const fo = document.createElementNS(
-		svg.namespaceURI || SVG_NS,
-		'foreignObject'
-	) as SVGForeignObjectElement;
-	fo.setAttribute('x', x.toString());
-	fo.setAttribute('y', y.toString());
-	fo.setAttribute('width', width.toString());
-	fo.setAttribute('height', height.toString());
-	fo.id = elementId;
-	if (frameBounds?.shapeId) {
-		fo.setAttribute('data-flow-rect', frameBounds.shapeId);
-		fo.setAttribute('data-flow-id', elementId);
-	}
-	const transform = text.getAttribute('transform');
-	if (transform) fo.setAttribute('transform', transform);
-	text.parentNode!.appendChild(fo);
-	text.parentNode!.removeChild(text);
-
-	const div = document.createElement('div');
-	div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-	div.style.width = '100%';
-	div.style.height = '100%';
-	div.style.overflow = 'hidden';
-	div.style.whiteSpace = 'pre-wrap';
-	div.style.boxSizing = 'border-box';
-
-	for (const attr of SVG_TEXT_STYLE_ATTRS) {
-		applyTextStyle(div, attr, text.getAttribute(attr));
-	}
-	div.style.contain = 'layout style paint';
-
-	// Copy styles from the original SVG text element
-	const computedStyle = window.getComputedStyle(text);
-	const stylesToCopy = [...SVG_TEXT_STYLE_ATTRS, 'color'];
-
-	stylesToCopy.forEach((prop) => {
-		const value = computedStyle.getPropertyValue(prop);
-		applyTextStyle(div, prop, value);
-	});
-
-	// Also copy any inline style attribute
-	const inlineStyle = text.getAttribute('style');
-	if (inlineStyle) {
-		// Parse and apply relevant inline styles
-		const styleDeclarations = inlineStyle.split(';').filter(Boolean);
-		styleDeclarations.forEach((declaration) => {
-			const [prop, value] = declaration.split(':').map((s) => s.trim());
-			if (prop && value && stylesToCopy.includes(prop)) {
-				applyTextStyle(div, prop, value);
-			}
-		});
-	}
-
-	div.textContent = data;
-
-	fo.appendChild(div);
-
-	return fo;
+	applySvgTextData(svg, text, data);
+	return text;
 }
 
 export async function updateSvg(
@@ -311,6 +241,8 @@ export async function updateSvg(
 			throw new Error('div not found');
 		}
 		div.textContent = newText;
+	} else if (el.tagName === 'text') {
+		applySvgTextData(svg, el as SVGTextElement, newText);
 	} else if (el.tagName == 'image') {
 		const path = imagePaths.get(newText) || '';
 		updateSvgImageLink(el, path);
@@ -340,7 +272,7 @@ export function createHighlightRect(
 	const screenToRoot = rootToScreen.inverse();
 
 	// element's bbox in its own coord-sys
-	const bb = el.getBBox();
+	const bb = getHighlightBounds(svg, el);
 	const p1 = svg.createSVGPoint();
 	const p2 = svg.createSVGPoint();
 	p1.x = bb.x - pad; // top-left (with padding)

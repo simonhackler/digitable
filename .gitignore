@@ -33,6 +33,7 @@ storybook-static
 # Colyseus
 .colyseus-cloud.json
 .devmode.json
+.devenv
 
 # Nix VM artifacts
 infrastructure/nix/result
