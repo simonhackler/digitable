@@ -1,24 +1,67 @@
 import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 
-import { getTextColumnValue, getTextFrameBounds, loadSvgTemplate, parseSvg } from './svg-helpers';
+import {
+	generateSvg,
+	getTextColumnValue,
+	getTextFrameBounds,
+	loadSvgTemplate,
+	parseSvg,
+	updateSvg
+} from './svg-helpers';
 
 globalThis.DOMParser = XmlDomParser as typeof DOMParser;
+Object.defineProperty(globalThis, 'OffscreenCanvas', {
+	value: class {
+		getContext() {
+			return {
+				font: '',
+				measureText: (text: string) => ({ width: text.length * 6 })
+			};
+		}
+	}
+});
+Object.defineProperty(globalThis, 'window', {
+	value: {
+		getComputedStyle: (element: Element) => ({
+			fontStyle: element.getAttribute('font-style') || 'normal',
+			fontWeight: element.getAttribute('font-weight') || 'normal',
+			fontSize: element.getAttribute('font-size') || '16px',
+			fontFamily: element.getAttribute('font-family') || 'sans-serif',
+			lineHeight: element.getAttribute('line-height') || 'normal',
+			textAlign: element.getAttribute('text-align') || 'left',
+			getPropertyValue: (property: string) => element.getAttribute(property) || ''
+		})
+	}
+});
+
+const findById = (root: Element, elementId: string): Element | null => {
+	if (root.getAttribute('id') === elementId) return root;
+	for (const child of Array.from(root.childNodes)) {
+		if (child.nodeType === 1) {
+			const match = findById(child as Element, elementId);
+			if (match) return match;
+		}
+	}
+	return null;
+};
 
 const patchSvgRoot = (svg: SVGSVGElement) => {
-	const doc = svg.ownerDocument;
+	Object.defineProperty(globalThis, 'document', {
+		value: svg.ownerDocument,
+		configurable: true
+	});
+
 	Object.defineProperty(svg, 'getElementById', {
-		value: (elementId: string) => {
-			const element = doc.getElementById(elementId);
-			if (!element) {
-				throw new Error(`Expected #${elementId} to exist`);
-			}
-			return element;
-		}
+		value: (elementId: string) => findById(svg, elementId)
 	});
 	Object.defineProperty(svg, 'querySelectorAll', {
 		value: ((selector: string) =>
-			Array.from(doc.getElementsByTagName(selector))) as unknown as ParentNode['querySelectorAll']
+			Array.from(svg.getElementsByTagName(selector))) as unknown as ParentNode['querySelectorAll']
+	});
+	const cloneNode = svg.cloneNode.bind(svg);
+	Object.defineProperty(svg, 'cloneNode', {
+		value: (deep?: boolean) => patchSvgRoot(cloneNode(deep) as SVGSVGElement)
 	});
 	return svg;
 };
@@ -124,5 +167,92 @@ describe('svg-helpers', () => {
 			type: 'text',
 			data: ['Shoot\nAgain']
 		});
+	});
+
+	it('generates svg text with tspans instead of foreignObject', () => {
+		const template = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
+					<text
+						id="effect_zone"
+						data-svgedit-wrap-width="120"
+						data-svgedit-wrap-height="40"
+						font-family="serif"
+						font-size="10"
+						x="5"
+						y="15">Template</text>
+				</svg>`
+			)
+		);
+
+		const generated = generateSvg(
+			template,
+			['effect_zone'],
+			['first line\nsecond line'],
+			new Map()
+		);
+		const text = generated.getElementById('effect_zone') as SVGTextElement;
+		const tspans = Array.from(text.getElementsByTagName('tspan'));
+
+		expect(generated.getElementsByTagName('foreignObject')).toHaveLength(0);
+		expect(text.tagName).toBe('text');
+		expect(text.getAttribute('data-svgedit-raw-text')).toBe('first line\nsecond line');
+		expect(tspans.map((tspan) => tspan.textContent)).toEqual(['first line', 'second line']);
+	});
+
+	it('uses svgedit frame metadata when generating wrapped text', () => {
+		const template = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
+					<defs>
+						<rect id="rect1" x="20" y="10" width="60" height="30" />
+					</defs>
+					<text
+						id="effect_zone"
+						data-svgedit-shape-inside-ref="#rect1"
+						data-svgedit-wrap-width="60"
+						data-svgedit-wrap-height="30"
+						font-size="10"
+						x="20"
+						y="20">Template</text>
+				</svg>`
+			)
+		);
+
+		const generated = generateSvg(template, ['effect_zone'], ['wrapped text value'], new Map());
+		const text = generated.getElementById('effect_zone') as SVGTextElement;
+
+		expect(text.getAttribute('x')).toBe('20');
+		expect(text.getAttribute('y')).toBe('20');
+		expect(text.getAttribute('data-svgedit-shape-inside-ref')).toBe('#rect1');
+		expect(text.getAttribute('data-svgedit-wrap-width')).toBe('60');
+		expect(text.getAttribute('data-svgedit-wrap-height')).toBe('30');
+		expect(text.getElementsByTagName('tspan').length).toBeGreaterThan(0);
+	});
+
+	it('updates generated text by replacing tspans on the existing text node', async () => {
+		const template = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
+					<text
+						id="effect_zone"
+						data-svgedit-wrap-width="120"
+						data-svgedit-wrap-height="40"
+						font-size="10"
+						x="5"
+						y="15">Template</text>
+				</svg>`
+			)
+		);
+		const generated = generateSvg(template, ['effect_zone'], ['old'], new Map());
+		const text = generated.getElementById('effect_zone') as SVGTextElement;
+
+		await updateSvg(generated, 'effect_zone', 'new\nvalue', new Map());
+
+		expect(generated.getElementById('effect_zone')).toBe(text);
+		expect(generated.getElementsByTagName('foreignObject')).toHaveLength(0);
+		expect(
+			Array.from(text.getElementsByTagName('tspan')).map((tspan) => tspan.textContent)
+		).toEqual(['new', 'value']);
 	});
 });

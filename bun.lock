@@ -34,6 +34,7 @@
       "name": "@svg-table/app",
       "version": "0.0.1",
       "dependencies": {
+        "@chenglou/pretext": "0.0.3",
         "@colyseus/schema": "^3.0.70",
         "@pixi/marquee-selection": "^1.0.2",
         "@supabase/supabase-js": "^2.86.2",

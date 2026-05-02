@@ -31,3 +31,4 @@ storybook-static
 # Colyseus
 .colyseus-cloud.json
 .devmode.json
+.devenv
