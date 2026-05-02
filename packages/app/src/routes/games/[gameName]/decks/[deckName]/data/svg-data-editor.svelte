@@ -39,7 +39,14 @@
 	const fileSystem = getFileSystemContext();
 
 	const { svgData, spreadsheetData, imagePaths } = $derived(
-		await loadSvgsAndData(projectName, cardName, fileSystem, svgTemplateFront, svgTemplateBack)
+		await loadSvgsAndData(
+			projectName,
+			cardName,
+			fileSystem,
+			svgTemplateFront,
+			svgTemplateBack,
+			false
+		)
 	);
 
 	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references

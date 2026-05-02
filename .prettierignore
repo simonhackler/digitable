@@ -11,6 +11,9 @@ build/
 dist/
 packages/app/.svelte-kit/
 
+# User/game project assets
+projects/
+
 # Storybook
 .storybook/storybook-static/
 packages/app/.storybook/storybook-static/

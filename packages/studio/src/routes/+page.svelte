@@ -61,7 +61,7 @@
 						{#each tabIds as tab (tab)}
 							<Tabs.Trigger
 								value={tab}
-								class="h-auto rounded-full px-2 py-3 text-sm font-semibold text-[#33363f] sm:px-4 sm:text-base data-[state=active]:bg-[#121212] data-[state=active]:text-[#f6f6f6] data-[state=active]:shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
+								class="h-auto rounded-full px-2 py-3 text-sm font-semibold text-[#33363f] data-[state=active]:bg-[#121212] data-[state=active]:text-[#f6f6f6] data-[state=active]:shadow-[0_8px_18px_rgba(0,0,0,0.2)] sm:px-4 sm:text-base"
 							>
 								{tab === 'design' ? '1. Design' : tab === 'playtest' ? '2. Playtest' : '3. Publish'}
 							</Tabs.Trigger>
@@ -133,7 +133,10 @@
 					{/each}
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
-					<Button variant="hero" size="xl">Start creating now</Button>
+					<Button href="/sign-in" variant="pill-outline" size="xl">Sign in</Button>
+					<Button href="/app/games" data-sveltekit-reload variant="hero" size="xl">
+						Start creating
+					</Button>
 				</div>
 			</div>
 		</div>

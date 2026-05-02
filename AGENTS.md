@@ -22,10 +22,15 @@ See `instructions/testing.md`.
 - **Testing**: Playwright for e2e, Vitest + Storybook for components
 - **Package Manager**: Bun (always use bun, not npm)
 
+## Svelte Notes
+
+- `packages/studio` has Svelte's `compilerOptions.experimental.async` enabled. Top-level `await` in components and `await` inside `$derived(...)` are expected to compile there.
+
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
 ALWAYS use tailwindcss when possible. Prefer xs sm md lg xl over explicit sizes.
 
 When writing tests ALWAYS read `instructions/testing.md` first.
+When writing e2e tests, NEVER mock app routes, network requests, browser APIs, databases, or backend services. E2E tests must exercise the real integrated flow.
 
 ## Available MCP Tools:
 

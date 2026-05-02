@@ -1,4 +1,4 @@
-import { REPLICATE_API_TOKEN } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
@@ -19,8 +19,9 @@ interface ReplicateResponse {
 
 export const POST: RequestHandler = async ({ request }) => {
 	const { prompts }: { prompts: ImagePrompt[] } = await request.json();
+	const replicateApiToken = env.REPLICATE_API_TOKEN;
 
-	if (!REPLICATE_API_TOKEN) {
+	if (!replicateApiToken) {
 		return json({ error: 'REPLICATE_API_TOKEN not configured' }, { status: 500 });
 	}
 
@@ -35,7 +36,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				{
 					method: 'POST',
 					headers: {
-						Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
+						Authorization: `Bearer ${replicateApiToken}`,
 						'Content-Type': 'application/json',
 						Prefer: 'wait'
 					},

@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import PrintConfigurationBar from './print-configuration-bar.svelte';
 	import type { Attachment } from 'svelte/attachments';
+	import { assert } from '$lib/utils/assert';
 	import type { Project } from './types';
 	import { Button } from '$lib/components/ui/button';
 	import ClubIcon from '@lucide/svelte/icons/club';
@@ -44,7 +44,7 @@
 		'US Legal': { width: 216, height: 356 }
 	};
 
-	const pageDimensions = $derived(() => {
+	const pageDimensions = $derived.by(() => {
 		const size = paperSizes[paperSize];
 		return orientation === 'Portrait'
 			? { width: `${size.width}mm`, height: `${size.height}mm` }
@@ -74,105 +74,106 @@
 		};
 	}
 
-	const pages = $derived((): PageInfo[] => {
+	function getSvgDimensions(svg: SVGSVGElement) {
+		return {
+			width: svg.width.baseVal.valueAsString,
+			height: svg.height.baseVal.valueAsString
+		};
+	}
+
+	function getProjectCardDimensions(project: Project) {
+		const front = project.svgsFront[0];
+		const back = project.svgsBack[0];
+
+		if (front && back) {
+			const frontDimensions = getSvgDimensions(front);
+			const backDimensions = getSvgDimensions(back);
+
+			assert(
+				frontDimensions.width === backDimensions.width &&
+					frontDimensions.height === backDimensions.height,
+				`Front and back card sizes must match for project "${project.name}"`
+			);
+
+			return frontDimensions;
+		}
+
+		if (front) return getSvgDimensions(front);
+		if (back) return getSvgDimensions(back);
+
+		return { width: '63mm', height: '89mm' };
+	}
+
+	function createPagesForSvgs(
+		svgs: SVGSVGElement[],
+		width: string,
+		height: string,
+		fitCalculation: PageInfo['fitCalculation']
+	): PageInfo[] {
+		if (fitCalculation.total < 1) {
+			return [];
+		}
+
+		const pageCount = Math.ceil(svgs.length / fitCalculation.total);
+
+		return Array.from({ length: pageCount }, (_, pageIndex) => {
+			const startIndex = pageIndex * fitCalculation.total;
+			const endIndex = Math.min(startIndex + fitCalculation.total, svgs.length);
+
+			return {
+				svgs: svgs.slice(startIndex, endIndex),
+				width,
+				height,
+				fitCalculation
+			};
+		});
+	}
+
+	const pages = $derived.by((): PageInfo[] => {
 		const allPages: PageInfo[] = [];
 
 		projects.forEach((project) => {
-			// Get card dimensions from this project
-			const cardWidth = project.svgsFront[0]?.width.baseVal.valueAsString || '63mm';
-			const cardHeight = project.svgsFront[0]?.height.baseVal.valueAsString || '89mm';
-			const fitCalculation = calculateFitForSize(cardWidth, cardHeight);
-			const svgsPerPage = fitCalculation.total;
+			const { width, height } = getProjectCardDimensions(project);
+			const fitCalculation = calculateFitForSize(width, height);
 
 			if (fronts && backs) {
-				// Alternate between front and back pages for this project
-				const frontSvgs = project.svgsFront;
-				const backSvgs = project.svgsBack;
+				const frontPages = createPagesForSvgs(project.svgsFront, width, height, fitCalculation);
+				const backPages = createPagesForSvgs(project.svgsBack, width, height, fitCalculation);
+				const pairCount = Math.max(frontPages.length, backPages.length);
 
-				const frontPageCount = Math.ceil(frontSvgs.length / svgsPerPage);
-				const backPageCount = Math.ceil(backSvgs.length / svgsPerPage);
-				const totalPages = frontPageCount + backPageCount;
-
-				const projectPages = Array.from({ length: totalPages }, (_, pageIndex) => {
-					const isFrontPage = pageIndex % 2 === 0;
-					const pageTypeIndex = Math.floor(pageIndex / 2);
-
-					if (isFrontPage) {
-						const startIndex = pageTypeIndex * svgsPerPage;
-						const endIndex = Math.min(startIndex + svgsPerPage, frontSvgs.length);
-						return {
-							svgs: frontSvgs.slice(startIndex, endIndex),
-							width: cardWidth,
-							height: cardHeight,
-							fitCalculation
-						};
-					} else {
-						const startIndex = pageTypeIndex * svgsPerPage;
-						const endIndex = Math.min(startIndex + svgsPerPage, backSvgs.length);
-						return {
-							svgs: backSvgs.slice(startIndex, endIndex),
-							width: cardWidth,
-							height: cardHeight,
-							fitCalculation
-						};
+				for (let pageIndex = 0; pageIndex < pairCount; pageIndex += 1) {
+					const frontPage = frontPages[pageIndex];
+					if (frontPage) {
+						allPages.push(frontPage);
 					}
-				});
 
-				allPages.push(...projectPages);
+					const backPage = backPages[pageIndex];
+					if (backPage) {
+						allPages.push(backPage);
+					}
+				}
 			} else if (fronts) {
-				// Only front SVGs from this project
-				const frontSvgs = project.svgsFront;
-				const pageCount = Math.ceil(frontSvgs.length / svgsPerPage);
-
-				const projectPages = Array.from({ length: pageCount }, (_, pageIndex) => {
-					const startIndex = pageIndex * svgsPerPage;
-					const endIndex = Math.min(startIndex + svgsPerPage, frontSvgs.length);
-					return {
-						svgs: frontSvgs.slice(startIndex, endIndex),
-						width: cardWidth,
-						height: cardHeight,
-						fitCalculation
-					};
-				});
-
-				allPages.push(...projectPages);
+				allPages.push(...createPagesForSvgs(project.svgsFront, width, height, fitCalculation));
 			} else if (backs) {
-				// Only back SVGs from this project
-				const backSvgs = project.svgsBack;
-				const pageCount = Math.ceil(backSvgs.length / svgsPerPage);
-
-				const projectPages = Array.from({ length: pageCount }, (_, pageIndex) => {
-					const startIndex = pageIndex * svgsPerPage;
-					const endIndex = Math.min(startIndex + svgsPerPage, backSvgs.length);
-					return {
-						svgs: backSvgs.slice(startIndex, endIndex),
-						width: cardWidth,
-						height: cardHeight,
-						fitCalculation
-					};
-				});
-
-				allPages.push(...projectPages);
+				allPages.push(...createPagesForSvgs(project.svgsBack, width, height, fitCalculation));
 			}
 		});
 
 		return allPages;
 	});
-	let pageStyleEl: HTMLStyleElement;
-
 	$effect(() => {
-		updatePageRule(paperSize, orientation, margin);
-	});
-
-	function updatePageRule(paperSize: PaperSize, orientation: Orientation, _margin: number) {
-		if (!pageStyleEl) return;
+		const pageStyleEl = document.createElement('style');
+		pageStyleEl.media = 'print';
 		pageStyleEl.textContent = `
 			@page {
 				size: ${paperSize} ${orientation.toLowerCase()};
-                margin: ${0}mm;
+				margin: 0mm;
 			}
 		`;
-	}
+		document.head.appendChild(pageStyleEl);
+
+		return () => pageStyleEl.remove();
+	});
 
 	function attachSVGs(pageSvgs: SVGSVGElement[]): Attachment {
 		return (element) => {
@@ -180,14 +181,6 @@
 			return () => pageSvgs.forEach((svg) => element.removeChild(svg));
 		};
 	}
-
-	onMount(() => {
-		pageStyleEl = document.createElement('style');
-		pageStyleEl.media = 'print';
-		document.head.appendChild(pageStyleEl);
-		updatePageRule(paperSize, orientation, margin);
-		return () => pageStyleEl.remove();
-	});
 </script>
 
 <div class="mx-4 flex flex-col gap-4">
@@ -226,13 +219,13 @@
 	{:else}
 		<!-- Existing sheets rendering -->
 		<div class="sheets">
-			{#each pages() as page, pageIndex (pageIndex)}
+			{#each pages as page, pageIndex (pageIndex)}
 				<div
 					class="sheet border border-gray-300"
 					class:crop-marks={cropMarks}
 					id="con-{pageIndex}"
-					style:width={pageDimensions().width}
-					style:height={pageDimensions().height}
+					style:width={pageDimensions.width}
+					style:height={pageDimensions.height}
 					style:grid-template-columns={`repeat(${page.fitCalculation.horizontal}, ${page.width})`}
 					style:--svg-w={page.width}
 					style:--svg-h={page.height}
@@ -305,7 +298,7 @@
 	}
 
 	:global {
-		#sheet svg {
+		.sheet svg {
 			display: block;
 		}
 		@media print {

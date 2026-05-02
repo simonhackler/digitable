@@ -1,0 +1,17 @@
+{
+	"name": "@svg-table/auth",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./server": "./src/server.ts",
+		"./svelte-kit": "./src/svelte-kit.ts",
+		"./cli": "./src/cli.ts"
+	},
+	"dependencies": {
+		"@better-auth/drizzle-adapter": "latest",
+		"@svg-table/db": "workspace:*",
+		"better-auth": "latest"
+	}
+}

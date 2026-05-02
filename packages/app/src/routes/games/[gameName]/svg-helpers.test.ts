@@ -1,13 +1,14 @@
-import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
+import { DOMParser as XmlDomParser, XMLSerializer } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 
 import {
 	generateSvg,
+	updateSvg,
 	getTextColumnValue,
 	getTextFrameBounds,
+	initialSetupForSvgItem,
 	loadSvgTemplate,
-	parseSvg,
-	updateSvg
+	parseSvg
 } from './svg-helpers';
 
 globalThis.DOMParser = XmlDomParser as typeof DOMParser;
@@ -47,6 +48,12 @@ const findById = (root: Element, elementId: string): Element | null => {
 };
 
 const patchSvgRoot = (svg: SVGSVGElement) => {
+	if (!svg.style) {
+		Object.defineProperty(svg, 'style', {
+			value: {}
+		});
+	}
+
 	Object.defineProperty(globalThis, 'document', {
 		value: svg.ownerDocument,
 		configurable: true
@@ -254,5 +261,51 @@ describe('svg-helpers', () => {
 		expect(
 			Array.from(text.getElementsByTagName('tspan')).map((tspan) => tspan.textContent)
 		).toEqual(['new', 'value']);
+	});
+
+	it('adds a namespaced xlink href when replacing href-only image links', () => {
+		const svg = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
+					<image id="background" href="../../files/template_blank.png" />
+				</svg>`
+			)
+		);
+		const imagePaths = new Map([['template_blank.png', 'data:image/png;base64,AA==']]);
+
+		initialSetupForSvgItem(svg, 'background', 'template_blank.png', imagePaths);
+
+		const image = svg.getElementById('background');
+		expect(image.getAttribute('href')).toBe('data:image/png;base64,AA==');
+		expect(image.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe(
+			'data:image/png;base64,AA=='
+		);
+		const serialized = new XMLSerializer().serializeToString(svg);
+		expect(serialized).toContain('xmlns:xlink="http://www.w3.org/1999/xlink"');
+		expect(serialized).toContain('xlink:href="data:image/png;base64,AA=="');
+	});
+
+	it('updates existing xlink image links without losing the namespace', () => {
+		const svg = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg"
+					xmlns:xlink="http://www.w3.org/1999/xlink"
+					viewBox="0 0 63 88">
+					<image id="dice_image" xlink:href="../../files/dice_6.png" />
+				</svg>`
+			)
+		);
+		const imagePaths = new Map([['dice_1.png', 'data:image/png;base64,AQ==']]);
+
+		initialSetupForSvgItem(svg, 'dice_image', 'dice_1.png', imagePaths);
+
+		const image = svg.getElementById('dice_image');
+		expect(image.getAttribute('href')).toBe('data:image/png;base64,AQ==');
+		expect(image.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe(
+			'data:image/png;base64,AQ=='
+		);
+		const serialized = new XMLSerializer().serializeToString(svg);
+		expect(serialized.match(/xmlns:xlink=/g)).toHaveLength(1);
+		expect(serialized).toContain('xlink:href="data:image/png;base64,AQ=="');
 	});
 });

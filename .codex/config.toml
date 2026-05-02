@@ -1,0 +1,4 @@
+[mcp_servers.svelte]
+startup_timeout_sec = 90
+command = "npx"
+args = ["-y", "@sveltejs/mcp"]

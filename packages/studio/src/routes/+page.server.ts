@@ -2,7 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { message, superValidate } from 'sveltekit-superforms/server';
 import { zod4 } from 'sveltekit-superforms/adapters';
-import { KIT_API_KEY, KIT_FORM_ID } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import { subscribeSchema } from './subscribe/schema';
 
 export const load: PageServerLoad = async () => {
@@ -16,7 +16,7 @@ async function kitFetch(path: string, body: unknown) {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			'X-Kit-Api-Key': KIT_API_KEY
+			'X-Kit-Api-Key': env.KIT_API_KEY
 		},
 		body: JSON.stringify(body)
 	});
@@ -35,6 +35,13 @@ export const actions: Actions = {
 
 		if (form.data.company) {
 			return message(form, 'Thanks! Please check your inbox.');
+		}
+
+		if (!env.KIT_API_KEY || !env.KIT_FORM_ID) {
+			console.error('Kit env vars are missing');
+			form.valid = false;
+			form.message = { text: 'Could not subscribe right now. Please try again.', tone: 'error' };
+			return fail(500, { form });
 		}
 
 		const email_address = form.data.email.toLowerCase().trim();
@@ -57,7 +64,7 @@ export const actions: Actions = {
 			return fail(502, { form });
 		}
 
-		const added = await kitFetch(`/v4/forms/${KIT_FORM_ID}/subscribers`, {
+		const added = await kitFetch(`/v4/forms/${env.KIT_FORM_ID}/subscribers`, {
 			email_address,
 			...(referrer ? { referrer } : {})
 		});

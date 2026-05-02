@@ -6,6 +6,7 @@ repos:
         entry: bunx prettier --write
         language: system
         files: \.(js|ts|jsx|tsx|svelte|json|css|scss|md|yaml|yml)$
+        exclude: ^projects/
         pass_filenames: true
 
       - id: bun-lint
@@ -13,6 +14,7 @@ repos:
         entry: bunx eslint --max-warnings 0
         language: system
         files: \.(js|ts|jsx|tsx|svelte)$
+        exclude: ^projects/
         pass_filenames: true
 
       - id: bun-check
@@ -20,4 +22,5 @@ repos:
         entry: bun run check
         language: system
         files: \.(js|ts|jsx|tsx|svelte)$
+        exclude: ^projects/
         pass_filenames: false

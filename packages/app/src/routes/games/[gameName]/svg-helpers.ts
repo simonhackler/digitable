@@ -2,6 +2,8 @@ import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import { applyPretextSvgText, getTextFontSize } from './pretext-svg-text';
 import type { ColumnWithData } from './types';
 
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
+
 const getDirectTspans = (text: SVGTextElement) =>
 	Array.from(text.childNodes).filter(
 		(child): child is SVGTSpanElement =>
@@ -174,6 +176,7 @@ export function generateSvg(
 	const svg = svgTemplate.cloneNode(true) as SVGSVGElement;
 	// add a random id after date
 	svg.id = `generated-svg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+	svg.style.contain = 'layout style paint';
 	headers.forEach((col, idx) => {
 		const data = row[idx] || '';
 		initialSetupForSvgItem(svg, col, data, imagePaths);
@@ -226,8 +229,13 @@ export async function updateSvg(
 }
 
 function updateSvgImageLink(el: SVGGraphicsElement, url: string) {
+	const svgRoot =
+		el.ownerSVGElement ?? (el.ownerDocument.documentElement as unknown as SVGSVGElement | null);
 	el.setAttribute('href', url);
-	el.setAttribute('xlink:href', url);
+	if (svgRoot && !svgRoot.hasAttribute('xmlns:xlink')) {
+		svgRoot.setAttribute('xmlns:xlink', XLINK_NS);
+	}
+	el.setAttributeNS(XLINK_NS, 'xlink:href', url);
 }
 
 export function createHighlightRect(

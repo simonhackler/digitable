@@ -10,7 +10,6 @@ export async function writeBufferToOPFS(page: Page, dest: string, buf: Buffer) {
 		async ({ destPath, base64 }) => {
 			// Convert base64 -> Uint8Array in the page (browser) context
 			const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-			console.log(bytes);
 
 			// Walk/create directories, then create/write the file
 			const storage = navigator.storage as StorageManager & {

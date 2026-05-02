@@ -6,10 +6,10 @@ test('insert rows in data editor', async ({ page }) => {
 	const here = path.dirname(test.info().file); // absolute dir of THIS test file
 	const projectsDir = path.resolve(here, '../projects');
 
-	await page.goto('/games');
+	await page.goto('/app/games');
 	await fullOpfsSeed(page, projectsDir);
 
-	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
 	await page.getByRole('main').getByText('western-cards').click();
 	await page.getByRole('button', { name: 'Decks' }).click();
@@ -31,8 +31,8 @@ test('insert rows in data editor', async ({ page }) => {
 });
 
 test('go to data editor', async ({ page }) => {
-	await page.goto('/games');
-	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
+	await page.goto('/app/games');
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
 	await expect(page.locator('h1')).toBeVisible();
 });
