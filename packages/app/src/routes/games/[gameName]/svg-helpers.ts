@@ -89,6 +89,27 @@ const toNumber = (value: string | null | undefined) => {
 
 const stringifyNumber = (value: number) => Number.parseFloat(value.toFixed(6)).toString();
 
+const getHighlightBounds = (svg: SVGSVGElement, el: SVGGraphicsElement) => {
+	if (el.tagName.toLowerCase() === 'text') {
+		const frameBounds = getTextFrameBounds(svg, el as SVGTextElement);
+		const x = toNumber(frameBounds?.x);
+		const y = toNumber(frameBounds?.y);
+		const width = toNumber(frameBounds?.width);
+		const height = toNumber(frameBounds?.height);
+		if (x !== null && y !== null && width !== null && height !== null) {
+			return { x, y, width, height };
+		}
+	}
+
+	const bb = el.getBBox();
+	return {
+		x: bb.x,
+		y: bb.y,
+		width: bb.width,
+		height: bb.height
+	};
+};
+
 function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string) {
 	const frameBounds = getTextFrameBounds(svg, text);
 	const fontSize = getTextFontSize(text);
@@ -251,7 +272,7 @@ export function createHighlightRect(
 	const screenToRoot = rootToScreen.inverse();
 
 	// element's bbox in its own coord-sys
-	const bb = el.getBBox();
+	const bb = getHighlightBounds(svg, el);
 	const p1 = svg.createSVGPoint();
 	const p2 = svg.createSVGPoint();
 	p1.x = bb.x - pad; // top-left (with padding)

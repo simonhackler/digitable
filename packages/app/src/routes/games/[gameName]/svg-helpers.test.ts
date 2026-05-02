@@ -2,6 +2,7 @@ import { DOMParser as XmlDomParser, XMLSerializer } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 
 import {
+	createHighlightRect,
 	generateSvg,
 	updateSvg,
 	getTextColumnValue,
@@ -54,6 +55,22 @@ const patchSvgRoot = (svg: SVGSVGElement) => {
 		});
 	}
 
+	const createElementNS = svg.ownerDocument.createElementNS.bind(svg.ownerDocument);
+	Object.defineProperty(svg.ownerDocument, 'createElementNS', {
+		value: (namespaceURI: string | null, qualifiedName: string) => {
+			const element = createElementNS(namespaceURI, qualifiedName) as SVGElement & {
+				style?: Record<string, string>;
+			};
+			if (!element.style) {
+				Object.defineProperty(element, 'style', {
+					value: {}
+				});
+			}
+			return element;
+		},
+		configurable: true
+	});
+
 	Object.defineProperty(globalThis, 'document', {
 		value: svg.ownerDocument,
 		configurable: true
@@ -71,6 +88,40 @@ const patchSvgRoot = (svg: SVGSVGElement) => {
 		value: (deep?: boolean) => patchSvgRoot(cloneNode(deep) as SVGSVGElement)
 	});
 	return svg;
+};
+
+const patchHighlightGeometry = (svg: SVGSVGElement, el: SVGGraphicsElement) => {
+	const identityMatrix = {
+		inverse() {
+			return identityMatrix;
+		}
+	} as unknown as DOMMatrix;
+	const pointWithTransform = (x: number, y: number) => ({
+		x,
+		y,
+		matrixTransform() {
+			return pointWithTransform(x, y);
+		}
+	});
+
+	Object.defineProperty(svg, 'getScreenCTM', {
+		value: () => identityMatrix
+	});
+	Object.defineProperty(el, 'getScreenCTM', {
+		value: () => identityMatrix
+	});
+	Object.defineProperty(svg, 'createSVGPoint', {
+		value: () => {
+			const point = {
+				x: 0,
+				y: 0,
+				matrixTransform() {
+					return pointWithTransform(point.x, point.y);
+				}
+			};
+			return point;
+		}
+	});
 };
 
 const loadTextById = (svgText: string, id: string) => {
@@ -261,6 +312,32 @@ describe('svg-helpers', () => {
 		expect(
 			Array.from(text.getElementsByTagName('tspan')).map((tspan) => tspan.textContent)
 		).toEqual(['new', 'value']);
+	});
+
+	it('creates highlight rects around text boxes instead of rendered glyph bounds', () => {
+		const { svg, text } = loadTextById(
+			`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+				<text
+					id="title"
+					data-svgedit-wrap-width="60"
+					data-svgedit-wrap-height="30"
+					font-size="10"
+					x="20"
+					y="20">Small</text>
+			</svg>`,
+			'title'
+		);
+		patchHighlightGeometry(svg, text);
+		Object.defineProperty(text, 'getBBox', {
+			value: () => ({ x: 20, y: 12, width: 20, height: 10 })
+		});
+
+		const rect = createHighlightRect(text, svg, 1, 4);
+
+		expect(rect?.getAttribute('x')).toBe('16');
+		expect(rect?.getAttribute('y')).toBe('6');
+		expect(rect?.getAttribute('width')).toBe('68');
+		expect(rect?.getAttribute('height')).toBe('38');
 	});
 
 	it('adds a namespaced xlink href when replacing href-only image links', () => {
