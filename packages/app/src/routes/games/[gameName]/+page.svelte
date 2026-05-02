@@ -15,6 +15,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 
 	const fileSystem = getFileSystemContext();
 	const games = getGamesContext();
@@ -32,19 +33,19 @@
 	}> {
 		try {
 			const gameJsonPath = `${gameNameParsed}/game.json`;
-			const [gameFileResult] = await fileSystem.download([gameJsonPath]);
+			const gameFileResult = await fileSystem.read(gameJsonPath);
 
-			if (gameFileResult.result?.data) {
-				const gameFileText = await gameFileResult.result.data.text();
+			if (!gameFileResult.error) {
+				const gameFileText = await gameFileResult.data.text();
 				const gameData = JSON.parse(gameFileText);
 
 				// Try to load existing thumbnail
 				let thumbnailUrl: string | undefined;
 				try {
 					const thumbnailPath = `${gameNameParsed}/thumbnail.jpg`;
-					const [thumbnailResult] = await fileSystem.download([thumbnailPath]);
-					if (thumbnailResult.result?.data) {
-						thumbnailUrl = URL.createObjectURL(thumbnailResult.result.data);
+					const thumbnailResult = await fileSystem.read(thumbnailPath);
+					if (!thumbnailResult.error) {
+						thumbnailUrl = URL.createObjectURL(thumbnailResult.data);
 					}
 				} catch {
 					// No thumbnail exists
@@ -90,17 +91,23 @@
 					const gameData = JSON.stringify(data, null, 2);
 					const gameFile = new File([gameData], 'game.json', { type: 'application/json' });
 
-					const error = await fileSystem.upload(gameFile, gameNameParsed, true);
-					if (error) {
-						console.error('Failed to save game:', error);
+					const writeGame = await fileSystem.write(
+						joinFsPath(gameNameParsed, gameFile.name),
+						gameFile
+					);
+					if (writeGame.error) {
+						console.error('Failed to save game:', writeGame.error);
 						isSubmitting = false;
 						return;
 					}
 
 					if (selectedThumbnail) {
-						const thumbnailError = await fileSystem.upload(selectedThumbnail, folderName, true);
-						if (thumbnailError) {
-							console.error('Failed to save thumbnail:', thumbnailError);
+						const thumbnailWrite = await fileSystem.write(
+							joinFsPath(folderName, selectedThumbnail.name),
+							selectedThumbnail
+						);
+						if (thumbnailWrite.error) {
+							console.error('Failed to save thumbnail:', thumbnailWrite.error);
 						}
 					}
 
@@ -160,9 +167,9 @@
 	}
 
 	async function deleteGame() {
-		const error = await fileSystem.delete([`/${gameNameParsed}`]);
-		if (error) {
-			console.error('Failed to delete game:', error);
+		const removed = await fileSystem.remove(joinFsPath(gameNameParsed), { recursive: true });
+		if (removed.error) {
+			console.error('Failed to delete game:', removed.error);
 			return;
 		}
 

@@ -9,7 +9,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import PlayMenu from './play-menu.svelte';
-	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
@@ -18,7 +18,7 @@
 		games,
 		fileSystem,
 		onSetOpfsAdapter
-	}: { games: Game[]; fileSystem: Adapter; onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } =
+	}: { games: Game[]; fileSystem: FsDir; onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } =
 		$props();
 
 	let activeProject = $derived.by(() => {

@@ -6,6 +6,7 @@
 	import { getProjectDataContext } from '../export-context.svelte';
 	import { getFileSystemContext } from '../../../context';
 	import { requireParam } from '$lib/utils/assert';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 
 	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
@@ -122,7 +123,8 @@
 
 		const jsonBlob = new Blob([JSON.stringify(ttsSave, null, 2)], { type: 'application/json' });
 		const jsonFile = new File([jsonBlob], `${projectName}.json`);
-		await fileSystem.upload(jsonFile, path, true);
+		const written = await fileSystem.write(joinFsPath(path, jsonFile.name), jsonFile);
+		if (written.error) throw written.error;
 		finished = true;
 		console.log('exported');
 	}

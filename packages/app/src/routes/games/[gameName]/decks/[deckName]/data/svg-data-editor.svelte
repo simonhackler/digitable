@@ -19,6 +19,7 @@
 	import { loadSvgsAndData } from '../../../data-loader';
 	import type { SvgCard } from '../../../types';
 	import { assert, requireParam } from '$lib/utils/assert';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 
 	const {
 		svgTemplateFront,
@@ -96,8 +97,11 @@
 			type: 'text/csv',
 			lastModified: Date.now()
 		});
-		const res = await fileSystem.upload(csvFile, `/${projectName}/system/${cardName}`, true);
-		if (res) throw new Error(`Upload failed for data.csv: ${res.message}`);
+		const res = await fileSystem.write(
+			joinFsPath(projectName, 'system', cardName, csvFile.name),
+			csvFile
+		);
+		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);
 	}
 
 	function clearSelectionRects() {
@@ -266,8 +270,8 @@
 	async function addImageAndUpdateSvg(x: number, y: number, value: string) {
 		const headers = spreadsheet[0].getHeaders(true) as string[];
 		if (!imagePaths.has(value)) {
-			const [file] = await fileSystem.download([`/${projectName}/files/${value}`]);
-			imagePaths.set(value, file.result ? URL.createObjectURL(file.result.data) : '');
+			const file = await fileSystem.read(joinFsPath(projectName, 'files', value));
+			imagePaths.set(value, file.error ? '' : URL.createObjectURL(file.data));
 		}
 		updateSvg(cards[y].front, headers[x], value, imagePaths);
 		updateSvg(cards[y].back, headers[x], value, imagePaths);

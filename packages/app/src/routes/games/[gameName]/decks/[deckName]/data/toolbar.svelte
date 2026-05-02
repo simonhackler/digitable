@@ -6,7 +6,8 @@
 	import ImageSelectionModal from './image-selection-modal.svelte';
 	import type { ImageGenResponse } from './image-generator.js';
 	import { getFileSystemContext } from '../../../../context';
-	import { page } from '$app/state';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { requireParam } from '$lib/utils/assert';
 
 	let {
 		deletedSvgColumns,
@@ -39,7 +40,7 @@
 		showFront: boolean;
 	} = $props();
 
-	const gameName = $derived(page.params.gameName);
+	const gameName = $derived(requireParam('gameName'));
 	const filesystem = getFileSystemContext();
 
 	async function handleGenerateImages(images: ImageGenResponse) {
@@ -50,7 +51,14 @@
 			const blob = await response.blob();
 			const filename = `${image.rowId}_${timestamp}_${image.columnName}.png`;
 			const file = new File([blob], filename, { type: blob.type });
-			await filesystem.upload(file, `${gameName}/files/generated`);
+			const written = await filesystem.write(
+				joinFsPath(gameName, 'files/generated', file.name),
+				file
+			);
+			if (written.error) {
+				console.error(`Failed to save generated image ${filename}`, written.error);
+				continue;
+			}
 
 			const headers = spreadsheet.getHeaders(true) as string[];
 			const columnIndex = headers.findIndex((header) => header === image.columnName);

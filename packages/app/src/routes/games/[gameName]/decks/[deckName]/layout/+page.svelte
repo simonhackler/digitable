@@ -4,7 +4,6 @@
 	import * as Form from '$lib/components/ui/form/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
-	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import { MEGABYTE } from '$lib/components/ui/file-drop-zone';
 	import FileDropZone, {
@@ -17,6 +16,8 @@
 	import { PlusIcon } from '@lucide/svelte';
 	import { getFileSystemContext } from '../../../../context';
 	import type { Attachment } from 'svelte/attachments';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { requireParam } from '$lib/utils/assert';
 
 	const svgs = getToLoadSvgsContext();
 	let { front: templateFront, back: templateBack } = $derived(await svgs());
@@ -45,9 +46,9 @@
 
 	const { form: formData, enhance } = form;
 
-	const currentProject = $derived(page.params.gameName);
-	const currentCard = $derived(page.params.deckName);
-	const fullFolderPath = $derived(`/${currentProject}/system/${currentCard}`);
+	const currentProject = $derived(requireParam('gameName'));
+	const currentCard = $derived(requireParam('deckName'));
+	const fullFolderPath = $derived(joinFsPath(currentProject, 'system', currentCard));
 	const fileSystem = getFileSystemContext();
 	let { width, height } = $derived.by(() => {
 		let width = null;
@@ -71,7 +72,11 @@
 		const onUploadSvg = async (files: File[]) => {
 			const file = files[0];
 			const renamedFile = new File([file], `${type}.svg`, { type: file.type });
-			await fileSystem.upload(renamedFile, fullFolderPath, true);
+			const written = await fileSystem.write(
+				joinFsPath(fullFolderPath, renamedFile.name),
+				renamedFile
+			);
+			if (written.error) console.error(written.error);
 		};
 		return onUploadSvg;
 	}
@@ -101,12 +106,12 @@
 
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		fileSystem.upload(svgFile, fullFolderPath, true);
+		void fileSystem.write(joinFsPath(fullFolderPath, svgFile.name), svgFile);
 
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		fileSystem.upload(file, `${currentProject}/files`);
+		void fileSystem.write(joinFsPath(currentProject, 'files', file.name), file);
 	}
 
 	function attachSVG(svg: SVGSVGElement): Attachment {
