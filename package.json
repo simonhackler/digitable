@@ -31,7 +31,6 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",
-		"@j178/prek": "^0.2.30",
 		"@types/debug": "^4.1.13",
 		"@types/node": "^24.12.2",
 		"concurrently": "^9.2.1",

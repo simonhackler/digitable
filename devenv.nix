@@ -47,6 +47,39 @@
 in {
   dotenv.disableHint = true;
 
+  git-hooks = {
+    excludes = [
+      "^projects/"
+    ];
+
+    hooks = {
+      prettier = {
+        enable = true;
+        name = "Format with Prettier (staged files)";
+        entry = "bunx prettier --write";
+        language = "system";
+        files = "\\.(js|ts|jsx|tsx|svelte|json|css|scss|md|yaml|yml)$";
+      };
+
+      bun-lint = {
+        enable = true;
+        name = "ESLint (staged files)";
+        entry = "bunx eslint --max-warnings 0";
+        language = "system";
+        files = "\\.(js|ts|jsx|tsx|svelte)$";
+      };
+
+      bun-check = {
+        enable = true;
+        name = "Svelte Type Check (project-wide)";
+        entry = "bun run check";
+        language = "system";
+        files = "\\.(js|ts|jsx|tsx|svelte)$";
+        pass_filenames = false;
+      };
+    };
+  };
+
   packages = with pkgs; [
     bun
     caddy
