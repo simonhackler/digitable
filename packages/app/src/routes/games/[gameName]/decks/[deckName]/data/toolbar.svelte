@@ -46,15 +46,18 @@
 	async function handleGenerateImages(images: ImageGenResponse) {
 		console.log('Generated images:', images);
 		const timestamp = Date.now();
+		const generatedDir = await filesystem.ensureDir(joinFsPath(gameName, 'files', 'generated'));
+		if (generatedDir.error) {
+			console.error('Failed to open generated images folder', generatedDir.error);
+			return;
+		}
+
 		for (const image of images.results) {
 			const response = await fetch(image.imageUrl);
 			const blob = await response.blob();
 			const filename = `${image.rowId}_${timestamp}_${image.columnName}.png`;
 			const file = new File([blob], filename, { type: blob.type });
-			const written = await filesystem.write(
-				joinFsPath(gameName, 'files/generated', file.name),
-				file
-			);
+			const written = await generatedDir.data.write(file.name, file);
 			if (written.error) {
 				console.error(`Failed to save generated image ${filename}`, written.error);
 				continue;

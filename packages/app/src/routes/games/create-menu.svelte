@@ -73,23 +73,23 @@
 	) {
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		const fullFolderPath = `/${currentProject}/system/${deckName}`;
-		const svgPath = joinFsPath(fullFolderPath, svgFile.name);
-		const existingSvg = await fileSystem.read(svgPath);
-		if (existingSvg.error?.name === 'NotFoundError') {
-			const svgWrite = await fileSystem.write(svgPath, svgFile);
-			if (svgWrite.error) console.error(svgWrite.error);
-		} else if (existingSvg.error) {
-			console.error(existingSvg.error);
+		const deckDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'system', deckName));
+		if (deckDir.error) {
+			console.error(deckDir.error);
+			return;
 		}
+		const svgWrite = await deckDir.data.write(svgFile.name, svgFile);
+		if (svgWrite.error) console.error(svgWrite.error);
 
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		const placeholderWrite = await fileSystem.write(
-			joinFsPath(currentProject, 'files', file.name),
-			file
-		);
+		const filesDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'files'));
+		if (filesDir.error) {
+			console.error(filesDir.error);
+			return;
+		}
+		const placeholderWrite = await filesDir.data.write(file.name, file);
 		if (placeholderWrite.error) console.error(placeholderWrite.error);
 	}
 

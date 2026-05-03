@@ -91,6 +91,16 @@ in {
 
   processes.postgres.ready = lib.mkForce null;
 
+  tasks."svgcanvas:build" = {
+    exec = ''
+      cd svgedit
+      bun install --frozen-lockfile
+      bun x vite build packages/svgcanvas
+    '';
+    showOutput = true;
+    before = ["devenv:processes:app"];
+  };
+
   tasks."db:migrate" = {
     exec = ''
       until ${pkgs.postgresql_16}/bin/pg_isready \

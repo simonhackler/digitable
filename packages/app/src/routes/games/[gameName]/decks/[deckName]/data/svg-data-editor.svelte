@@ -97,10 +97,9 @@
 			type: 'text/csv',
 			lastModified: Date.now()
 		});
-		const res = await fileSystem.write(
-			joinFsPath(projectName, 'system', cardName, csvFile.name),
-			csvFile
-		);
+		const deckDir = await fileSystem.ensureDir(joinFsPath(projectName, 'system', cardName));
+		if (deckDir.error) throw new Error(`Upload failed for data.csv: ${deckDir.error.message}`);
+		const res = await deckDir.data.write(csvFile.name, csvFile);
 		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);
 	}
 
@@ -270,7 +269,8 @@
 	async function addImageAndUpdateSvg(x: number, y: number, value: string) {
 		const headers = spreadsheet[0].getHeaders(true) as string[];
 		if (!imagePaths.has(value)) {
-			const file = await fileSystem.read(joinFsPath(projectName, 'files', value));
+			const filesDir = await fileSystem.openDir(joinFsPath(projectName, 'files'));
+			const file = filesDir.error ? filesDir : await filesDir.data.read(value);
 			imagePaths.set(value, file.error ? '' : URL.createObjectURL(file.data));
 		}
 		updateSvg(cards[y].front, headers[x], value, imagePaths);

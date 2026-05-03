@@ -94,9 +94,22 @@
 	};
 
 	async function loadSvgs(path: string) {
+		const deckDir = await fileSystem.openDir(path);
+		if (deckDir.error) {
+			console.error('Failed to open deck folder', deckDir.error);
+			return {
+				front: '',
+				back: '',
+				meta: {
+					front: {},
+					back: {}
+				}
+			};
+		}
+
 		const [frontRes, backRes] = await Promise.all([
-			fileSystem.read(joinFsPath(path, 'front.svg')),
-			fileSystem.read(joinFsPath(path, 'back.svg'))
+			deckDir.data.readText('front.svg'),
+			deckDir.data.readText('back.svg')
 		]);
 		if (frontRes.error) {
 			console.error('Failed to load front.svg', frontRes.error);
@@ -104,8 +117,8 @@
 		if (backRes.error) {
 			console.error('Failed to load back.svg', backRes.error);
 		}
-		const front = frontRes.error ? null : await frontRes.data.text();
-		const back = backRes.error ? null : await backRes.data.text();
+		const front = frontRes.error ? null : frontRes.data;
+		const back = backRes.error ? null : backRes.data;
 		return {
 			front: front ?? '',
 			back: back ?? '',
@@ -144,7 +157,12 @@
 		const nextMeta = nextSide === 'front' ? meta.front : meta.back;
 		const nextValue = nextMeta ? applySvgMeta(value, nextMeta) : value;
 		const file = new File([nextValue], `${nextSide}.svg`, { type: 'image/svg+xml' });
-		const written = await fileSystem.write(joinFsPath(folder, file.name), file);
+		const deckDir = await fileSystem.ensureDir(folder);
+		if (deckDir.error) {
+			console.error(`Upload failed for ${nextSide}.svg`, deckDir.error);
+			return;
+		}
+		const written = await deckDir.data.write(file.name, file);
 		if (written.error) {
 			console.error(`Upload failed for ${nextSide}.svg`, written.error);
 		}

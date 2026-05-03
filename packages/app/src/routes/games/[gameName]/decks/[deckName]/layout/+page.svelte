@@ -72,10 +72,12 @@
 		const onUploadSvg = async (files: File[]) => {
 			const file = files[0];
 			const renamedFile = new File([file], `${type}.svg`, { type: file.type });
-			const written = await fileSystem.write(
-				joinFsPath(fullFolderPath, renamedFile.name),
-				renamedFile
-			);
+			const deckDir = await fileSystem.ensureDir(fullFolderPath);
+			if (deckDir.error) {
+				console.error(deckDir.error);
+				return;
+			}
+			const written = await deckDir.data.write(renamedFile.name, renamedFile);
 			if (written.error) console.error(written.error);
 		};
 		return onUploadSvg;
@@ -106,12 +108,26 @@
 
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		void fileSystem.write(joinFsPath(fullFolderPath, svgFile.name), svgFile);
+		void fileSystem.ensureDir(fullFolderPath).then(async (deckDir) => {
+			if (deckDir.error) {
+				console.error(deckDir.error);
+				return;
+			}
+			const written = await deckDir.data.write(svgFile.name, svgFile);
+			if (written.error) console.error(written.error);
+		});
 
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		void fileSystem.write(joinFsPath(currentProject, 'files', file.name), file);
+		void fileSystem.ensureDir(joinFsPath(currentProject, 'files')).then(async (filesDir) => {
+			if (filesDir.error) {
+				console.error(filesDir.error);
+				return;
+			}
+			const written = await filesDir.data.write(file.name, file);
+			if (written.error) console.error(written.error);
+		});
 	}
 
 	function attachSVG(svg: SVGSVGElement): Attachment {

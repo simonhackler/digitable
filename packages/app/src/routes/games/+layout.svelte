@@ -23,15 +23,18 @@
 			if (entry.kind !== 'directory') continue;
 
 			const projectPath = entry.name;
-			const projectEntries = await fileSystem.list(projectPath);
+			const projectDir = await fileSystem.openDir(projectPath);
+			if (projectDir.error) continue;
+
+			const projectEntries = await projectDir.data.list();
 			if (projectEntries.error) continue;
 			if (!projectEntries.data.some((file) => file.name === 'game.json')) continue;
 
-			const gameFile = await fileSystem.read(`${projectPath}/game.json`);
+			const gameFile = await projectDir.data.readText('game.json');
 			let description = '';
 			let tags = [];
 			if (!gameFile.error) {
-				const gameData = JSON.parse(await gameFile.data.text());
+				const gameData = JSON.parse(gameFile.data);
 				description = gameData.description;
 				tags = gameData.tags || [];
 			}
@@ -42,7 +45,8 @@
 				continue;
 			}
 
-			const systemEntries = await fileSystem.list(`${projectPath}/system`);
+			const systemDir = await projectDir.data.openDir('system');
+			const systemEntries = systemDir.error ? systemDir : await systemDir.data.list();
 			const decks = systemEntries.error
 				? []
 				: systemEntries.data

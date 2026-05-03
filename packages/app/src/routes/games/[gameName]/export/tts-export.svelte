@@ -269,7 +269,9 @@
 				lastModified: Date.now()
 			});
 
-			const written = await fileSytem.write(joinFsPath(gameName, 'tts-export', file.name), file);
+			const exportDir = await fileSytem.ensureDir(joinFsPath(gameName, 'tts-export'));
+			if (exportDir.error) throw exportDir.error;
+			const written = await exportDir.data.write(file.name, file);
 			if (written.error) throw written.error;
 			if (index < sheets.length - 1) {
 				index += 1;

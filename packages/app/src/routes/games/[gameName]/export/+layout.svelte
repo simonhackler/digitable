@@ -5,7 +5,7 @@
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import type { Project } from './types';
 	import { ProjectData, setProjectDataContext } from './export-context.svelte';
-	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { requireParam } from '$lib/utils/assert';
 
 	const projectName = $derived(requireParam('gameName'));
@@ -16,17 +16,21 @@
 
 	async function getFoldersToExport(fileSystem: FsDir, projectName: string, useDataUrls: boolean) {
 		const projectData = new ProjectData();
-		const systemPath = `${projectName}/system`;
-		const systemEntries = await fileSystem.list(systemPath);
-		if (systemEntries.error) {
-			throw new Error(systemEntries.error.message);
+		const systemDir = await fileSystem.openDir(joinFsPath(projectName, 'system'));
+		if (systemDir.error) {
+			throw new Error(systemDir.error.message);
 		}
+
+		const systemEntries = await systemDir.data.list();
+		if (systemEntries.error) throw new Error(systemEntries.error.message);
 
 		for (const entry of systemEntries.data) {
 			if (entry.kind !== 'directory') continue;
 
-			const deckPath = `${systemPath}/${entry.name}`;
-			const deckEntries = await fileSystem.list(deckPath);
+			const deckDir = await systemDir.data.openDir(entry.name);
+			if (deckDir.error) continue;
+
+			const deckEntries = await deckDir.data.list();
 			if (deckEntries.error) continue;
 
 			const deckFileNames = new Set(deckEntries.data.map((file) => file.name));
@@ -38,18 +42,15 @@
 				continue;
 			}
 
-			const [frontFile, backFile, dataFile] = await Promise.all([
-				fileSystem.read(`${deckPath}/front.svg`),
-				fileSystem.read(`${deckPath}/back.svg`),
-				fileSystem.read(`${deckPath}/data.csv`)
+			const [frontFile, backFile] = await Promise.all([
+				deckDir.data.readText('front.svg'),
+				deckDir.data.readText('back.svg')
 			]);
 
-			if (frontFile.error || backFile.error || dataFile.error) continue;
+			if (frontFile.error || backFile.error) continue;
 
-			const svgFileFront = await frontFile.data.text();
-			const svgFileBack = await backFile.data.text();
-			const svgTemplateFront = loadSvgTemplate(svgFileFront);
-			const svgTemplateBack = loadSvgTemplate(svgFileBack);
+			const svgTemplateFront = loadSvgTemplate(frontFile.data);
+			const svgTemplateBack = loadSvgTemplate(backFile.data);
 
 			const { spreadsheetData, imagePaths } = await loadSvgsAndData(
 				projectName,

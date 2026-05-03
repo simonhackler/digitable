@@ -33,20 +33,17 @@ export class ExplorerNodeFunctions {
 		overwrite?: boolean
 	): Promise<FsError | null> {
 		const folderPath = this.getFullPath(uploadTo);
-		if (folderPath) {
-			const dir = await this.fsDir.ensureDir(folderPath);
-			if (dir.error) {
-				console.error(dir.error);
-				return dir.error;
-			}
+		const targetDir = folderPath ? await this.fsDir.ensureDir(folderPath) : null;
+		if (targetDir?.error) {
+			console.error(targetDir.error);
+			return targetDir.error;
 		}
 
-		const targetPath = joinFsPath(folderPath, file.name);
 		if (!overwrite && uploadTo.children.some((child) => child.name === file.name)) {
 			return null;
 		}
 
-		const uploaded = await this.fsDir.write(targetPath, file);
+		const uploaded = await (targetDir?.data ?? this.fsDir).write(file.name, file);
 		if (uploaded.error) {
 			console.error(uploaded.error);
 			return uploaded.error;
@@ -223,15 +220,16 @@ export class ExplorerNodeFunctions {
 				}
 
 				const parentPath = targetPath.split('/').slice(0, -1).join('/');
-				if (parentPath) {
-					const dir = await this.fsDir.ensureDir(parentPath);
-					if (dir.error) {
-						console.error(dir.error);
-						return dir.error;
-					}
+				const targetDir = parentPath ? await this.fsDir.ensureDir(parentPath) : null;
+				if (targetDir?.error) {
+					console.error(targetDir.error);
+					return targetDir.error;
 				}
 
-				const written = await this.fsDir.write(targetPath, file.data);
+				const written = await (targetDir?.data ?? this.fsDir).write(
+					targetPath.split('/').at(-1) ?? targetPath,
+					file.data
+				);
 				if (written.error) {
 					console.error(written.error);
 					return written.error;

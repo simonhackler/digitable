@@ -17,12 +17,18 @@
 		fileSystem: FsDir,
 		fullFolderPath: string
 	): Promise<LoadedSvgTemplates> {
+		const deckDir = await fileSystem.openDir(fullFolderPath);
+		if (deckDir.error) {
+			console.error(deckDir.error);
+			return { front: null, back: null };
+		}
+
 		const [front, back] = await Promise.all([
-			fileSystem.read(joinFsPath(fullFolderPath, 'front.svg')),
-			fileSystem.read(joinFsPath(fullFolderPath, 'back.svg'))
+			deckDir.data.readText('front.svg'),
+			deckDir.data.readText('back.svg')
 		]);
-		const svgFileFront = front.error ? null : await front.data.text();
-		const svgFileBack = back.error ? null : await back.data.text();
+		const svgFileFront = front.error ? null : front.data;
+		const svgFileBack = back.error ? null : back.data;
 		return {
 			front: svgFileFront ? loadSvgTemplate(svgFileFront) : null,
 			back: svgFileBack ? loadSvgTemplate(svgFileBack) : null

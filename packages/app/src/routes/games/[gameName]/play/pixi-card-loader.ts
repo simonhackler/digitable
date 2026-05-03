@@ -57,14 +57,16 @@ export async function loadAndProcessCards(
 	cardName: string,
 	fileSystem: FsDir
 ) {
-	const fullFolderPath = joinFsPath(projectName, 'system', cardName);
+	const deckDir = await fileSystem.openDir(joinFsPath(projectName, 'system', cardName));
+	if (deckDir.error) throw new Error(deckDir.error.message);
+
 	const [frontFile, backFile] = await Promise.all([
-		fileSystem.read(joinFsPath(fullFolderPath, 'front.svg')),
-		fileSystem.read(joinFsPath(fullFolderPath, 'back.svg'))
+		deckDir.data.readText('front.svg'),
+		deckDir.data.readText('back.svg')
 	]);
 
-	const svgTextFront = frontFile.error ? null : await frontFile.data.text();
-	const svgTextBack = backFile.error ? null : await backFile.data.text();
+	const svgTextFront = frontFile.error ? null : frontFile.data;
+	const svgTextBack = backFile.error ? null : backFile.data;
 	if (!svgTextFront || !svgTextBack) throw new Error('Could not load SVG template files');
 
 	const svgTemplateFront = loadSvgTemplate(svgTextFront);

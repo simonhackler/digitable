@@ -32,18 +32,18 @@
 		thumbnailUrl?: string;
 	}> {
 		try {
-			const gameJsonPath = `${gameNameParsed}/game.json`;
-			const gameFileResult = await fileSystem.read(gameJsonPath);
+			const gameDir = await fileSystem.openDir(gameNameParsed);
+			if (gameDir.error) throw gameDir.error;
+
+			const gameFileResult = await gameDir.data.readText('game.json');
 
 			if (!gameFileResult.error) {
-				const gameFileText = await gameFileResult.data.text();
-				const gameData = JSON.parse(gameFileText);
+				const gameData = JSON.parse(gameFileResult.data);
 
 				// Try to load existing thumbnail
 				let thumbnailUrl: string | undefined;
 				try {
-					const thumbnailPath = `${gameNameParsed}/thumbnail.jpg`;
-					const thumbnailResult = await fileSystem.read(thumbnailPath);
+					const thumbnailResult = await gameDir.data.read('thumbnail.jpg');
 					if (!thumbnailResult.error) {
 						thumbnailUrl = URL.createObjectURL(thumbnailResult.data);
 					}
@@ -91,10 +91,14 @@
 					const gameData = JSON.stringify(data, null, 2);
 					const gameFile = new File([gameData], 'game.json', { type: 'application/json' });
 
-					const writeGame = await fileSystem.write(
-						joinFsPath(gameNameParsed, gameFile.name),
-						gameFile
-					);
+					const gameDir = await fileSystem.ensureDir(gameNameParsed);
+					if (gameDir.error) {
+						console.error('Failed to open game folder:', gameDir.error);
+						isSubmitting = false;
+						return;
+					}
+
+					const writeGame = await gameDir.data.write(gameFile.name, gameFile);
 					if (writeGame.error) {
 						console.error('Failed to save game:', writeGame.error);
 						isSubmitting = false;
@@ -102,8 +106,15 @@
 					}
 
 					if (selectedThumbnail) {
-						const thumbnailWrite = await fileSystem.write(
-							joinFsPath(folderName, selectedThumbnail.name),
+						const thumbnailDir =
+							folderName === gameNameParsed ? gameDir : await fileSystem.ensureDir(folderName);
+						if (thumbnailDir.error) {
+							console.error('Failed to open thumbnail folder:', thumbnailDir.error);
+							isSubmitting = false;
+							return;
+						}
+						const thumbnailWrite = await thumbnailDir.data.write(
+							selectedThumbnail.name,
 							selectedThumbnail
 						);
 						if (thumbnailWrite.error) {

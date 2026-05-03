@@ -40,11 +40,12 @@ export async function loadSpreadsheetData(
 	currentCard: string,
 	fileSystem: FsDir
 ) {
-	const csvFileResult = await fileSystem.read(
+	const csvTextResult = await fileSystem.readText(
 		joinFsPath(currentProject, 'system', currentCard, 'data.csv')
 	);
-	const csvBlob = csvFileResult.error ? null : csvFileResult.data;
-	const csvFile = csvBlob ? new File([csvBlob], 'data.csv', { type: 'text/csv' }) : null;
+	const csvFile = csvTextResult.error
+		? null
+		: new File([csvTextResult.data], 'data.csv', { type: 'text/csv' });
 	const csvData = csvFile ? await parseCsvFile(csvFile) : null;
 	const idCol: Column = { type: 'hidden', title: 'id' };
 	if (csvData) {

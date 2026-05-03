@@ -18,26 +18,30 @@
 	let currentFolder = $derived(tree);
 
 	async function loadFolderTree(
-		path: string,
+		fsDir: FsDir,
 		name: string,
 		parent: Folder | null
 	): Promise<Folder | null> {
 		const folder = new Folder(name, parent, []);
-		const entries = await adapter.list(path || undefined);
+		const entries = await fsDir.list();
 		if (entries.error) {
 			console.error(entries.error);
 			return null;
 		}
 
 		for (const entry of entries.data) {
-			const childPath = joinFsPath(path, entry.name);
 			if (entry.kind === 'directory') {
-				const child = await loadFolderTree(childPath, entry.name, folder);
+				const dir = await fsDir.openDir(entry.name);
+				if (dir.error) {
+					console.error(dir.error);
+					continue;
+				}
+				const child = await loadFolderTree(dir.data, entry.name, folder);
 				if (child) folder.children.push(child);
 				continue;
 			}
 
-			const file = await adapter.read(childPath);
+			const file = await fsDir.read(entry.name);
 			if (file.error) {
 				console.error(file.error);
 				continue;
@@ -57,7 +61,12 @@
 	}
 
 	onMount(async () => {
-		tree = (await loadFolderTree(joinFsPath(pathPrefix), 'home', null)) ?? tree;
+		const rootDir = pathPrefix ? await adapter.openDir(joinFsPath(pathPrefix)) : null;
+		if (rootDir?.error) {
+			console.error(rootDir.error);
+			return;
+		}
+		tree = (await loadFolderTree(rootDir?.data ?? adapter, 'home', null)) ?? tree;
 	});
 </script>
 
