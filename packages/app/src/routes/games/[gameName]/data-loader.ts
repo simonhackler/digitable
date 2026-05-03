@@ -1,4 +1,4 @@
-import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { Column } from 'jspreadsheet-ce';
 import { parseCsvFile } from './csv-helper';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
@@ -38,13 +38,14 @@ export async function loadSpreadsheetData(
 	svgData: Map<string, ColumnWithData>,
 	currentProject: string,
 	currentCard: string,
-	fileSystem: Adapter
+	fileSystem: FsDir
 ) {
-	const csvFileResult = await fileSystem.download([
-		`/${currentProject}/system/${currentCard}/data.csv`
-	]);
-	const csvBlob = csvFileResult[0].result?.data;
-	const csvFile = csvBlob ? new File([csvBlob], 'data.csv', { type: 'text/csv' }) : null;
+	const csvTextResult = await fileSystem.readText(
+		joinFsPath(currentProject, 'system', currentCard, 'data.csv')
+	);
+	const csvFile = csvTextResult.error
+		? null
+		: new File([csvTextResult.data], 'data.csv', { type: 'text/csv' });
 	const csvData = csvFile ? await parseCsvFile(csvFile) : null;
 	const idCol: Column = { type: 'hidden', title: 'id' };
 	if (csvData) {
@@ -109,7 +110,7 @@ export async function loadSpreadsheetData(
 
 export async function loadImagePaths(
 	spreadsheetData: { cols: Column[]; data: string[][] },
-	fileSystem: Adapter,
+	fileSystem: FsDir,
 	projectName: string,
 	useDataUrls = false
 ) {
@@ -128,13 +129,12 @@ export async function loadImagePaths(
 	if (imageStrings.length === 0) {
 		return new Map<string, string>();
 	}
-	// The download and files api is really bad
 	const downloadPaths = imageStrings.map((img) => getProjectFilePath(projectName, img));
 	const files = await Promise.all(
 		downloadPaths.map(async (path) => {
-			if (!path) return { result: null, error: null };
-			const [file] = await fileSystem.download([path]);
-			return file;
+			if (!path) return null;
+			const file = await fileSystem.read(joinFsPath(path));
+			return file.error ? null : file.data;
 		})
 	);
 	const imagePaths = new Map<string, string>();
@@ -150,12 +150,11 @@ export async function loadImagePaths(
 			}
 
 			const file = files[i];
-			if (file.result) {
-				const result = file.result;
+			if (file) {
 				if (useDataUrls) {
-					imagePaths.set(img, await blobToDataUrl(result.data));
+					imagePaths.set(img, await blobToDataUrl(file));
 				} else {
-					imagePaths.set(img, URL.createObjectURL(file.result.data));
+					imagePaths.set(img, URL.createObjectURL(file));
 				}
 			} else {
 				imagePaths.set(img, TRANSPARENT_IMAGE);
@@ -168,7 +167,7 @@ export async function loadImagePaths(
 export async function loadSvgsAndData(
 	projectName: string,
 	cardName: string,
-	fileSystem: Adapter,
+	fileSystem: FsDir,
 	svgTemplateFront: SVGSVGElement,
 	svgTemplateBack: SVGSVGElement,
 	useDataUrls = true

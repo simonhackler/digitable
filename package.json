@@ -24,6 +24,7 @@
 		"check:watch": "bun run --filter=@svg-table/app check:watch",
 		"format": "bun run --filter=@svg-table/app format",
 		"lint": "bun run --filter=@svg-table/app lint",
+		"playwright": "playwright",
 		"test": "bun --env-file=.env run --filter=@svg-table/app test",
 		"test:e2e": "bun --env-file=.env run --filter=@svg-table/app test:e2e",
 		"storybook": "bun run --filter=@svg-table/app storybook",
@@ -31,6 +32,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",
+		"@playwright/test": "^1.57.0",
 		"@types/debug": "^4.1.13",
 		"@types/node": "^24.12.2",
 		"concurrently": "^9.2.1",

@@ -1,16 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { ExplorerNode } from '$lib/components/file-browser/browser-utils/types.svelte';
-	import { Folder, isFolder } from '$lib/components/file-browser/browser-utils/types.svelte';
+	import { FileLeaf, Folder } from '$lib/components/file-browser/browser-utils/types.svelte';
 	import FileBrowser from '$lib/components/file-browser/browser-ui/file-browser.svelte';
-	import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 
 	let {
 		adapter,
 		pathPrefix = '',
 		class: className = ''
 	}: {
-		adapter: Adapter;
+		adapter: FsDir;
 		pathPrefix?: string;
 		class?: string;
 	} = $props();
@@ -18,56 +17,57 @@
 	let tree = $state<Folder>(new Folder('home', null, []));
 	let currentFolder = $derived(tree);
 
-	function getPathArray(node: ExplorerNode): string[] {
-		const parts = [node.name];
-		let parent = node.parent;
-		while (parent) {
-			parts.push(parent.name);
-			parent = parent.parent;
+	async function loadFolderTree(
+		fsDir: FsDir,
+		name: string,
+		parent: Folder | null
+	): Promise<Folder | null> {
+		const folder = new Folder(name, parent, []);
+		const entries = await fsDir.list();
+		if (entries.error) {
+			console.error(entries.error);
+			return null;
 		}
-		return parts.reverse();
+
+		for (const entry of entries.data) {
+			if (entry.kind === 'directory') {
+				const dir = await fsDir.openDir(entry.name);
+				if (dir.error) {
+					console.error(dir.error);
+					continue;
+				}
+				const child = await loadFolderTree(dir.data, entry.name, folder);
+				if (child) folder.children.push(child);
+				continue;
+			}
+
+			const file = await fsDir.read(entry.name);
+			if (file.error) {
+				console.error(file.error);
+				continue;
+			}
+
+			folder.children.push(
+				new FileLeaf(entry.name, folder, {
+					size: file.data.size,
+					mimetype: file.data.type || 'application/octet-stream',
+					updatedAt: new Date(file.data.lastModified),
+					blob: file.data
+				})
+			);
+		}
+
+		return folder;
 	}
 
 	onMount(async () => {
-		const { result, error } = await adapter.getRootFolder();
-		if (error) {
-			console.error(error);
-		} else if (result) {
-			tree = result;
+		const rootDir = pathPrefix ? await adapter.openDir(joinFsPath(pathPrefix)) : null;
+		if (rootDir?.error) {
+			console.error(rootDir.error);
+			return;
 		}
-	});
-
-	async function downloadFile(path: string) {
-		const res = await adapter.download([path]);
-		const { result, error } = res[0];
-		if (error) {
-			console.error(error);
-			return '';
-		}
-		if (result) {
-			return URL.createObjectURL(result.data);
-		}
-		return '';
-	}
-
-	$effect(() => {
-		for (const child of currentFolder.children) {
-			if (
-				!isFolder(child) &&
-				child?.fileData &&
-				child.fileData.mimetype.startsWith('image/') &&
-				!child.fileData.url
-			) {
-				const fullPath = pathPrefix + getPathArray(child).slice(1).join('/');
-				child.fileData.url = downloadFile(fullPath);
-			}
-		}
+		tree = (await loadFolderTree(rootDir?.data ?? adapter, 'home', null)) ?? tree;
 	});
 </script>
 
-<FileBrowser
-	bind:currentFolder
-	homeFolderPath={pathPrefix}
-	fileFunctions={adapter}
-	class={className}
-/>
+<FileBrowser bind:currentFolder homeFolderPath={pathPrefix} fsDir={adapter} class={className} />

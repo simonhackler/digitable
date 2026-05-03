@@ -2,7 +2,7 @@ import { Assets, Sprite, type Texture } from 'pixi.js';
 import { loadSvgsAndData } from '../data-loader';
 import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 import '@pixi/layout';
-import type { Adapter } from '$lib/components/file-browser/adapters/adapter';
+import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 
 async function svgToTexture(svg: SVGSVGElement, cardIndex?: number) {
 	const svgClone = svg.cloneNode(true) as SVGSVGElement;
@@ -55,16 +55,18 @@ export async function createHybridContainer(svg: SVGSVGElement) {
 export async function loadAndProcessCards(
 	projectName: string,
 	cardName: string,
-	fileSystem: Adapter
+	fileSystem: FsDir
 ) {
-	const fullFolderPath = `/${projectName}/system/${cardName}`;
-	const [frontFile, backFile] = await fileSystem.download([
-		`${fullFolderPath}/front.svg`,
-		`${fullFolderPath}/back.svg`
+	const deckDir = await fileSystem.openDir(joinFsPath(projectName, 'system', cardName));
+	if (deckDir.error) throw new Error(deckDir.error.message);
+
+	const [frontFile, backFile] = await Promise.all([
+		deckDir.data.readText('front.svg'),
+		deckDir.data.readText('back.svg')
 	]);
 
-	const svgTextFront = await frontFile.result?.data.text();
-	const svgTextBack = await backFile.result?.data.text();
+	const svgTextFront = frontFile.error ? null : frontFile.data;
+	const svgTextBack = backFile.error ? null : backFile.data;
 	if (!svgTextFront || !svgTextBack) throw new Error('Could not load SVG template files');
 
 	const svgTemplateFront = loadSvgTemplate(svgTextFront);

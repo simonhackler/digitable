@@ -122,7 +122,10 @@
 
 		const jsonBlob = new Blob([JSON.stringify(ttsSave, null, 2)], { type: 'application/json' });
 		const jsonFile = new File([jsonBlob], `${projectName}.json`);
-		await fileSystem.upload(jsonFile, path, true);
+		const exportDir = await fileSystem.ensureDir(path);
+		if (exportDir.error) throw exportDir.error;
+		const written = await exportDir.data.write(jsonFile.name, jsonFile);
+		if (written.error) throw written.error;
 		finished = true;
 		console.log('exported');
 	}

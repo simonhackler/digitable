@@ -7,11 +7,6 @@
 	import { getFileSystemContext } from '../../../../context';
 	import { page } from '$app/state';
 	import type { SvgCard } from '../../../types';
-	import {
-		type Folder,
-		type ExplorerNode,
-		isFolder
-	} from '$lib/components/file-browser/browser-utils/types.svelte';
 
 	let {
 		selection = null,
@@ -102,21 +97,12 @@
 	// Get available images for a specific rowId and column
 	async function getAvailableImagesForColumn(rowId: string, columnName: string): Promise<string[]> {
 		try {
-			const rootFolder = await filesystem.getRootFolder();
-			if (!rootFolder.result) return [];
-
-			// Navigate to the generated folder
-			const generatedFolder = findFolderInTree(
-				rootFolder.result,
-				gameName || '',
-				'files',
-				'generated'
-			);
-			if (!generatedFolder) return [];
+			const generatedFiles = await filesystem.list(`${gameName}/files/generated`);
+			if (generatedFiles.error) return [];
 
 			// Filter files that match the pattern: rowId_*_columnName.*
-			const matchingFiles = generatedFolder.children
-				.filter((child: ExplorerNode) => !isFolder(child)) // Only files, not folders
+			const matchingFiles = generatedFiles.data
+				.filter((child) => child.kind === 'file')
 				.map((file) => file.name)
 				.filter((filename: string) => {
 					// Match pattern: rowId_timestamp_columnName.extension
@@ -130,15 +116,6 @@
 			console.error('Error getting available images:', error);
 			return [];
 		}
-	}
-
-	function findFolderInTree(folder: Folder, ...pathSegments: string[]): Folder | null {
-		let current: ExplorerNode | undefined = folder;
-		for (const segment of pathSegments) {
-			if (!current || !('children' in current)) return null;
-			current = current.children.find((child) => child.name === segment);
-		}
-		return current && 'children' in current ? current : null;
 	}
 
 	// Initialize available images and indices when card changes

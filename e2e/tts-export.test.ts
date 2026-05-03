@@ -190,12 +190,12 @@ test('inlines local image refs before rasterizing TTS sheets', async ({ page }) 
 		}
 	});
 
-	await page.goto('/games');
+	await page.goto('/app/games');
 	await seedProject(page);
 
 	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
-	await page.goto(`/games/${projectName}/export/tts`);
+	await page.goto(`/app/games/${projectName}/export/tts`);
 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
 		timeout: 30_000
@@ -239,12 +239,12 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 		({ dest }) => !dest.includes('/tts-export/')
 	);
 
-	await page.goto('/games');
+	await page.goto('/app/games');
 	await seedOPFS(page, mappings);
 
 	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
-	await page.goto(`/games/${westernProjectName}/export/tts`);
+	await page.goto(`/app/games/${westernProjectName}/export/tts`);
 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
 		timeout: 60_000

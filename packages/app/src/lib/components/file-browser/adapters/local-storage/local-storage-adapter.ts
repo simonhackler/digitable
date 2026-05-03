@@ -1,131 +1,228 @@
-import type { Adapter } from '../adapter';
+import { Ok } from 'wellcrafted/result';
+import { parseStoredFileData } from '$lib/components/file-browser/browser-utils/file-tree.svelte';
 import {
-	buildTreeFromLocalStorage,
-	parseStoredFileData
-} from '$lib/components/file-browser/browser-utils/file-tree.svelte';
-import type { Folder } from '$lib/components/file-browser/browser-utils/types.svelte';
+	FsError,
+	basename,
+	dirname,
+	entryPath,
+	fsFailed,
+	joinFsPath,
+	parseFsPath,
+	type FsEntry,
+	type FsDir,
+	type FsResult,
+	type FsWriteData
+} from '../adapter';
 
-export class LocalStorageAdapter implements Adapter {
-	private homePath: string;
-	private rootFolder: Folder | null = null;
+export class LocalStorageAdapter implements FsDir {
+	constructor(private readonly rootPath: string) {}
 
-	constructor(homePath: string) {
-		this.homePath = homePath;
+	private keyFor(path?: string): string {
+		const joined = joinFsPath(this.rootPath, path ?? '');
+		return this.rootPath.startsWith('/') ? `/${joined}` : joined;
 	}
 
-	private keyFor(path: string): string {
-		return `${path}`;
+	private hasFile(path: string): boolean {
+		return localStorage.getItem(this.keyFor(path)) !== null;
 	}
 
-	private async fileToDataURL(file: File): Promise<string> {
+	private hasDirectory(path: string): boolean {
+		const prefix = this.keyFor(path) + '/';
+
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (key?.startsWith(prefix)) return true;
+		}
+
+		return false;
+	}
+
+	private async blobToDataURL(blob: Blob): Promise<string> {
 		return new Promise<string>((resolve, reject) => {
 			const reader = new FileReader();
 			reader.onload = () => resolve(reader.result as string);
 			reader.onerror = reject;
-			reader.readAsDataURL(file);
+			reader.readAsDataURL(blob);
 		});
 	}
 
-	async download(paths: string[]) {
-		const results = await Promise.all(
-			paths.map(async (path) => {
-				try {
-					const dataURL = localStorage.getItem(this.keyFor(path));
-					if (!dataURL) {
-						return { result: null, error: new Error(`File not found: ${path}`) };
-					}
+	private async toBlob(data: FsWriteData): Promise<Blob> {
+		if (data instanceof Blob) return data;
+		if (typeof data === 'string') return new Blob([data], { type: 'text/plain' });
+		if (ArrayBuffer.isView(data)) return new Blob([data.buffer]);
+		if (data instanceof ArrayBuffer) return new Blob([data]);
 
-					const fileData = await parseStoredFileData(dataURL);
-					const blob = fileData.blob || (await fetch(dataURL).then((r) => r.blob()));
-					if (!blob) {
-						throw Error("couldn't parse data file");
-					}
-
-					return { result: { path, data: blob }, error: null };
-				} catch (error) {
-					return { result: null, error: error as Error };
-				}
-			})
-		);
-
-		return results;
-	}
-
-	async upload(file: File, fullFolderPath: string, overwrite = false): Promise<Error | null> {
-		const key = this.keyFor(`${this.homePath}/${fullFolderPath}${file.name}`);
-
-		if (!overwrite && localStorage.getItem(key)) {
-			return new Error(`File exists: ${key}`);
+		if (typeof data === 'object' && data !== null && 'type' in data) {
+			const writeParams = data as { type?: string; data?: FsWriteData };
+			if (writeParams.type === 'write' && writeParams.data !== undefined) {
+				return this.toBlob(writeParams.data);
+			}
 		}
 
+		return new Blob([String(data)]);
+	}
+
+	async list(path?: string): Promise<FsResult<FsEntry[]>> {
+		if (path) {
+			const parsed = parseFsPath('list', path);
+			if (parsed.error) return parsed;
+
+			if (this.hasFile(path)) {
+				return FsError.WrongKind({ operation: 'list', path, expected: 'directory' });
+			}
+
+			if (!this.hasDirectory(path)) {
+				return FsError.NotFound({ operation: 'list', path });
+			}
+		}
+
+		const prefix = this.keyFor(path) + '/';
+		const entries = new Map<string, FsEntry>();
+
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (!key?.startsWith(prefix)) continue;
+
+			const relative = key.slice(prefix.length);
+			const [name, ...rest] = relative.split('/');
+			if (!name) continue;
+
+			entries.set(name, {
+				name,
+				kind: rest.length > 0 ? 'directory' : 'file'
+			});
+		}
+
+		return Ok([...entries.values()]);
+	}
+
+	async openDir(path: string): Promise<FsResult<FsDir>> {
+		const parsed = parseFsPath('openDir', path);
+		if (parsed.error) return parsed;
+
+		if (this.hasFile(path)) {
+			return FsError.WrongKind({ operation: 'openDir', path, expected: 'directory' });
+		}
+
+		if (!this.hasDirectory(path)) {
+			return FsError.NotFound({ operation: 'openDir', path });
+		}
+
+		return Ok(new LocalStorageAdapter(this.keyFor(path)));
+	}
+
+	async ensureDir(path: string): Promise<FsResult<FsDir>> {
+		const parsed = parseFsPath('ensureDir', path);
+		if (parsed.error) return parsed;
+
+		if (this.hasFile(path)) {
+			return FsError.WrongKind({ operation: 'ensureDir', path, expected: 'directory' });
+		}
+
+		return Ok(new LocalStorageAdapter(this.keyFor(path)));
+	}
+
+	async read(path: string): Promise<FsResult<File>> {
+		const parsed = parseFsPath('read', path);
+		if (parsed.error) return parsed;
+
 		try {
-			const dataURL = await this.fileToDataURL(file);
+			const stored = localStorage.getItem(this.keyFor(path));
+
+			if (!stored) {
+				if (this.hasDirectory(path)) {
+					return FsError.WrongKind({ operation: 'read', path, expected: 'file' });
+				}
+
+				return FsError.NotFound({ operation: 'read', path });
+			}
+
+			const fileData = await parseStoredFileData(stored);
+			const blob =
+				fileData.blob || (await fetch(fileData.dataURL).then((response) => response.blob()));
+			if (!blob) {
+				return FsError.NotFound({ operation: 'read', path });
+			}
+
+			return Ok(
+				new File([blob], basename(path), {
+					type: fileData.mimetype,
+					lastModified: fileData.updatedAt.getTime()
+				})
+			);
+		} catch (error) {
+			return fsFailed('read', error, path, 'file');
+		}
+	}
+
+	async readText(path: string): Promise<FsResult<string>> {
+		const file = await this.read(path);
+		if (file.error) return file;
+
+		return Ok(await file.data.text());
+	}
+
+	async write(path: string, data: FsWriteData): Promise<FsResult<void>> {
+		const parsed = parseFsPath('write', path);
+		if (parsed.error) return parsed;
+
+		try {
+			const parent = dirname(path);
+			if (parent) {
+				const ensured = await this.ensureDir(parent);
+				if (ensured.error) return ensured;
+			}
+
+			const blob = await this.toBlob(data);
+			const dataURL = await this.blobToDataURL(blob);
 			const payload = {
 				dataURL,
-				size: file.size,
-				mimetype: file.type || 'application/octet-stream',
-				updatedAt: Date.now()
+				size: blob.size,
+				mimetype: blob.type || 'application/octet-stream',
+				updatedAt: data instanceof File ? data.lastModified : Date.now()
 			};
 
-			localStorage.setItem(key, JSON.stringify(payload));
-			return null;
+			localStorage.setItem(this.keyFor(path), JSON.stringify(payload));
+			return Ok(undefined);
 		} catch (error) {
-			return error as Error;
+			return fsFailed('write', error, path, 'file');
 		}
 	}
 
-	async move(files: { filePath: string; path: string }[]): Promise<Error | null> {
-		try {
-			for (const file of files) {
-				const sourceKey = this.keyFor(file.filePath);
-				const dataURL = localStorage.getItem(sourceKey);
-				if (!dataURL) continue;
+	async remove(path: string, options?: { recursive?: boolean }): Promise<FsResult<void>> {
+		const parsed = parseFsPath('remove', path);
+		if (parsed.error) return parsed;
 
-				const destKey = this.keyFor(file.path);
-				localStorage.setItem(destKey, dataURL);
-				localStorage.removeItem(sourceKey);
+		try {
+			if (this.hasFile(path)) {
+				localStorage.removeItem(this.keyFor(path));
+				return Ok(undefined);
 			}
-			return null;
-		} catch (error) {
-			return error as Error;
-		}
-	}
 
-	async copy(files: { filePath: string; path: string }[]): Promise<Error | null> {
-		try {
-			for (const file of files) {
-				const sourceKey = this.keyFor(file.filePath);
-				const dataURL = localStorage.getItem(sourceKey);
-				if (!dataURL) continue;
-
-				const destKey = this.keyFor(file.path);
-				localStorage.setItem(destKey, dataURL);
+			if (!this.hasDirectory(path)) {
+				return FsError.NotFound({ operation: 'remove', path });
 			}
-			return null;
+
+			if (!options?.recursive) {
+				return FsError.WrongKind({ operation: 'remove', path, expected: 'file' });
+			}
+
+			const prefix = this.keyFor(path) + '/';
+			const keys: string[] = [];
+
+			for (let i = 0; i < localStorage.length; i++) {
+				const key = localStorage.key(i);
+				if (key?.startsWith(prefix)) keys.push(key);
+			}
+
+			keys.forEach((key) => localStorage.removeItem(key));
+			return Ok(undefined);
 		} catch (error) {
-			return error as Error;
+			return fsFailed('remove', error, path);
 		}
 	}
 
-	async delete(paths: string[]): Promise<Error | null> {
-		try {
-			paths.forEach((path) => localStorage.removeItem(this.keyFor(path)));
-			return null;
-		} catch (error) {
-			return error as Error;
-		}
-	}
-
-	async getRootFolder() {
-		if (this.rootFolder) {
-			return { result: this.rootFolder, error: null };
-		}
-		try {
-			const tree = await buildTreeFromLocalStorage(this.homePath);
-			this.rootFolder = tree;
-			return { result: tree, error: null };
-		} catch (error) {
-			return { result: null, error: error as Error };
-		}
+	resolve(path: string): string {
+		return entryPath(this.rootPath, path);
 	}
 }

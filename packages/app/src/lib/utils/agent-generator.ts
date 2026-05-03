@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { createGameSchema } from '../../routes/games/schemas.js';
-import type { Adapter } from '$lib/components/file-browser/adapters/adapter.js';
+import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 import agentTemplate from '$lib/templates/agents/boardgame-discovery-agent.md?raw';
 import createGameCommand from '$lib/templates/commands/create-game.md?raw';
 import createSvgCommand from '$lib/templates/commands/create-svg.md?raw';
 import placeholderFrontSvg from '../../../static/placeholder.svg?raw';
 
-export async function generateAgentFiles(adapter: Adapter) {
+export async function generateAgentFiles(adapter: FsDir) {
 	const schemaJson = generateSchemaJson();
 
 	const files = [
@@ -18,6 +18,12 @@ export async function generateAgentFiles(adapter: Adapter) {
 	];
 
 	const uploadPromises = files.map(async ({ content, name, path }) => {
+		const dir = await adapter.ensureDir(path);
+		if (dir.error) {
+			console.error(`Failed to open ${path}:`, dir.error);
+			return;
+		}
+
 		const file = new File([content], name, {
 			type: name.endsWith('.json')
 				? 'application/json'
@@ -25,9 +31,9 @@ export async function generateAgentFiles(adapter: Adapter) {
 					? 'image/svg+xml'
 					: 'text/markdown'
 		});
-		const result = await adapter.upload(file, path, true);
-		if (result) {
-			console.error(`Failed to upload ${name}:`, result);
+		const result = await dir.data.write(name, file);
+		if (result.error) {
+			console.error(`Failed to upload ${name}:`, result.error);
 		}
 	});
 

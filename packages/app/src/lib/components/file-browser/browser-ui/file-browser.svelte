@@ -4,10 +4,10 @@
 	import { Button } from '$lib/components/ui/button';
 	import {
 		type ExplorerNode,
-		type FileFunctions,
 		Folder,
 		isFolder
 	} from '$lib/components/file-browser/browser-utils/types.svelte';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
 	import BreadcrumbRecursive from '$lib/components/file-browser/browser-ui/breadcrumb-recursive.svelte';
@@ -23,18 +23,18 @@
 	let {
 		currentFolder = $bindable(),
 		homeFolderPath = '/',
-		fileFunctions,
+		fsDir,
 		class: className,
 		showActions = true
 	}: {
 		currentFolder: Folder;
-		fileFunctions: FileFunctions;
+		fsDir: FsDir;
 		class?: string;
 		homeFolderPath?: string;
 		showActions?: boolean;
 	} = $props();
 
-	const explorerFunctions = $derived(new ExplorerNodeFunctions(fileFunctions, homeFolderPath));
+	const explorerFunctions = $derived(new ExplorerNodeFunctions(fsDir, homeFolderPath));
 
 	let display: 'grid' | 'list' = $state('grid');
 	let createFolderInput: HTMLInputElement | null = $state(null);
@@ -80,7 +80,7 @@
 		await explorerFunctions.downloadNodes([node]);
 	}
 
-	const fileFunctionsNode = $derived({
+	const fileActions = $derived({
 		deleteNodes: explorerFunctions.deleteNodes.bind(explorerFunctions),
 		downloadNodes: async (nodes: ExplorerNode[]): Promise<Error | null> => {
 			try {
@@ -173,7 +173,7 @@
 		{display}
 		class="mx-4 min-h-0 flex-1"
 		{showActions}
-		fileFunctions={fileFunctionsNode}
+		{fileActions}
 	>
 		{#snippet actionList(node: ExplorerNode)}
 			<FileBrowserActions

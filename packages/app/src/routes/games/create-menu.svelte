@@ -18,10 +18,10 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
-	import type { Adapter } from '$lib/components/file-browser/adapters/adapter.js';
+	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 
-	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: Adapter } = $props();
+	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
 	let openCreateDeckDialog = $state(false);
 
 	const newDeckSchema = z.object({
@@ -65,7 +65,7 @@
 	}
 
 	async function uploadSvgAsSide(
-		fileSystem: Adapter,
+		fileSystem: FsDir,
 		currentProject: string,
 		deckName: string,
 		svg: SVGElement,
@@ -73,25 +73,36 @@
 	) {
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		const fullFolderPath = `/${currentProject}/system/${deckName}`;
-		await fileSystem.upload(svgFile, fullFolderPath, false);
+		const deckDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'system', deckName));
+		if (deckDir.error) {
+			console.error(deckDir.error);
+			return;
+		}
+		const svgWrite = await deckDir.data.write(svgFile.name, svgFile);
+		if (svgWrite.error) console.error(svgWrite.error);
 
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		await fileSystem.upload(file, `${currentProject}/files`);
+		const filesDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'files'));
+		if (filesDir.error) {
+			console.error(filesDir.error);
+			return;
+		}
+		const placeholderWrite = await filesDir.data.write(file.name, file);
+		if (placeholderWrite.error) console.error(placeholderWrite.error);
 	}
 
 	async function deleteDeck(
-		fileSystem: Adapter,
+		fileSystem: FsDir,
 		projectName: string,
 		component: ComponentFileStructure
 	) {
 		const fullFolderPath = `/${projectName}/system/${component.name}`;
 		console.log('deleting for', fullFolderPath);
-		const error = await fileSystem.delete([fullFolderPath]);
-		if (error) {
-			console.error(error);
+		const removed = await fileSystem.remove(joinFsPath(fullFolderPath), { recursive: true });
+		if (removed.error) {
+			console.error(removed.error);
 		} else {
 			activeGame!.decks = activeGame!.decks.filter((x) => x.name !== component.name);
 			await goto(resolve(`/games/${projectName}`));

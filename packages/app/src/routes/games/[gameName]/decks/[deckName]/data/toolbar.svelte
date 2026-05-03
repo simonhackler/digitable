@@ -6,7 +6,8 @@
 	import ImageSelectionModal from './image-selection-modal.svelte';
 	import type { ImageGenResponse } from './image-generator.js';
 	import { getFileSystemContext } from '../../../../context';
-	import { page } from '$app/state';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { requireParam } from '$lib/utils/assert';
 
 	let {
 		deletedSvgColumns,
@@ -39,18 +40,28 @@
 		showFront: boolean;
 	} = $props();
 
-	const gameName = $derived(page.params.gameName);
+	const gameName = $derived(requireParam('gameName'));
 	const filesystem = getFileSystemContext();
 
 	async function handleGenerateImages(images: ImageGenResponse) {
 		console.log('Generated images:', images);
 		const timestamp = Date.now();
+		const generatedDir = await filesystem.ensureDir(joinFsPath(gameName, 'files', 'generated'));
+		if (generatedDir.error) {
+			console.error('Failed to open generated images folder', generatedDir.error);
+			return;
+		}
+
 		for (const image of images.results) {
 			const response = await fetch(image.imageUrl);
 			const blob = await response.blob();
 			const filename = `${image.rowId}_${timestamp}_${image.columnName}.png`;
 			const file = new File([blob], filename, { type: blob.type });
-			await filesystem.upload(file, `${gameName}/files/generated`);
+			const written = await generatedDir.data.write(file.name, file);
+			if (written.error) {
+				console.error(`Failed to save generated image ${filename}`, written.error);
+				continue;
+			}
 
 			const headers = spreadsheet.getHeaders(true) as string[];
 			const columnIndex = headers.findIndex((header) => header === image.columnName);

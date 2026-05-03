@@ -3,6 +3,7 @@
 	import { getFileSystemContext } from '../../context';
 	import { type Attachment } from 'svelte/attachments';
 	import { getProjectFilePath, isEmbeddedImageReference } from '../data-loader';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 
 	export interface Sheet {
 		name: string;
@@ -70,13 +71,13 @@
 		const cached = localImageCache[filePath];
 		if (cached) return cached;
 
-		const [file] = await fileSytem.download([filePath]);
-		if (!file.result) {
+		const file = await fileSytem.read(joinFsPath(filePath));
+		if (file.error) {
 			localImageCache[filePath] = { type: 'href', href: TRANSPARENT_IMAGE };
 			return localImageCache[filePath];
 		}
 
-		const blob = file.result.data;
+		const blob = file.data;
 		const isSvg = blob.type.includes(SVG_MIME_TYPE) || filePath.toLowerCase().endsWith('.svg');
 		localImageCache[filePath] = isSvg
 			? { type: 'svg', text: await blob.text() }
@@ -268,7 +269,10 @@
 				lastModified: Date.now()
 			});
 
-			await fileSytem.upload(file, `${gameName}/tts-export`, true);
+			const exportDir = await fileSytem.ensureDir(joinFsPath(gameName, 'tts-export'));
+			if (exportDir.error) throw exportDir.error;
+			const written = await exportDir.data.write(file.name, file);
+			if (written.error) throw written.error;
 			if (index < sheets.length - 1) {
 				index += 1;
 				const svgsReal = sheets[index].svgs.map((svg) => {

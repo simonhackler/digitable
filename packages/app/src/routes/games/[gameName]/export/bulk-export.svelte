@@ -12,7 +12,7 @@
 <!---->
 <!-- 	const projectName = $derived(requireParam('gameName')); -->
 <!-- 	const fileSystem = getFileSystemContext(); -->
-<!-- 	const root = await fileSystem.getRootFolder(); -->
+<!-- 	const root = await fileSystem.list(); -->
 <!-- 	const projects: Project[] = []; -->
 <!---->
 <!-- 	async function getFoldersToExport() { -->
@@ -39,7 +39,7 @@
 <!-- 						const frontPath = ExplorerNodeFunctions.getPath(front).slice(1).join('/'); -->
 <!-- 						const backPath = ExplorerNodeFunctions.getPath(back).slice(1).join('/'); -->
 <!-- 						const dataPath = ExplorerNodeFunctions.getPath(data).slice(1).join('/'); -->
-<!-- 						const [frontRes, backRes, dataRes] = await fileSystem.download([ -->
+<!-- 						const [frontRes, backRes, dataRes] = await Promise.all([ -->
 <!-- 							frontPath, -->
 <!-- 							backPath, -->
 <!-- 							dataPath -->
@@ -190,7 +190,7 @@
 <!-- 		const jsonBlob = new Blob([JSON.stringify(ttsSave, null, 2)], { type: 'application/json' }); -->
 <!-- 		// convert to file -->
 <!-- 		const jsonFile = new File([jsonBlob], `${projectName}.json`); -->
-<!-- 		await fileSystem.upload(jsonFile, path, true); -->
+<!-- 		await fileSystem.write(`${path}/${jsonFile.name}`, jsonFile); -->
 <!-- 		finished = true; -->
 <!-- 	} -->
 <!---->

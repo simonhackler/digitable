@@ -29,7 +29,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Folders, Download, FolderOutput, Trash2 } from '@lucide/svelte';
 
-	interface FileFunctions {
+	interface FileActions {
 		deleteNodes: (nodes: ExplorerNode[]) => Promise<Error | null>;
 		copyNodes: (nodes: ExplorerNode[]) => void;
 		moveNodes: (nodes: ExplorerNode[]) => void;
@@ -43,7 +43,7 @@
 		onNodeClicked: (node: ExplorerNode) => void;
 		class?: string;
 		showActions?: boolean;
-		fileFunctions?: FileFunctions;
+		fileActions?: FileActions;
 	};
 
 	let {
@@ -53,7 +53,7 @@
 		display,
 		actionList,
 		showActions = true,
-		fileFunctions
+		fileActions
 	}: DataTableProps = $props();
 
 	let sorting = $state<SortingState>([]);
@@ -178,11 +178,11 @@
 		table.resetRowSelection();
 	}
 
-	async function executeFileFunction(
+	async function executeFileAction(
 		nodes: ExplorerNode[],
-		fileFunction: (nodes: ExplorerNode[]) => Promise<Error | null> | void
+		fileAction: (nodes: ExplorerNode[]) => Promise<Error | null> | void
 	) {
-		fileFunction(nodes);
+		fileAction(nodes);
 		table.resetRowSelection();
 	}
 </script>
@@ -202,25 +202,25 @@
 				class="max-w-sm"
 			/>
 		</div>
-		{#if table.getFilteredSelectedRowModel().rows.length > 0 && fileFunctions}
+		{#if table.getFilteredSelectedRowModel().rows.length > 0 && fileActions}
 			<div class="flex items-center gap-2">
-				{#snippet functionButton(
-					fileFunction: (nodes: ExplorerNode[]) => void,
+				{#snippet actionButton(
+					fileAction: (nodes: ExplorerNode[]) => Promise<Error | null> | void,
 					text: string,
 					Icon: Component
 				)}
 					<Button
 						onclick={() =>
-							executeFileFunction(
+							executeFileAction(
 								table.getFilteredSelectedRowModel().rows.map((r) => r.original),
-								fileFunction
+								fileAction
 							)}><Icon />{text}</Button
 					>
 				{/snippet}
-				{@render functionButton(fileFunctions.deleteNodes, 'Delete', Trash2)}
-				{@render functionButton(fileFunctions.moveNodes, 'Move', FolderOutput)}
-				{@render functionButton(fileFunctions.copyNodes, 'Copy', Folders)}
-				{@render functionButton(fileFunctions.downloadNodes, 'Download', Download)}
+				{@render actionButton(fileActions.deleteNodes, 'Delete', Trash2)}
+				{@render actionButton(fileActions.moveNodes, 'Move', FolderOutput)}
+				{@render actionButton(fileActions.copyNodes, 'Copy', Folders)}
+				{@render actionButton(fileActions.downloadNodes, 'Download', Download)}
 			</div>
 		{/if}
 	</div>
