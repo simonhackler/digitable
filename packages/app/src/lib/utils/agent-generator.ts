@@ -10,11 +10,11 @@ export async function generateAgentFiles(adapter: FsDir) {
 	const schemaJson = generateSchemaJson();
 
 	const files = [
-		{ content: agentTemplate, name: 'create-game.md', path: '/.opencode/agent/' },
-		{ content: schemaJson, name: 'create-game-schema.json', path: '/.opencode/schemas/' },
-		{ content: createGameCommand, name: 'create-game.md', path: '/.opencode/command/' },
-		{ content: createSvgCommand, name: 'create-svg.md', path: '/.opencode/command/' },
-		{ content: placeholderFrontSvg, name: 'placeholder_front.svg', path: '/.opencode/assets/' }
+		{ content: agentTemplate, name: 'create-game.md', path: '.opencode/agent' },
+		{ content: schemaJson, name: 'create-game-schema.json', path: '.opencode/schemas' },
+		{ content: createGameCommand, name: 'create-game.md', path: '.opencode/command' },
+		{ content: createSvgCommand, name: 'create-svg.md', path: '.opencode/command' },
+		{ content: placeholderFrontSvg, name: 'placeholder_front.svg', path: '.opencode/assets' }
 	];
 
 	const uploadPromises = files.map(async ({ content, name, path }) => {

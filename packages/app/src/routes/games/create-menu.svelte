@@ -20,6 +20,7 @@
 	import { tick } from 'svelte';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
+	import { BookOpenText } from '@lucide/svelte';
 
 	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
 	let openCreateDeckDialog = $state(false);
@@ -144,6 +145,16 @@
 <Sidebar.Group>
 	<Sidebar.GroupLabel>Create</Sidebar.GroupLabel>
 	<Sidebar.Menu>
+		<Sidebar.MenuItem>
+			<Sidebar.MenuButton tooltipContent="Rules">
+				{#snippet child({ props })}
+					<a href={resolve(`/games/${activeGame?.name}/rules`)} {...props}>
+						<BookOpenText />
+						<span>Rules</span>
+					</a>
+				{/snippet}
+			</Sidebar.MenuButton>
+		</Sidebar.MenuItem>
 		<Collapsible.Root class="group/collapsible">
 			<Sidebar.MenuItem>
 				<Collapsible.Trigger>

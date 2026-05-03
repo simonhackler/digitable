@@ -5,12 +5,14 @@
 	"type": "module",
 	"workspaces": [
 		"packages/*",
-		"svgedit/packages/svgcanvas"
+		"svgedit/packages/svgcanvas",
+		"vendor/svelte-lexical/packages/svelte-lexical"
 	],
 	"scripts": {
-		"dev": "concurrently \"bun run --filter=@svg-table/app dev\" \"bun run --filter=boardgame-server start\"",
-		"dev:app": "bun run --filter=@svg-table/app dev",
-		"dev:svg": "concurrently \"bun run dev:svgcanvas\" \"cd svgedit && bun x vite dev --host --port 8001\" \"bun run --filter=@svg-table/app dev\"",
+		"build:svelte-lexical": "bun run --cwd vendor/svelte-lexical/packages/svelte-lexical svelte-kit sync && bun run --cwd vendor/svelte-lexical/packages/svelte-lexical svelte-package",
+		"dev": "bun run build:svelte-lexical && concurrently \"bun run --filter=@svg-table/app dev\" \"bun run --filter=boardgame-server start\"",
+		"dev:app": "bun run build:svelte-lexical && bun run --filter=@svg-table/app dev",
+		"dev:svg": "bun run build:svelte-lexical && concurrently \"bun run dev:svgcanvas\" \"cd svgedit && bun x vite dev --host --port 8001\" \"bun run --filter=@svg-table/app dev\"",
 		"dev:svgcanvas": "cd svgedit/packages/svgcanvas && bun x vite build --watch",
 		"dev:studio": "bun run --filter=studio dev",
 		"dev:server": "bun run --filter=boardgame-server start",
@@ -18,10 +20,10 @@
 		"db:generate": "bun --env-file=.env run --filter=@svg-table/db db:generate",
 		"db:migrate": "bun --env-file=.env run --filter=@svg-table/db db:migrate",
 		"db:studio": "bun --env-file=.env run --filter=@svg-table/db db:studio",
-		"build": "bun run --filter=@svg-table/app build",
+		"build": "bun run build:svelte-lexical && bun run --filter=@svg-table/app build",
 		"preview": "bun --env-file=.env run --filter=@svg-table/app preview",
-		"check": "bun run --filter=@svg-table/app check",
-		"check:watch": "bun run --filter=@svg-table/app check:watch",
+		"check": "bun run build:svelte-lexical && bun run --filter=@svg-table/app check",
+		"check:watch": "bun run build:svelte-lexical && bun run --filter=@svg-table/app check:watch",
 		"format": "bun run --filter=@svg-table/app format",
 		"lint": "bun run --filter=@svg-table/app lint",
 		"playwright": "playwright",
