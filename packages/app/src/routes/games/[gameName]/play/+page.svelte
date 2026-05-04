@@ -34,10 +34,9 @@
 	import { PressedKeys } from 'runed';
 	import { initComponent, type ParsedSvg } from './initComponent';
 	import { createBoardChrome } from './board-chrome';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 
 	const projectName = $derived(requireParam('gameName'));
-	// TODO load all components
-	const cardName = $derived(page.params.deckName || 'western');
 	const fileSystem = getFileSystemContext();
 	const client = new Client('ws://localhost:2567');
 
@@ -174,11 +173,11 @@
 	// Can init stacks, or singular components with ids and containers
 	// So one map of components and one map of stacks with stacks having maps of components
 	// I will need a better init system probably.
-	function parsePayload(parsedSvgs: ParsedSvg[]): InitGamePayload {
+	function parsePayload(parsedSvgs: ParsedSvg[][]): InitGamePayload {
 		const res = parsedSvgs.map((x) => {
-			return x.id;
+            return { componentIds: x.map(y => y.id)}
 		});
-		const payload: InitGamePayload = { stacks: [{ componentIds: res }] };
+		const payload: InitGamePayload = { stacks: res };
 		return payload;
 	}
 
@@ -430,8 +429,17 @@
 	}
 
 	async function createRoom(_init: boolean) {
-		const hybridResults = await loadAndProcessCards(projectName, cardName, fileSystem);
-		console.log('results are in: ', hybridResults);
+        console.log("creating room");
+        const {data, error} = await fileSystem.openDir(joinFsPath(projectName, 'system'));
+        if (error) {
+            throw new Error(error.message);
+        }
+        const dirs = await data.list();
+        if (dirs.error) {
+            throw new Error(dirs.error.message);
+        }
+        const allComponentsParsed = await Promise.all(dirs.data.map(x => loadAndProcessCards(projectName, x.name, fileSystem)));
+        console.log("all comps parsed");
 		const roomName = 'my_room';
 		const room = await client.joinOrCreate<BoardGameRoomState>(roomName);
 		let s = getStateCallbacks(room);
@@ -443,7 +451,7 @@
 					boardGameItems,
 					isDragging: () => drag !== null
 				},
-				hybridResults,
+				allComponentsParsed.flat(),
 				component,
 				room.state,
 				s,
@@ -457,7 +465,7 @@
 			boardItem.destroy({ children: true });
 			boardGameItems.delete(component.id);
 		});
-		sendCmd(room, 'init', parsePayload(hybridResults));
+		sendCmd(room, 'init', parsePayload(allComponentsParsed));
 		return room;
 	}
 

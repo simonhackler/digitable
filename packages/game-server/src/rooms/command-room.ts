@@ -110,9 +110,9 @@ export class InitCommand extends Command<
 > {
 	execute(payload: this['payload']) {
 		for (const stack of payload.stacks) {
-			// create deck components
 			const deckId = randomUUID();
 			const deckComponent = new Component(deckId, '', 'stack');
+            // TODO positions
 			const deckPosition = new Positionable(400, 400, true);
 			const deckFlip = new Flippable(false);
 			const deckStack = new Stack(stack.componentIds);
