@@ -10,44 +10,45 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button';
 
-	let { onSetOpfsAdapter }: { onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } = $props();
+	let { onSetOpfsAdapter }: { onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => Promise<void> } =
+		$props();
 
 	let opfsAdapter: OPFSAdapter | null = $state(null);
 	let dirPicker: boolean | null = $state(null);
 
-	function applyAdapter(adapter: OPFSAdapter) {
+	async function applyAdapter(adapter: OPFSAdapter) {
 		opfsAdapter = adapter;
-		onSetOpfsAdapter(adapter);
+		await onSetOpfsAdapter(adapter);
 	}
 
 	async function pickFolder() {
 		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
 		await saveFolderHandle(folderHandle);
-		applyAdapter(new OPFSAdapter(folderHandle));
+		await applyAdapter(new OPFSAdapter(folderHandle));
 	}
 
 	async function useOpfs() {
 		await saveOpfsPreference();
-		applyAdapter(await OPFSAdapter.create());
+		await applyAdapter(await OPFSAdapter.create());
 	}
 
 	onMount(async () => {
 		dirPicker = 'showDirectoryPicker' in window;
 		if (!dirPicker) {
-			applyAdapter(await OPFSAdapter.create());
+			await applyAdapter(await OPFSAdapter.create());
 			return;
 		}
 
 		const storagePreference = await loadStoragePreference();
 		if (storagePreference === 'opfs') {
-			applyAdapter(await OPFSAdapter.create());
+			await applyAdapter(await OPFSAdapter.create());
 			return;
 		}
 
 		const dirHandle = await loadFolderHandle();
 		if (dirHandle) {
 			if (await verifyPermission(dirHandle)) {
-				applyAdapter(new OPFSAdapter(dirHandle));
+				await applyAdapter(new OPFSAdapter(dirHandle));
 			}
 		}
 	});

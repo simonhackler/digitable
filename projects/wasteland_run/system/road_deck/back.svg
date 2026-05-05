@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+  <rect width="63" height="88" rx="3" fill="#2b2722"/>
+  <rect x="6" y="6" width="51" height="76" rx="3" fill="#6f4d31" stroke="#eadfca" stroke-width="1.2"/>
+  <path d="M31.5 20 C19 38 19 55 31.5 72 C44 55 44 38 31.5 20 Z" fill="#c9b58f" stroke="#2b2722" stroke-width="1"/>
+  <path d="M31.5 25 C27 41 27 55 31.5 68" fill="none" stroke="#eadfca" stroke-width="1.6" stroke-dasharray="4 3"/>
+  <text x="31.5" y="35" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#2b2722">ROAD</text>
+  <text x="31.5" y="75" text-anchor="middle" font-family="Arial, sans-serif" font-size="3.5" fill="#fffaf0">WASTELAND RUN</text>
+</svg>

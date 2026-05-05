@@ -10,6 +10,8 @@ metadata:
 
 Use this skill when the user wants ideas, variants, alternatives, card types, boards, resources, factions, powers, scoring systems, economies, conflict systems, or unusual mechanics for a board game.
 
+Do not use this as the first response to a vague "I want to make a game" prompt unless the user specifically asks for component ideas. Use `game-starter` first to discover the game shape.
+
 The goal is breadth first, then refinement. Do not lock rules too early.
 
 ## Modes
@@ -31,12 +33,15 @@ If no mode is given, infer the best mode from the prompt. Include `weird` only w
 ## Workflow
 
 1. Read any existing game context the user provides.
-2. Ask what component area to explore only if it is unclear.
-3. Generate 3-6 distinct directions.
-4. For each direction, include sample components, why it works, implementation notes, and risks.
-5. Ask the user which direction to continue.
-6. Refine the chosen direction into a concrete component set.
-7. Hand off to `rules-explorer` or `game-starter` when appropriate.
+2. Ask what component area to explore if it is unclear.
+3. Ask any missing constraint that would make generated options useful.
+4. Generate 3-6 distinct directions only after the component area is clear.
+5. For each direction, include sample components, why it works, implementation notes, and risks.
+6. Ask the user which direction to continue.
+7. Refine the chosen direction into a concrete component set.
+8. Hand off to `rules-explorer` or `game-starter` when appropriate.
+
+When constraints are missing, ask a question and stop. Do not fill in the component taxonomy, counts, costs, or card text before the user has chosen a direction.
 
 ## Direction Format
 

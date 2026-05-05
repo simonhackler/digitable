@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+  <rect width="63" height="88" rx="3" fill="#1f2524"/>
+  <rect x="6" y="6" width="51" height="76" rx="3" fill="#2f5d58" stroke="#f1ead8" stroke-width="1.2"/>
+  <path d="M15 49 H48 L43 61 H20 Z" fill="#d5c6a6" stroke="#1f2524" stroke-width="1"/>
+  <path d="M23 49 V36 H39 V49" fill="none" stroke="#f1ead8" stroke-width="2"/>
+  <text x="31.5" y="25" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#fffaf0">WASTELAND</text>
+  <text x="31.5" y="33" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#fffaf0">RUN</text>
+  <text x="31.5" y="72" text-anchor="middle" font-family="Arial, sans-serif" font-size="3.5" fill="#fffaf0">MARKET</text>
+</svg>

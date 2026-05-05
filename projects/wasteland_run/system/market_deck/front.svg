@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+  <rect width="63" height="88" rx="3" fill="#1f2524"/>
+  <rect x="3" y="3" width="57" height="82" rx="2" fill="#f1ead8"/>
+  <rect x="3" y="3" width="57" height="13" rx="2" fill="#2f5d58"/>
+  <text id="title" x="31.5" y="11" text-anchor="middle" font-family="Arial, sans-serif" font-size="4.8" font-weight="700" fill="#fff">Market Card</text>
+  <text id="card_type" x="7" y="21" font-family="Arial, sans-serif" font-size="3.2" font-weight="700" fill="#2f5d58">Part</text>
+  <rect x="48" y="18" width="8" height="8" rx="4" fill="#b9472f"/>
+  <text id="cost" x="52" y="24" text-anchor="middle" font-family="Arial, sans-serif" font-size="5.2" font-weight="700" fill="#fff">2</text>
+  <rect x="7" y="27" width="49" height="12" rx="1.5" fill="#d5c6a6" stroke="#1f2524" stroke-width="0.4"/>
+  <text x="10" y="34.5" font-family="Arial, sans-serif" font-size="3" fill="#1f2524">Slot</text>
+  <text id="slot" x="31.5" y="34.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="4.5" font-weight="700" fill="#1f2524">Weapon</text>
+  <rect x="7" y="44" width="14" height="11" rx="1.2" fill="#fffaf0" stroke="#1f2524" stroke-width="0.4"/>
+  <text x="14" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.2" fill="#4f473f">SPEED</text>
+  <text id="speed" x="14" y="53.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="5" font-weight="700" fill="#1f2524">0</text>
+  <rect x="24.5" y="44" width="14" height="11" rx="1.2" fill="#fffaf0" stroke="#1f2524" stroke-width="0.4"/>
+  <text x="31.5" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.2" fill="#4f473f">ATTACK</text>
+  <text id="attack" x="31.5" y="53.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="5" font-weight="700" fill="#1f2524">0</text>
+  <rect x="42" y="44" width="14" height="11" rx="1.2" fill="#fffaf0" stroke="#1f2524" stroke-width="0.4"/>
+  <text x="49" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.2" fill="#4f473f">ARMOR</text>
+  <text id="armor" x="49" y="53.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="5" font-weight="700" fill="#1f2524">0</text>
+  <rect x="7" y="61" width="49" height="18" rx="1.5" fill="#fffaf0" stroke="#1f2524" stroke-width="0.4"/>
+  <text id="effect" x="10" y="67" font-family="Arial, sans-serif" font-size="3.1" fill="#1f2524" data-svgedit-wrap-width="43" data-svgedit-wrap-height="10" data-svgedit-line-height="3.7">Effect text</text>
+</svg>

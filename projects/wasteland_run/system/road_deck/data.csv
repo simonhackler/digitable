@@ -1,0 +1,11 @@
+id,Copies,title,card_type,miles,hazard,reward,effect
+road-001,4,Open Asphalt,Road,2,None,Gain 1 scrap,Clean stretch through the dust.
+road-002,3,Broken Overpass,Road,1,Take 1 damage,Gain 2 scrap,Slow route with salvage under the span.
+road-003,3,Raider Ambush,Road,2,Take 2 damage,Gain 1 scrap,Armor reduces this hazard.
+road-004,3,Fuel Cache,Road,1,None,Gain 3 scrap,Stop long enough to siphon what remains.
+road-005,2,Rad Storm,Road,3,Take 2 damage,None,If you have Armor 2 or more take 1 damage instead.
+road-006,2,Dust Bowl,Road,2,Discard 1 scrap,None,If you cannot discard scrap take 1 damage.
+road-007,2,Shortcut Canyon,Road,3,Take 1 damage,None,Fast but hard on the chassis.
+road-008,2,Market Caravan,Road,1,None,Buy 1 extra market card this turn,Trade while the engines idle.
+road-009,2,Wreck Field,Road,1,None,Repair 1 or gain 1 scrap,Pick through the old pileup.
+road-010,1,Finish Line,Road,5,None,Win if you reach 20 miles,Keep this card only if it gets you to the finish.
