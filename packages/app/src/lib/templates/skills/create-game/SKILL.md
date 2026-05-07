@@ -10,6 +10,10 @@ metadata:
 
 Use this skill when the user wants to create a new Digitable game project.
 
+This is not the main entry point for vague or early-stage game ideas.
+Use `game-starter` first when the user is still discovering the fantasy, mechanics, scope, or component structure.
+Use `create-game` once the required metadata is known or when the user explicitly wants to scaffold the folder and `game.json` now.
+
 ## Workflow
 
 1. Read the schema at `references/create-game-schema.json`.
@@ -28,4 +32,4 @@ Use this skill when the user wants to create a new Digitable game project.
 
 ## Handoff
 
-Use `game-starter` after creation if the user wants a first playable prototype. Use `rules-explorer` if the user already has rules that need hardening.
+Use `game-starter` before creation when the game idea is still taking shape, and after creation if the user wants to continue toward a first playable prototype. Use `rules-explorer` if the user already has rules that need hardening.

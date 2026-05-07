@@ -15,6 +15,7 @@ Use this skill when the user wants to create an SVG card, token, board element, 
 Only create SVGs inside a project that has a `game.json`. Read `game.json` first and use it for theme, tone, and component context.
 
 Start card designs from `assets/placeholder_front.svg`.
+Inspect the placeholder structure before designing so image and text regions stay editable.
 
 ## Workflow
 
@@ -28,7 +29,11 @@ Start card designs from `assets/placeholder_front.svg`.
 ## SVG Rules
 
 - For text, always include an appropriately sized `rect` in `defs` following the placeholder template pattern.
-- For images, include a template `href` and size the image element deliberately.
+- If the component is expected to have artwork, reserve a prominent dedicated `<image>` element for it.
+- Use a template `href` such as `/placeholder.svg` for artwork slots unless the user provided a real asset path.
+- Never replace the main artwork area with `path`, `circle`, `polygon`, or other vector illustration stand-ins.
+- Decorative vector shapes are allowed only as framing or accents around the artwork placeholder.
+- Size image elements deliberately and give each artwork slot a meaningful ID such as `artwork`, `character_art`, or `vehicle_art`.
 - Give all important text and image elements meaningful IDs.
 - Keep text inside its intended region.
 - Preserve editability over clever rendering tricks.

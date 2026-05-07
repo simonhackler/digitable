@@ -4,19 +4,17 @@
   <rect x="3" y="3" width="57" height="15" rx="2" fill="#8b2f23"/>
   <text id="title" x="31.5" y="12" text-anchor="middle" font-family="Arial, sans-serif" font-size="5.2" font-weight="700" fill="#fff">Vehicle</text>
   <text id="card_type" x="31.5" y="17" text-anchor="middle" font-family="Arial, sans-serif" font-size="3" fill="#f6d6a8">Starter Vehicle</text>
-  <rect x="7" y="24" width="49" height="18" rx="2" fill="#d8c39f" stroke="#24221f" stroke-width="0.6"/>
-  <path d="M13 36 L17 29 H39 L47 36 Z" fill="#5d625d" stroke="#24221f" stroke-width="0.7"/>
-  <circle cx="19" cy="37" r="3" fill="#24221f"/>
-  <circle cx="41" cy="37" r="3" fill="#24221f"/>
-  <rect x="7" y="47" width="14" height="12" rx="1.5" fill="#fffaf0" stroke="#24221f" stroke-width="0.4"/>
-  <text x="14" y="51" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.4" fill="#4f473f">HULL</text>
-  <text id="hull" x="14" y="57" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="700" fill="#24221f">6</text>
-  <rect x="24.5" y="47" width="14" height="12" rx="1.5" fill="#fffaf0" stroke="#24221f" stroke-width="0.4"/>
-  <text x="31.5" y="51" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.4" fill="#4f473f">ENGINE</text>
-  <text id="engine" x="31.5" y="57" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="700" fill="#24221f">2</text>
-  <rect x="42" y="47" width="14" height="12" rx="1.5" fill="#fffaf0" stroke="#24221f" stroke-width="0.4"/>
-  <text x="49" y="51" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.4" fill="#4f473f">SLOTS</text>
-  <text id="slots" x="49" y="57" text-anchor="middle" font-family="Arial, sans-serif" font-size="5" font-weight="700" fill="#24221f">4</text>
+  <rect x="7" y="22" width="49" height="23" rx="2" fill="#d8c39f" stroke="#24221f" stroke-width="0.6"/>
+  <image id="vehicle_artwork" x="8" y="23" width="47" height="21" href="/placeholder.svg" preserveAspectRatio="xMidYMid slice"/>
+  <rect x="7" y="49" width="14" height="12" rx="1.5" fill="#fffaf0" stroke="#24221f" stroke-width="0.4"/>
+  <text x="14" y="53" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.4" fill="#4f473f">HULL</text>
+  <text id="hull" x="14" y="59" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="700" fill="#24221f">6</text>
+  <rect x="24.5" y="49" width="14" height="12" rx="1.5" fill="#fffaf0" stroke="#24221f" stroke-width="0.4"/>
+  <text x="31.5" y="53" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.4" fill="#4f473f">ENGINE</text>
+  <text id="engine" x="31.5" y="59" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="700" fill="#24221f">2</text>
+  <rect x="42" y="49" width="14" height="12" rx="1.5" fill="#fffaf0" stroke="#24221f" stroke-width="0.4"/>
+  <text x="49" y="53" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.4" fill="#4f473f">SLOTS</text>
+  <text id="slots" x="49" y="59" text-anchor="middle" font-family="Arial, sans-serif" font-size="5" font-weight="700" fill="#24221f">4</text>
   <text id="start_bonus" x="7" y="66" font-family="Arial, sans-serif" font-size="3.1" font-weight="700" fill="#8b2f23">Start: 3 scrap</text>
   <text id="effect" x="7" y="72" font-family="Arial, sans-serif" font-size="3.2" fill="#24221f" data-svgedit-wrap-width="49" data-svgedit-wrap-height="12" data-svgedit-line-height="4">Effect text</text>
 </svg>

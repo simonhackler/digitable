@@ -6,11 +6,11 @@
   <text id="card_type" x="7" y="21" font-family="Arial, sans-serif" font-size="3.2" font-weight="700" fill="#6f4d31">Road</text>
   <rect x="44" y="18" width="12" height="10" rx="1.5" fill="#b9472f"/>
   <text id="miles" x="50" y="25.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="700" fill="#fff">2</text>
-  <path d="M31.5 31 C25 40 25 54 31.5 63 C38 54 38 40 31.5 31 Z" fill="#c9b58f" stroke="#2b2722" stroke-width="0.7"/>
-  <path d="M31.5 34 C29 43 29 52 31.5 60" fill="none" stroke="#eadfca" stroke-width="1" stroke-dasharray="3 2"/>
-  <rect x="7" y="65" width="49" height="7" rx="1.2" fill="#fffaf0" stroke="#2b2722" stroke-width="0.4"/>
-  <text id="hazard" x="9" y="70" font-family="Arial, sans-serif" font-size="3" fill="#2b2722">Hazard</text>
-  <rect x="7" y="75" width="49" height="7" rx="1.2" fill="#fffaf0" stroke="#2b2722" stroke-width="0.4"/>
-  <text id="reward" x="9" y="80" font-family="Arial, sans-serif" font-size="3" fill="#2b2722">Reward</text>
-  <text id="effect" x="7" y="59" font-family="Arial, sans-serif" font-size="3" fill="#2b2722" data-svgedit-wrap-width="49" data-svgedit-wrap-height="8" data-svgedit-line-height="3.5">Effect</text>
+  <rect x="7" y="30" width="49" height="27" rx="2" fill="#c9b58f" stroke="#2b2722" stroke-width="0.7"/>
+  <image id="road_artwork" x="8" y="31" width="47" height="25" href="/placeholder.svg" preserveAspectRatio="xMidYMid slice"/>
+  <text id="effect" x="7" y="63" font-family="Arial, sans-serif" font-size="3" fill="#2b2722" data-svgedit-wrap-width="49" data-svgedit-wrap-height="5" data-svgedit-line-height="3.5">Effect</text>
+  <rect x="7" y="68" width="49" height="7" rx="1.2" fill="#fffaf0" stroke="#2b2722" stroke-width="0.4"/>
+  <text id="hazard" x="9" y="73" font-family="Arial, sans-serif" font-size="3" fill="#2b2722">Hazard</text>
+  <rect x="7" y="77" width="49" height="7" rx="1.2" fill="#fffaf0" stroke="#2b2722" stroke-width="0.4"/>
+  <text id="reward" x="9" y="82" font-family="Arial, sans-serif" font-size="3" fill="#2b2722">Reward</text>
 </svg>
