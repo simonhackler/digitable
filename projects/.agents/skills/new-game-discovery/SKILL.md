@@ -1,16 +1,26 @@
 ---
-name: game-starter
-description: Guide a rough board game idea into a first Digitable prototype through an iterative discovery loop, asking focused questions before proposing rules, components, or files.
+name: new-game-discovery
+description: First skill to use when the user wants to make, start, create, or prototype a new board game from an idea, theme, genre, mechanic, or component concept; guide the idea into a good first ruleset before creating specific cards, components, or files.
 compatibility: opencode
 metadata:
   digitable-kind: prototype-builder
 ---
 
-# Game Starter
+# New Game Discovery
 
-Use this skill when the user says they want to make, start, create, or prototype a new game in Digitable.
+Use this skill first when the user says they want to make, start, create, design, or prototype a new game in Digitable.
 
-Your goal is not to build the whole game. Your goal is to help the user discover the smallest playable prototype that can be created, tested, and improved.
+This includes rough requests such as:
+
+- "I want to create a new game."
+- "Make a racing card game."
+- "Start a post-apocalyptic vehicle-building game."
+- "I have a deckbuilder idea."
+- "Let's prototype a board game about rival factions."
+
+Your goal is not to build the whole game. Your goal is to help the user discover the smallest playable prototype that can be created, tested, and improved. A playable prototype needs operational rules, not just components.
+
+Core rule: always work with the user on a good first ruleset before moving on to specific cards, detailed component lists, SVGs, data files, or implementation. The ruleset is the bridge between the concept and the components.
 
 The user owns the game vision. Do not jump from a rough theme to a complete set of rules, components, or a prototype plan. Treat early answers as signals to investigate, not permission to design the whole game for them.
 
@@ -54,9 +64,11 @@ Do not force both tracks at once in the first exchange. Start from one direction
 6. Repeat until the starting track is concrete enough to translate into the other track.
 7. Cross over: convert fantasy into mechanics, or mechanics into fantasy, one decision at a time.
 8. Repeat until the required prototype decisions are known.
-9. Only then summarize the agreed first playable wedge.
-10. Ask before drafting starter rules, component lists, or Digitable files unless the user explicitly requested that output.
-11. Create or instruct creation of Digitable files only after the required metadata and first playable scope are explicit.
+9. Before any detailed component or card design, switch into a first-ruleset pass: setup, round structure, turn order, player actions, action limits, costs, timing, conflict, and end condition.
+10. Work with the user to make the first ruleset playable enough that a short example turn can be run.
+11. Only after the ruleset loop is playable should you summarize the agreed first playable wedge.
+12. Ask before drafting detailed card lists, component lists, or Digitable files.
+13. Create or instruct creation of Digitable files only after the required metadata, first playable scope, and rules loop are explicit.
 
 If the user gives enough information, do not over-question. Summarize the known decisions and ask for confirmation before turning them into rules or files.
 
@@ -81,6 +93,9 @@ Do not:
 - Present speculative rules as "recommended" while the user is still describing the concept.
 - Fill the conversation with a full prototype plan when the next useful move is a question.
 - Treat genre defaults as user decisions. "Card game" does not imply deckbuilding, hand size, draw rate, attack rules, or 24 cards unless the user confirms them.
+- Jump from broad prototype decisions into named cards, factions, card text, or content lists before the first ruleset loop is nailed down.
+- Treat "concrete design" as permission to make a card list if the turn structure, actions, and timing are still vague. In that case, make the rules concrete first.
+- Continue asking component-scope questions after the core shape is known when the unresolved blocker is actually the rules loop.
 
 ## Prototype Questions
 
@@ -114,6 +129,19 @@ Funnel questions for either mode:
 - Initial size: 12, 24, 40, or 60 cards/components.
 - Visual requirements: art placeholders, icons, tags, costs, effects.
 - What win/loss condition or scoring direction best fits the current design.
+
+Ruleset questions:
+
+- What happens at the start of each round or turn
+- Who acts, and how turn order is determined
+- What actions a player can take on their turn
+- How many actions or action points a player gets
+- What each action costs
+- How movement, range, targeting, buying, installing, repairing, drawing, and attacking work
+- What can happen outside a player's turn
+- How card effects override or modify the core rules
+- What happens when a player cannot pay, cannot move, cannot attack, or has no valid target
+- What exact condition ends the game
 
 ## First Response Pattern
 
@@ -184,11 +212,79 @@ Do not produce the full `Prototype Plan` until these decisions are known or expl
 - The different cards/component types and what values will be needed for them
 - First prototype scope.
 - One known win/loss condition or scoring direction.
+- First ruleset loop: round structure, turn order, available actions, action limits, costs, timing, conflict resolution, and end condition.
 
 For top-down starts, make sure the fantasy has been translated into concrete mechanics.
 For bottom-up starts, make sure the mechanics have been translated into a coherent player fantasy or theme.
 
 If one or more are missing, ask the next question instead of writing the plan.
+
+## Ruleset Gate
+
+After the core concept, win condition, main component categories, and first scope are clear, move to rules before content. This is mandatory: the agent should collaborate on the ruleset with the user before making specific cards or components.
+
+Do not design detailed card sets, named cards, factions, card effects, component inventories, SVGs, or data files until there is a first ruleset pass that answers:
+
+- What is the setup
+- What happens each round
+- How turn order is determined
+- What players can do on a turn
+- How actions are limited
+- How the main resource is gained and spent
+- How movement or board progress works, if relevant
+- How conflict is declared, targeted, resolved, prevented, and repaired
+- When events, reactions, interrupts, and triggered effects happen
+- How the game ends and how ties are resolved
+
+If the user asks for "concrete design", "make it concrete", "let's nail the design", or similar before this ruleset exists, respond by making the rules concrete first. Ask the highest-leverage rules question or propose a small rules skeleton and ask the user to choose the uncertain parts. Do not respond with named cards or card text yet.
+
+Use this response pattern when switching into rules:
+
+```markdown
+We have enough shape to stop adding components and nail the first rules loop.
+
+Known:
+
+- <confirmed concept decision>
+- <confirmed component/scope decision>
+- <confirmed objective decision>
+
+The next rules decision is <specific operational gap>. Which version should the prototype use?
+
+1. <rules option with clear procedure>
+2. <rules option with clear procedure>
+3. <rules option with clear procedure>
+
+You can also answer in your own words.
+```
+
+When enough rule decisions are known, produce a compact rules draft before card content:
+
+```markdown
+# First Rules Loop: <Game Name>
+
+## Setup
+
+## Round Structure
+
+## Turn Order
+
+## Actions
+
+## Movement or Progress
+
+## Buying, Building, and Repairing
+
+## Conflict
+
+## Events and Timing
+
+## End of Game
+
+## Example Turn
+
+## Open Rules Questions
+```
 
 ## Scope Rule
 
@@ -218,6 +314,8 @@ When the ready-to-plan gate is satisfied and the user wants the plan, produce:
 
 ## First Playable Wedge
 
+## First Rules Loop
+
 ## Components to Create
 
 ## Starter Rules
@@ -243,4 +341,4 @@ When implementation is possible, create the smallest useful file set rather than
 
 ## Handoff
 
-Use `rules-explorer` next when the starter loop needs hardening. Use `component-explorer` next when the user wants more card, board, resource, faction, or scoring alternatives.
+Use `rules-explorer` next when the starter loop needs hardening. Use `component-explorer` next when the user wants more card, board, resource, faction, or scoring alternatives. Use `game-metadata-scaffold` only after the prototype direction is explicit enough to write `game.json`, or when the user directly asks to scaffold the project metadata.

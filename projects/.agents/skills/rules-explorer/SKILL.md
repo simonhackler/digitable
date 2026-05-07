@@ -119,4 +119,4 @@ Always include edge cases for empty decks, simultaneous effects, invalid targets
 
 ## Handoff
 
-Recommend `component-explorer` when the rules need alternate cards, resources, factions, scoring, or board structures. Recommend `game-starter` when the user wants the smallest playable Digitable prototype created.
+Recommend `component-explorer` when the rules need alternate cards, resources, factions, scoring, or board structures. Recommend `new-game-discovery` when the user wants the smallest playable Digitable prototype created.

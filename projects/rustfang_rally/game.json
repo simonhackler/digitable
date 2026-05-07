@@ -1,0 +1,7 @@
+{
+  "name": "Rustfang Rally",
+  "minPlayers": 2,
+  "maxPlayers": 2,
+  "description": "A tight post-apocalyptic combat race where players spend scrap to fuel movement, buy and install vehicle parts, and wreck rival rigs on the road to the finish.",
+  "tags": ["post-apocalyptic", "racing", "vehicles", "cards", "combat"]
+}
