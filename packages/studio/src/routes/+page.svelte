@@ -43,9 +43,9 @@
 </svelte:head>
 
 <main class="page min-h-screen text-[#151515]">
-	<section class="py-8 sm:py-12">
-		<div class="mx-auto grid max-w-[1120px] gap-8 px-6 sm:gap-10">
-			<div class="reveal mx-auto grid max-w-[720px] gap-4 text-left md:text-center">
+	<section class="py-5 sm:py-6">
+		<div class="mx-auto grid max-w-[1120px] gap-6 px-6 sm:gap-7">
+			<div class="reveal mx-auto grid max-w-[720px] gap-3 text-left md:text-center">
 				<h1 class="font-['Newsreader'] text-4xl md:text-5xl lg:text-6xl">
 					<span class="block">A free and open source boardgame engine.</span>
 				</h1>
@@ -70,7 +70,7 @@
 				</Tabs.Root>
 
 				<div
-					class={`relative overflow-hidden rounded-[26px] p-6 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-10 ${
+					class={`relative overflow-hidden rounded-[26px] p-5 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-7 ${
 						activeTab === 'design'
 							? 'bg-[linear-gradient(130deg,#0c0f1a_0%,#2d3554_45%,#f2b04f_120%)]'
 							: activeTab === 'playtest'
@@ -79,9 +79,9 @@
 					}`}
 				>
 					<div
-						class="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-5 max-sm:grid-cols-1"
+						class="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4 max-sm:grid-cols-1"
 					>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4">
+						<div class="min-h-[120px] rounded-2xl bg-white/10 p-4">
 							<p class="text-base tracking-[0.15em] text-white/70 uppercase">
 								{activeTab} panel
 							</p>
@@ -90,7 +90,7 @@
 							<div class="mt-2 h-1.5 rounded-full bg-white/20"></div>
 							<div class="mt-2 h-1.5 w-[70%] rounded-full bg-white/20"></div>
 						</div>
-						<div class="min-h-[240px] rounded-2xl bg-white/10 p-4">
+						<div class="min-h-[190px] rounded-2xl bg-white/10 p-4">
 							<p class="text-base tracking-[0.15em] text-white/70 uppercase">Board</p>
 							<div class="mt-4 grid grid-cols-4 gap-1.5">
 								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
@@ -107,7 +107,7 @@
 								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
 							</div>
 						</div>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4">
+						<div class="min-h-[120px] rounded-2xl bg-white/10 p-4">
 							<p class="text-base tracking-[0.15em] text-white/70 uppercase">Cards</p>
 							<div class="mt-4 grid gap-1.5">
 								<div class="h-3 rounded-full bg-white/25"></div>
@@ -120,7 +120,7 @@
 				</div>
 			</div>
 
-			<div class="reveal mx-auto grid max-w-[720px] gap-6 text-left md:text-center">
+			<div class="reveal mx-auto grid max-w-[720px] gap-5 text-left md:text-center">
 				<p class="text-xl text-[#4b4b57]">{current.subtitle}</p>
 				<ul
 					class="flex flex-wrap justify-start gap-3 text-xl text-[#2d2d36] md:justify-center md:gap-x-6"
@@ -134,9 +134,7 @@
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
 					<Button href="/sign-in" variant="pill-outline" size="xl">Sign in</Button>
-					<Button href="/app/games" data-sveltekit-reload variant="hero" size="xl">
-						Start creating
-					</Button>
+					<Button href="/sign-up" variant="hero" size="xl">Create now</Button>
 				</div>
 			</div>
 		</div>
