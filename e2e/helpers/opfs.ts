@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 type Mapping = { src: string; dest: string };
+const EXCLUDED_DIRECTORY_NAMES = new Set(['tts-export']);
 
 export async function writeBufferToOPFS(page: Page, dest: string, buf: Buffer) {
 	const base64 = buf.toString('base64');
@@ -39,6 +40,10 @@ export async function walkDirectory(dir: string, baseDestPath: string = ''): Pro
 	const entries = await fs.readdir(dir, { withFileTypes: true });
 
 	for (const entry of entries) {
+		if (entry.isDirectory() && EXCLUDED_DIRECTORY_NAMES.has(entry.name)) {
+			continue;
+		}
+
 		const srcPath = path.join(dir, entry.name);
 		const destPath = path.join(baseDestPath, entry.name).replace(/\\/g, '/');
 

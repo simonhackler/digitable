@@ -57,6 +57,7 @@ export class ClientPosition {
 			console.log('position changed', position.x, position.y);
 			this.clientPositionState.x = position.x;
 			this.clientPositionState.y = position.y;
+			this.clientPositionState.visible = position.visible;
 			this.onPositionChanged.emit(position);
 		});
 	}

@@ -39,12 +39,14 @@ export class BoardGameItemNew extends Container {
 		if (clientPosition) {
 			this.position.set(clientPosition.clientPositionState.x, clientPosition.clientPositionState.y);
 			this.visible = clientPosition.clientPositionState.visible;
+			this.renderable = clientPosition.clientPositionState.visible;
 			clientPosition.onPositionChanged.subscribe((newPos) => {
 				if (this.destroyed) return;
 				if (this.isInHand) return;
 				const position = this.position;
 				if (!position) return;
-				this.visible = true;
+				this.visible = newPos.visible;
+				this.renderable = newPos.visible;
 				position.set(newPos.x, newPos.y);
 			});
 		}

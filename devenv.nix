@@ -14,6 +14,7 @@
   serverPort = config.processes.game-server.ports.http.value;
   postgresPort = config.processes.postgres.ports.main.value;
   databaseUrl = "postgres://${dbUser}:${dbPass}@127.0.0.1:${toString postgresPort}/${dbName}";
+  minioApiPort = config.processes.minio.ports.console.value;
   studioOrigin = "http://localhost:${toString sitePort}";
   playwrightChromium = pkgs.runCommand "playwright-chromium-executable" {} ''
     chromium_dir="$(echo ${pkgs.playwright-driver.browsers}/chromium-*)"
@@ -102,6 +103,8 @@ in {
     AUTH_COOKIE_DOMAIN = "";
     REPLICATE_API_TOKEN = "tmp";
 
+    S3_ENDPOINT = "http://127.0.0.1:${toString minioApiPort}";
+
     PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH = "${playwrightChromium}";
@@ -120,6 +123,10 @@ in {
         pass = dbPass;
       }
     ];
+  };
+
+  services.minio = {
+    enable = true;
   };
 
   processes.postgres.ready = lib.mkForce null;

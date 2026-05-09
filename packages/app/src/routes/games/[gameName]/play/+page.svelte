@@ -33,12 +33,18 @@
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
 	import { initComponent, type ParsedSvg } from './initComponent';
+	import { installPlayE2EBridge } from './e2e-bridge';
 	import { createBoardChrome } from './board-chrome';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 
 	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
 	const client = new Client('ws://localhost:2567');
+	let playE2EBridge: ReturnType<typeof installPlayE2EBridge> | null = null;
+
+	function isE2EMode() {
+		return page.url.searchParams.has('e2e');
+	}
 
 	let boardGameItems: SvelteMap<string, BoardGameItemNew> = new SvelteMap();
 	function sendCmd<T extends string, P>(
@@ -175,7 +181,7 @@
 	// I will need a better init system probably.
 	function parsePayload(parsedSvgs: ParsedSvg[][]): InitGamePayload {
 		const res = parsedSvgs.map((x) => {
-            return { componentIds: x.map(y => y.id)}
+			return { componentIds: x.map((y) => y.id) };
 		});
 		const payload: InitGamePayload = { stacks: res };
 		return payload;
@@ -429,19 +435,30 @@
 	}
 
 	async function createRoom(_init: boolean) {
-        console.log("creating room");
-        const {data, error} = await fileSystem.openDir(joinFsPath(projectName, 'system'));
-        if (error) {
-            throw new Error(error.message);
-        }
-        const dirs = await data.list();
-        if (dirs.error) {
-            throw new Error(dirs.error.message);
-        }
-        const allComponentsParsed = await Promise.all(dirs.data.map(x => loadAndProcessCards(projectName, x.name, fileSystem)));
-        console.log("all comps parsed");
+		console.log('creating room');
+		if (isE2EMode() && !playE2EBridge) {
+			playE2EBridge = installPlayE2EBridge(app, boardGameItems, handContainer);
+		}
+		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, 'system'));
+		if (error) {
+			throw new Error(error.message);
+		}
+		const entries = await data.list();
+		if (entries.error) {
+			throw new Error(entries.error.message);
+		}
+		const deckEntries = entries.data
+			.filter((entry) => entry.kind === 'directory')
+			.sort((a, b) => a.name.localeCompare(b.name));
+		const loadedDecks = await Promise.all(
+			deckEntries.map((entry) => loadAndProcessCards(projectName, entry.name, fileSystem))
+		);
+		const allComponentsParsed = loadedDecks.flat();
+		console.log('all comps parsed');
 		const roomName = 'my_room';
-		const room = await client.joinOrCreate<BoardGameRoomState>(roomName);
+		const room = isE2EMode()
+			? await client.create<BoardGameRoomState>(roomName)
+			: await client.joinOrCreate<BoardGameRoomState>(roomName);
 		let s = getStateCallbacks(room);
 
 		s(room.state).components.onAdd((component, _index) => {
@@ -451,7 +468,7 @@
 					boardGameItems,
 					isDragging: () => drag !== null
 				},
-				allComponentsParsed.flat(),
+				allComponentsParsed,
 				component,
 				room.state,
 				s,
@@ -465,7 +482,7 @@
 			boardItem.destroy({ children: true });
 			boardGameItems.delete(component.id);
 		});
-		sendCmd(room, 'init', parsePayload(allComponentsParsed));
+		sendCmd(room, 'init', parsePayload(loadedDecks));
 		return room;
 	}
 
@@ -479,6 +496,8 @@
 		return (element) => {
 			element.appendChild(app.canvas);
 			return () => {
+				playE2EBridge?.clear();
+				playE2EBridge = null;
 				element.removeChild(app.canvas);
 				app.destroy(true, { children: true, texture: true });
 			};

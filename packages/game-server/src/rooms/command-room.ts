@@ -112,7 +112,7 @@ export class InitCommand extends Command<
 		for (const stack of payload.stacks) {
 			const deckId = randomUUID();
 			const deckComponent = new Component(deckId, '', 'stack');
-            // TODO positions
+			// TODO positions
 			const deckPosition = new Positionable(400, 400, true);
 			const deckFlip = new Flippable(false);
 			const deckStack = new Stack(stack.componentIds);
@@ -127,7 +127,7 @@ export class InitCommand extends Command<
 			for (let i = 0; i < stack.componentIds.length; i++) {
 				const cardId = stack.componentIds[i];
 				const cardComponent = new Component(cardId, '', 'card');
-				const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, true);
+				const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, false);
 				const cardFlip = new Flippable(false);
 				const _card = new Item(cardComponent, cardPosition, cardFlip);
 
