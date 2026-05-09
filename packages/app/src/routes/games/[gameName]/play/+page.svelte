@@ -13,6 +13,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
+	import { env } from '$env/dynamic/public';
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import {
@@ -39,7 +40,11 @@
 
 	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
-	const client = new Client('ws://localhost:2567');
+	const gameServerUrl = env.PUBLIC_GAME_SERVER_URL;
+	if (!gameServerUrl) {
+		throw new Error('PUBLIC_GAME_SERVER_URL is not configured');
+	}
+	const client = new Client(gameServerUrl);
 	let playE2EBridge: ReturnType<typeof installPlayE2EBridge> | null = null;
 
 	function isE2EMode() {

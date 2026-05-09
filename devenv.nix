@@ -175,6 +175,7 @@ in {
       exec = "bun run --filter=@svg-table/app dev -- --host 127.0.0.1 --port ${toString appPort} --strictPort";
       env.PORT = toString appPort;
       env.ORIGIN = studioOrigin;
+      env.PUBLIC_GAME_SERVER_URL = "ws://localhost:${toString serverPort}";
     };
 
     game-server = {
