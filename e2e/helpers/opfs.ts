@@ -1,6 +1,7 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 type Mapping = { src: string; dest: string };
 
@@ -76,4 +77,54 @@ export async function fullOpfsSeed(page: Page, projectsDir: string) {
 	const allMappingsArrays = await Promise.all(mappingsPromises);
 	const allMappings = allMappingsArrays.flat();
 	await seedOPFS(page, allMappings);
+}
+
+export async function seedProjects(page: Page) {
+	const here = path.dirname(fileURLToPath(import.meta.url));
+	const projectsDir = path.resolve(here, '../../projects');
+
+	await page.goto('/app/games');
+	await fullOpfsSeed(page, projectsDir);
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
+	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+}
+
+export async function writeOpfsText(page: Page, destPath: string, text: string) {
+	await page.evaluate(
+		async ({ destPath, text }) => {
+			const storage = navigator.storage as StorageManager & {
+				getDirectory: () => Promise<FileSystemDirectoryHandle>;
+			};
+			const root = await storage.getDirectory();
+			const parts = destPath.replace(/^\/+/, '').split('/');
+			const fileName = parts.pop()!;
+			let dir = root;
+			for (const part of parts) {
+				dir = await dir.getDirectoryHandle(part, { create: true });
+			}
+			const handle = await dir.getFileHandle(fileName, { create: true });
+			const writable = await handle.createWritable();
+			await writable.write(text);
+			await writable.close();
+		},
+		{ destPath, text }
+	);
+}
+
+export async function readOpfsText(page: Page, sourcePath: string) {
+	return page.evaluate(async (sourcePath) => {
+		const storage = navigator.storage as StorageManager & {
+			getDirectory: () => Promise<FileSystemDirectoryHandle>;
+		};
+		const root = await storage.getDirectory();
+		const parts = sourcePath.replace(/^\/+/, '').split('/');
+		const fileName = parts.pop()!;
+		let dir = root;
+		for (const part of parts) {
+			dir = await dir.getDirectoryHandle(part);
+		}
+		const handle = await dir.getFileHandle(fileName);
+		return handle.getFile().then((file) => file.text());
+	}, sourcePath);
 }

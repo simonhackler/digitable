@@ -49,21 +49,30 @@ export async function loadSpreadsheetData(
 	const csvData = csvFile ? await parseCsvFile(csvFile) : null;
 	const idCol: Column = { type: 'hidden', title: 'id' };
 	if (csvData) {
-		const newCols: Column[] = csvData.header
-			.filter((x) => x !== 'id')
-			.map((header) => {
-				const svgCol = svgData.get(header);
-				if (svgCol) {
-					// Create proper Column object from ColumnWithData
-					return {
-						title: svgCol.title,
-						type: svgCol.type
-					} as Column;
-				} else {
-					// Column not in svgData
-					return { title: header, type: 'text' } as Column;
-				}
-			});
+		const csvHeaders = csvData.header.filter((x) => x !== 'id');
+		const csvHeaderSet = new Set(csvData.header);
+		const csvCols: Column[] = csvHeaders.map((header) => {
+			const svgCol = svgData.get(header);
+			if (svgCol) {
+				return {
+					title: svgCol.title,
+					type: svgCol.type
+				} as Column;
+			}
+
+			return { title: header, type: 'text' } as Column;
+		});
+		const missingSvgCols: Column[] = Array.from(svgData.values())
+			.filter((col) => !csvHeaderSet.has(col.title))
+			.map(
+				(col) =>
+					({
+						title: col.title,
+						type: col.type
+					}) as Column
+			);
+
+		const newCols: Column[] = [...csvCols, ...missingSvgCols];
 		newCols.unshift(idCol);
 
 		const idIndexInCsv = csvData.header.indexOf('id');
@@ -75,8 +84,10 @@ export async function loadSpreadsheetData(
 					: crypto.randomUUID();
 
 			const rest = newCols.slice(1).map((h) => {
-				const idx = newCols.indexOf(h);
-				return idx >= 0 ? row[idx] : '';
+				const title = h.title as string;
+				const idx = csvData.header.indexOf(title);
+				if (idx >= 0) return row[idx] ?? '';
+				return svgData.get(title)?.data[0] || '';
 			});
 
 			return [idValue, ...rest];

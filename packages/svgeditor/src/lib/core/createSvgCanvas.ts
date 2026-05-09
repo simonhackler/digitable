@@ -85,6 +85,25 @@ const normalizeGridColor = (value: unknown) => {
 const normalizeStep = (value: number) =>
 	Number.isFinite(value) && value > 0 ? value : DEFAULT_GRID_STEP;
 
+const normalizeTextAlign = (value: string | null | undefined) => {
+	const normalized = value?.trim().toLowerCase();
+	if (normalized === 'left' || normalized === 'start') return 'left';
+	if (normalized === 'center' || normalized === 'middle') return 'center';
+	if (normalized === 'right' || normalized === 'end') return 'right';
+	return null;
+};
+
+const getStyleDeclaration = (style: string | null | undefined, property: string) => {
+	for (const declaration of (style ?? '').split(';')) {
+		const separatorIndex = declaration.indexOf(':');
+		if (separatorIndex === -1) continue;
+		const key = declaration.slice(0, separatorIndex).trim().toLowerCase();
+		const value = declaration.slice(separatorIndex + 1).trim();
+		if (key === property && value) return value;
+	}
+	return null;
+};
+
 const escapeXmlAttribute = (value: string) =>
 	value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 
@@ -841,19 +860,81 @@ export const createSvgCanvas = ({
 	canvas.useMultilineText = true;
 	canvas.textActions?.setInputElem?.(textInput);
 	canvas.textActions?.setMultilineInputElem?.(multilineTextInput);
+	const emitCanvasChange = () => {
+		canvas.call?.('changed', [canvas.getSvgContent?.()]);
+	};
+	const getActiveTextElement = () => {
+		const selected = canvas.getSelectedElements?.()?.[0];
+		if (selected?.tagName === 'text') return selected as SVGTextElement;
+		const editingText = canvas.textActions?.getCurrentTextElement?.();
+		if (editingText?.tagName === 'text') return editingText as SVGTextElement;
+		return null;
+	};
+	const getTextLineWidth = (line: SVGTSpanElement) => {
+		try {
+			return line.getComputedTextLength();
+		} catch {
+			return 0;
+		}
+	};
+	const inferRenderedTextAlign = (text: SVGTextElement) => {
+		const frameX = Number.parseFloat(text.getAttribute('x') ?? '');
+		const frameWidth = Number.parseFloat(text.getAttribute(WRAP_WIDTH_ATTR) ?? '');
+		if (!Number.isFinite(frameX) || !Number.isFinite(frameWidth) || frameWidth <= 0) return null;
+
+		for (const line of text.querySelectorAll('tspan')) {
+			const lineX = Number.parseFloat(line.getAttribute('x') ?? '');
+			if (!Number.isFinite(lineX)) continue;
+
+			const offset = lineX - frameX;
+			if (offset <= 1) return 'left';
+
+			const availableOffset = Math.max(0, frameWidth - getTextLineWidth(line));
+			if (availableOffset <= 1) return 'left';
+
+			return offset >= availableOffset * 0.75 ? 'right' : 'center';
+		}
+
+		return null;
+	};
+	const getTextElementAlign = (text: SVGTextElement) =>
+		normalizeTextAlign(getStyleDeclaration(text.getAttribute('style'), 'text-align')) ??
+		normalizeTextAlign(text.getAttribute('text-align')) ??
+		inferRenderedTextAlign(text);
+	const syncSelectedMultilineText = (value: string | undefined) => {
+		const selected = getActiveTextElement();
+		if (!selected) return;
+		selected.setAttribute('data-svgedit-multiline', 'true');
+		if (value !== undefined) {
+			selected.setAttribute('data-svgedit-raw-text', value);
+		}
+	};
+	const syncSelectedMultilineAlignment = () => {
+		const selected = getActiveTextElement();
+		if (!selected) return;
+		const align =
+			getTextElementAlign(selected) ??
+			normalizeTextAlign(multilineTextInput.style.textAlign) ??
+			normalizeTextAlign(window.getComputedStyle(multilineTextInput).textAlign);
+		if (!align) return;
+		selected.setAttribute('text-align', align);
+	};
 	const forwardTextInput = (event: Event) => {
 		const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
 		if (!target) return;
+		if (target === multilineTextInput) {
+			syncSelectedMultilineAlignment();
+		}
 		canvas.setTextContent?.(target.value);
+		if (target === multilineTextInput) {
+			syncSelectedMultilineText(target.value);
+		}
+		emitCanvasChange();
 	};
 	const forwardMultilineCursor = (event?: Event) => {
 		const target = event?.currentTarget as HTMLTextAreaElement | null;
-		const selected = canvas.getSelectedElements?.()?.[0];
-		if ((event?.type === 'keyup' || event?.type === 'input') && selected?.tagName === 'text') {
-			selected.setAttribute('data-svgedit-multiline', 'true');
-			if (!selected.hasAttribute('data-svgedit-raw-text')) {
-				selected.setAttribute('data-svgedit-raw-text', target?.value ?? selected.textContent ?? '');
-			}
+		if (event?.type === 'keyup' || event?.type === 'input') {
+			syncSelectedMultilineText(target?.value);
 		}
 		canvas.textActions?.setCursor?.();
 	};
@@ -876,7 +957,10 @@ export const createSvgCanvas = ({
 
 		if (selected?.tagName === 'text') {
 			selected.setAttribute('data-svgedit-multiline', 'true');
+			syncSelectedMultilineAlignment();
 			canvas.setTextContent?.(nextValue);
+			syncSelectedMultilineText(nextValue);
+			emitCanvasChange();
 		}
 
 		canvas.textActions?.setCursor?.(nextIndex);

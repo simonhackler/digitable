@@ -24,13 +24,18 @@
 	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
 	let openCreateDeckDialog = $state(false);
 
+	const deckDimension = z.preprocess((value) => {
+		if (typeof value === 'string') return Number(value.replace(',', '.'));
+		return value;
+	}, z.number().min(10).max(300));
+
 	const newDeckSchema = z.object({
 		deckName: z
 			.string()
 			.min(3, 'Deck name must be at least 3 characters long')
 			.regex(/^[A-Za-z0-9_-]+$/, 'Deck name can only contain letters and numbers without spaces'),
-		width: z.number().min(10).max(300),
-		height: z.number().min(10).max(300)
+		width: deckDimension,
+		height: deckDimension
 	});
 
 	const form = superForm(defaults(zod4(newDeckSchema)), {
@@ -46,12 +51,14 @@
 	async function switchPathAndCreateSvgs(
 		activeGame: Game,
 		deckName: string,
-		width: number,
-		height: number
+		width: number | string,
+		height: number | string
 	) {
 		const path = `/games/${activeGame.name}/decks/${deckName}/editor`;
-		const frontSvg = createEmptySvg(width, height);
-		const backSvg = createEmptySvg(width, height);
+		const normalizedWidth = Number(String(width).replace(',', '.'));
+		const normalizedHeight = Number(String(height).replace(',', '.'));
+		const frontSvg = createEmptySvg(normalizedWidth, normalizedHeight);
+		const backSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		await Promise.all([
 			uploadSvgAsSide(fileSystem, activeGame.name, deckName, frontSvg, 'front'),
 			uploadSvgAsSide(fileSystem, activeGame.name, deckName, backSvg, 'back')
@@ -62,6 +69,10 @@
 		activeGame.decks.push({ name: deckName });
 
 		openCreateDeckDialog = false;
+		$formData.deckName = '';
+		selectedCardFormat = 'poker';
+		$formData.width = cardFormats.poker.width;
+		$formData.height = cardFormats.poker.height;
 	}
 
 	async function uploadSvgAsSide(
@@ -199,7 +210,7 @@
 																	placeholder="width"
 																	bind:value={$formData.width}
 																	{...$constraints.width}
-																	type="number"
+																	inputmode="decimal"
 																/>
 															</div>
 														{/snippet}
@@ -217,7 +228,7 @@
 																	placeholder="height"
 																	bind:value={$formData.height}
 																	{...$constraints.height}
-																	type="number"
+																	inputmode="decimal"
 																/>
 															</div>
 														{/snippet}

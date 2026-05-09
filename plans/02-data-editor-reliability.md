@@ -17,11 +17,12 @@ Make the data editor trustworthy: values load consistently, autosave is visible,
 - Show visible save state near the data editor toolbar: saving, saved, and error.
 - Flush pending autosaves before navigating away from the data editor.
 - Ensure `data.csv` is read and applied every time the data editor loads for the current deck.
+- When loading `data.csv`, preserve existing CSV column order, preserve CSV-only columns, and append any missing SVG columns to the end.
 - Add append-only plus controls:
   - A column plus button below the spreadsheet appends a new column.
   - A row plus button at the right of the spreadsheet appends a new row.
-- Add autofill text support for selected cells or a selected column.
-- Reset create-deck form values after successful deck creation so new decks start cleanly.
+- Reset create-deck form values after successful deck creation so new decks start cleanly. Currently when creating a deck and then a new deck the input values go to 0 0
+- Allow decimal comma values when creating a new deck.
 
 ## Implementation Notes
 
@@ -30,6 +31,7 @@ Make the data editor trustworthy: values load consistently, autosave is visible,
 - Add a navigation flush similar to the SVG editor's pending-save handling.
 - Append controls should use jspreadsheet APIs and then trigger the same save path as normal edits.
 - Keep the first version simple: append only, no "insert near selection" behavior.
+- Keep image upload and autofill out of this reliability pass.
 
 ## Acceptance Criteria
 
@@ -40,14 +42,20 @@ Make the data editor trustworthy: values load consistently, autosave is visible,
 - The row plus appends one new row.
 - The column plus appends one new column.
 - Creating a second deck does not reuse the previous deck name, dimensions, or transient data values.
+- Missing SVG columns are appended after the existing CSV columns.
+- Decimal comma dimensions create SVGs with the expected normalized dimensions.
 
 ## Tests
 
+- For known regressions and bugs, add a focused failing e2e test first, run it, confirm the failure, then change app code.
 - Add e2e coverage for edit, autosave, reload, and value visibility after navigation.
 - Add e2e coverage for appending a row and column.
 - Add a regression test for creating two decks in sequence with distinct values.
+- Add a regression test for missing SVG columns being appended to the end.
+- Add a regression test for decimal comma dimensions during deck creation.
 - Prefer outcome assertions over implementation details, following `instructions/testing.md`.
 
-## Open Questions
+## Deferred
 
-- What exact autofill interactions should be supported first: fill selected empty cells, fill down a column, or generate placeholder values from SVG element names?
+- Image upload into image columns.
+- Autofill interactions for selected cells or columns.
