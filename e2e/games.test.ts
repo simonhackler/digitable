@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import * as path from 'node:path';
 import { fullOpfsSeed } from './helpers/opfs';
 
-test.describe.configure({ mode: 'parallel' });
+test.describe.configure({ mode: 'serial' });
 
 test('create new game and delete it', async ({ page }) => {
 	const here = path.dirname(test.info().file); // absolute dir of THIS test file
@@ -85,7 +85,7 @@ test('created game appears in the games overview and can create a deck', async (
 	await expect(page.getByRole('button', { name: 'Create new deck' })).toBeEnabled();
 	await page.getByRole('button', { name: 'Create new deck' }).click();
 
-	await expect(page).toHaveURL(new RegExp(`/app/games/${folderName}/decks/${deckName}/data`));
+	await expect(page).toHaveURL(new RegExp(`/app/games/${folderName}/decks/${deckName}/editor`));
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
 
 	await page.goto('/app/games');
@@ -121,14 +121,61 @@ test('create new deck and delete it', async ({ page }) => {
 	await page.getByPlaceholder('deck name').fill(deckName);
 	await page.getByRole('button', { name: 'Create new deck' }).click();
 
-	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards/decks/${deckName}/data`));
+	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards/decks/${deckName}/editor`));
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
 	await page.reload();
-	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards/decks/${deckName}/data`));
+	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards/decks/${deckName}/editor`));
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
 	await page.getByRole('button', { name: `More for ${deckName}` }).click();
 	await page.getByRole('menuitem', { name: 'Delete' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).not.toBeVisible();
 	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards$`));
+});
+
+test('create new game from project switcher', async ({ page }) => {
+	const here = path.dirname(test.info().file); // absolute dir of THIS test file
+	const projectsDir = path.resolve(here, '../projects');
+	const gameName = 'Switcher Create Test';
+	const folderName = 'Switcher_Create_Test';
+	const gameDescription = 'A game created from the project switcher keeps the creator on metadata.';
+
+	await page.goto('/app/games');
+	await fullOpfsSeed(page, projectsDir);
+
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
+	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await page.getByRole('main').getByText('western-cards').click();
+
+	await page.getByRole('button', { name: /western-cards/ }).click();
+	await page.getByRole('menuitem', { name: 'New Game' }).click();
+	await page.getByRole('textbox', { name: 'Gamename' }).fill(gameName);
+	await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+	await expect(page).toHaveURL(new RegExp(`/app/games/${folderName}`));
+	await expect(page.getByText('Create New Board Game')).toBeVisible();
+	await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(gameName);
+
+	await page.getByRole('textbox', { name: 'Game Description' }).fill(gameDescription);
+	await page.getByRole('button', { name: 'Strategy', exact: true }).click();
+	await page.getByRole('main').getByRole('button', { name: 'Create', exact: true }).click();
+	await expect(page.getByText('Game created successfully!')).toBeVisible();
+
+	await page.goto('/app/games');
+	await expect(page.getByRole('main').getByText(folderName)).toBeVisible();
+});
+
+test('layout route no longer renders the layout editor', async ({ page }) => {
+	const here = path.dirname(test.info().file); // absolute dir of THIS test file
+	const projectsDir = path.resolve(here, '../projects');
+
+	await page.goto('/app/games');
+	await fullOpfsSeed(page, projectsDir);
+
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
+	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+
+	const response = await page.goto('/app/games/western-cards/decks/western/layout');
+	expect(response?.status()).toBe(404);
+	await expect(page.getByRole('button', { name: 'Upload' })).not.toBeVisible();
 });

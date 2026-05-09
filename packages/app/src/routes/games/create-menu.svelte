@@ -49,7 +49,7 @@
 		width: number,
 		height: number
 	) {
-		const path = `/games/${activeGame.name}/decks/${deckName}/data`;
+		const path = `/games/${activeGame.name}/decks/${deckName}/editor`;
 		const frontSvg = createEmptySvg(width, height);
 		const backSvg = createEmptySvg(width, height);
 		await Promise.all([
@@ -250,7 +250,7 @@
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
 										<a
-											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/data`)}
+											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/editor`)}
 											{...props}
 										>
 											<span class="text-muted-foreground">{deck.name}</span>

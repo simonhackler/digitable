@@ -14,6 +14,9 @@ test('insert rows in data editor', async ({ page }) => {
 	await page.getByRole('main').getByText('western-cards').click();
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await page.getByRole('link', { name: 'western', exact: true }).click();
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+	await page.getByRole('link', { name: 'Data' }).click();
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
 	await page.locator('tbody > tr > td:nth-child(8)').first().dblclick();
 	await page.getByRole('textbox').fill('wow!');
 	await expect(page.locator('.flex.w-screen > div:nth-child(1)').getByText('wow!')).toBeVisible();

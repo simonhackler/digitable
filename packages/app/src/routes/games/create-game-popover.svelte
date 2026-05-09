@@ -12,10 +12,11 @@
 	import type { Snippet } from 'svelte';
 
 	interface Props {
-		trigger: Snippet<[Record<string, unknown>]>;
+		trigger?: Snippet<[Record<string, unknown>]>;
+		open?: boolean;
 	}
 
-	let { trigger }: Props = $props();
+	let { trigger, open = $bindable(false) }: Props = $props();
 
 	async function navigateToGame(gameName: string) {
 		const folderName = gameName.replace(/\s+/g, '_');
@@ -23,22 +24,20 @@
 		await goto(resolve(`/games/${folderName}?${searchParams}`));
 	}
 
-	const form = $derived(
-		superForm(defaults({ name: '' }, zod4(navigateToCreateGameSchema)), {
-			SPA: true,
-			validators: zod4(navigateToCreateGameSchema),
-			async onUpdate({ form }) {
-				if (form.valid) {
-					const data: NavigateToCreateGameSchema = form.data;
-					await navigateToGame(data.name);
-				}
+	const form = superForm(defaults({ name: '' }, zod4(navigateToCreateGameSchema)), {
+		SPA: true,
+		validators: zod4(navigateToCreateGameSchema),
+		async onUpdate({ form }) {
+			if (form.valid) {
+				const data: NavigateToCreateGameSchema = form.data;
+				await navigateToGame(data.name);
 			}
-		})
-	);
-	const { form: formData, enhance } = $derived(form);
+		}
+	});
+	const { form: formData, enhance } = form;
 </script>
 
-<Popover.Root>
+<Popover.Root bind:open>
 	<Popover.Trigger>
 		{#snippet child({ props })}
 			{#if trigger}

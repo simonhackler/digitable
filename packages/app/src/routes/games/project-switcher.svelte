@@ -19,6 +19,7 @@
 	} = $props();
 
 	const sidebar = useSidebar();
+	let createGameOpen = $state(false);
 </script>
 
 <Sidebar.Menu>
@@ -64,7 +65,7 @@
 						</DropdownMenu.Item>
 					{/each}
 					<DropdownMenu.Separator />
-					<DropdownMenu.Item class="gap-2 p-2">
+					<DropdownMenu.Item class="gap-2 p-2" onSelect={() => (createGameOpen = true)}>
 						<div class="flex size-6 items-center justify-center rounded-md border bg-transparent">
 							<Plus class="size-4" />
 						</div>
@@ -73,7 +74,7 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		{/if}
-		<CreateGamePopover>
+		<CreateGamePopover bind:open={createGameOpen}>
 			{#snippet trigger(props)}
 				<Button {...props} class="flex w-full items-center gap-2">
 					<Plus class="h-4 w-4" />
