@@ -54,9 +54,11 @@
 				return { data: gameData, isEditMode: true, thumbnailUrl };
 			}
 		} catch (error) {
-			// This is really bad code. It expects the error as normal behaviour
-			console.log('No existing game.json found, creating new game');
-			console.error(error);
+			if (
+				!(error && typeof error === 'object' && 'name' in error && error.name === 'NotFoundError')
+			) {
+				console.error('Failed to load game data:', error);
+			}
 		}
 
 		return {
@@ -122,6 +124,7 @@
 						}
 					}
 
+					syncSavedGame(data);
 					isSubmitting = false;
 					showSuccessMessage = true;
 					setTimeout(() => {
@@ -138,6 +141,22 @@
 	let thumbnailPreviewUrl = $derived<string | null>(initialThumbnailUrl || null);
 	let showSuccessMessage = $state(false);
 	let isSubmitting = $state(false);
+
+	function syncSavedGame(data: CreateGameForm) {
+		if (!games.existingGames) return;
+
+		const existingGame = games.existingGames.find((game) => game.name === gameNameParsed);
+		const savedGame = {
+			name: gameNameParsed,
+			decks: existingGame?.decks ?? [],
+			description: data.description,
+			tags: data.tags
+		};
+
+		games.existingGames = existingGame
+			? games.existingGames.map((game) => (game.name === gameNameParsed ? savedGame : game))
+			: [...games.existingGames, savedGame].sort((a, b) => a.name.localeCompare(b.name));
+	}
 
 	function handleTagsChange(tags: string[]) {
 		selectedTags = tags;

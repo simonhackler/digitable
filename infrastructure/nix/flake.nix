@@ -44,8 +44,19 @@
 
     packageDirs = [
       "packages/app"
+      "packages/auth"
+      "packages/db"
       "packages/game-server"
+      "packages/svgeditor"
       "packages/studio"
+      "svgedit"
+      "svgedit/packages/svgcanvas"
+    ];
+
+    packageParentDirs = [
+      "packages"
+      "svgedit"
+      "svgedit/packages"
     ];
 
     packageSource = builtins.path {
@@ -58,6 +69,7 @@
           builtins.any
           (dir: rel == dir || lib.hasPrefix "${dir}/" rel)
           packageDirs;
+        isSourceParent = builtins.elem rel packageParentDirs;
         isRootFile = builtins.elem rel [
           ""
           "bun.lock"
@@ -65,7 +77,7 @@
           "tsconfig.json"
         ];
       in
-        (isRootFile || rel == "packages" || isPackagePath)
+        (isRootFile || isSourceParent || isPackagePath)
         && !(builtins.any (part: builtins.elem part [
             ".git"
             ".svelte-kit"
@@ -91,7 +103,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-6NRvn1Prbt/co31/6xA5OOtH1cG6yIMjvQ0JfuUAREI=";
+      outputHash = "sha256-4C5b+w37KU1br2XfKmQpeg0kZVQDP7LUrZxxeiV/Vb0=";
 
       installPhase = ''
         runHook preInstall
@@ -99,12 +111,22 @@
         export HOME="$TMPDIR"
         export XDG_CACHE_HOME="$TMPDIR/.cache"
 
-        bun install --frozen-lockfile
-        rm -f node_modules/studio node_modules/boardgame-server node_modules/@svg-table/app
+        bun install --frozen-lockfile --ignore-scripts
+        (cd svgedit && bun install --frozen-lockfile --ignore-scripts)
+        rm -f node_modules/studio node_modules/boardgame-server
+        rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
+        rm -f node_modules/@svg-table/svgeditor
+        rm -f node_modules/@svgedit/svgcanvas
         find node_modules -xtype l -delete
 
         mkdir -p "$out"
         cp -a node_modules "$out/node_modules"
+        for packageDir in ${lib.escapeShellArgs packageDirs}; do
+          if [ -d "$packageDir/node_modules" ]; then
+            mkdir -p "$out/$packageDir"
+            cp -a "$packageDir/node_modules" "$out/$packageDir/node_modules"
+          fi
+        done
 
         runHook postInstall
       '';
@@ -127,16 +149,38 @@
 
         export HOME="$TMPDIR"
         export XDG_CACHE_HOME="$TMPDIR/.cache"
+        export BETTER_AUTH_URL="http://localhost"
+        export BETTER_AUTH_SECRET="nix-build-only"
 
         cp -a ${bunDependencies}/node_modules ./node_modules
         chmod -R u+w ./node_modules
-        rm -f node_modules/studio node_modules/boardgame-server node_modules/@svg-table/app
+        for packageDir in ${lib.escapeShellArgs packageDirs}; do
+          if [ -d "${bunDependencies}/$packageDir/node_modules" ]; then
+            cp -a "${bunDependencies}/$packageDir/node_modules" "$packageDir/node_modules"
+            chmod -R u+w "$packageDir/node_modules"
+          fi
+        done
+        rm -f node_modules/studio node_modules/boardgame-server
+        rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
+        rm -f node_modules/@svg-table/svgeditor
+        rm -f node_modules/@svgedit/svgcanvas
         ln -s ../packages/studio node_modules/studio
         ln -s ../packages/game-server node_modules/boardgame-server
         mkdir -p node_modules/@svg-table
         ln -s ../../packages/app node_modules/@svg-table/app
+        ln -s ../../packages/auth node_modules/@svg-table/auth
+        ln -s ../../packages/db node_modules/@svg-table/db
+        ln -s ../../packages/svgeditor node_modules/@svg-table/svgeditor
+        mkdir -p node_modules/@svgedit
+        ln -s ../../svgedit/packages/svgcanvas node_modules/@svgedit/svgcanvas
         patchShebangs node_modules
+        for packageDir in ${lib.escapeShellArgs packageDirs}; do
+          if [ -d "$packageDir/node_modules" ]; then
+            patchShebangs "$packageDir/node_modules"
+          fi
+        done
 
+        (cd svgedit/packages/svgcanvas && ../../node_modules/.bin/vite build)
         bun run --filter=@svg-table/app build
         bun run --filter=studio build
 
@@ -152,9 +196,20 @@
 
         cp packages/studio/package.json $out/packages/studio/package.json
         cp -r packages/studio/build $out/packages/studio/build
+        cp -a packages/studio/node_modules $out/packages/studio/node_modules
         cp packages/app/package.json $out/packages/app/package.json
         cp -r packages/app/build $out/packages/app/build
+        cp -a packages/app/node_modules $out/packages/app/node_modules
+        cp -r packages/auth $out/packages/auth
+        cp -r packages/db $out/packages/db
         cp packages/game-server/package.json $out/packages/game-server/package.json
+        cp -a packages/game-server/node_modules $out/packages/game-server/node_modules
+        cp -r packages/svgeditor $out/packages/svgeditor
+        mkdir -p $out/svgedit/packages
+        cp svgedit/package.json $out/svgedit/package.json
+        cp -a svgedit/node_modules $out/svgedit/node_modules
+        rm -f $out/svgedit/node_modules/@svgedit/react-test
+        cp -r svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas
         cp -a node_modules $out/node_modules
 
         runHook postInstall

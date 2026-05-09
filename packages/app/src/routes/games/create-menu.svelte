@@ -37,9 +37,9 @@
 		SPA: true,
 		validators: zod4(newDeckSchema),
 		onUpdate({ form }) {
-			if (form.valid) {
-				switchPathAndCreateSvgs(activeGame!, form.data.deckName, form.data.width, form.data.height);
-			}
+			if (!form.valid || !activeGame) return;
+
+			switchPathAndCreateSvgs(activeGame, form.data.deckName, form.data.width, form.data.height);
 		}
 	});
 
@@ -226,7 +226,7 @@
 													<Form.FieldErrors />
 												</Form.Field>
 											</div>
-											<Button type="submit">
+											<Button type="submit" disabled={!activeGame}>
 												<PlusIcon /> Create new deck
 											</Button>
 										</form>
@@ -265,7 +265,7 @@
 												class="data-[state=open]:bg-accent rounded-sm opacity-0 group-hover/menu-sub-item:opacity-100 data-[state=open]:opacity-100"
 											>
 												<Ellipsis />
-												<span class="sr-only">More</span>
+												<span class="sr-only">More for {deck.name}</span>
 											</Sidebar.MenuAction>
 										{/snippet}
 									</DropdownMenu.Trigger>
