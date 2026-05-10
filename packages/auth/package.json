@@ -9,6 +9,9 @@
 		"./svelte-kit": "./src/svelte-kit.ts",
 		"./cli": "./src/cli.ts"
 	},
+	"scripts": {
+		"db:seed": "bun ./src/seed-demo-users.ts"
+	},
 	"dependencies": {
 		"@better-auth/drizzle-adapter": "latest",
 		"@svg-table/db": "workspace:*",

@@ -13,6 +13,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { env } from '$env/dynamic/public';
 	import { getFileSystemContext } from '../../context';
 	import { loadAndProcessCards } from './pixi-card-loader';
@@ -49,6 +50,26 @@
 
 	function isE2EMode() {
 		return page.url.searchParams.has('e2e');
+	}
+
+	async function getPrivateRoomOptions(privateRoomId: string) {
+		const response = await fetch(resolve('/api/game-ticket'), {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({ privateRoomId })
+		});
+
+		if (!response.ok) {
+			throw new Error(await response.text());
+		}
+
+		const { ticket } = (await response.json()) as { ticket: string };
+		client.auth.token = ticket;
+		return {
+			privateRoomId
+		};
 	}
 
 	let boardGameItems: SvelteMap<string, BoardGameItemNew> = new SvelteMap();
@@ -460,10 +481,13 @@
 		);
 		const allComponentsParsed = loadedDecks.flat();
 		console.log('all comps parsed');
-		const roomName = 'my_room';
-		const room = isE2EMode()
-			? await client.create<BoardGameRoomState>(roomName)
-			: await client.joinOrCreate<BoardGameRoomState>(roomName);
+		const privateRoomId = page.url.searchParams.get('privateRoomId');
+		const roomName = privateRoomId ? 'private_room' : 'my_room';
+		const roomOptions = privateRoomId ? await getPrivateRoomOptions(privateRoomId) : undefined;
+		const shouldCreateRoom = isE2EMode() && !privateRoomId;
+		const room = shouldCreateRoom
+			? await client.create<BoardGameRoomState>(roomName, roomOptions)
+			: await client.joinOrCreate<BoardGameRoomState>(roomName, roomOptions);
 		let s = getStateCallbacks(room);
 
 		s(room.state).components.onAdd((component, _index) => {

@@ -48,7 +48,7 @@
 	<Sidebar.Content>
 		<CreateMenu activeGame={activeProject} {fileSystem} />
 		<ExportMenu activeGame={activeProject} />
-		<PlayMenu activeGame={activeProject} />
+		<PlayMenu activeGame={activeProject} {fileSystem} />
 		<Sidebar.Group />
 	</Sidebar.Content>
 	<Sidebar.Footer>

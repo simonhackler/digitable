@@ -27,7 +27,6 @@ export class PrivateCommandRoom extends CommandRoom {
 		await this.setMetadata({
 			privateRoomId: this.privateRoomId
 		});
-		await this.setPrivate(true);
 	}
 
 	async onAuth(

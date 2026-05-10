@@ -104,6 +104,11 @@ in {
     REPLICATE_API_TOKEN = "tmp";
 
     S3_ENDPOINT = "http://127.0.0.1:${toString minioApiPort}";
+    S3_REGION = "us-east-1";
+    S3_BUCKET = "digitable-playtests";
+    S3_ACCESS_KEY_ID = "minioadmin";
+    S3_SECRET_ACCESS_KEY = "minioadmin";
+    S3_FORCE_PATH_STYLE = "true";
 
     PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
@@ -155,6 +160,18 @@ in {
     '';
     showOutput = true;
     after = ["devenv:processes:postgres@started"];
+    before = [
+      "devenv:processes:studio"
+      "devenv:processes:app"
+      "devenv:processes:game-server"
+      "devenv:processes:proxy"
+    ];
+  };
+
+  tasks."db:seed" = {
+    exec = "bun run --filter=@svg-table/auth db:seed";
+    showOutput = true;
+    after = ["db:migrate"];
     before = [
       "devenv:processes:studio"
       "devenv:processes:app"
