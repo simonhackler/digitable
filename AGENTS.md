@@ -13,7 +13,9 @@ This project is a boardgame design and testing tool
 
 ## Build/Test Commands (use bun)
 
-See `instructions/testing.md`.
+`devenv up` runs the development environment. Usually this is already running.
+`devenv shell --quiet` to run commands
+`bun playwright test` for playwright. Playwright is installed via devenv
 
 ## Key Technologies
 

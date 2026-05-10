@@ -342,7 +342,9 @@ export const createSvgCanvas = ({
 				if (!isRenderableElement(child)) continue;
 				const id = indexTreeElement(child);
 				const tagName = child.tagName.toLowerCase();
-				const label = child.getAttribute('data-name') ?? nextLabel(tagName);
+				const textLabel =
+					tagName === 'text' ? getImportedRawText(child as SVGTextElement).trim() : '';
+				const label = child.getAttribute('data-name') ?? (textLabel || nextLabel(tagName));
 				const isGroup = isGroupElement(child);
 				const isHidden =
 					child.getAttribute('display') === 'none' || child.getAttribute('visibility') === 'hidden';
@@ -1325,6 +1327,12 @@ export const createSvgCanvas = ({
 			if (!element) return;
 			const trimmed = name.trim();
 			if (!trimmed) return;
+			if (element.tagName.toLowerCase() === 'text') {
+				canvas.selectOnly?.([element], true);
+				canvas.setTextContent?.(trimmed);
+				canvas.call?.('changed', [element]);
+				return;
+			}
 			element.setAttribute('data-name', trimmed);
 			canvas.call?.('changed', [canvas.getSvgContent?.()]);
 		},

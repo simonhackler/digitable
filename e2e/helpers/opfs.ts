@@ -4,6 +4,14 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 type Mapping = { src: string; dest: string };
+const SEED_CONCURRENCY = 4;
+
+const shouldSeedProjectEntry = (name: string) => !name.startsWith('.');
+
+const shouldSeedPath = (dest: string) => {
+	const parts = dest.split('/').filter(Boolean);
+	return !parts.includes('tts-export');
+};
 
 export async function writeBufferToOPFS(page: Page, dest: string, buf: Buffer) {
 	const base64 = buf.toString('base64');
@@ -58,24 +66,27 @@ export async function walkDirectory(dir: string, baseDestPath: string = ''): Pro
  * Seed multiple files into OPFS.
  */
 export async function seedOPFS(page: Page, mappings: Mapping[]) {
-	await Promise.all(
-		mappings.map(async ({ src, dest }) => {
-			const buf = await fs.readFile(src);
-			await writeBufferToOPFS(page, dest, buf);
-		})
-	);
+	for (let index = 0; index < mappings.length; index += SEED_CONCURRENCY) {
+		const chunk = mappings.slice(index, index + SEED_CONCURRENCY);
+		await Promise.all(
+			chunk.map(async ({ src, dest }) => {
+				const buf = await fs.readFile(src);
+				await writeBufferToOPFS(page, dest, buf);
+			})
+		);
+	}
 }
 
 export async function fullOpfsSeed(page: Page, projectsDir: string) {
 	const projectEntries = await fs.readdir(projectsDir, { withFileTypes: true });
 	const mappingsPromises = projectEntries
-		.filter((entry) => entry.isDirectory())
+		.filter((entry) => entry.isDirectory() && shouldSeedProjectEntry(entry.name))
 		.map(async (entry) => {
 			const subfolderPath = path.join(projectsDir, entry.name);
 			return walkDirectory(subfolderPath, `/${entry.name}`);
 		});
 	const allMappingsArrays = await Promise.all(mappingsPromises);
-	const allMappings = allMappingsArrays.flat();
+	const allMappings = allMappingsArrays.flat().filter(({ dest }) => shouldSeedPath(dest));
 	await seedOPFS(page, allMappings);
 }
 

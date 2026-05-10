@@ -41,6 +41,48 @@ async function selectEffectZone(page: Page) {
 	});
 }
 
+async function selectElement(page: Page, id: string) {
+	await page.evaluate((id) => {
+		const global = window as Window & {
+			__svgEditorApi?: {
+				selectElementById: (id: string) => void;
+			} | null;
+		};
+		global.__svgEditorApi!.selectElementById(id);
+	}, id);
+}
+
+async function treeIdForElement(page: Page, elementId: string) {
+	return page.evaluate((elementId) => {
+		const global = window as Window & {
+			__svgEditorController?: {
+				elementTree: Array<{
+					id: string;
+					elementRef?: Element;
+					children?: unknown[];
+				}>;
+			};
+		};
+		const visit = (
+			nodes: Array<{ id: string; elementRef?: Element; children?: unknown[] }>
+		): string | null => {
+			for (const node of nodes) {
+				if (node.elementRef?.getAttribute('id') === elementId) return node.id;
+				const childId = visit(
+					(node.children ?? []) as Array<{
+						id: string;
+						elementRef?: Element;
+						children?: unknown[];
+					}>
+				);
+				if (childId) return childId;
+			}
+			return null;
+		};
+		return visit(global.__svgEditorController?.elementTree ?? []);
+	}, elementId);
+}
+
 async function editEffectZoneText(page: Page) {
 	await page.evaluate(() => {
 		const global = window as Window & {
@@ -218,4 +260,51 @@ test('typing after changing multiline alignment in edit mode keeps new alignment
 			page.evaluate(() => document.querySelector('#effect_zone')?.getAttribute('text-align'))
 		)
 		.toBe('center');
+});
+
+test('rotation input changes selected element rotation', async ({ page }) => {
+	await openWesternSvgEditor(page);
+	await selectElement(page, 'dice_image');
+
+	const rotationInput = page.getByLabel('Rotation');
+	await expect(rotationInput).toBeVisible();
+	await expect
+		.poll(async () => (await rotationInput.boundingBox())?.width ?? 0)
+		.toBeGreaterThan(40);
+	await rotationInput.fill('27');
+	await rotationInput.press('Enter');
+
+	await expect
+		.poll(() =>
+			page.evaluate(() => document.querySelector('#dice_image')?.getAttribute('transform') ?? '')
+		)
+		.toContain('rotate(27');
+});
+
+test('structure tree edit accepts h and l and commits text on Enter', async ({ page }) => {
+	await openWesternSvgEditor(page);
+	await selectEffectZone(page);
+
+	const treeId = await treeIdForElement(page, 'effect_zone');
+	expect(treeId).toBeTruthy();
+	await page.locator(`[data-row-id="${treeId}"] button[aria-label="Rename element"]`).click();
+	const input = page.locator('[data-structure-tree] input').first();
+	await expect(input).toBeVisible();
+
+	await input.fill('hello hill');
+	await input.press('Enter');
+
+	await expect
+		.poll(() => page.evaluate(() => document.querySelector('#effect_zone')?.textContent ?? ''))
+		.toContain('hello hill');
+	await expect
+		.poll(() =>
+			page.evaluate(() => document.querySelector('#effect_zone')?.getAttribute('display'))
+		)
+		.not.toBe('none');
+	await expect
+		.poll(() =>
+			page.evaluate(() => document.querySelector('#effect_zone')?.getAttribute('data-locked'))
+		)
+		.not.toBe('true');
 });

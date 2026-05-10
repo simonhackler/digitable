@@ -945,10 +945,12 @@
 					<input
 						id="inspector-rotation"
 						type="number"
-						class="sr-only"
+						class="border-input bg-background ring-offset-background focus-visible:ring-ring h-11 w-full rounded-md border px-3 text-lg font-semibold shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 						bind:value={rotation}
 						disabled={!canEditRotation}
 						oninput={applyRotation}
+						onkeydown={(event) => handleNumberCommit(event, applyRotation)}
+						onblur={handleNumberBlur}
 					/>
 					<div class="bg-muted/30 flex h-11 items-center justify-center rounded-lg border">
 						<div
