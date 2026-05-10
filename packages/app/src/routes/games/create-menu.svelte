@@ -8,9 +8,10 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { Ellipsis, Layers, Pencil, Table, Trash2 } from '@lucide/svelte';
+	import { Ellipsis, Layers, PenTool, Table, TextCursorInput, Trash2 } from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ComponentFileStructure, Game } from './types.js';
+	import RenameDeckDialog from './rename-deck-dialog.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { z } from 'zod';
@@ -29,11 +30,16 @@
 		return value;
 	}, z.number().min(10).max(300));
 
+	const deckNameSchema = z
+		.string()
+		.min(3, 'Deck name must be at least 3 characters long')
+		.regex(
+			/^[A-Za-z0-9_-]+$/,
+			'Deck name can only contain letters, numbers, underscores, and hyphens'
+		);
+
 	const newDeckSchema = z.object({
-		deckName: z
-			.string()
-			.min(3, 'Deck name must be at least 3 characters long')
-			.regex(/^[A-Za-z0-9_-]+$/, 'Deck name can only contain letters and numbers without spaces'),
+		deckName: deckNameSchema,
 		width: deckDimension,
 		height: deckDimension
 	});
@@ -102,6 +108,14 @@
 		}
 		const placeholderWrite = await filesDir.data.write(file.name, file);
 		if (placeholderWrite.error) console.error(placeholderWrite.error);
+	}
+
+	function onDeckRenamed(oldName: string, newName: string) {
+		if (!activeGame) return;
+
+		activeGame.decks = activeGame.decks.map((deck) =>
+			deck.name === oldName ? { name: newName } : deck
+		);
 	}
 
 	async function deleteDeck(
@@ -287,7 +301,7 @@
 											onSelect={() => goto(resolve(`${path}/editor`))}
 											class="flex w-full justify-start gap-2"
 										>
-											<Pencil />
+											<PenTool />
 											<span>Editor</span>
 										</DropdownMenu.Item>
 										{/* @ts-expect-error paths*/ null}
@@ -298,6 +312,18 @@
 											<Table />
 											<span>Data</span>
 										</DropdownMenu.Item>
+										<RenameDeckDialog {activeGame} {fileSystem} {deck} onRenamed={onDeckRenamed}>
+											{#snippet trigger({ props })}
+												<DropdownMenu.Item
+													{...props}
+													onSelect={(event) => event.preventDefault()}
+													class="flex w-full justify-start gap-2"
+												>
+													<TextCursorInput />
+													<span>Rename</span>
+												</DropdownMenu.Item>
+											{/snippet}
+										</RenameDeckDialog>
 										<DropdownMenu.Separator />
 										<DropdownMenu.Item
 											variant="destructive"

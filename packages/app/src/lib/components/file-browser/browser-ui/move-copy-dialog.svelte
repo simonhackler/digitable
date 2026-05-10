@@ -33,7 +33,8 @@
 		read: async (path) => FsError.NotFound({ operation: 'read', path }),
 		readText: async (path) => FsError.NotFound({ operation: 'readText', path }),
 		write: async () => Ok(undefined),
-		remove: async () => Ok(undefined)
+		remove: async () => Ok(undefined),
+		move: async () => Ok(undefined)
 	};
 </script>
 

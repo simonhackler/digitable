@@ -8,7 +8,8 @@ export type FsOperation =
 	| 'read'
 	| 'readText'
 	| 'write'
-	| 'remove';
+	| 'remove'
+	| 'move';
 
 export type FsEntry = {
 	name: string;
@@ -104,6 +105,11 @@ export interface FsDir {
 	readText(path: string): Promise<FsResult<string>>;
 	write(path: string, data: FsWriteData): Promise<FsResult<void>>;
 	remove(path: string, options?: { recursive?: boolean }): Promise<FsResult<void>>;
+	move(
+		sourcePath: string,
+		targetPath: string,
+		options?: { overwrite?: boolean }
+	): Promise<FsResult<void>>;
 }
 
 /** @deprecated Use FsDir instead. */

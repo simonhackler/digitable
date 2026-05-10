@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import * as path from 'node:path';
-import { fullOpfsSeed } from './helpers/opfs';
+import { fullOpfsSeed, opfsEntryExists, readOpfsText, writeOpfsText } from './helpers/opfs';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -131,6 +131,74 @@ test('create new deck and delete it', async ({ page }) => {
 	await page.getByRole('menuitem', { name: 'Delete' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).not.toBeVisible();
 	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards$`));
+});
+
+test('rename deck preserves files, validates names, and persists after reload', async ({
+	page
+}) => {
+	const here = path.dirname(test.info().file); // absolute dir of THIS test file
+	const projectsDir = path.resolve(here, '../projects');
+	const originalDeckName = 'rename_source_deck';
+	const renamedDeckName = 'rename_target_deck';
+	const dataCsv = 'name,count\nScout,3\n';
+
+	await page.goto('/app/games');
+	await fullOpfsSeed(page, projectsDir);
+
+	await page.getByRole('button', { name: 'Use Browser' }).first().click();
+	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+
+	await page.getByRole('main').getByText('western-cards').click();
+	await page.getByRole('button', { name: 'Decks' }).click();
+	await page.getByRole('button', { name: 'New' }).click();
+	await page.getByPlaceholder('deck name').fill(originalDeckName);
+	await page.getByRole('button', { name: 'Create new deck' }).click();
+
+	await expect(page).toHaveURL(
+		new RegExp(`/app/games/western-cards/decks/${originalDeckName}/editor`)
+	);
+	await writeOpfsText(page, `/western-cards/system/${originalDeckName}/data.csv`, dataCsv);
+
+	await page.getByRole('button', { name: `More for ${originalDeckName}` }).click();
+	await page.getByRole('menuitem', { name: 'Rename' }).click();
+	await page.getByRole('textbox', { name: 'Deck name' }).fill('bad deck');
+	await page.getByRole('button', { name: 'Rename deck' }).click();
+	await expect(page.getByRole('alert')).toContainText('letters, numbers, underscores, and hyphens');
+	await expect(page.getByRole('link', { name: originalDeckName, exact: true })).toBeVisible();
+
+	await page.getByRole('textbox', { name: 'Deck name' }).fill('western');
+	await page.getByRole('button', { name: 'Rename deck' }).click();
+	await expect(page.getByRole('alert')).toContainText('already exists');
+	await expect(page.getByRole('link', { name: originalDeckName, exact: true })).toBeVisible();
+
+	await page.getByRole('textbox', { name: 'Deck name' }).fill(renamedDeckName);
+	await page.getByRole('button', { name: 'Rename deck' }).click();
+
+	await expect(page).toHaveURL(
+		new RegExp(`/app/games/western-cards/decks/${renamedDeckName}/editor`)
+	);
+	await expect(page.getByRole('link', { name: renamedDeckName, exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: originalDeckName, exact: true })).not.toBeVisible();
+	await expect(await opfsEntryExists(page, `/western-cards/system/${originalDeckName}`)).toBe(
+		false
+	);
+	await expect(await readOpfsText(page, `/western-cards/system/${renamedDeckName}/data.csv`)).toBe(
+		dataCsv
+	);
+	await expect(
+		await opfsEntryExists(page, `/western-cards/system/${renamedDeckName}/front.svg`)
+	).toBe(true);
+	await expect(
+		await opfsEntryExists(page, `/western-cards/system/${renamedDeckName}/back.svg`)
+	).toBe(true);
+
+	await page.reload();
+	await expect(page).toHaveURL(
+		new RegExp(`/app/games/western-cards/decks/${renamedDeckName}/editor`)
+	);
+	await page.getByRole('button', { name: 'Decks' }).click();
+	await expect(page.getByRole('link', { name: renamedDeckName, exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: originalDeckName, exact: true })).not.toBeVisible();
 });
 
 test('create new game from project switcher', async ({ page }) => {
