@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import type { Snippet } from 'svelte';
 	import { PressedKeys } from 'runed';
 	import { Card, CardContent } from '$svgeditor/components/ui/card/index.js';
 	import type { ChangeEvent, ReadyEvent, SvgCanvasConfig, SvgEditorApi } from '../core/types';
 	import { createEditorController } from '../svelte/createEditorController.svelte.ts';
 	import SvgCanvasHost from '../svelte/SvgCanvasHost.svelte';
 	import Inspector from './Inspector.svelte';
-	import RulerControls from './RulerControls.svelte';
 	import StructureTree from './StructureTree.svelte';
 	import Toolbar from './Toolbar.svelte';
 	import ZoomControls from './ZoomControls.svelte';
@@ -19,6 +19,7 @@
 		centerOnLoad?: boolean;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
+		toolbarActions?: Snippet;
 	};
 
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -30,7 +31,8 @@
 		readonly = false,
 		centerOnLoad = true,
 		initialZoom,
-		assetBasePath
+		assetBasePath,
+		toolbarActions
 	}: ReferenceEditorProps = $props();
 
 	const dispatch = createEventDispatcher<{ change: ChangeEvent }>();
@@ -315,7 +317,7 @@
 		<div class="flex flex-col gap-3">
 			<Card class="min-h-[360px] overflow-hidden">
 				<div class="bg-muted/40 border-b px-4 py-3">
-					<Toolbar {controller} variant="actions" />
+					<Toolbar {controller} variant="actions" extraActions={toolbarActions} />
 				</div>
 				<CardContent class="h-[60vh] min-h-[360px] p-0">
 					<div class="h-full p-4">
@@ -343,7 +345,6 @@
 		<div class="flex flex-col gap-4">
 			<Inspector {controller} />
 			<StructureTree {controller} disabled={interactionDisabled} />
-			<RulerControls {controller} />
 		</div>
 	</div>
 </div>
