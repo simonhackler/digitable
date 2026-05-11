@@ -9,7 +9,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import PlayMenu from './play-menu.svelte';
-	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import { FsError, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
@@ -29,7 +29,11 @@
 
 	// TODO why have this bs be null?
 	// TODO does this even make sense? I like always having the correct folders ready on the correct paths. Seems to simplify things
-	let projectFolderResult = $derived(await fileSystem.openDir(activeProject?.name));
+	let projectFolderResult = $derived(
+		activeProject
+			? await fileSystem.openDir(activeProject.name)
+			: FsError.NotFound({ operation: 'openDir', path: '' })
+	);
 
 	let user = $derived(page.data.user);
 

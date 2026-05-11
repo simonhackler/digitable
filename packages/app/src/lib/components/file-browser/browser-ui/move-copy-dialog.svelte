@@ -27,6 +27,7 @@
 	);
 
 	const inertFsDir: FsDir = {
+		name: 'home',
 		list: async () => Ok([]),
 		openDir: async (path) => FsError.NotFound({ operation: 'openDir', path }),
 		ensureDir: async () => Ok(inertFsDir),
