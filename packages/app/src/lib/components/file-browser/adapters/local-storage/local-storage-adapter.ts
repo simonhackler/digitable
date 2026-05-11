@@ -15,7 +15,11 @@ import {
 } from '../adapter';
 
 export class LocalStorageAdapter implements FsDir {
-	constructor(private readonly rootPath: string) {}
+	public readonly name: string;
+
+	constructor(private readonly rootPath: string) {
+		this.name = basename(rootPath);
+	}
 
 	private keyFor(path?: string): string {
 		const joined = joinFsPath(this.rootPath, path ?? '');

@@ -98,6 +98,7 @@ export const FsError = {
 };
 
 export interface FsDir {
+	name: string;
 	list(path?: string): Promise<FsResult<FsEntry[]>>;
 	openDir(path: string): Promise<FsResult<FsDir>>;
 	ensureDir(path: string): Promise<FsResult<FsDir>>;

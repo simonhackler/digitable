@@ -26,6 +26,11 @@
 		if (game) return game;
 		return games.length > 0 ? games[0] : null;
 	});
+
+	// TODO why have this bs be null?
+	// TODO does this even make sense? I like always having the correct folders ready on the correct paths. Seems to simplify things
+	let projectFolderResult = $derived(await fileSystem.openDir(activeProject?.name));
+
 	let user = $derived(page.data.user);
 
 	async function pickFolder() {
@@ -45,12 +50,16 @@
 	<Sidebar.Header>
 		<ProjectSwitcher {games} {activeProject} {onProjectChange} />
 	</Sidebar.Header>
-	<Sidebar.Content>
-		<CreateMenu activeGame={activeProject} {fileSystem} />
-		<ExportMenu activeGame={activeProject} />
-		<PlayMenu activeGame={activeProject} />
-		<Sidebar.Group />
-	</Sidebar.Content>
+	{#if projectFolderResult.error}
+		<!-- Todo display error -->
+	{:else}
+		<Sidebar.Content>
+			<CreateMenu activeGame={activeProject} fileSystem={projectFolderResult.data} />
+			<ExportMenu activeGame={activeProject} />
+			<PlayMenu activeGame={activeProject} />
+			<Sidebar.Group />
+		</Sidebar.Content>
+	{/if}
 	<Sidebar.Footer>
 		<Sidebar.Menu>
 			{#if user}

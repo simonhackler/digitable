@@ -66,8 +66,8 @@
 		const frontSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		const backSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		await Promise.all([
-			uploadSvgAsSide(fileSystem, activeGame.name, deckName, frontSvg, 'front'),
-			uploadSvgAsSide(fileSystem, activeGame.name, deckName, backSvg, 'back')
+			uploadSvgAsSide(fileSystem, deckName, frontSvg, 'front'),
+			uploadSvgAsSide(fileSystem, deckName, backSvg, 'back')
 		]);
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
@@ -83,14 +83,13 @@
 
 	async function uploadSvgAsSide(
 		fileSystem: FsDir,
-		currentProject: string,
 		deckName: string,
 		svg: SVGElement,
 		side: 'front' | 'back'
 	) {
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		const deckDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'system', deckName));
+		const deckDir = await fileSystem.ensureDir(joinFsPath('system', deckName));
 		if (deckDir.error) {
 			console.error(deckDir.error);
 			return;
@@ -101,7 +100,7 @@
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		const filesDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'files'));
+		const filesDir = await fileSystem.ensureDir('files');
 		if (filesDir.error) {
 			console.error(filesDir.error);
 			return;
@@ -123,9 +122,9 @@
 		projectName: string,
 		component: ComponentFileStructure
 	) {
-		const fullFolderPath = `/${projectName}/system/${component.name}`;
+		const fullFolderPath = joinFsPath('system', component.name);
 		console.log('deleting for', fullFolderPath);
-		const removed = await fileSystem.remove(joinFsPath(fullFolderPath), { recursive: true });
+		const removed = await fileSystem.remove(fullFolderPath, { recursive: true });
 		if (removed.error) {
 			console.error(removed.error);
 		} else {
@@ -312,7 +311,7 @@
 											<Table />
 											<span>Data</span>
 										</DropdownMenu.Item>
-										<RenameDeckDialog {activeGame} {fileSystem} {deck} onRenamed={onDeckRenamed}>
+										<RenameDeckDialog projectFolder={fileSystem} {deck} onRenamed={onDeckRenamed}>
 											{#snippet trigger({ props })}
 												<DropdownMenu.Item
 													{...props}

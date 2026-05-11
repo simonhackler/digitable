@@ -9,18 +9,16 @@
 	import { TextCursorInput } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import { z } from 'zod';
-	import type { ComponentFileStructure, Game } from './types.js';
+	import type { ComponentFileStructure } from './types.js';
 
 	let {
-		activeGame,
+		projectFolder,
 		deck,
-		fileSystem,
 		onRenamed,
 		trigger
 	}: {
-		activeGame: Game | null;
+		projectFolder: FsDir;
 		deck: ComponentFileStructure;
-		fileSystem: FsDir;
 		onRenamed: (oldName: string, newName: string) => void;
 		trigger: Snippet<[{ props: Record<string, unknown> }]>;
 	} = $props();
@@ -38,14 +36,6 @@
 			'Deck name can only contain letters, numbers, underscores, and hyphens'
 		);
 
-	function setOpen(nextOpen: boolean) {
-		open = nextOpen;
-		if (nextOpen) {
-			deckName = deck.name;
-		}
-		error = '';
-	}
-
 	function renamedRoute(projectName: string, oldName: string, newName: string) {
 		const oldBase = resolve(`/games/${projectName}/decks/${oldName}`);
 		const currentPath = page.url.pathname;
@@ -56,7 +46,7 @@
 	}
 
 	async function renameDeck() {
-		if (!activeGame || submitting) return;
+		if (submitting) return;
 
 		error = '';
 		const parsedName = deckNameSchema.safeParse(deckName.trim());
@@ -68,40 +58,48 @@
 		const oldName = deck.name;
 		const newName = parsedName.data;
 		if (newName === oldName) {
-			setOpen(false);
+			open = false;
 			return;
 		}
 
-		if (activeGame.decks.some((candidate) => candidate.name === newName)) {
+		const systemDir = await projectFolder.openDir('system');
+		if (systemDir.error) {
+			console.error(systemDir.error);
+			error = systemDir.error.message;
+			return;
+		}
+
+		const files = await systemDir.data.list();
+		if (files.error) {
+			console.error(files.error);
+			error = files.error.message;
+			return;
+		}
+
+		if (files.data.some((candidate) => candidate.name === newName)) {
 			error = `Deck "${newName}" already exists.`;
 			return;
 		}
 
-		const projectName = activeGame.name;
-		const sourcePath = joinFsPath(projectName, 'system', oldName);
-		const targetPath = joinFsPath(projectName, 'system', newName);
+		const projectName = projectFolder.name;
+		const sourcePath = joinFsPath('system', oldName);
+		const targetPath = joinFsPath('system', newName);
 
 		submitting = true;
-		try {
-			const moved = await fileSystem.move(sourcePath, targetPath);
-			if (moved.error) {
-				error = moved.error.message;
-				return;
-			}
-
-			onRenamed(oldName, newName);
-			setOpen(false);
-
-			const destination = renamedRoute(projectName, oldName, newName);
-			// @ts-expect-error Dynamic route with preserved suffix and query.
-			if (destination) await goto(resolve(destination));
-		} finally {
-			submitting = false;
+		const moved = await projectFolder.move(sourcePath, targetPath);
+		if (moved.error) {
+			error = moved.error.message;
+			return;
 		}
+		onRenamed(oldName, newName);
+		const destination = renamedRoute(projectName, oldName, newName);
+		// @ts-expect-error Dynamic route with preserved suffix and query.
+		if (destination) await goto(resolve(destination));
+		submitting = false;
 	}
 </script>
 
-<Dialog.Root bind:open={() => open, setOpen}>
+<Dialog.Root bind:open>
 	<Dialog.Trigger>
 		{#snippet child({ props })}
 			{@render trigger({ props })}
@@ -110,7 +108,6 @@
 	<Dialog.Content>
 		<Dialog.Header>
 			<Dialog.Title>Rename deck</Dialog.Title>
-			<Dialog.Description>Rename the deck folder without changing its files.</Dialog.Description>
 		</Dialog.Header>
 		<form
 			class="flex flex-col gap-3"
@@ -141,7 +138,7 @@
 						<Button {...props} variant="outline" disabled={submitting}>Cancel</Button>
 					{/snippet}
 				</Dialog.Close>
-				<Button type="submit" disabled={submitting || !activeGame}>
+				<Button type="submit" disabled={submitting || !projectFolder}>
 					<TextCursorInput /> Rename deck
 				</Button>
 			</Dialog.Footer>

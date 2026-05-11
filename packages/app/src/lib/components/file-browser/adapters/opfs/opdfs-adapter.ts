@@ -19,7 +19,11 @@ import {
  * File System Access API directories.
  */
 export class OPFSAdapter implements FsDir {
-	public constructor(private readonly root: FileSystemDirectoryHandle) {}
+	public readonly name: string;
+
+	public constructor(private readonly root: FileSystemDirectoryHandle) {
+		this.name = root.name;
+	}
 
 	static async create(): Promise<OPFSAdapter> {
 		const root = await navigator.storage.getDirectory();

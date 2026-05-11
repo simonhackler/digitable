@@ -18,10 +18,14 @@ import {
 } from '../adapter';
 
 export class SupabaseAdapter implements FsDir {
+	public readonly name: string;
+
 	constructor(
 		private readonly supabase: SupabaseClient,
 		private readonly rootPath: string
-	) {}
+	) {
+		this.name = basename(rootPath);
+	}
 
 	private fullPath(path?: string): string {
 		return joinFsPath(this.rootPath, path ?? '');
