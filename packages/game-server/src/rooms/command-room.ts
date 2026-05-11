@@ -246,9 +246,9 @@ export class DrawCommand extends Command<
 		player.hand.add(cardId);
 		const cardComponent = this.state.components.get(cardId);
 		cardComponent.owner = payload.sessionId;
-		const position = this.state.positions.get(payload.cardId);
-		if (position) {
-			position.visible = false;
+		const drawnCardPosition = this.state.positions.get(cardId);
+		if (drawnCardPosition) {
+			drawnCardPosition.visible = false;
 		}
 	}
 

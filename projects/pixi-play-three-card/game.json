@@ -1,0 +1,7 @@
+{
+	"name": "Pixi Play Three Card",
+	"minPlayers": 1,
+	"maxPlayers": 4,
+	"description": "Three-card fixture project for Pixi play deck draw E2E coverage.",
+	"tags": ["E2E", "Pixi"]
+}

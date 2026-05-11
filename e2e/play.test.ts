@@ -9,10 +9,10 @@ function appPath(pathname: string) {
 	return `${playtestAppOrigin}/app${pathname}`;
 }
 
-async function openPixiSmokeTest(page: Page) {
+async function openPixiProject(page: Page, projectSlug: string) {
 	const here = path.dirname(test.info().file);
-	const projectDir = path.resolve(here, '../projects/pixi-play-smoke');
-	const mappings = await walkDirectory(projectDir, '/pixi-play-smoke');
+	const projectDir = path.resolve(here, `../projects/${projectSlug}`);
+	const mappings = await walkDirectory(projectDir, `/${projectSlug}`);
 
 	await page.goto('/app/games');
 	await seedOPFS(page, mappings);
@@ -20,9 +20,13 @@ async function openPixiSmokeTest(page: Page) {
 	await page.getByRole('button', { name: 'Use Browser' }).first().click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
-	await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
-	await page.goto('/app/games/pixi-play-smoke/play?e2e=1');
+	await expect(page.getByRole('main').getByText(projectSlug)).toBeVisible();
+	await page.goto(`/app/games/${projectSlug}/play?e2e=1`);
 	await waitForPixi(page);
+}
+
+async function openPixiSmokeTest(page: Page) {
+	await openPixiProject(page, 'pixi-play-smoke');
 }
 
 async function signUp(page: Page) {
@@ -85,6 +89,53 @@ test('drawing from a 2-card stack keeps one card on the board', async ({ page })
 		.toEqual({
 			visibleStacks: 0,
 			visibleBoardCards: 1,
+			handCards: 1
+		});
+});
+
+test('drawing from a 3-card stack keeps the remaining deck visible', async ({ page }) => {
+	test.setTimeout(60_000);
+	await openPixiProject(page, 'pixi-play-three-card');
+
+	let firstStackId: string | null = null;
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				firstStackId = state.visibleStackIds[0] ?? null;
+				return {
+					visibleStacks: state.visibleStackIds.length,
+					visibleBoardCards: state.visibleBoardCardIds.length,
+					handCards: state.handCardIds.length
+				};
+			},
+			{ timeout: 20_000 }
+		)
+		.toEqual({
+			visibleStacks: 1,
+			visibleBoardCards: 0,
+			handCards: 0
+		});
+
+	expect(firstStackId).toBeTruthy();
+	await pixiClick(page, firstStackId!);
+	await page.keyboard.press('d');
+
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				return {
+					visibleStacks: state.visibleStackIds.length,
+					visibleBoardCards: state.visibleBoardCardIds.length,
+					handCards: state.handCardIds.length
+				};
+			},
+			{ timeout: 20_000 }
+		)
+		.toEqual({
+			visibleStacks: 1,
+			visibleBoardCards: 0,
 			handCards: 1
 		});
 });
