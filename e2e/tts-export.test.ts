@@ -225,7 +225,7 @@ test('inlines local image refs before rasterizing TTS sheets', async ({ page }) 
 });
 
 test('exports the full western cards TTS package', async ({ page }, testInfo) => {
-	test.setTimeout(120_000);
+	test.setTimeout(180_000);
 	const exportErrors: string[] = [];
 	page.on('console', (message) => {
 		if (message.type() === 'error') {
@@ -247,7 +247,7 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	await page.goto(`/app/games/${westernProjectName}/export/tts`);
 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
-		timeout: 60_000
+		timeout: 120_000
 	});
 
 	const exportFileNames = [

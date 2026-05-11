@@ -4,7 +4,7 @@ import type {
 	ClientFlippable,
 	ClientPosition,
 	ClientStack
-} from '../../routes/games/[gameName]/play/frontend-components/position';
+} from '$lib/play/frontend-components/position';
 
 export class BoardGameItemNew extends Container {
 	public readonly id: string;

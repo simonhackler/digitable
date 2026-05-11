@@ -6,7 +6,7 @@ import {
 	Stack
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import { type SchemaCallbackProxy } from '@colyseus/schema';
-import { Room } from 'colyseus.js';
+import type { Room } from 'colyseus.js';
 
 type Handler<T> = (payload: T) => void;
 

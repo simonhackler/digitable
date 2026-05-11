@@ -1,6 +1,6 @@
 import { Assets, Sprite, type Texture } from 'pixi.js';
-import { loadSvgsAndData } from '../data-loader';
-import { generateSvg, loadSvgTemplate } from '../svg-helpers';
+import { loadSvgsAndData } from '../../routes/games/[gameName]/data-loader';
+import { generateSvg, loadSvgTemplate } from '../../routes/games/[gameName]/svg-helpers';
 import '@pixi/layout';
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { ParsedSvg } from './initComponent';

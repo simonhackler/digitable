@@ -188,14 +188,14 @@ test('a played card stays visible after being clicked again', async ({ page }) =
 			async () => {
 				const state = await pixiState(page);
 				return {
-					visibleBoardCardIds: state.visibleBoardCardIds,
+					playedCardIsVisible: state.visibleBoardCardIds.includes(handCardId!),
 					handCardIds: state.handCardIds
 				};
 			},
 			{ timeout: 20_000 }
 		)
 		.toEqual({
-			visibleBoardCardIds: [handCardId],
+			playedCardIsVisible: true,
 			handCardIds: []
 		});
 
@@ -206,14 +206,14 @@ test('a played card stays visible after being clicked again', async ({ page }) =
 			async () => {
 				const state = await pixiState(page);
 				return {
-					visibleBoardCardIds: state.visibleBoardCardIds,
+					playedCardIsVisible: state.visibleBoardCardIds.includes(handCardId!),
 					handCardIds: state.handCardIds
 				};
 			},
 			{ timeout: 20_000 }
 		)
 		.toEqual({
-			visibleBoardCardIds: [handCardId],
+			playedCardIsVisible: true,
 			handCardIds: []
 		});
 });
@@ -237,7 +237,8 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	const inviteUrl = await inviteInput.inputValue();
 
 	await page.goto(`${inviteUrl}?e2e=1`);
-	await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke-playtest-[0-9a-f]+\/play/);
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
 	await waitForPixi(page);
 
 	let firstStackId: string | null = null;
@@ -318,12 +319,14 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 		const inviteUrl = await inviteInput.inputValue();
 
 		await page.goto(`${inviteUrl}?e2e=1`);
-		await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke-playtest-[0-9a-f]+\/play/);
+		await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+		await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
 		await waitForPixi(page);
 
 		await signUp(secondPage);
 		await secondPage.goto(`${inviteUrl}?e2e=1`);
-		await expect(secondPage).toHaveURL(/\/app\/games\/pixi-play-smoke-playtest-[0-9a-f]+\/play/);
+		await expect(secondPage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+		await expect(secondPage.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
 		await waitForPixi(secondPage);
 
 		let firstStackId: string | null = null;

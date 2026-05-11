@@ -7,7 +7,7 @@ const name = 'Auth E2E';
 test.describe.configure({ mode: 'serial' });
 
 test('sign up creates an account and opens the app', async ({ page }) => {
-	await page.goto('/sign-up', { waitUntil: 'networkidle' });
+	await page.goto('/app/sign-up', { waitUntil: 'networkidle' });
 
 	await expect(page.getByRole('heading', { name: 'Create your Digitable account' })).toBeVisible();
 
@@ -22,7 +22,7 @@ test('sign up creates an account and opens the app', async ({ page }) => {
 
 test('sign in opens the app for an existing account', async ({ page, context }) => {
 	await context.clearCookies();
-	await page.goto('/sign-in', { waitUntil: 'networkidle' });
+	await page.goto('/app/sign-in', { waitUntil: 'networkidle' });
 
 	await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 
