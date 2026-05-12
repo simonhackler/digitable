@@ -16,6 +16,8 @@
   databaseUrl = "postgres://${dbUser}:${dbPass}@127.0.0.1:${toString postgresPort}/${dbName}";
   minioApiPort = config.processes.minio.ports.console.value;
   studioOrigin = "http://localhost:${toString sitePort}";
+  googleClientId = builtins.getEnv "GOOGLE_CLIENT_ID";
+  googleClientSecret = builtins.getEnv "GOOGLE_CLIENT_SECRET";
   playwrightChromium = pkgs.runCommand "playwright-chromium-executable" {} ''
     chromium_dir="$(echo ${pkgs.playwright-driver.browsers}/chromium-*)"
 
@@ -98,6 +100,9 @@ in {
 
     BETTER_AUTH_URL = studioOrigin;
     BETTER_AUTH_SECRET = "devenv-local-auth-secret-change-before-production";
+    # Google OAuth local redirect URI: http://localhost:5180/api/auth/callback/google
+    GOOGLE_CLIENT_ID = googleClientId;
+    GOOGLE_CLIENT_SECRET = googleClientSecret;
     WEB_ORIGIN = studioOrigin;
     SECOND_WEB_ORIGIN = "";
     AUTH_COOKIE_DOMAIN = "";
