@@ -10,8 +10,11 @@ The flake builds both SvelteKit apps from source with Bun. It resolves the repo 
 `infrastructure/nix/flake.nix`, so no repo-root environment variable is required.
 
 Secrets are read through `sops-nix` from `infrastructure/nix/secrets/secrets.yaml`. The host expects an age
-identity derived from the server's SSH host key and currently declares `replicate-api-token`, which is rendered
-into `app.env` as `REPLICATE_API_TOKEN`.
+identity derived from the server's SSH host key and currently declares:
+
+- `better-auth-secret`, rendered into `app.env` as `BETTER_AUTH_SECRET`
+- `replicate-api-token`, rendered into `app.env` as `REPLICATE_API_TOKEN`
+
 Make sure that encrypted key exists in `infrastructure/nix/secrets/secrets.yaml` before deploying.
 
 To add a new secret:

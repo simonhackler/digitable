@@ -16,6 +16,21 @@
     || builtins.match "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" studioDomain != null;
   studioOrigin = "${if isDirectHost then "http" else "https"}://${studioDomain}";
   caddySiteAddress = if isDirectHost then ":80" else studioDomain;
+  databaseUrl = "postgresql://app@localhost/app?host=/run/postgresql";
+  authEnvironment =
+    {
+      DATABASE_URL = databaseUrl;
+      BETTER_AUTH_URL = studioOrigin;
+      WEB_ORIGIN = studioOrigin;
+      SECOND_WEB_ORIGIN = "";
+      AUTH_COOKIE_DOMAIN = "";
+    }
+    // lib.optionalAttrs (!enableAppSecrets) {
+      BETTER_AUTH_SECRET = "vm-local-better-auth-secret-change-before-production";
+    };
+  appSecretsServiceConfig = lib.optionalAttrs enableAppSecrets {
+    EnvironmentFile = config.sops.templates."app.env".path;
+  };
   mkNodeService = {
     description,
     port,
@@ -32,7 +47,7 @@
       PORT = toString port;
       ORIGIN = studioOrigin;
       NODE_ENV = "production";
-    };
+    } // authEnvironment;
 
     serviceConfig =
       {
@@ -53,9 +68,11 @@ in {
     defaultSopsFile = ../secrets/secrets.yaml;
     defaultSopsFormat = "yaml";
 
+    secrets.better-auth-secret = {};
     secrets.replicate-api-token = {};
 
     templates."app.env".content = ''
+      BETTER_AUTH_SECRET=${config.sops.placeholder.better-auth-secret}
       REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
     '';
   };
@@ -127,15 +144,14 @@ in {
     description = "Digitable Studio";
     port = studioPort;
     workingDirectory = "${studioPackage}/packages/studio";
+    extraServiceConfig = appSecretsServiceConfig;
   };
 
   systemd.services.app = mkNodeService {
     description = "Digitable App";
     port = appPort;
     workingDirectory = "${studioPackage}/packages/app";
-    extraServiceConfig = lib.optionalAttrs enableAppSecrets {
-      EnvironmentFile = config.sops.templates."app.env".path;
-    };
+    extraServiceConfig = appSecretsServiceConfig;
   };
 
   networking.firewall.allowedTCPPorts = [22 80 443];
