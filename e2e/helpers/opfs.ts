@@ -139,3 +139,36 @@ export async function readOpfsText(page: Page, sourcePath: string) {
 		return handle.getFile().then((file) => file.text());
 	}, sourcePath);
 }
+
+export async function opfsEntryExists(page: Page, sourcePath: string) {
+	return page.evaluate(async (sourcePath) => {
+		const storage = navigator.storage as StorageManager & {
+			getDirectory: () => Promise<FileSystemDirectoryHandle>;
+		};
+		const root = await storage.getDirectory();
+		const parts = sourcePath.replace(/^\/+/, '').split('/').filter(Boolean);
+		const entryName = parts.pop();
+		if (!entryName) return true;
+
+		let dir = root;
+		for (const part of parts) {
+			try {
+				dir = await dir.getDirectoryHandle(part);
+			} catch {
+				return false;
+			}
+		}
+
+		try {
+			await dir.getFileHandle(entryName);
+			return true;
+		} catch {
+			try {
+				await dir.getDirectoryHandle(entryName);
+				return true;
+			} catch {
+				return false;
+			}
+		}
+	}, sourcePath);
+}

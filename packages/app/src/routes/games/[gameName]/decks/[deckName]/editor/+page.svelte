@@ -12,6 +12,7 @@
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import { requireParam } from '$lib/utils/assert';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
+	import { untrack } from 'svelte';
 
 	type Side = 'front' | 'back';
 	type SvgMeta = {
@@ -141,7 +142,7 @@
 	let back = $derived(svgs.back);
 	let frontMeta = $derived(svgs.meta.front);
 	let backMeta = $derived(svgs.meta.back);
-	let side = $state<Side>(front || !back ? 'front' : 'back');
+	let side = $state<Side>(untrack(() => (front || !back ? 'front' : 'back')));
 	let blankWidth = $state(63);
 	let blankHeight = $state(88);
 	let createTemplatesDialogOpen = $state(false);

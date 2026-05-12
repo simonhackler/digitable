@@ -27,13 +27,15 @@
 	);
 
 	const inertFsDir: FsDir = {
+		name: 'home',
 		list: async () => Ok([]),
 		openDir: async (path) => FsError.NotFound({ operation: 'openDir', path }),
 		ensureDir: async () => Ok(inertFsDir),
 		read: async (path) => FsError.NotFound({ operation: 'read', path }),
 		readText: async (path) => FsError.NotFound({ operation: 'readText', path }),
 		write: async () => Ok(undefined),
-		remove: async () => Ok(undefined)
+		remove: async () => Ok(undefined),
+		move: async () => Ok(undefined)
 	};
 </script>
 

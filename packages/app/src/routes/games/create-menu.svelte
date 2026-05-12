@@ -8,9 +8,10 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { Ellipsis, Layers, Pencil, Table, Trash2 } from '@lucide/svelte';
+	import { Ellipsis, Layers, PenTool, Table, TextCursorInput, Trash2 } from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ComponentFileStructure, Game } from './types.js';
+	import RenameDeckDialog from './rename-deck-dialog.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { z } from 'zod';
@@ -29,11 +30,16 @@
 		return value;
 	}, z.number().min(10).max(300));
 
+	const deckNameSchema = z
+		.string()
+		.min(3, 'Deck name must be at least 3 characters long')
+		.regex(
+			/^[A-Za-z0-9_-]+$/,
+			'Deck name can only contain letters, numbers, underscores, and hyphens'
+		);
+
 	const newDeckSchema = z.object({
-		deckName: z
-			.string()
-			.min(3, 'Deck name must be at least 3 characters long')
-			.regex(/^[A-Za-z0-9_-]+$/, 'Deck name can only contain letters and numbers without spaces'),
+		deckName: deckNameSchema,
 		width: deckDimension,
 		height: deckDimension
 	});
@@ -60,8 +66,8 @@
 		const frontSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		const backSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		await Promise.all([
-			uploadSvgAsSide(fileSystem, activeGame.name, deckName, frontSvg, 'front'),
-			uploadSvgAsSide(fileSystem, activeGame.name, deckName, backSvg, 'back')
+			uploadSvgAsSide(fileSystem, deckName, frontSvg, 'front'),
+			uploadSvgAsSide(fileSystem, deckName, backSvg, 'back')
 		]);
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
@@ -77,14 +83,13 @@
 
 	async function uploadSvgAsSide(
 		fileSystem: FsDir,
-		currentProject: string,
 		deckName: string,
 		svg: SVGElement,
 		side: 'front' | 'back'
 	) {
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		const deckDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'system', deckName));
+		const deckDir = await fileSystem.ensureDir(joinFsPath('system', deckName));
 		if (deckDir.error) {
 			console.error(deckDir.error);
 			return;
@@ -95,7 +100,7 @@
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		const filesDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'files'));
+		const filesDir = await fileSystem.ensureDir('files');
 		if (filesDir.error) {
 			console.error(filesDir.error);
 			return;
@@ -104,14 +109,22 @@
 		if (placeholderWrite.error) console.error(placeholderWrite.error);
 	}
 
+	function onDeckRenamed(oldName: string, newName: string) {
+		if (!activeGame) return;
+
+		activeGame.decks = activeGame.decks.map((deck) =>
+			deck.name === oldName ? { name: newName } : deck
+		);
+	}
+
 	async function deleteDeck(
 		fileSystem: FsDir,
 		projectName: string,
 		component: ComponentFileStructure
 	) {
-		const fullFolderPath = `/${projectName}/system/${component.name}`;
+		const fullFolderPath = joinFsPath('system', component.name);
 		console.log('deleting for', fullFolderPath);
-		const removed = await fileSystem.remove(joinFsPath(fullFolderPath), { recursive: true });
+		const removed = await fileSystem.remove(fullFolderPath, { recursive: true });
 		if (removed.error) {
 			console.error(removed.error);
 		} else {
@@ -287,7 +300,7 @@
 											onSelect={() => goto(resolve(`${path}/editor`))}
 											class="flex w-full justify-start gap-2"
 										>
-											<Pencil />
+											<PenTool />
 											<span>Editor</span>
 										</DropdownMenu.Item>
 										{/* @ts-expect-error paths*/ null}
@@ -298,6 +311,18 @@
 											<Table />
 											<span>Data</span>
 										</DropdownMenu.Item>
+										<RenameDeckDialog projectFolder={fileSystem} {deck} onRenamed={onDeckRenamed}>
+											{#snippet trigger({ props })}
+												<DropdownMenu.Item
+													{...props}
+													onSelect={(event) => event.preventDefault()}
+													class="flex w-full justify-start gap-2"
+												>
+													<TextCursorInput />
+													<span>Rename</span>
+												</DropdownMenu.Item>
+											{/snippet}
+										</RenameDeckDialog>
 										<DropdownMenu.Separator />
 										<DropdownMenu.Item
 											variant="destructive"
