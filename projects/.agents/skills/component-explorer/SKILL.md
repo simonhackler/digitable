@@ -10,7 +10,7 @@ metadata:
 
 Use this skill when the user wants ideas, variants, alternatives, card types, boards, resources, factions, powers, scoring systems, economies, conflict systems, or unusual mechanics for a board game.
 
-Do not use this as the first response to a vague "I want to make a game" prompt unless the user specifically asks for component ideas. Use `game-starter` first to discover the game shape.
+Do not use this as the first response to a vague "I want to make a game" prompt unless the user specifically asks for component ideas. Use `new-game-discovery` first to discover the game shape.
 
 The goal is breadth first, then refinement. Do not lock rules too early.
 
@@ -39,7 +39,7 @@ If no mode is given, infer the best mode from the prompt. Include `weird` only w
 5. For each direction, include sample components, why it works, implementation notes, and risks.
 6. Ask the user which direction to continue.
 7. Refine the chosen direction into a concrete component set.
-8. Hand off to `rules-explorer` or `game-starter` when appropriate.
+8. Hand off to `rules-explorer` or `new-game-discovery` when appropriate.
 
 When constraints are missing, ask a question and stop. Do not fill in the component taxonomy, counts, costs, or card text before the user has chosen a direction.
 
@@ -96,4 +96,4 @@ For v0 sets, prefer:
 
 ## Handoff
 
-Use `rules-explorer` to integrate approved components into timing, actions, scoring, and edge cases. Use `game-starter` if the user wants to turn the component direction into Digitable files.
+Use `rules-explorer` to integrate approved components into timing, actions, scoring, and edge cases. Use `new-game-discovery` if the user wants to turn the component direction into Digitable files.

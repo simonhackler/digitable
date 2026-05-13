@@ -8,6 +8,13 @@
 			"when": 1777492508726,
 			"tag": "0000_noisy_gauntlet",
 			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1778657653277,
+			"tag": "0001_parched_shriek",
+			"breakpoints": true
 		}
 	]
 }
