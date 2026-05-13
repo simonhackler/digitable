@@ -247,6 +247,30 @@
 		}
 	};
 
+	const inferFramedTextAnchor = (element: SVGTextElement): TextAnchor | null => {
+		const frameX = toNumber(element.getAttribute('x'), Number.NaN);
+		const frameWidth = toNumber(element.getAttribute('data-svgedit-wrap-width'), Number.NaN);
+		if (!Number.isFinite(frameX) || !Number.isFinite(frameWidth) || frameWidth <= 0) {
+			return null;
+		}
+
+		for (const line of element.querySelectorAll('tspan')) {
+			const lineX = toNumber(line.getAttribute('x'), Number.NaN);
+			if (!Number.isFinite(lineX)) continue;
+
+			const offset = lineX - frameX;
+			if (offset <= 1) return 'start';
+
+			const lineWidth = getSvgTextLineWidth(line);
+			const availableOffset = Math.max(0, frameWidth - lineWidth);
+			if (availableOffset <= 1) return 'start';
+
+			return offset >= availableOffset * 0.75 ? 'end' : 'middle';
+		}
+
+		return null;
+	};
+
 	const stepFontSize = (current: number, step: number) => {
 		if (!Number.isFinite(current)) return current;
 		const suggested = current + step;
@@ -580,15 +604,17 @@
 			fontBold = isBold;
 			fontItalic = isItalic;
 			fontUnderline = isUnderline;
-			const textAlign =
+			const explicitTextAlign =
 				textAlignToAnchor(
 					getStyleDeclaration(primaryTextElement.getAttribute('style'), 'text-align')
-				) ??
-				textAlignToAnchor(primaryTextElement.getAttribute('text-align')) ??
-				textAlignToAnchor(computedStyle?.textAlign);
+				) ?? textAlignToAnchor(primaryTextElement.getAttribute('text-align'));
+			const isFramedText = hasTextFrame(primaryTextElement);
+			const renderedTextAlign = isFramedText ? inferFramedTextAnchor(primaryTextElement) : null;
+			const computedTextAlign = isFramedText ? null : textAlignToAnchor(computedStyle?.textAlign);
 			const anchor = normalizeTextAnchor(primaryTextElement.getAttribute('text-anchor'));
-			textAnchor =
-				(hasTextFrame(primaryTextElement) ? textAlign : anchor) ?? textAlign ?? anchor ?? 'start';
+			textAnchor = isFramedText
+				? (explicitTextAlign ?? renderedTextAlign ?? anchor ?? 'start')
+				: (explicitTextAlign ?? anchor ?? computedTextAlign ?? 'start');
 		} else {
 			fontBold = false;
 			fontItalic = false;
@@ -795,6 +821,7 @@
 		);
 		if (framedTextElements.length > 0) {
 			rawCanvas.changeSelectedAttribute('text-anchor', 'start', framedTextElements);
+			rawCanvas.changeSelectedAttribute('text-align', align, framedTextElements);
 		}
 		if (unframedTextElements.length > 0) {
 			rawCanvas.changeSelectedAttribute('text-anchor', value, unframedTextElements);
@@ -918,10 +945,12 @@
 					<input
 						id="inspector-rotation"
 						type="number"
-						class="sr-only"
+						class="border-input bg-background ring-offset-background focus-visible:ring-ring h-11 w-full rounded-md border px-3 text-lg font-semibold shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 						bind:value={rotation}
 						disabled={!canEditRotation}
 						oninput={applyRotation}
+						onkeydown={(event) => handleNumberCommit(event, applyRotation)}
+						onblur={handleNumberBlur}
 					/>
 					<div class="bg-muted/30 flex h-11 items-center justify-center rounded-lg border">
 						<div

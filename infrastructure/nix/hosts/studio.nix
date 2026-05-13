@@ -35,6 +35,7 @@
     description,
     port,
     workingDirectory,
+    extraEnvironment ? {},
     extraServiceConfig ? {},
   }: {
     inherit description;
@@ -47,7 +48,11 @@
       PORT = toString port;
       ORIGIN = studioOrigin;
       NODE_ENV = "production";
-    } // authEnvironment;
+      BETTER_AUTH_SECRET = "%m";
+      WEB_ORIGIN = studioOrigin;
+      SECOND_WEB_ORIGIN = "${studioOrigin}/app";
+    }
+    // extraEnvironment;
 
     serviceConfig =
       {
@@ -145,6 +150,9 @@ in {
     port = studioPort;
     workingDirectory = "${studioPackage}/packages/studio";
     extraServiceConfig = appSecretsServiceConfig;
+    extraEnvironment = {
+      BETTER_AUTH_URL = studioOrigin;
+    };
   };
 
   systemd.services.app = mkNodeService {
@@ -152,6 +160,12 @@ in {
     port = appPort;
     workingDirectory = "${studioPackage}/packages/app";
     extraServiceConfig = appSecretsServiceConfig;
+    extraEnvironment = {
+      BETTER_AUTH_URL = "${studioOrigin}/app";
+    };
+    extraServiceConfig = lib.optionalAttrs enableAppSecrets {
+      EnvironmentFile = config.sops.templates."app.env".path;
+    };
   };
 
   networking.firewall.allowedTCPPorts = [22 80 443];

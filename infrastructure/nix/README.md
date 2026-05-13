@@ -75,6 +75,6 @@ VM ports:
 
 ```bash
 cd infrastructure/nix
-nix run github:serokell/deploy-rs -- \
-  "path:$(realpath ../..)?dir=infrastructure/nix#studio"
+nix -L run github:serokell/deploy-rs -- \
+  "git+file://$(realpath ../..)?dir=infrastructure/nix&submodules=1#studio"
 ```

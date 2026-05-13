@@ -7,6 +7,7 @@ import {
 	updateSvg,
 	getTextColumnValue,
 	getTextFrameBounds,
+	getSvgDataMap,
 	initialSetupForSvgItem,
 	loadSvgTemplate,
 	parseSvg
@@ -225,6 +226,48 @@ describe('svg-helpers', () => {
 			type: 'text',
 			data: ['Shoot\nAgain']
 		});
+	});
+
+	it('does not mutate front or back templates when extracting data columns', () => {
+		const front = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
+					<text
+						id="effect_zone"
+						data-svgedit-multiline="true"
+						data-svgedit-raw-text="Front text"
+						data-svgedit-wrap-width="120"
+						data-svgedit-wrap-height="40">Front text</text>
+				</svg>`
+			)
+		);
+		const back = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
+					<text
+						id="effect_zone"
+						data-svgedit-multiline="true"
+						data-svgedit-raw-text="Back text"
+						data-svgedit-wrap-width="120"
+						data-svgedit-wrap-height="40">Back text</text>
+				</svg>`
+			)
+		);
+
+		const data = getSvgDataMap(front, back);
+
+		expect(data.has('effect_zone')).toBe(true);
+		expect(data.has('back_effect_zone')).toBe(true);
+		expect((back.getElementsByTagName('text')[0] as SVGTextElement).id).not.toBe(
+			'back_effect_zone'
+		);
+		expect(front.getElementById('effect_zone')).not.toBeNull();
+		expect(back.getElementById('effect_zone')).not.toBeNull();
+		expect(back.getElementById('back_effect_zone')).toBeNull();
+		expect(back.getElementById('effect_zone')?.getAttribute('data-svgedit-multiline')).toBe('true');
+		expect(back.getElementById('effect_zone')?.getAttribute('data-svgedit-raw-text')).toBe(
+			'Back text'
+		);
 	});
 
 	it('generates svg text with tspans instead of foreignObject', () => {

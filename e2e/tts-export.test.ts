@@ -251,8 +251,6 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	});
 
 	const exportFileNames = [
-		'best_deck_0_70_sheet.png',
-		'best_deck_0_70_back_sheet.png',
 		'western_0_70_sheet.png',
 		'western_0_70_back_sheet.png',
 		'western-cards.json'
@@ -278,7 +276,7 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	);
 	expect(
 		exportJson.ObjectStates.map((state: { Nickname: string }) => state.Nickname).sort()
-	).toEqual(['best_deck', 'western']);
+	).toEqual(['western']);
 
 	expect(exportErrors.filter((message) => message.includes('Error taking image'))).toEqual([]);
 	expect(

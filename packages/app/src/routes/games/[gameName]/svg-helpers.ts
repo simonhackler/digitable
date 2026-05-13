@@ -174,8 +174,8 @@ export function getSvgDataMap(
 	frontSvg: SVGSVGElement,
 	backSvg: SVGSVGElement
 ): Map<string, ColumnWithData> {
-	const frontData = parseSvg(frontSvg);
-	const backData = parseSvg(backSvg, 'back_');
+	const frontData = parseSvg(frontSvg.cloneNode(true) as SVGSVGElement);
+	const backData = parseSvg(backSvg.cloneNode(true) as SVGSVGElement, 'back_');
 	const dataMap = new Map<string, ColumnWithData>();
 
 	frontData.forEach((col) => {
