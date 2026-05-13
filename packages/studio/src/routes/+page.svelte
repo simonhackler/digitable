@@ -234,7 +234,7 @@
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
 					<Button href="/sign-in" variant="pill-outline" size="xl">Sign in</Button>
-					<Button href="/sign-up" variant="hero" size="xl">Create now</Button>
+					<Button href="/app/games" variant="hero" size="xl">Create now</Button>
 				</div>
 			</div>
 		</div>
