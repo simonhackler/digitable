@@ -4,6 +4,14 @@ export interface PixiPlayState {
 	visibleStackIds: string[];
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
+	strokes: {
+		id: string;
+		componentId: string;
+		face: 'front' | 'back';
+		visible: boolean;
+		parentId: string | null;
+		points: number;
+	}[];
 }
 
 type PixiBridgeWindow = Window & {

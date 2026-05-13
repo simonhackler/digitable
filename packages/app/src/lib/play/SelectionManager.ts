@@ -3,6 +3,7 @@ import { BoardGameItemNew } from '$lib/pixi/item';
 
 export class SelectionManager {
 	private selectedItems = new Set<BoardGameItemNew>();
+	private selectionBorders = new Map<BoardGameItemNew, Graphics>();
 
 	select(item: BoardGameItemNew) {
 		if (this.selectedItems.has(item)) return;
@@ -13,9 +14,11 @@ export class SelectionManager {
 	deselect(item: BoardGameItemNew) {
 		if (!this.selectedItems.has(item)) return;
 		this.selectedItems.delete(item);
-		// TODO this is does not scale
-		if (item.children.length > 1) {
-			item.removeChildren(1);
+		const border = this.selectionBorders.get(item);
+		if (border) {
+			item.removeChild(border);
+			border.destroy();
+			this.selectionBorders.delete(item);
 		}
 	}
 
@@ -66,5 +69,6 @@ export class SelectionManager {
 		});
 
 		item.addChild(g);
+		this.selectionBorders.set(item, g);
 	}
 }

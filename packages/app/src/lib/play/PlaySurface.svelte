@@ -36,6 +36,10 @@
 	import { installPlayE2EBridge } from './e2e-bridge';
 	import { createBoardChrome } from './board-chrome';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
+	import MousePointer2Icon from '@lucide/svelte/icons/mouse-pointer-2';
+	import PenLineIcon from '@lucide/svelte/icons/pen-line';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 
 	let {
 		projectName,
@@ -116,15 +120,38 @@
 	let boardContainer: Container;
 	let handContainer: HandContainer;
 	let tableChrome: Container;
+	let strokeLayer: StrokeLayer;
 
 	let viewport: Viewport;
 
 	let hoverItem: BoardGameItemNew | null = null;
 	let selectionManager = new SelectionManager();
+	let activeTool = $state<PlayTool>('select');
+	let selectedStrokeId = $state<string | null>(null);
 	const keys = new PressedKeys();
+
+	function selectTool(tool: PlayTool) {
+		activeTool = tool;
+		if (tool === 'pen') {
+			selectionManager.clear();
+			strokeLayer?.select(null);
+			selectedStrokeId = null;
+		} else {
+			strokeLayer?.cancelDraft();
+		}
+	}
+
+	function deleteSelectedStroke() {
+		const strokeId = strokeLayer?.selectedId;
+		if (!strokeId) return;
+		sendCmd(room, 'strokeDelete', { strokeId });
+		strokeLayer.select(null);
+		selectedStrokeId = null;
+	}
 
 	keys.onKeys('Escape', () => {
 		closeContextMenu();
+		selectTool('select');
 	});
 	keys.onKeys('F', () => {
 		selectionManager.forEach((item) => handleFlipCard(item));
@@ -134,6 +161,15 @@
 	});
 	keys.onKeys('S', () => {
 		selectionManager.forEach((item) => handleShuffleStack(item));
+	});
+	keys.onKeys('P', () => {
+		selectTool('pen');
+	});
+	keys.onKeys('V', () => {
+		selectTool('select');
+	});
+	keys.onKeys('Delete', () => {
+		deleteSelectedStroke();
 	});
 	keys.onKeys('alt', () => {
 		if (hoverItem) {
@@ -145,7 +181,7 @@
 		startGlobalX: number;
 		startGlobalY: number;
 		clickThreshold: number;
-		dragType: 'marquee' | 'selection' | 'handToBoard';
+		dragType: 'marquee' | 'selection' | 'handToBoard' | 'strokeDraft';
 		isFromHand?: boolean;
 	} | null;
 
@@ -267,6 +303,7 @@
 
 		handContainer = new HandContainer(app);
 		screenContainer.addChild(handContainer.container);
+		strokeLayer = new StrokeLayer(boardGameItems, handContainer);
 
 		const width = 200;
 		const height = 200;
@@ -285,6 +322,21 @@
 		marquee.visible = false;
 
 		function endDrag(e: FederatedPointerEvent) {
+			if (strokeLayer?.isDrawing) {
+				const stroke = strokeLayer.finishDraft();
+				if (stroke) {
+					sendCmd(room, 'strokeCreate', {
+						id: crypto.randomUUID(),
+						componentId: stroke.componentId,
+						face: stroke.face,
+						points: stroke.points,
+						style: stroke.style
+					});
+				}
+				drag = null;
+				return;
+			}
+
 			if (!drag) return;
 
 			if (e.button === 2) {
@@ -331,6 +383,7 @@
 				if (stacked) {
 					selectionManager.clear();
 				}
+				strokeLayer?.refreshAll();
 			}
 			drag = null;
 		}
@@ -349,6 +402,10 @@
 				previewer.showPreview(hoverItem);
 			} else {
 				previewer.hidePreview();
+			}
+			if (strokeLayer?.isDrawing) {
+				strokeLayer.addDraftPoint(e.global);
+				return;
 			}
 			if (!drag) return;
 
@@ -425,6 +482,40 @@
 		app.stage.on('pointerupoutside', endDrag);
 		app.stage.on('pointerdown', (e) => {
 			const boardItem = findTopLevelItem(e.target);
+			if (e.button === 2) {
+				if (boardItem) handleRightClick(e);
+				return;
+			}
+
+			if (activeTool === 'pen') {
+				const target = boardItem ? strokeLayer.resolveTarget(boardItem) : null;
+				if (!target) return;
+
+				selectionManager.clear();
+				strokeLayer.select(null);
+				selectedStrokeId = null;
+				strokeLayer.beginDraft(target, e.global, currentStrokeStyle);
+				drag = {
+					startGlobalX: e.globalX,
+					startGlobalY: e.globalY,
+					clickThreshold: 0,
+					dragType: 'strokeDraft'
+				};
+				return;
+			}
+
+			const strokeHit = strokeLayer.hitTest(e.global);
+			if (strokeHit) {
+				selectionManager.clear();
+				strokeLayer.select(strokeHit);
+				selectedStrokeId = strokeHit.strokeId;
+				drag = null;
+				return;
+			}
+
+			strokeLayer.select(null);
+			selectedStrokeId = null;
+
 			if (boardItem) {
 				if (e.ctrlKey) {
 					if (selectionManager.has(boardItem) && e.button === 1) {
@@ -453,9 +544,6 @@
 				clickThreshold: 10,
 				dragType: dragType
 			};
-			if (e.button === 2 && boardItem) {
-				handleRightClick(e);
-			}
 			if (e.shiftKey) {
 				drag.dragType = 'marquee';
 				marquee.position.copyFrom(e.global);
@@ -471,7 +559,7 @@
 	async function createRoom(_init: boolean) {
 		console.log('creating room');
 		if (isE2EMode() && !playE2EBridge) {
-			playE2EBridge = installPlayE2EBridge(app, boardGameItems, handContainer);
+			playE2EBridge = installPlayE2EBridge(app, boardGameItems, handContainer, strokeLayer);
 		}
 		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, 'system'));
 		if (error) {
@@ -496,6 +584,7 @@
 			? await client.create<BoardGameRoomState>(roomName, roomOptions)
 			: await client.joinOrCreate<BoardGameRoomState>(roomName, roomOptions);
 		let s = getStateCallbacks(room);
+		strokeLayer.connect(room, s);
 
 		s(room.state).components.onAdd((component, _index) => {
 			initComponent(
@@ -510,6 +599,7 @@
 				s,
 				room
 			);
+			strokeLayer.refreshAll();
 		});
 		s(room.state).components.onRemove((component, _key) => {
 			const boardItem = boardGameItems.get(component.id);
@@ -517,6 +607,7 @@
 			boardContainer.removeChild(boardItem);
 			boardItem.destroy({ children: true });
 			boardGameItems.delete(component.id);
+			strokeLayer.refreshAll();
 		});
 		sendCmd(room, 'init', parsePayload(loadedDecks));
 		return room;
@@ -572,6 +663,7 @@
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);
 		sendCmd(room, 'draw', { cardId: ogId });
+		strokeLayer.refreshAll();
 	}
 
 	function handleShuffleStack(item: BoardGameItemNew) {
@@ -581,11 +673,47 @@
 
 	function handlePlayCard(item: BoardGameItemNew) {
 		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
+		strokeLayer.refreshAll();
 	}
 </script>
 
 <div class="absolute inset-0">
 	<div class="full relative w-full" style="pointer-events: auto;" {@attach attachApp(app)}></div>
+
+	<div
+		class="bg-background/90 absolute top-3 left-3 z-10 flex items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur"
+	>
+		<button
+			type="button"
+			aria-label="Select tool"
+			aria-pressed={activeTool === 'select'}
+			title="Select"
+			class="text-foreground hover:bg-accent aria-pressed:bg-accent rounded-sm p-2"
+			onclick={() => selectTool('select')}
+		>
+			<MousePointer2Icon class="size-4" />
+		</button>
+		<button
+			type="button"
+			aria-label="Pen tool"
+			aria-pressed={activeTool === 'pen'}
+			title="Pen"
+			class="text-foreground hover:bg-accent aria-pressed:bg-accent rounded-sm p-2"
+			onclick={() => selectTool('pen')}
+		>
+			<PenLineIcon class="size-4" />
+		</button>
+		<button
+			type="button"
+			aria-label="Delete selected stroke"
+			title="Delete stroke"
+			disabled={!selectedStrokeId}
+			class="text-foreground hover:bg-accent rounded-sm p-2 disabled:pointer-events-none disabled:opacity-40"
+			onclick={deleteSelectedStroke}
+		>
+			<Trash2Icon class="size-4" />
+		</button>
+	</div>
 
 	<ContextMenu.Root bind:open={showContextMenu}>
 		<ContextMenu.Trigger

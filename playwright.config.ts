@@ -34,7 +34,7 @@ const loadEnvFile = (path: string, { override = false } = {}) => {
 };
 
 loadEnvFile(envPath);
-loadEnvFile(devenvPlaywrightEnvPath, { override: true });
+loadEnvFile(devenvPlaywrightEnvPath, { override: !hasExplicitPlaywrightBaseUrl });
 
 if (!hasExplicitPlaywrightBaseUrl && !hasDevenvPlaywrightEnv) {
 	throw new Error(

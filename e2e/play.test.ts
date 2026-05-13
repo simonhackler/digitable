@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import * as path from 'node:path';
 import { seedOPFS, walkDirectory } from './helpers/opfs';
-import { pixiClick, pixiDragTo, pixiState, waitForPixi } from './helpers/pixi';
+import { pixiClick, pixiDragTo, pixiPoint, pixiState, waitForPixi } from './helpers/pixi';
 
 const playtestAppOrigin = process.env.PLAYTEST_APP_ORIGIN ?? '';
 
@@ -29,6 +29,30 @@ async function openPixiSmokeTest(page: Page) {
 	await openPixiProject(page, 'pixi-play-smoke');
 }
 
+async function canvasPoint(page: Page, point: { x: number; y: number }) {
+	const box = await page.locator('canvas').boundingBox();
+	if (!box) {
+		throw new Error('Canvas is not visible');
+	}
+	return {
+		x: box.x + point.x,
+		y: box.y + point.y
+	};
+}
+
+async function drawStrokeOnItem(page: Page, id: string) {
+	const point = await pixiPoint(page, id);
+	const start = await canvasPoint(page, { x: point.x - 28, y: point.y - 20 });
+	const end = await canvasPoint(page, { x: point.x + 28, y: point.y + 20 });
+
+	await page.getByRole('button', { name: 'Pen tool' }).click();
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y, { steps: 2 });
+	await page.mouse.up();
+	await page.getByRole('button', { name: 'Select tool' }).click();
+}
+
 async function signUp(page: Page) {
 	const email = `playtest-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
 
@@ -40,6 +64,90 @@ async function signUp(page: Page) {
 	await page.getByRole('button', { name: 'Create account' }).click();
 	await expect(page).toHaveURL(/\/app\/games$/);
 }
+
+test('card strokes are synced to the card and can be deleted', async ({ page }) => {
+	test.setTimeout(60_000);
+	await openPixiSmokeTest(page);
+
+	let firstStackId: string | null = null;
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				firstStackId = state.visibleStackIds[0] ?? null;
+				return state.visibleStackIds.length;
+			},
+			{ timeout: 20_000 }
+		)
+		.toBe(1);
+
+	expect(firstStackId).toBeTruthy();
+	await pixiClick(page, firstStackId!);
+	await page.keyboard.press('d');
+
+	let boardCardId: string | null = null;
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				boardCardId = state.visibleBoardCardIds[0] ?? null;
+				return state.visibleBoardCardIds.length;
+			},
+			{ timeout: 20_000 }
+		)
+		.toBe(1);
+
+	expect(boardCardId).toBeTruthy();
+	await drawStrokeOnItem(page, boardCardId!);
+
+	let strokeId: string | null = null;
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				strokeId = state.strokes[0]?.id ?? null;
+				return state.strokes.map((stroke) => ({
+					componentId: stroke.componentId,
+					parentId: stroke.parentId,
+					visible: stroke.visible,
+					face: stroke.face,
+					hasPoints: stroke.points > 1
+				}));
+			},
+			{ timeout: 20_000 }
+		)
+		.toEqual([
+			{
+				componentId: boardCardId,
+				parentId: boardCardId,
+				visible: true,
+				face: 'back',
+				hasPoints: true
+			}
+		]);
+
+	await pixiDragTo(page, boardCardId!, { x: 640, y: 220 });
+
+	await expect
+		.poll(async () => {
+			const state = await pixiState(page);
+			return state.strokes[0]?.parentId;
+		})
+		.toBe(boardCardId);
+
+	const point = await pixiPoint(page, boardCardId!);
+	const click = await canvasPoint(page, point);
+	await page.mouse.click(click.x, click.y);
+	await page.getByRole('button', { name: 'Delete selected stroke' }).click();
+
+	expect(strokeId).toBeTruthy();
+	await expect
+		.poll(async () => {
+			const state = await pixiState(page);
+			return state.strokes.some((stroke) => stroke.id === strokeId);
+		})
+		.toBe(false);
+});
 
 test('drawing from a 2-card stack keeps one card on the board', async ({ page }) => {
 	test.setTimeout(60_000);

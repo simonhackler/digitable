@@ -1,11 +1,21 @@
 import type { Application } from 'pixi.js';
 import type { BoardGameItemNew } from '$lib/pixi/item';
 import type { HandContainer } from './HandContainer';
+import type { StrokeLayer } from './strokes';
+import type { StrokeFace } from 'boardgame-server/src/rooms/schema/MyRoomState';
 
 export interface PlayE2EState {
 	visibleStackIds: string[];
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
+	strokes: {
+		id: string;
+		componentId: string;
+		face: StrokeFace;
+		visible: boolean;
+		parentId: string | null;
+		points: number;
+	}[];
 }
 
 interface BoundsSnapshot {
@@ -56,7 +66,8 @@ function toBoundsSnapshot(app: Application, item: BoardGameItemNew): BoundsSnaps
 export function installPlayE2EBridge(
 	app: Application,
 	boardGameItems: Map<string, BoardGameItemNew>,
-	handContainer: HandContainer
+	handContainer: HandContainer,
+	strokeLayer: StrokeLayer
 ) {
 	const bridge: PlayE2EBridge = {
 		state() {
@@ -84,7 +95,8 @@ export function installPlayE2EBridge(
 			return {
 				visibleStackIds,
 				visibleBoardCardIds,
-				handCardIds
+				handCardIds,
+				strokes: strokeLayer.strokeSnapshots()
 			};
 		},
 		bounds(id) {

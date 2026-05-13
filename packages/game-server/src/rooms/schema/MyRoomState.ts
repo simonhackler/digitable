@@ -4,6 +4,18 @@ export interface InitGamePayload {
 	stacks: { componentIds: string[] }[];
 }
 
+export type StrokeCap = 'round' | 'butt' | 'square';
+export type StrokeJoin = 'round' | 'bevel' | 'miter';
+export type StrokeFace = 'front' | 'back';
+
+export interface StrokeStylePayload {
+	color?: number;
+	width?: number;
+	alpha?: number;
+	cap?: StrokeCap;
+	join?: StrokeJoin;
+}
+
 // Should support different types of positions. For example a position might have differen
 // so for example there might be a board that is a grid (Summonners War), a board that is a freeform x, y (Warhammer) board or
 // a graph based board. So a position has to know for what board type it is and would probably even need a reference to the board itself?
@@ -125,12 +137,65 @@ export class Player extends Schema {
 	}
 }
 
+export class StrokePoint extends Schema {
+	@type('number') x: number;
+	@type('number') y: number;
+
+	constructor(x = 0, y = 0) {
+		super();
+		this.x = x;
+		this.y = y;
+	}
+}
+
+export class StrokeStyle extends Schema {
+	@type('number') color: number;
+	@type('number') width: number;
+	@type('number') alpha: number;
+	@type('string') cap: StrokeCap;
+	@type('string') join: StrokeJoin;
+
+	constructor(style: StrokeStylePayload = {}) {
+		super();
+		this.color = style.color ?? 0x111111;
+		this.width = style.width ?? 8;
+		this.alpha = style.alpha ?? 1;
+		this.cap = style.cap ?? 'round';
+		this.join = style.join ?? 'round';
+	}
+}
+
+export class Stroke extends Schema {
+	@type('string') id: string;
+	@type('string') componentId: string;
+	@type('string') face: StrokeFace;
+	@type([StrokePoint]) points: ArraySchema<StrokePoint>;
+	@type(StrokeStyle) style: StrokeStyle;
+
+	constructor(
+		id = '',
+		componentId = '',
+		face: StrokeFace = 'front',
+		points: StrokePoint[] = [],
+		style: StrokeStyle = new StrokeStyle()
+	) {
+		super();
+		this.id = id;
+		this.componentId = componentId;
+		this.face = face;
+		this.points = new ArraySchema<StrokePoint>();
+		this.points.push(...points);
+		this.style = style;
+	}
+}
+
 export class BoardGameRoomState extends Schema {
 	@type({ map: Component }) components: MapSchema<Component>;
 	@type({ map: Positionable }) positions: MapSchema<Positionable>;
 	@type({ map: Flippable }) flippable: MapSchema<Flippable>;
 	@type({ map: Stack }) stacks: MapSchema<Stack>;
 	@type({ map: Player }) players: MapSchema<Player>;
+	@type({ map: Stroke }) strokes: MapSchema<Stroke>;
 
 	constructor() {
 		super();
@@ -139,5 +204,6 @@ export class BoardGameRoomState extends Schema {
 		this.flippable = new MapSchema<Flippable>();
 		this.stacks = new MapSchema<Stack>();
 		this.players = new MapSchema<Player>();
+		this.strokes = new MapSchema<Stroke>();
 	}
 }
