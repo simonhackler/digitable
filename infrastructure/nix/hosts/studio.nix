@@ -11,6 +11,9 @@
   studioPort,
   ...
 }: let
+  databaseName = "app";
+  databaseUser = "app";
+  databaseUrl = "postgresql:///${databaseName}?host=/run/postgresql&user=${databaseUser}";
   isDirectHost =
     studioDomain == "localhost"
     || builtins.match "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" studioDomain != null;
@@ -25,8 +28,9 @@
   }: {
     inherit description;
     wantedBy = ["multi-user.target"];
-    after = ["network-online.target"];
+    after = ["network-online.target" "db-migrate.service"];
     wants = ["network-online.target"];
+    requires = ["db-migrate.service"];
 
     environment = {
       HOST = "127.0.0.1";
@@ -34,6 +38,7 @@
       ORIGIN = studioOrigin;
       NODE_ENV = "production";
       BETTER_AUTH_SECRET = "%m";
+      DATABASE_URL = databaseUrl;
       WEB_ORIGIN = studioOrigin;
       SECOND_WEB_ORIGIN = "${studioOrigin}/app";
     }
@@ -89,10 +94,10 @@ in {
 
   services.postgresql = {
     enable = true;
-    ensureDatabases = ["app"];
+    ensureDatabases = [databaseName];
     ensureUsers = [
       {
-        name = "app";
+        name = databaseUser;
         ensureDBOwnership = true;
       }
     ];
@@ -126,6 +131,26 @@ in {
           redir https://${studioDomain}{uri} permanent
         '';
       };
+  };
+
+  systemd.services.db-migrate = {
+    description = "Digitable database migrations";
+    wantedBy = ["multi-user.target"];
+    after = ["postgresql.service"];
+    wants = ["postgresql.service"];
+    before = ["studio.service" "app.service"];
+
+    environment = {
+      DATABASE_URL = databaseUrl;
+      NODE_ENV = "production";
+    };
+
+    serviceConfig = {
+      Type = "oneshot";
+      WorkingDirectory = "${studioPackage}/packages/db";
+      ExecStart = "${pkgs.bun}/bin/bun run db:migrate";
+      RemainAfterExit = true;
+    };
   };
 
   systemd.services.studio = mkNodeService {
