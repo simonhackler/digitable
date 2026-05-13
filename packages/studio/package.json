@@ -39,6 +39,7 @@
 	},
 	"dependencies": {
 		"@svg-table/auth": "workspace:*",
+		"@svg-table/db": "workspace:*",
 		"feed": "^5.2.0"
 	}
 }

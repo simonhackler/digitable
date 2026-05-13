@@ -6,6 +6,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./client": "./src/client.ts",
+		"./policies": "./src/policies.ts",
 		"./schema": "./src/schema/index.ts",
 		"./private-rooms": "./src/private-rooms.ts",
 		"./tickets": "./src/tickets.ts"
@@ -14,7 +15,8 @@
 		"auth:generate": "bunx @better-auth/cli@latest generate --config ../auth/src/cli.ts --output ./src/schema/auth.ts --yes",
 		"db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
 		"db:migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
-		"db:studio": "drizzle-kit studio --config ./drizzle.config.ts"
+		"db:studio": "drizzle-kit studio --config ./drizzle.config.ts",
+		"policies:sync": "bun src/sync-policies.ts"
 	},
 	"dependencies": {
 		"dotenv": "latest",

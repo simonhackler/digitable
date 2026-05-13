@@ -17,6 +17,14 @@ This project is a boardgame design and testing tool
 `devenv shell --quiet` to run commands
 `bun playwright test` for playwright. Playwright is installed via devenv
 
+### Playwright Checks
+
+- Use the repo runner inside devenv: `devenv shell -- bun run playwright test <spec-or-grep>`.
+- If checking a page on an already-running dev server, set the base URL on the same command, for example: `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5179 devenv shell -- bun run playwright test e2e/example.test.ts`.
+- Do not run `npx playwright install`, `playwright install`, or other browser install commands. The devenv Playwright setup provides the browser path used by `bun run playwright test`.
+- Do not use ad hoc `node -e` scripts that import Playwright for validation. Add or reuse a focused Playwright spec, run it with `bun run playwright test`, and remove temporary specs before finishing.
+- For visual or viewport checks, prefer assertions such as `toBeVisible()` and `toBeInViewport()` in a focused Playwright test. Capture screenshots through the test runner only when they help diagnose a failure.
+
 ## Key Technologies
 
 - **Frontend**: SvelteKit with Svelte 5, TypeScript, Tailwind CSS

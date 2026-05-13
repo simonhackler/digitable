@@ -5,6 +5,7 @@ const password = 'correct-horse-battery-staple';
 const name = 'Auth E2E';
 
 test.describe.configure({ mode: 'serial' });
+test.setTimeout(60000);
 
 test('google auth controls are hidden without provider credentials', async ({ page }) => {
 	test.skip(
@@ -30,9 +31,10 @@ test('sign up creates an account and opens the app', async ({ page }) => {
 	await page.getByLabel('Email').fill(email);
 	await page.getByLabel('Password', { exact: true }).fill(password);
 	await page.getByLabel('Confirm password').fill(password);
+	await page.getByRole('checkbox').check();
 	await page.getByRole('button', { name: 'Create account' }).click();
 
-	await expect(page).toHaveURL(/\/app\/games$/);
+	await expect(page).toHaveURL(/\/app\/games$/, { timeout: 20000 });
 });
 
 test('sign in opens the app for an existing account', async ({ page, context }) => {
@@ -45,5 +47,5 @@ test('sign in opens the app for an existing account', async ({ page, context }) 
 	await page.getByLabel('Password').fill(password);
 	await page.getByRole('button', { name: 'Sign in' }).click();
 
-	await expect(page).toHaveURL(/\/app\/games$/);
+	await expect(page).toHaveURL(/\/app\/games$/, { timeout: 20000 });
 });

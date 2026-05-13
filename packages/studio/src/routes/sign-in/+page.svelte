@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { base, resolve } from '$app/paths';
+	import AuthBackdrop from '$lib/components/AuthBackdrop.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import type { PageProps } from './$types';
@@ -30,8 +31,7 @@
 		return text || 'Sign in failed. Check your credentials and try again.';
 	}
 
-	async function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
-		event.preventDefault();
+	async function handleSubmit() {
 		errorMessage = '';
 		isSubmitting = true;
 
@@ -93,40 +93,23 @@
 	<title>Sign In | Digitable</title>
 </svelte:head>
 
-<div
-	class="min-h-screen bg-[radial-gradient(circle_at_top_left,#fde7b3_0%,transparent_28%),radial-gradient(circle_at_bottom_right,#cad8ff_0%,transparent_32%),linear-gradient(180deg,#f7f3ea_0%,#fdfcf8_100%)] text-[#171717]"
->
+<div class="relative min-h-screen overflow-hidden bg-[#737d91] text-[#f8f4eb]">
+	<AuthBackdrop />
 	<main
-		class="mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center"
+		class="pointer-events-none relative z-10 mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center"
 	>
 		<section class="flex flex-col justify-center gap-6">
-			<p class="text-sm font-semibold tracking-[0.3em] text-[#6d5d37] uppercase">Digitable App</p>
+			<p class="text-sm font-semibold tracking-[0.3em] text-white/75 uppercase">Digitable App</p>
 			<div class="max-w-xl space-y-4">
 				<h1 class="font-['Newsreader'] text-4xl leading-tight sm:text-5xl">
 					Pick your project back up without losing momentum.
 				</h1>
-				<p class="text-lg text-[#4f4a42] sm:text-xl">
-					Sign in to open your games, jump into playtests, and keep your design files moving.
-				</p>
-			</div>
-			<div class="grid gap-3 text-sm text-[#3f3a32] sm:max-w-md">
-				<div
-					class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur"
-				>
-					Your projects stay in the app, ready to edit or playtest.
-				</div>
-				<div
-					class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur"
-				>
-					Private rooms and game tickets keep collaborative sessions tied to your account.
-				</div>
 			</div>
 		</section>
 
 		<section class="mx-auto w-full max-w-md">
 			<form
-				class="rounded-[28px] border border-black/8 bg-white/88 p-6 shadow-[0_30px_70px_rgba(20,20,20,0.12)] backdrop-blur sm:p-8"
-				onsubmit={handleSubmit}
+				class="pointer-events-auto rounded-[28px] border border-white/45 bg-white/95 p-6 text-[#171717] shadow-[0_30px_70px_rgba(20,20,20,0.22)] backdrop-blur sm:p-8"
 			>
 				<div class="space-y-2">
 					<p class="text-sm font-semibold tracking-[0.24em] text-[#8a6c27] uppercase">Sign in</p>
@@ -207,19 +190,15 @@
 					</p>
 				{/if}
 
-				<Button class="mt-6 w-full justify-center" type="submit" size="lg" disabled={isSubmitting}>
+				<Button
+					class="mt-6 w-full justify-center"
+					type="button"
+					size="lg"
+					disabled={isSubmitting}
+					onclick={handleSubmit}
+				>
 					{isSubmitting ? 'Signing in...' : 'Sign in'}
 				</Button>
-
-				<p class="mt-4 text-center text-sm text-[#5d584f]">
-					Want to start from scratch?
-					<a
-						class="font-medium text-[#171717] underline underline-offset-4"
-						href={resolve('/sign-up')}
-					>
-						Go to sign up
-					</a>
-				</p>
 			</form>
 		</section>
 	</main>
