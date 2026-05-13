@@ -31,8 +31,7 @@
 		return text || 'Sign up failed. Try again in a moment.';
 	}
 
-	async function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
-		event.preventDefault();
+	async function handleSubmit() {
 		errorMessage = '';
 
 		if (password !== confirmPassword) {
@@ -65,6 +64,16 @@
 			return;
 		}
 
+		const policyResponse = await fetch(`${base}/api/legal/accept-current`, {
+			method: 'POST'
+		});
+
+		if (!policyResponse.ok) {
+			errorMessage = await readErrorMessage(policyResponse);
+			isSubmitting = false;
+			return;
+		}
+
 		window.location.assign('/app/games');
 	}
 </script>
@@ -90,7 +99,6 @@
 		<section class="mx-auto w-full max-w-md">
 			<form
 				class="pointer-events-auto rounded-[28px] border border-white/45 bg-white/95 p-6 text-[#171717] shadow-[0_30px_70px_rgba(20,20,20,0.22)] backdrop-blur sm:p-8"
-				onsubmit={handleSubmit}
 			>
 				<div class="space-y-2">
 					<p class="text-sm font-semibold tracking-[0.24em] text-[#59708a] uppercase">Sign up</p>
@@ -180,7 +188,13 @@
 					</p>
 				{/if}
 
-				<Button class="mt-6 w-full justify-center" type="submit" size="lg" disabled={isSubmitting}>
+				<Button
+					class="mt-6 w-full justify-center"
+					type="button"
+					size="lg"
+					disabled={isSubmitting}
+					onclick={handleSubmit}
+				>
 					{isSubmitting ? 'Creating account...' : 'Create account'}
 				</Button>
 			</form>

@@ -28,8 +28,7 @@
 		return text || 'Sign in failed. Check your credentials and try again.';
 	}
 
-	async function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
-		event.preventDefault();
+	async function handleSubmit() {
 		errorMessage = '';
 		isSubmitting = true;
 
@@ -75,7 +74,6 @@
 		<section class="mx-auto w-full max-w-md">
 			<form
 				class="pointer-events-auto rounded-[28px] border border-white/45 bg-white/95 p-6 text-[#171717] shadow-[0_30px_70px_rgba(20,20,20,0.22)] backdrop-blur sm:p-8"
-				onsubmit={handleSubmit}
 			>
 				<div class="space-y-2">
 					<p class="text-sm font-semibold tracking-[0.24em] text-[#8a6c27] uppercase">Sign in</p>
@@ -119,7 +117,13 @@
 					</p>
 				{/if}
 
-				<Button class="mt-6 w-full justify-center" type="submit" size="lg" disabled={isSubmitting}>
+				<Button
+					class="mt-6 w-full justify-center"
+					type="button"
+					size="lg"
+					disabled={isSubmitting}
+					onclick={handleSubmit}
+				>
 					{isSubmitting ? 'Signing in...' : 'Sign in'}
 				</Button>
 			</form>
