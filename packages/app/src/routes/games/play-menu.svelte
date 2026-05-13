@@ -22,7 +22,7 @@
 		playtestError = null;
 
 		try {
-			const files = await exportProjectForPlaytest(fileSystem, activeGame.name);
+			const files = await exportProjectForPlaytest(fileSystem);
 			const response = await fetch(resolve('/api/playtests'), {
 				method: 'POST',
 				headers: {

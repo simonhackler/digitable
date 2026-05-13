@@ -39,7 +39,7 @@ async function walkFiles(
 	currentPath = ''
 ): Promise<PlaytestUploadFile[]> {
 	const listPath = currentPath ? joinFsPath(rootPath, currentPath) : rootPath;
-	const entries = await fsDir.list(listPath);
+	const entries = listPath ? await fsDir.list(listPath) : await fsDir.list();
 	if (entries.error) {
 		throw new Error(entries.error.message);
 	}
@@ -72,7 +72,7 @@ async function walkFiles(
 
 export async function exportProjectForPlaytest(
 	fsDir: FsDir,
-	projectName: string
+	projectName = ''
 ): Promise<PlaytestUploadFile[]> {
 	return walkFiles(fsDir, projectName);
 }
