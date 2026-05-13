@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onNavigate } from '$app/navigation';
+	import { Button } from '$lib/components/ui/button';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { useDebounce } from 'runed';
 	import Papa from 'papaparse';
@@ -20,6 +22,7 @@
 	import type { SvgCard } from '../../../types';
 	import { assert, requireParam } from '$lib/utils/assert';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 
 	const {
 		svgTemplateFront,
@@ -78,10 +81,10 @@
 	let showFront = $state(true);
 	const svgsToShow = $derived(showFront ? cards.map((c) => c.front) : cards.map((c) => c.back));
 
-	const saveDebounced = useDebounce(saveCsv, 1000);
-
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
 	let selectionRects: SVGRectElement[] = [];
+	let saveStatus = $state<'saved' | 'saving' | 'error'>('saved');
+	let activeSavePromises = $state<Promise<void>[]>([]);
 
 	function flip() {
 		showFront = !showFront;
@@ -102,6 +105,48 @@
 		const res = await deckDir.data.write(csvFile.name, csvFile);
 		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);
 	}
+
+	function saveCsvAndTrack() {
+		saveStatus = 'saving';
+		const promise = saveCsv();
+		activeSavePromises = [...activeSavePromises, promise];
+		void promise
+			.then(() => {
+				saveStatus = 'saved';
+			})
+			.catch((error) => {
+				saveStatus = 'error';
+				console.error('Failed to save data.csv', error);
+			})
+			.finally(() => {
+				activeSavePromises = activeSavePromises.filter(
+					(activePromise) => activePromise !== promise
+				);
+			});
+		return promise;
+	}
+
+	const saveDebounced = useDebounce(saveCsvAndTrack, 1000);
+
+	function scheduleSave() {
+		saveStatus = 'saving';
+		void saveDebounced().catch((error) => {
+			saveStatus = 'error';
+			console.error('Failed to save data.csv', error);
+		});
+	}
+
+	async function flushPendingSaves() {
+		await saveDebounced.runScheduledNow();
+		await Promise.allSettled(activeSavePromises);
+	}
+
+	onNavigate(() => {
+		if (!saveDebounced.pending && activeSavePromises.length === 0) {
+			return;
+		}
+		return flushPendingSaves();
+	});
 
 	function clearSelectionRects() {
 		for (const rect of selectionRects) rect.remove();
@@ -210,7 +255,7 @@
 			},
 			oninsertrow(_instance, rows) {
 				const headers = spreadsheet[0].getHeaders(true) as string[];
-				const rowsData = rows.map((row) => row.data.map((x) => x.toString()));
+				const rowsData = rows.map((row) => row.data.map((x) => String(x ?? '')));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
 
 				const newCards: SvgCard[] = rowsData.map((row) => ({
@@ -218,13 +263,15 @@
 					back: generateSvg(svgTemplateBack, headers, row, imagePaths)
 				}));
 				cards = [...cards.slice(0, minRow), ...newCards, ...cards.slice(minRow, cards.length)];
+				scheduleSave();
 			},
 			onafterchanges(_worksheet, _records) {
-				saveDebounced();
+				scheduleSave();
 			},
 			ondeleterow(_instance, removedRows) {
 				const filteredOutCards = removedRows.map((row) => cards[row]);
 				cards = cards.filter((card) => !filteredOutCards.includes(card));
+				scheduleSave();
 			},
 			oneditionstart(_worksheet, cell, x, y) {
 				cell.oninput = (e) => {
@@ -336,6 +383,33 @@
 			initialSetupForSvgItem(card.front, col, data[0], imagePaths);
 			initialSetupForSvgItem(card.back, col, data[0], imagePaths);
 		}
+		scheduleSave();
+	}
+
+	function appendRow() {
+		const worksheet = spreadsheet[0];
+		if (!worksheet) return;
+		const headers = worksheet.getHeaders(true) as string[];
+		const row = headers.map((_, index) => (index === 0 ? crypto.randomUUID() : ''));
+		const result = worksheet.insertRow(row);
+		assert(result !== false, 'Failed to insert row into spreadsheet');
+	}
+
+	function appendColumn() {
+		const worksheet = spreadsheet[0];
+		if (!worksheet) return;
+		const headers = worksheet.getHeaders(true) as string[];
+		const title = `Column ${headers.length}`;
+		const data = Array(cards.length).fill('');
+		const result = worksheet.insertColumn(data, headers.length - 1, false, [
+			{
+				title,
+				type: 'text',
+				width: 120
+			}
+		]);
+		assert(result !== false, 'Failed to insert column into spreadsheet');
+		scheduleSave();
 	}
 
 	let selection: {
@@ -401,27 +475,60 @@
 		{showFront}
 	></Toolbar>
 </div>
-<ContextMenu.Root>
-	<ContextMenu.Trigger>
-		<div id="spreadsheet" {@attach mountSpreadsheet}></div>
-	</ContextMenu.Trigger>
-	<ContextMenu.Content>
-		{#each contextItems as item (item)}
-			{#if item.type === 'line'}
-				<ContextMenu.Separator />
-			{:else}
-				<ContextMenu.Item onclick={item.onclick}>
-					{#if item.icon}
-						<item.icon class="mr-2 h-4 w-4" />
+<div class="flex items-start gap-2 px-2 pb-2">
+	<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
+		<ContextMenu.Root>
+			<ContextMenu.Trigger>
+				<div id="spreadsheet" {@attach mountSpreadsheet}></div>
+			</ContextMenu.Trigger>
+			<ContextMenu.Content>
+				{#each contextItems as item (item)}
+					{#if item.type === 'line'}
+						<ContextMenu.Separator />
+					{:else}
+						<ContextMenu.Item onclick={item.onclick}>
+							{#if item.icon}
+								<item.icon class="mr-2 h-4 w-4" />
+							{/if}
+							{item.title}
+							{#if item.shortcut}
+								<ContextMenu.Shortcut>
+									{item.shortcut}
+								</ContextMenu.Shortcut>
+							{/if}
+						</ContextMenu.Item>
 					{/if}
-					{item.title}
-					{#if item.shortcut}
-						<ContextMenu.Shortcut>
-							{item.shortcut}
-						</ContextMenu.Shortcut>
-					{/if}
-				</ContextMenu.Item>
-			{/if}
-		{/each}
-	</ContextMenu.Content>
-</ContextMenu.Root>
+				{/each}
+			</ContextMenu.Content>
+		</ContextMenu.Root>
+		<Button
+			variant="outline"
+			size="icon-sm"
+			class="self-center"
+			aria-label="Append column"
+			title="Append column"
+			onclick={appendColumn}
+		>
+			<PlusIcon class="size-4" />
+		</Button>
+		<Button
+			variant="outline"
+			size="icon-sm"
+			class="justify-self-center"
+			aria-label="Append row"
+			title="Append row"
+			onclick={appendRow}
+		>
+			<PlusIcon class="size-4" />
+		</Button>
+	</div>
+	<div class="text-muted-foreground pt-1 text-sm" aria-live="polite">
+		{#if saveStatus === 'saving'}
+			Saving
+		{:else if saveStatus === 'error'}
+			Error
+		{:else}
+			Saved
+		{/if}
+	</div>
+</div>

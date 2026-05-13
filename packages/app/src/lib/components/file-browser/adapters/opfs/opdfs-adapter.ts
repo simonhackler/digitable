@@ -19,7 +19,11 @@ import {
  * File System Access API directories.
  */
 export class OPFSAdapter implements FsDir {
-	public constructor(private readonly root: FileSystemDirectoryHandle) {}
+	public readonly name: string;
+
+	public constructor(private readonly root: FileSystemDirectoryHandle) {
+		this.name = root.name;
+	}
 
 	static async create(): Promise<OPFSAdapter> {
 		const root = await navigator.storage.getDirectory();
@@ -45,6 +49,60 @@ export class OPFSAdapter implements FsDir {
 		}
 
 		return dir;
+	}
+
+	private async getEntryKind(path: string): Promise<FsEntry['kind']> {
+		const { parent, name } = this.splitPath(path);
+		const dir = parent ? await this.getDirectoryHandle(parent) : this.root;
+
+		try {
+			await dir.getDirectoryHandle(name);
+			return 'directory';
+		} catch (error) {
+			const cause = fsCause(error);
+			if (cause.name === 'TypeMismatchError') return 'file';
+			if (cause.name !== 'NotFoundError') throw error;
+		}
+
+		const fileHandle = await dir.getFileHandle(name);
+		return fileHandle.kind;
+	}
+
+	private async pathExists(path: string): Promise<FsResult<boolean>> {
+		try {
+			await this.getEntryKind(path);
+			return Ok(true);
+		} catch (error) {
+			if (fsCause(error).name === 'NotFoundError') return Ok(false);
+			return fsFailed('move', error, path);
+		}
+	}
+
+	private async copyDirectory(sourcePath: string, targetPath: string): Promise<FsResult<void>> {
+		const ensured = await this.ensureDir(targetPath);
+		if (ensured.error) return ensured;
+
+		const entries = await this.list(sourcePath);
+		if (entries.error) return entries;
+
+		for (const entry of entries.data) {
+			const sourceEntryPath = joinFsPath(sourcePath, entry.name);
+			const targetEntryPath = joinFsPath(targetPath, entry.name);
+
+			if (entry.kind === 'directory') {
+				const copied = await this.copyDirectory(sourceEntryPath, targetEntryPath);
+				if (copied.error) return copied;
+				continue;
+			}
+
+			const file = await this.read(sourceEntryPath);
+			if (file.error) return file;
+
+			const written = await this.write(targetEntryPath, file.data);
+			if (written.error) return written;
+		}
+
+		return Ok(undefined);
 	}
 
 	async list(path?: string): Promise<FsResult<FsEntry[]>> {
@@ -156,6 +214,72 @@ export class OPFSAdapter implements FsDir {
 				}
 			}
 		);
+	}
+
+	async move(
+		sourcePath: string,
+		targetPath: string,
+		options?: { overwrite?: boolean }
+	): Promise<FsResult<void>> {
+		const parsedSource = parseFsPath('move', sourcePath);
+		if (parsedSource.error) return parsedSource;
+
+		const parsedTarget = parseFsPath('move', targetPath);
+		if (parsedTarget.error) return parsedTarget;
+
+		const source = joinFsPath(sourcePath);
+		const target = joinFsPath(targetPath);
+		if (source === target) return Ok(undefined);
+
+		try {
+			const kind = await this.getEntryKind(source);
+
+			if (kind === 'directory' && target.startsWith(`${source}/`)) {
+				return FsError.InvalidPath({
+					operation: 'move',
+					path: targetPath,
+					reason: 'Cannot move a directory into itself.'
+				});
+			}
+
+			const targetExists = await this.pathExists(target);
+			if (targetExists.error) return targetExists;
+
+			if (targetExists.data) {
+				if (!options?.overwrite) {
+					return FsError.Failed({
+						operation: 'move',
+						path: targetPath,
+						cause: { message: 'Target already exists.' }
+					});
+				}
+
+				const removedTarget = await this.remove(target, { recursive: true });
+				if (removedTarget.error) return removedTarget;
+			}
+
+			const copied =
+				kind === 'directory'
+					? await this.copyDirectory(source, target)
+					: await this.read(source).then(async (file) =>
+							file.error ? file : await this.write(target, file.data)
+						);
+
+			if (copied.error) {
+				await this.remove(target, { recursive: true });
+				return copied;
+			}
+
+			const removedSource = await this.remove(source, { recursive: kind === 'directory' });
+			if (removedSource.error) {
+				await this.remove(target, { recursive: true });
+				return removedSource;
+			}
+
+			return Ok(undefined);
+		} catch (error) {
+			return fsFailed('move', error, sourcePath);
+		}
 	}
 
 	async remove(path: string, options?: { recursive?: boolean }): Promise<FsResult<void>> {

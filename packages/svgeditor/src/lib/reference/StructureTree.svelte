@@ -354,6 +354,7 @@
 	};
 
 	const handleRenameKeydown = (row: FlatRow, event: KeyboardEvent) => {
+		event.stopPropagation();
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			commitRename(row);
