@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { CheckCircle2 } from '@lucide/svelte';
 
 	let { data, form } = $props();
@@ -40,14 +39,14 @@
 							<p class="font-medium">{policyLabels[policy.policyType]}</p>
 							<p class="text-sm text-[#5d6459]">Version {policy.version}</p>
 						</div>
+						<!-- eslint-disable svelte/no-navigation-without-resolve -->
 						<a
 							class="text-sm font-medium underline underline-offset-4"
-							href={policy.policyType === 'terms'
-								? resolve('/terms-and-conditions')
-								: resolve('/privacy-policy')}
+							href={policy.policyType === 'terms' ? '/terms-and-conditions' : '/privacy-policy'}
 						>
 							Open
 						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					</div>
 				{/each}
 			</div>

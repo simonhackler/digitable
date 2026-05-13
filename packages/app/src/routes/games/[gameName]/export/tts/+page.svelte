@@ -6,11 +6,54 @@
 	import { getProjectDataContext } from '../export-context.svelte';
 	import { getFileSystemContext } from '../../../context';
 	import { requireParam } from '$lib/utils/assert';
+	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 
 	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
 	const proj = getProjectDataContext();
 	const projectData = await proj();
+
+	const formatTimestamp = (date: Date) => {
+		const pad = (value: number) => value.toString().padStart(2, '0');
+		return (
+			[date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-') +
+			`_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`
+		);
+	};
+
+	const createExportRun = async () => {
+		const baseWritePath = joinFsPath(projectName, 'tts-export');
+		const baseJsonPath = joinFsPath('tts-export');
+		const timestamp = formatTimestamp(new Date());
+		const existingFolders = new Set<string>();
+		const existing = await fileSystem.list(baseWritePath);
+
+		if (existing.error && existing.error.name !== 'NotFoundError') {
+			throw existing.error;
+		}
+
+		if (!existing.error) {
+			for (const entry of existing.data) {
+				if (entry.kind === 'directory') existingFolders.add(entry.name);
+			}
+		}
+
+		for (let attempt = 1; ; attempt += 1) {
+			const folderName = attempt === 1 ? timestamp : `${timestamp}-${attempt}`;
+			if (existingFolders.has(folderName)) continue;
+
+			const writePath = joinFsPath(baseWritePath, folderName);
+			const exportDir = await fileSystem.ensureDir(writePath);
+			if (exportDir.error) throw exportDir.error;
+
+			return {
+				writePath,
+				jsonPath: joinFsPath(baseJsonPath, folderName)
+			};
+		}
+	};
+
+	const exportRun = await createExportRun();
 
 	const projectSheets = $derived(
 		projectData.projects.map((p) => {
@@ -39,7 +82,7 @@
 	const exportingSheet = $derived(sheets[exportIndex]);
 	const message = $derived.by(() => {
 		if (finished) {
-			return 'TTS export finished successfully!';
+			return `TTS export finished successfully! Saved to ${exportRun.writePath}`;
 		}
 		if (exportIndex >= sheets.length) {
 			return 'generating TTS export…';
@@ -55,8 +98,6 @@
 		const CARDS_PER_ROW = 10; // <-- match whatever TtsExport used
 		const makeGUID = () => Math.random().toString(36).slice(2, 6);
 
-		const path = `${projectName}/tts-export`;
-
 		const ttsDecks = [];
 		let deckIndex = 1;
 		for (const project of projectSheets) {
@@ -71,8 +112,8 @@
 					continue;
 				}
 
-				const faceUrl = `file:///home/simon/data/projects/boardgame/projects/${path}/${frontSheet.name}_sheet.png`;
-				const backUrl = `file:///home/simon/data/projects/boardgame/projects/${path}/${backSheet.name}_sheet.png`;
+				const faceUrl = joinFsPath(exportRun.jsonPath, `${frontSheet.name}_sheet.png`);
+				const backUrl = joinFsPath(exportRun.jsonPath, `${backSheet.name}_sheet.png`);
 
 				const cardCount = frontSheet.svgs.length;
 				// const numWidth = Math.min(cardCount, CARDS_PER_ROW);
@@ -122,7 +163,7 @@
 
 		const jsonBlob = new Blob([JSON.stringify(ttsSave, null, 2)], { type: 'application/json' });
 		const jsonFile = new File([jsonBlob], `${projectName}.json`);
-		const exportDir = await fileSystem.ensureDir(path);
+		const exportDir = await fileSystem.ensureDir(exportRun.writePath);
 		if (exportDir.error) throw exportDir.error;
 		const written = await exportDir.data.write(jsonFile.name, jsonFile);
 		if (written.error) throw written.error;
@@ -149,7 +190,12 @@
 
 <div class="hide">
 	<div>
-		<TtsExport {sheets} gameName={projectName} {onExported} />
+		<TtsExport
+			{sheets}
+			gameName={projectName}
+			exportFolderPath={exportRun.writePath}
+			{onExported}
+		/>
 	</div>
 </div>
 
