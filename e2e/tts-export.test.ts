@@ -3,7 +3,7 @@ import type { Page, TestInfo } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { seedOPFS, walkDirectory } from './helpers/opfs';
+import { seedProjectFiles, useBrowserStorage } from './helpers/opfs';
 
 const projectName = 'tts-local-images';
 const westernProjectName = 'western-cards';
@@ -65,7 +65,7 @@ async function writeTextFileToOPFS(page: Page, path: string, contents: string, t
 	);
 }
 
-async function seedProject(page: Page) {
+async function seedTtsLocalProject(page: Page) {
 	await Promise.all(
 		files.map((file) => writeTextFileToOPFS(page, file.path, file.contents, file.type))
 	);
@@ -131,6 +131,13 @@ async function ttsExportFolders(page: Page, project: string) {
 				/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?$/.test(entry.name)
 		)
 		.map((entry) => entry.name);
+}
+
+async function latestTtsExportFolder(page: Page, project: string) {
+	const folders = await ttsExportFolders(page, project);
+	const folder = folders.at(-1);
+	expect(folder).toBeTruthy();
+	return folder!;
 }
 
 async function readOpfsTextFile(page: Page, path: string) {
@@ -225,17 +232,15 @@ test('inlines local image refs before rasterizing TTS sheets', async ({ page }) 
 	});
 
 	await page.goto('/app/games');
-	await seedProject(page);
+	await seedTtsLocalProject(page);
 
-	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await useBrowserStorage(page, 1);
 	await page.goto(`/app/games/${projectName}/export/tts`);
 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
 		timeout: 30_000
 	});
-	const [exportFolderName] = await ttsExportFolders(page, projectName);
-	expect(exportFolderName).toBeTruthy();
+	const exportFolderName = await latestTtsExportFolder(page, projectName);
 	const exportPath = `${projectName}/tts-export/${exportFolderName}`;
 	await expect(page.getByText(`Saved to ${exportPath}`)).toBeVisible();
 	expect(await opfsFileExists(page, `${exportPath}/local-image-deck_0_70_sheet.png`)).toBe(true);
@@ -269,24 +274,16 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 		}
 	});
 
-	const here = path.dirname(test.info().file);
-	const westernProjectDir = path.resolve(here, '../projects', westernProjectName);
-	const mappings = (await walkDirectory(westernProjectDir, `/${westernProjectName}`)).filter(
-		({ dest }) => !dest.includes('/tts-export/')
-	);
-
 	await page.goto('/app/games');
-	await seedOPFS(page, mappings);
+	await seedProjectFiles(page, westernProjectName);
 
-	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await useBrowserStorage(page, 1);
 	await page.goto(`/app/games/${westernProjectName}/export/tts`);
 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
 		timeout: 120_000
 	});
-	const [exportFolderName] = await ttsExportFolders(page, westernProjectName);
-	expect(exportFolderName).toBeTruthy();
+	const exportFolderName = await latestTtsExportFolder(page, westernProjectName);
 	const exportPath = `${westernProjectName}/tts-export/${exportFolderName}`;
 	const jsonExportPath = `tts-export/${exportFolderName}`;
 	await expect(page.getByText(`Saved to ${exportPath}`)).toBeVisible();
@@ -332,10 +329,9 @@ test('creates a distinct timestamped folder for each TTS export', async ({ page 
 	test.setTimeout(90_000);
 
 	await page.goto('/app/games');
-	await seedProject(page);
+	await seedTtsLocalProject(page);
 
-	await page.getByRole('button', { name: 'Use Browser' }).nth(1).click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await useBrowserStorage(page, 1);
 
 	await page.goto(`/app/games/${projectName}/export/tts`);
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({

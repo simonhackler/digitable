@@ -25,6 +25,9 @@
     if isDirectHost
     then "http://${studioDomain}:${toString gameServerPublicPort}"
     else "https://${studioDomain}:${toString gameServerPublicPort}";
+  tracewayUrl = "https://traceway.digitable.ink";
+  tracewayProjectToken = "d42d96c40edb48faa6a156375f48cc05";
+  tracewayAppVersion = "0.0.1";
   authEnvironment =
     {
       DATABASE_URL = databaseUrl;
@@ -201,6 +204,12 @@ in {
     extraServiceConfig = appSecretsServiceConfig;
     extraEnvironment = {
       BETTER_AUTH_URL = "${studioOrigin}/app";
+      OTEL_SERVICE_NAME = "digitable-app";
+      OTEL_SERVICE_VERSION = tracewayAppVersion;
+      PUBLIC_APP_VERSION = tracewayAppVersion;
+      PUBLIC_TRACEWAY_CONNECTION = "${tracewayProjectToken}@${tracewayUrl}/api/report";
+      TRACEWAY_PROJECT_TOKEN = tracewayProjectToken;
+      TRACEWAY_URL = tracewayUrl;
     };
   };
 

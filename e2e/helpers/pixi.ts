@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export interface PixiPlayState {
 	visibleStackIds: string[];
@@ -53,7 +53,9 @@ export async function pixiClick(page: Page, id: string) {
 
 export async function pixiDragTo(page: Page, id: string, target: { x: number; y: number }) {
 	const point = await pixiPoint(page, id);
-	const box = await page.locator('canvas').boundingBox();
+	const canvas = page.locator('canvas');
+	await expect(canvas).toBeVisible();
+	const box = await canvas.boundingBox();
 
 	if (!box) {
 		throw new Error('Canvas is not visible');

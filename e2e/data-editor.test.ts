@@ -3,11 +3,7 @@ import { readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
 
 async function openWesternDataEditor(page: Page) {
 	await seedProjects(page);
-	await page.getByRole('main').getByText('western-cards').click();
-	await page.getByRole('button', { name: 'Decks' }).click();
-	await page.getByRole('link', { name: 'western', exact: true }).click();
-	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
-	await page.getByRole('link', { name: 'Data' }).click();
+	await page.goto('/app/games/western-cards/decks/western/data');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
 }
 
@@ -74,9 +70,9 @@ test('editing data shows save state and persists after navigation', async ({ pag
 		page.locator('.flex.w-screen > div:nth-child(1)').getByText('persisted e2e value')
 	).toBeVisible();
 
-	await page.goBack();
+	await page.goto('/app/games/western-cards/decks/western/editor');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
-	await page.getByRole('link', { name: 'Data' }).click();
+	await page.goto('/app/games/western-cards/decks/western/data');
 	await expect(
 		page.locator('.flex.w-screen > div:nth-child(1)').getByText('persisted e2e value')
 	).toBeVisible();

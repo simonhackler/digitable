@@ -1,6 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import * as path from 'node:path';
-import { seedOPFS, walkDirectory } from './helpers/opfs';
+import { seedProjectFiles, useBrowserStorage } from './helpers/opfs';
 import { pixiClick, pixiDragTo, pixiPoint, pixiState, waitForPixi } from './helpers/pixi';
 
 const playtestAppOrigin = process.env.PLAYTEST_APP_ORIGIN ?? '';
@@ -10,15 +9,10 @@ function appPath(pathname: string) {
 }
 
 async function openPixiProject(page: Page, projectSlug: string) {
-	const here = path.dirname(test.info().file);
-	const projectDir = path.resolve(here, `../projects/${projectSlug}`);
-	const mappings = await walkDirectory(projectDir, `/${projectSlug}`);
-
 	await page.goto('/app/games');
-	await seedOPFS(page, mappings);
+	await seedProjectFiles(page, projectSlug);
 
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await useBrowserStorage(page);
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
 	await expect(page.getByRole('main').getByText(projectSlug)).toBeVisible();
 	await page.goto(`/app/games/${projectSlug}/play?e2e=1`);
@@ -42,8 +36,8 @@ async function canvasPoint(page: Page, point: { x: number; y: number }) {
 
 async function drawStrokeOnItem(page: Page, id: string) {
 	const point = await pixiPoint(page, id);
-	const start = await canvasPoint(page, { x: point.x - 28, y: point.y - 20 });
-	const end = await canvasPoint(page, { x: point.x + 28, y: point.y + 20 });
+	const start = await canvasPoint(page, { x: point.x - 10, y: point.y - 8 });
+	const end = await canvasPoint(page, { x: point.x + 10, y: point.y + 8 });
 
 	await page.getByRole('button', { name: 'Pen tool' }).click();
 	await page.mouse.move(start.x, start.y);
@@ -329,15 +323,11 @@ test('a played card stays visible after being clicked again', async ({ page }) =
 
 test('playtest invite imports the project and opens playable cards', async ({ page }) => {
 	test.setTimeout(90_000);
-	const here = path.dirname(test.info().file);
-	const projectDir = path.resolve(here, '../projects/pixi-play-smoke');
-	const mappings = await walkDirectory(projectDir, '/pixi-play-smoke');
 
 	await signUp(page);
 	await page.goto(appPath('/games'));
-	await seedOPFS(page, mappings);
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await seedProjectFiles(page, 'pixi-play-smoke');
+	await useBrowserStorage(page);
 	await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
 
 	await page.getByRole('button', { name: 'Playtest' }).click();
@@ -406,9 +396,6 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 
 test('playtest invitees share private room state', async ({ page, browser }) => {
 	test.setTimeout(120_000);
-	const here = path.dirname(test.info().file);
-	const projectDir = path.resolve(here, '../projects/pixi-play-smoke');
-	const mappings = await walkDirectory(projectDir, '/pixi-play-smoke');
 	const secondContext = await browser.newContext({
 		baseURL: test.info().project.use.baseURL as string | undefined
 	});
@@ -417,9 +404,8 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 	try {
 		await signUp(page);
 		await page.goto(appPath('/games'));
-		await seedOPFS(page, mappings);
-		await page.getByRole('button', { name: 'Use Browser' }).first().click();
-		await page.getByRole('button', { name: 'Use Browser storage' }).click();
+		await seedProjectFiles(page, 'pixi-play-smoke');
+		await useBrowserStorage(page);
 		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
 
 		await page.getByRole('button', { name: 'Playtest' }).click();

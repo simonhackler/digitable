@@ -21,6 +21,14 @@ const config = {
 		alias: {
 			$svgeditor: resolve(rootDir, '../svgeditor/src/lib')
 		},
+		experimental: {
+			instrumentation: {
+				server: true
+			},
+			tracing: {
+				server: true
+			}
+		},
 		paths: {
 			base: '/app'
 		}
