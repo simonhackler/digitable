@@ -61,6 +61,7 @@ async function signUp(page: Page) {
 	await page.getByLabel('Email').fill(email);
 	await page.getByLabel('Password', { exact: true }).fill('correct-horse-battery-staple');
 	await page.getByLabel('Confirm password').fill('correct-horse-battery-staple');
+	await page.getByRole('checkbox').check();
 	await page.getByRole('button', { name: 'Create account' }).click();
 	await expect(page).toHaveURL(/\/app\/games$/);
 }

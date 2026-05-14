@@ -18,6 +18,31 @@ export default config({
 	},
 
 	initializeExpress: (app) => {
+		app.use((req, res, next) => {
+			const allowedOrigins = [process.env.WEB_ORIGIN, process.env.SECOND_WEB_ORIGIN].filter(
+				Boolean
+			);
+			const origin = req.headers.origin;
+
+			if (origin && allowedOrigins.includes(origin)) {
+				res.setHeader('Access-Control-Allow-Origin', origin);
+				res.setHeader('Vary', 'Origin');
+			}
+
+			res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+			res.setHeader(
+				'Access-Control-Allow-Headers',
+				req.headers['access-control-request-headers'] || 'Content-Type'
+			);
+
+			if (req.method === 'OPTIONS') {
+				res.sendStatus(204);
+				return;
+			}
+
+			next();
+		});
+
 		/**
 		 * Bind your custom express routes here:
 		 * Read more: https://expressjs.com/en/starter/basic-routing.html

@@ -41,6 +41,8 @@
 
     studioPort = 3000;
     appPort = 3001;
+    gameServerPort = 3002;
+    gameServerPublicPort = 2567;
 
     packageDirs = [
       "packages/app"
@@ -103,7 +105,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-4C5b+w37KU1br2XfKmQpeg0kZVQDP7LUrZxxeiV/Vb0=";
+      outputHash = "sha256-Q8DXXFEJOViRHAlU6yfLRf99IPw1mldbkE6ljTo+dMA=";
 
       installPhase = ''
         runHook preInstall
@@ -149,6 +151,7 @@
 
         export HOME="$TMPDIR"
         export XDG_CACHE_HOME="$TMPDIR/.cache"
+        export CI=1
         export BETTER_AUTH_URL="http://localhost"
         export BETTER_AUTH_SECRET="nix-build-only"
 
@@ -181,8 +184,9 @@
         done
 
         (cd svgedit/packages/svgcanvas && ../../node_modules/.bin/vite build)
-        bun run --filter=@svg-table/app build
-        bun run --filter=studio build
+        (cd packages/game-server && ./node_modules/.bin/rimraf build && ./node_modules/.bin/tsc)
+        (cd packages/app && ./node_modules/.bin/vite build)
+        (cd packages/studio && ./node_modules/.bin/vite build)
 
         runHook postBuild
       '';
@@ -203,6 +207,9 @@
         cp -r packages/auth $out/packages/auth
         cp -r packages/db $out/packages/db
         cp packages/game-server/package.json $out/packages/game-server/package.json
+        cp packages/game-server/tsconfig.json $out/packages/game-server/tsconfig.json
+        cp -r packages/game-server/src $out/packages/game-server/src
+        cp -r packages/game-server/build $out/packages/game-server/build
         cp -a packages/game-server/node_modules $out/packages/game-server/node_modules
         cp -r packages/svgeditor $out/packages/svgeditor
         mkdir -p $out/svgedit/packages
@@ -224,7 +231,16 @@
       lib.nixosSystem {
         inherit system;
         specialArgs = {
-          inherit adminPublicKeys appPort enableAppSecrets studioDomain studioPackage studioPort;
+          inherit
+            adminPublicKeys
+            appPort
+            enableAppSecrets
+            gameServerPort
+            gameServerPublicPort
+            studioDomain
+            studioPackage
+            studioPort
+            ;
         };
         modules =
           [

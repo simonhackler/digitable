@@ -6,6 +6,8 @@
   modulesPath,
   appPort,
   enableAppSecrets ? true,
+  gameServerPort,
+  gameServerPublicPort,
   studioDomain,
   studioPackage,
   studioPort,
@@ -19,7 +21,10 @@
     || builtins.match "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" studioDomain != null;
   studioOrigin = "${if isDirectHost then "http" else "https"}://${studioDomain}";
   caddySiteAddress = if isDirectHost then ":80" else studioDomain;
-  databaseUrl = "postgresql://app@localhost/app?host=/run/postgresql";
+  gameServerOrigin =
+    if isDirectHost
+    then "http://${studioDomain}:${toString gameServerPublicPort}"
+    else "https://${studioDomain}:${toString gameServerPublicPort}";
   authEnvironment =
     {
       DATABASE_URL = databaseUrl;
@@ -54,6 +59,7 @@
       NODE_ENV = "production";
       BETTER_AUTH_SECRET = "%m";
       DATABASE_URL = databaseUrl;
+      PUBLIC_GAME_SERVER_URL = gameServerOrigin;
       WEB_ORIGIN = studioOrigin;
       SECOND_WEB_ORIGIN = "${studioOrigin}/app";
     }
@@ -78,11 +84,9 @@ in {
     defaultSopsFile = ../secrets/secrets.yaml;
     defaultSopsFormat = "yaml";
 
-    secrets.better-auth-secret = {};
     secrets.replicate-api-token = {};
 
     templates."app.env".content = ''
-      BETTER_AUTH_SECRET=${config.sops.placeholder.better-auth-secret}
       REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
     '';
   };
@@ -143,7 +147,17 @@ in {
           }
         '';
       }
+      // lib.optionalAttrs isDirectHost {
+        ":${toString gameServerPublicPort}".extraConfig = ''
+          reverse_proxy 127.0.0.1:${toString gameServerPort}
+        '';
+      }
       // lib.optionalAttrs (!isDirectHost) {
+        "${studioDomain}:${toString gameServerPublicPort}".extraConfig = ''
+          encode zstd gzip
+          reverse_proxy 127.0.0.1:${toString gameServerPort}
+        '';
+
         "www.${studioDomain}".extraConfig = ''
           redir https://${studioDomain}{uri} permanent
         '';
@@ -188,10 +202,19 @@ in {
     extraEnvironment = {
       BETTER_AUTH_URL = "${studioOrigin}/app";
     };
-    extraServiceConfig = lib.optionalAttrs enableAppSecrets {
-      EnvironmentFile = config.sops.templates."app.env".path;
+  };
+
+  systemd.services.game-server = mkNodeService {
+    description = "Digitable Game Server";
+    port = gameServerPort;
+    workingDirectory = "${studioPackage}/packages/game-server";
+    extraEnvironment = {
+      BETTER_AUTH_URL = "${studioOrigin}/app";
+    };
+    extraServiceConfig = {
+      ExecStart = "${studioPackage}/packages/game-server/node_modules/.bin/tsx src/index.ts";
     };
   };
 
-  networking.firewall.allowedTCPPorts = [22 80 443];
+  networking.firewall.allowedTCPPorts = [22 80 443 gameServerPublicPort];
 }
