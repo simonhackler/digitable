@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createGameSchema } from '../../routes/games/schemas.js';
-import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
+import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 import agentTemplate from '$lib/templates/agents/boardgame-discovery-agent.md?raw';
 import createGameCommand from '$lib/templates/commands/create-game.md?raw';
 import createSvgCommand from '$lib/templates/commands/create-svg.md?raw';
@@ -8,7 +8,6 @@ import placeholderFrontSvg from '../../../static/placeholder.svg?raw';
 
 export async function generateAgentFiles(adapter: FsDir) {
 	const schemaJson = generateSchemaJson();
-	const opencodeRoot = '.opencode';
 
 	const files = [
 		{ content: agentTemplate, name: 'create-game.md', path: '.opencode/agent' },

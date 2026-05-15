@@ -108,8 +108,6 @@ export async function createHybridContainer(
 	return container as Container;
 }
 
-export interface loadedComponent {}
-
 // Parsing the text to svg and then the images seperately, to get svg scaling and to be able to change the text later
 export async function loadAndProcessCards(
 	projectName: string,

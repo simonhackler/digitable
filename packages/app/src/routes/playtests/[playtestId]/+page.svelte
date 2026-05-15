@@ -5,10 +5,7 @@
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { saveOpfsPreference } from '$lib/components/file-browser/adapters/opfs/storage-preference';
 	import PlaySurface from '$lib/play/PlaySurface.svelte';
-	import {
-		importPlaytestProject,
-		playtestImportFolderName
-	} from '$lib/playtests/project-transfer';
+	import { importPlaytestProject, playtestImportFolderName } from '$lib/playtests/project-transfer';
 	import { onMount } from 'svelte';
 	import type { PageProps } from './$types';
 

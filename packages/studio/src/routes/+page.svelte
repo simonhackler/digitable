@@ -108,7 +108,9 @@
 					compact ? 'h-[118px] sm:h-[140px]' : 'h-[190px] sm:h-[210px]'
 				}`}
 			>
-				<div class="absolute top-3 left-3 right-3 grid grid-cols-[auto_1fr_auto] items-center gap-2">
+				<div
+					class="absolute top-3 right-3 left-3 grid grid-cols-[auto_1fr_auto] items-center gap-2"
+				>
 					<span class="rounded-full bg-[#f2b04f] px-2 py-1 text-xs font-semibold text-[#181818]">
 						Room open
 					</span>
@@ -310,9 +312,7 @@
 			</div>
 			<div class="reveal order-1 md:order-2">
 				<h2 class="mb-4 text-3xl font-semibold">Publish</h2>
-				<p class="mb-4 text-xl text-[#4b4b57]">
-					Publish your game online for the world to play.
-				</p>
+				<p class="mb-4 text-xl text-[#4b4b57]">Publish your game online for the world to play.</p>
 				<p class="mb-4 text-xl text-[#4b4b57]">
 					Sell your print and play files or host them free to download.
 				</p>
