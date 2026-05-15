@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { EditorMode } from '../core/types';
 	import type { createEditorController } from '../svelte/createEditorController.svelte.ts';
+	import type { Snippet } from 'svelte';
 	import {
 		Circle,
 		CircleDot,
@@ -43,11 +44,13 @@
 	let {
 		controller,
 		variant = 'full',
-		orientation = 'horizontal'
+		orientation = 'horizontal',
+		extraActions
 	} = $props<{
 		controller: EditorController;
 		variant?: ToolbarVariant;
 		orientation?: ToolbarOrientation;
+		extraActions?: Snippet;
 	}>();
 
 	const unitOptions = ['px', 'mm'] as const;
@@ -221,6 +224,7 @@
 					<Eraser class="size-4" />
 					Clear
 				</Button>
+				{@render extraActions?.()}
 			</ButtonGroup.Root>
 			<Button
 				size="sm"

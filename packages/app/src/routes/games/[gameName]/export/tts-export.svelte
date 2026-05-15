@@ -183,9 +183,8 @@
 		}
 	};
 
-	const getExportSafeSvg = async (svg: SVGSVGElement) => {
+	const getExportSafeSvg = (svg: SVGSVGElement) => {
 		const clone = svg.cloneNode(true) as SVGSVGElement;
-		await inlineLocalSvgImages(clone);
 		replaceForeignObjectsWithSvgText(clone);
 		return clone;
 	};
@@ -203,7 +202,7 @@
 		if (!context) throw new Error('Failed to create canvas context');
 
 		for (const [i, svg] of sheetSvgs.entries()) {
-			const exportSvg = await getExportSafeSvg(svg);
+			const exportSvg = getExportSafeSvg(svg);
 			exportSvg.setAttribute('xmlns', SVG_NS);
 			exportSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
 			exportSvg.setAttribute('width', String(cellWidth));

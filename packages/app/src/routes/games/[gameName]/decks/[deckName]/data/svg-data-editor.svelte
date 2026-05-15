@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onNavigate } from '$app/navigation';
+	import { Button } from '$lib/components/ui/button';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { useDebounce } from 'runed';
 	import Papa from 'papaparse';
@@ -20,6 +22,7 @@
 	import type { SvgCard } from '../../../types';
 	import { assert, requireParam } from '$lib/utils/assert';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 
 	const {
 		svgTemplateFront,
@@ -78,10 +81,10 @@
 	let showFront = $state(true);
 	const svgsToShow = $derived(showFront ? cards.map((c) => c.front) : cards.map((c) => c.back));
 
-	const saveDebounced = useDebounce(saveCsv, 1000);
-
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
 	let selectionRects: SVGRectElement[] = [];
+	let saveStatus = $state<'saved' | 'saving' | 'error'>('saved');
+	let activeSavePromises = $state<Promise<void>[]>([]);
 
 	function flip() {
 		showFront = !showFront;
@@ -102,6 +105,48 @@
 		const res = await deckDir.data.write(csvFile.name, csvFile);
 		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);
 	}
+
+	function saveCsvAndTrack() {
+		saveStatus = 'saving';
+		const promise = saveCsv();
+		activeSavePromises = [...activeSavePromises, promise];
+		void promise
+			.then(() => {
+				saveStatus = 'saved';
+			})
+			.catch((error) => {
+				saveStatus = 'error';
+				console.error('Failed to save data.csv', error);
+			})
+			.finally(() => {
+				activeSavePromises = activeSavePromises.filter(
+					(activePromise) => activePromise !== promise
+				);
+			});
+		return promise;
+	}
+
+	const saveDebounced = useDebounce(saveCsvAndTrack, 1000);
+
+	function scheduleSave() {
+		saveStatus = 'saving';
+		void saveDebounced().catch((error) => {
+			saveStatus = 'error';
+			console.error('Failed to save data.csv', error);
+		});
+	}
+
+	async function flushPendingSaves() {
+		await saveDebounced.runScheduledNow();
+		await Promise.allSettled(activeSavePromises);
+	}
+
+	onNavigate(() => {
+		if (!saveDebounced.pending && activeSavePromises.length === 0) {
+			return;
+		}
+		return flushPendingSaves();
+	});
 
 	function clearSelectionRects() {
 		for (const rect of selectionRects) rect.remove();
@@ -210,7 +255,7 @@
 			},
 			oninsertrow(_instance, rows) {
 				const headers = spreadsheet[0].getHeaders(true) as string[];
-				const rowsData = rows.map((row) => row.data.map((x) => x.toString()));
+				const rowsData = rows.map((row) => row.data.map((x) => String(x ?? '')));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
 
 				const newCards: SvgCard[] = rowsData.map((row) => ({
@@ -218,13 +263,15 @@
 					back: generateSvg(svgTemplateBack, headers, row, imagePaths)
 				}));
 				cards = [...cards.slice(0, minRow), ...newCards, ...cards.slice(minRow, cards.length)];
+				scheduleSave();
 			},
 			onafterchanges(_worksheet, _records) {
-				saveDebounced();
+				scheduleSave();
 			},
 			ondeleterow(_instance, removedRows) {
 				const filteredOutCards = removedRows.map((row) => cards[row]);
 				cards = cards.filter((card) => !filteredOutCards.includes(card));
+				scheduleSave();
 			},
 			oneditionstart(_worksheet, cell, x, y) {
 				cell.oninput = (e) => {
@@ -336,6 +383,33 @@
 			initialSetupForSvgItem(card.front, col, data[0], imagePaths);
 			initialSetupForSvgItem(card.back, col, data[0], imagePaths);
 		}
+		scheduleSave();
+	}
+
+	function appendRow() {
+		const worksheet = spreadsheet[0];
+		if (!worksheet) return;
+		const headers = worksheet.getHeaders(true) as string[];
+		const row = headers.map((_, index) => (index === 0 ? crypto.randomUUID() : ''));
+		const result = worksheet.insertRow(row);
+		assert(result !== false, 'Failed to insert row into spreadsheet');
+	}
+
+	function appendColumn() {
+		const worksheet = spreadsheet[0];
+		if (!worksheet) return;
+		const headers = worksheet.getHeaders(true) as string[];
+		const title = `Column ${headers.length}`;
+		const data = Array(cards.length).fill('');
+		const result = worksheet.insertColumn(data, headers.length - 1, false, [
+			{
+				title,
+				type: 'text',
+				width: 120
+			}
+		]);
+		assert(result !== false, 'Failed to insert column into spreadsheet');
+		scheduleSave();
 	}
 
 	let selection: {
@@ -351,79 +425,111 @@
 		bind:this={scrollEl}
 		class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
 	>
-		{#each svgsToShow as svg, i (svg.id)}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<!-- ignore for now, should this then just be a button? -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				onclick={(e) => {
-					const headers = spreadsheet[0].getHeaders(true) as string[];
-					let node: EventTarget | null = e.target;
-					let id: string | null = null;
-					while (node && node !== e.currentTarget) {
-						if (node instanceof Element) {
-							const res = node.id;
-							if (headers.some((c) => c === res)) {
-								id = node.id;
-								break;
-							}
+	{#each svgsToShow as svg, i (svg.id)}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- ignore for now, should this then just be a button? -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div
+			onclick={(e) => {
+				const headers = spreadsheet[0].getHeaders(true) as string[];
+				let node: EventTarget | null = e.target;
+				let id: string | null = null;
+				while (node && node !== e.currentTarget) {
+					if (node instanceof Element) {
+						const res = node.id;
+						if (headers.some((c) => c === res)) {
+							id = node.id;
+							break;
 						}
-						node = (node as Element).parentElement;
 					}
-					let index = -1;
-					if (id) {
-						index = headers.findIndex((c) => c === id);
-					}
-					if (index !== -1) {
-						spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
-						const cell = spreadsheet[0].getCellFromCoords(index, i);
-						spreadsheet[0].openEditor(cell, false, e);
-					} else {
-						spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
-					}
-				}}
-				class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
-				{@attach attachSVG(svg)}
-			></div>
-		{/each}
+					node = (node as Element).parentElement;
+				}
+				let index = -1;
+				if (id) {
+					index = headers.findIndex((c) => c === id);
+				}
+				if (index !== -1) {
+					spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
+					const cell = spreadsheet[0].getCellFromCoords(index, i);
+					spreadsheet[0].openEditor(cell, false, e);
+				} else {
+					spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
+				}
+			}}
+			class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
+			{@attach attachSVG(svg)}
+		></div>
+	{/each}
+</div>
+<div class="px-2 py-2">
+	<Toolbar
+		{deletedSvgColumns}
+		onAddColumn={addColumn}
+		onHover={highlightColumn}
+		onExitHover={(_x) => clearSelectionRects()}
+		{flip}
+		{selection}
+		spreadsheet={spreadsheet[0]}
+		svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
+		{imagePaths}
+		{cards}
+		{showFront}
+	></Toolbar>
+</div>
+<div class="flex items-start gap-2 px-2 pb-2">
+	<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
+		<ContextMenu.Root>
+			<ContextMenu.Trigger>
+				<div id="spreadsheet" {@attach mountSpreadsheet}></div>
+			</ContextMenu.Trigger>
+			<ContextMenu.Content>
+				{#each contextItems as item (item)}
+					{#if item.type === 'line'}
+						<ContextMenu.Separator />
+					{:else}
+						<ContextMenu.Item onclick={item.onclick}>
+							{#if item.icon}
+								<item.icon class="mr-2 h-4 w-4" />
+							{/if}
+							{item.title}
+							{#if item.shortcut}
+								<ContextMenu.Shortcut>
+									{item.shortcut}
+								</ContextMenu.Shortcut>
+							{/if}
+						</ContextMenu.Item>
+					{/if}
+				{/each}
+			</ContextMenu.Content>
+		</ContextMenu.Root>
+		<Button
+			variant="outline"
+			size="icon-sm"
+			class="self-center"
+			aria-label="Append column"
+			title="Append column"
+			onclick={appendColumn}
+		>
+			<PlusIcon class="size-4" />
+		</Button>
+		<Button
+			variant="outline"
+			size="icon-sm"
+			class="justify-self-center"
+			aria-label="Append row"
+			title="Append row"
+			onclick={appendRow}
+		>
+			<PlusIcon class="size-4" />
+		</Button>
 	</div>
-	<div class="px-2 py-2">
-		<Toolbar
-			{deletedSvgColumns}
-			onAddColumn={addColumn}
-			onHover={highlightColumn}
-			onExitHover={(_x) => clearSelectionRects()}
-			{flip}
-			{selection}
-			spreadsheet={spreadsheet[0]}
-			svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
-			{imagePaths}
-			{cards}
-			{showFront}
-		></Toolbar>
+	<div class="text-muted-foreground pt-1 text-sm" aria-live="polite">
+		{#if saveStatus === 'saving'}
+			Saving
+		{:else if saveStatus === 'error'}
+			Error
+		{:else}
+			Saved
+		{/if}
 	</div>
-	<ContextMenu.Root>
-		<ContextMenu.Trigger>
-			<div id="spreadsheet" {@attach mountSpreadsheet}></div>
-		</ContextMenu.Trigger>
-		<ContextMenu.Content>
-			{#each contextItems as item (item)}
-				{#if item.type === 'line'}
-					<ContextMenu.Separator />
-				{:else}
-					<ContextMenu.Item onclick={item.onclick}>
-						{#if item.icon}
-							<item.icon class="mr-2 h-4 w-4" />
-						{/if}
-						{item.title}
-						{#if item.shortcut}
-							<ContextMenu.Shortcut>
-								{item.shortcut}
-							</ContextMenu.Shortcut>
-						{/if}
-					</ContextMenu.Item>
-				{/if}
-			{/each}
-		</ContextMenu.Content>
-	</ContextMenu.Root>
 </div>

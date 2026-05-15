@@ -8,9 +8,10 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { Ellipsis, Layers, Pencil, Table, Trash2 } from '@lucide/svelte';
+	import { Ellipsis, Layers, PenTool, Table, TextCursorInput, Trash2 } from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ComponentFileStructure, Game } from './types.js';
+	import RenameDeckDialog from './rename-deck-dialog.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { z } from 'zod';
@@ -25,37 +26,49 @@
 	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
 	let openCreateDeckDialog = $state(false);
 
+	const deckDimension = z.preprocess((value) => {
+		if (typeof value === 'string') return Number(value.replace(',', '.'));
+		return value;
+	}, z.number().min(10).max(300));
+
+	const deckNameSchema = z
+		.string()
+		.min(3, 'Deck name must be at least 3 characters long')
+		.regex(
+			/^[A-Za-z0-9_-]+$/,
+			'Deck name can only contain letters, numbers, underscores, and hyphens'
+		);
+
 	const newDeckSchema = z.object({
-		deckName: z
-			.string()
-			.min(3, 'Deck name must be at least 3 characters long')
-			.regex(/^[A-Za-z0-9_-]+$/, 'Deck name can only contain letters and numbers without spaces'),
-		width: z.number().min(10).max(300),
-		height: z.number().min(10).max(300)
+		deckName: deckNameSchema,
+		width: deckDimension,
+		height: deckDimension
 	});
 
 	const form = superForm(defaults(zod4(newDeckSchema)), {
 		SPA: true,
 		validators: zod4(newDeckSchema),
 		onUpdate({ form }) {
-			if (form.valid) {
-				switchPathAndCreateSvgs(activeGame!, form.data.deckName, form.data.width, form.data.height);
-			}
+			if (!form.valid || !activeGame) return;
+
+			switchPathAndCreateSvgs(activeGame, form.data.deckName, form.data.width, form.data.height);
 		}
 	});
 
 	async function switchPathAndCreateSvgs(
 		activeGame: Game,
 		deckName: string,
-		width: number,
-		height: number
+		width: number | string,
+		height: number | string
 	) {
-		const path = `/games/${activeGame.name}/decks/${deckName}/data`;
-		const frontSvg = createEmptySvg(width, height);
-		const backSvg = createEmptySvg(width, height);
+		const path = `/games/${activeGame.name}/decks/${deckName}/editor`;
+		const normalizedWidth = Number(String(width).replace(',', '.'));
+		const normalizedHeight = Number(String(height).replace(',', '.'));
+		const frontSvg = createEmptySvg(normalizedWidth, normalizedHeight);
+		const backSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		await Promise.all([
-			uploadSvgAsSide(fileSystem, activeGame.name, deckName, frontSvg, 'front'),
-			uploadSvgAsSide(fileSystem, activeGame.name, deckName, backSvg, 'back')
+			uploadSvgAsSide(fileSystem, deckName, frontSvg, 'front'),
+			uploadSvgAsSide(fileSystem, deckName, backSvg, 'back')
 		]);
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
@@ -63,18 +76,21 @@
 		activeGame.decks.push({ name: deckName });
 
 		openCreateDeckDialog = false;
+		$formData.deckName = '';
+		selectedCardFormat = 'poker';
+		$formData.width = cardFormats.poker.width;
+		$formData.height = cardFormats.poker.height;
 	}
 
 	async function uploadSvgAsSide(
 		fileSystem: FsDir,
-		currentProject: string,
 		deckName: string,
 		svg: SVGElement,
 		side: 'front' | 'back'
 	) {
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		const deckDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'system', deckName));
+		const deckDir = await fileSystem.ensureDir(joinFsPath('system', deckName));
 		if (deckDir.error) {
 			console.error(deckDir.error);
 			return;
@@ -85,7 +101,7 @@
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		const filesDir = await fileSystem.ensureDir(joinFsPath(currentProject, 'files'));
+		const filesDir = await fileSystem.ensureDir('files');
 		if (filesDir.error) {
 			console.error(filesDir.error);
 			return;
@@ -94,14 +110,22 @@
 		if (placeholderWrite.error) console.error(placeholderWrite.error);
 	}
 
+	function onDeckRenamed(oldName: string, newName: string) {
+		if (!activeGame) return;
+
+		activeGame.decks = activeGame.decks.map((deck) =>
+			deck.name === oldName ? { name: newName } : deck
+		);
+	}
+
 	async function deleteDeck(
 		fileSystem: FsDir,
 		projectName: string,
 		component: ComponentFileStructure
 	) {
-		const fullFolderPath = `/${projectName}/system/${component.name}`;
+		const fullFolderPath = joinFsPath('system', component.name);
 		console.log('deleting for', fullFolderPath);
-		const removed = await fileSystem.remove(joinFsPath(fullFolderPath), { recursive: true });
+		const removed = await fileSystem.remove(fullFolderPath, { recursive: true });
 		if (removed.error) {
 			console.error(removed.error);
 		} else {
@@ -210,7 +234,7 @@
 																	placeholder="width"
 																	bind:value={$formData.width}
 																	{...$constraints.width}
-																	type="number"
+																	inputmode="decimal"
 																/>
 															</div>
 														{/snippet}
@@ -228,7 +252,7 @@
 																	placeholder="height"
 																	bind:value={$formData.height}
 																	{...$constraints.height}
-																	type="number"
+																	inputmode="decimal"
 																/>
 															</div>
 														{/snippet}
@@ -237,7 +261,7 @@
 													<Form.FieldErrors />
 												</Form.Field>
 											</div>
-											<Button type="submit">
+											<Button type="submit" disabled={!activeGame}>
 												<PlusIcon /> Create new deck
 											</Button>
 										</form>
@@ -261,7 +285,7 @@
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
 										<a
-											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/data`)}
+											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/editor`)}
 											{...props}
 										>
 											<span class="text-muted-foreground">{deck.name}</span>
@@ -276,7 +300,7 @@
 												class="data-[state=open]:bg-accent rounded-sm opacity-0 group-hover/menu-sub-item:opacity-100 data-[state=open]:opacity-100"
 											>
 												<Ellipsis />
-												<span class="sr-only">More</span>
+												<span class="sr-only">More for {deck.name}</span>
 											</Sidebar.MenuAction>
 										{/snippet}
 									</DropdownMenu.Trigger>
@@ -287,7 +311,7 @@
 											onSelect={() => goto(resolve(`${path}/editor`))}
 											class="flex w-full justify-start gap-2"
 										>
-											<Pencil />
+											<PenTool />
 											<span>Editor</span>
 										</DropdownMenu.Item>
 										{/* @ts-expect-error paths*/ null}
@@ -298,6 +322,18 @@
 											<Table />
 											<span>Data</span>
 										</DropdownMenu.Item>
+										<RenameDeckDialog projectFolder={fileSystem} {deck} onRenamed={onDeckRenamed}>
+											{#snippet trigger({ props })}
+												<DropdownMenu.Item
+													{...props}
+													onSelect={(event) => event.preventDefault()}
+													class="flex w-full justify-start gap-2"
+												>
+													<TextCursorInput />
+													<span>Rename</span>
+												</DropdownMenu.Item>
+											{/snippet}
+										</RenameDeckDialog>
 										<DropdownMenu.Separator />
 										<DropdownMenu.Item
 											variant="destructive"

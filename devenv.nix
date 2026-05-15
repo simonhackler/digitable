@@ -44,6 +44,13 @@
       }
     }
   '';
+  playwrightPreCommit = pkgs.writeShellScriptBin "playwright-pre-commit" ''
+    if [ -w /dev/tty ]; then
+      bun run playwright test --reporter=list >/dev/tty 2>&1
+    else
+      bun run playwright test --reporter=list
+    fi
+  '';
 in {
   dotenv.disableHint = true;
 
@@ -53,7 +60,7 @@ in {
     ];
 
     hooks = {
-      prettier = {
+      "00-prettier" = {
         enable = true;
         name = "Format with Prettier (staged files)";
         entry = "bunx prettier --write";
@@ -61,7 +68,7 @@ in {
         files = "\\.(js|ts|jsx|tsx|svelte|json|css|scss|md|yaml|yml)$";
       };
 
-      bun-lint = {
+      "10-bun-lint" = {
         enable = true;
         name = "ESLint (staged files)";
         entry = "bunx eslint --max-warnings 0";
@@ -69,10 +76,19 @@ in {
         files = "\\.(js|ts|jsx|tsx|svelte)$";
       };
 
-      bun-check = {
+      "20-bun-check" = {
         enable = true;
         name = "Svelte Type Check (project-wide)";
         entry = "bun run check";
+        language = "system";
+        files = "\\.(js|ts|jsx|tsx|svelte)$";
+        pass_filenames = false;
+      };
+
+      "99-bun-test" = {
+        enable = true;
+        name = "Playwright E2E Tests";
+        entry = "${playwrightPreCommit}/bin/playwright-pre-commit";
         language = "system";
         files = "\\.(js|ts|jsx|tsx|svelte)$";
         pass_filenames = false;

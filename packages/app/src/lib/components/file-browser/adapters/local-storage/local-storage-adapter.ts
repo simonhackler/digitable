@@ -15,7 +15,11 @@ import {
 } from '../adapter';
 
 export class LocalStorageAdapter implements FsDir {
-	constructor(private readonly rootPath: string) {}
+	public readonly name: string;
+
+	constructor(private readonly rootPath: string) {
+		this.name = basename(rootPath);
+	}
 
 	private keyFor(path?: string): string {
 		const joined = joinFsPath(this.rootPath, path ?? '');
@@ -219,6 +223,97 @@ export class LocalStorageAdapter implements FsDir {
 			return Ok(undefined);
 		} catch (error) {
 			return fsFailed('remove', error, path);
+		}
+	}
+
+	async move(
+		sourcePath: string,
+		targetPath: string,
+		options?: { overwrite?: boolean }
+	): Promise<FsResult<void>> {
+		const parsedSource = parseFsPath('move', sourcePath);
+		if (parsedSource.error) return parsedSource;
+
+		const parsedTarget = parseFsPath('move', targetPath);
+		if (parsedTarget.error) return parsedTarget;
+
+		const source = joinFsPath(sourcePath);
+		const target = joinFsPath(targetPath);
+		if (source === target) return Ok(undefined);
+
+		try {
+			const sourceIsFile = this.hasFile(source);
+			const sourceIsDirectory = this.hasDirectory(source);
+
+			if (!sourceIsFile && !sourceIsDirectory) {
+				return FsError.NotFound({ operation: 'move', path: sourcePath });
+			}
+
+			if (sourceIsDirectory && target.startsWith(`${source}/`)) {
+				return FsError.InvalidPath({
+					operation: 'move',
+					path: targetPath,
+					reason: 'Cannot move a directory into itself.'
+				});
+			}
+
+			const parent = dirname(target);
+			if (parent && this.hasFile(parent)) {
+				return FsError.WrongKind({ operation: 'move', path: parent, expected: 'directory' });
+			}
+
+			const targetExists = this.hasFile(target) || this.hasDirectory(target);
+			if (targetExists) {
+				if (!options?.overwrite) {
+					return FsError.Failed({
+						operation: 'move',
+						path: targetPath,
+						cause: { message: 'Target already exists.' }
+					});
+				}
+
+				const removedTarget = await this.remove(target, { recursive: true });
+				if (removedTarget.error) return removedTarget;
+			}
+
+			if (sourceIsFile) {
+				const stored = localStorage.getItem(this.keyFor(source));
+				if (stored === null) return FsError.NotFound({ operation: 'move', path: sourcePath });
+
+				localStorage.setItem(this.keyFor(target), stored);
+				localStorage.removeItem(this.keyFor(source));
+				return Ok(undefined);
+			}
+
+			const sourcePrefix = this.keyFor(source) + '/';
+			const targetPrefix = this.keyFor(target) + '/';
+			const entries: Array<{ oldKey: string; newKey: string; value: string }> = [];
+
+			for (let i = 0; i < localStorage.length; i++) {
+				const oldKey = localStorage.key(i);
+				if (!oldKey?.startsWith(sourcePrefix)) continue;
+
+				const value = localStorage.getItem(oldKey);
+				if (value === null) continue;
+
+				entries.push({
+					oldKey,
+					newKey: targetPrefix + oldKey.slice(sourcePrefix.length),
+					value
+				});
+			}
+
+			for (const entry of entries) {
+				localStorage.setItem(entry.newKey, entry.value);
+			}
+
+			for (const entry of entries) {
+				localStorage.removeItem(entry.oldKey);
+			}
+
+			return Ok(undefined);
+		} catch (error) {
+			return fsFailed('move', error, sourcePath);
 		}
 	}
 

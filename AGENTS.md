@@ -13,7 +13,9 @@ This project is a boardgame design and testing tool
 
 ## Build/Test Commands (use bun)
 
-See `instructions/testing.md`.
+`devenv up` runs the development environment. Usually this is already running.
+`devenv shell --quiet` to run commands
+`bun playwright test` for playwright. Playwright is installed via devenv
 
 ## Key Technologies
 
@@ -31,6 +33,10 @@ ALWAYS use tailwindcss when possible. Prefer xs sm md lg xl over explicit sizes.
 
 When writing tests ALWAYS read `instructions/testing.md` first.
 When writing e2e tests, NEVER mock app routes, network requests, browser APIs, databases, or backend services. E2E tests must exercise the real integrated flow.
+
+## Bug fixing
+
+When fixing bugs always implement the simplest most straightforward fix and test it with an e2e test.
 
 ## Available MCP Tools:
 

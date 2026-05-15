@@ -75,6 +75,7 @@ export type SvgCanvasRawApi = {
 	setTextContent?: (text: string) => void;
 	setZoom: (zoomLevel: number) => void;
 	textActions?: {
+		getCurrentTextElement?: () => Element | null;
 		setCursor?: (index?: number) => void;
 		setInputElem?: (elem: HTMLInputElement) => void;
 		setMultilineInputElem?: (elem: HTMLTextAreaElement) => void;

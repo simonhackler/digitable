@@ -4,6 +4,7 @@ import { getAllFilesMetadata } from './helper';
 import {
 	FsError,
 	basename,
+	dirname,
 	entryPath,
 	fsCause,
 	fsFailed,
@@ -17,10 +18,14 @@ import {
 } from '../adapter';
 
 export class SupabaseAdapter implements FsDir {
+	public readonly name: string;
+
 	constructor(
 		private readonly supabase: SupabaseClient,
 		private readonly rootPath: string
-	) {}
+	) {
+		this.name = basename(rootPath);
+	}
 
 	private fullPath(path?: string): string {
 		return joinFsPath(this.rootPath, path ?? '');
@@ -217,6 +222,114 @@ export class SupabaseAdapter implements FsDir {
 		const paths = files.data.filter((filePath) => filePath.startsWith(prefix));
 		const { error } = await this.supabase.storage.from('folders').remove(paths);
 		if (error) return this.storageError('remove', error, path);
+
+		return Ok(undefined);
+	}
+
+	async move(
+		sourcePath: string,
+		targetPath: string,
+		options?: { overwrite?: boolean }
+	): Promise<FsResult<void>> {
+		const parsedSource = parseFsPath('move', sourcePath);
+		if (parsedSource.error) return parsedSource;
+
+		const parsedTarget = parseFsPath('move', targetPath);
+		if (parsedTarget.error) return parsedTarget;
+
+		const source = joinFsPath(sourcePath);
+		const target = joinFsPath(targetPath);
+		if (source === target) return Ok(undefined);
+
+		const sourceFile = await this.hasFile(source);
+		if (sourceFile.error) return sourceFile;
+
+		const sourceDirectory = await this.hasDirectory(source);
+		if (sourceDirectory.error) return sourceDirectory;
+
+		if (!sourceFile.data && !sourceDirectory.data) {
+			return FsError.NotFound({ operation: 'move', path: sourcePath });
+		}
+
+		if (sourceDirectory.data && target.startsWith(`${source}/`)) {
+			return FsError.InvalidPath({
+				operation: 'move',
+				path: targetPath,
+				reason: 'Cannot move a directory into itself.'
+			});
+		}
+
+		const parent = dirname(target);
+		if (parent) {
+			const parentFile = await this.hasFile(parent);
+			if (parentFile.error) return parentFile;
+			if (parentFile.data)
+				return FsError.WrongKind({ operation: 'move', path: parent, expected: 'directory' });
+		}
+
+		const targetFile = await this.hasFile(target);
+		if (targetFile.error) return targetFile;
+
+		const targetDirectory = await this.hasDirectory(target);
+		if (targetDirectory.error) return targetDirectory;
+
+		if (targetFile.data || targetDirectory.data) {
+			if (!options?.overwrite) {
+				return FsError.Failed({
+					operation: 'move',
+					path: targetPath,
+					cause: { message: 'Target already exists.' }
+				});
+			}
+
+			const removedTarget = await this.remove(target, { recursive: true });
+			if (removedTarget.error) return removedTarget;
+		}
+
+		if (sourceFile.data) {
+			const file = await this.read(source);
+			if (file.error) return file;
+
+			const written = await this.write(target, file.data);
+			if (written.error) return written;
+
+			const removedSource = await this.remove(source);
+			if (removedSource.error) {
+				await this.remove(target, { recursive: true });
+				return removedSource;
+			}
+
+			return Ok(undefined);
+		}
+
+		const files = await this.filePaths();
+		if (files.error) return files;
+
+		const prefix = this.fullPath(source) + '/';
+		const paths = files.data.filter((filePath) => filePath.startsWith(prefix));
+
+		for (const sourceFullPath of paths) {
+			const relativePath = sourceFullPath.slice(prefix.length);
+			const sourceEntryPath = joinFsPath(source, relativePath);
+			const targetEntryPath = joinFsPath(target, relativePath);
+			const file = await this.read(sourceEntryPath);
+			if (file.error) {
+				await this.remove(target, { recursive: true });
+				return file;
+			}
+
+			const written = await this.write(targetEntryPath, file.data);
+			if (written.error) {
+				await this.remove(target, { recursive: true });
+				return written;
+			}
+		}
+
+		const removedSource = await this.remove(source, { recursive: true });
+		if (removedSource.error) {
+			await this.remove(target, { recursive: true });
+			return removedSource;
+		}
 
 		return Ok(undefined);
 	}
