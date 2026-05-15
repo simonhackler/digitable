@@ -7,8 +7,7 @@
 	import PlaySurface from '$lib/play/PlaySurface.svelte';
 	import {
 		importPlaytestProject,
-		playtestImportFolderName,
-		type PlaytestDownloadFile
+		playtestImportFolderName
 	} from '$lib/playtests/project-transfer';
 	import { onMount } from 'svelte';
 	import type { PageProps } from './$types';
@@ -23,29 +22,42 @@
 	} | null>(null);
 	const e2e = $derived(page.url.searchParams.has('e2e'));
 
-	type PlaytestProjectResponse = {
-		projectName: string;
-		privateRoomId: string;
-		files: PlaytestDownloadFile[];
-	};
+	async function getGameTicket(privateRoomId: string) {
+		const response = await fetch(resolve('/api/game-ticket'), {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({ privateRoomId })
+		});
+
+		if (!response.ok) {
+			throw new Error(await response.text());
+		}
+
+		const { ticket } = (await response.json()) as { ticket: string };
+		return ticket;
+	}
+
+	function privatePlaytestConnection(privateRoomId: string) {
+		return {
+			kind: 'privatePlaytest' as const,
+			privateRoomId,
+			getAuthToken: () => getGameTicket(privateRoomId)
+		};
+	}
 
 	onMount(async () => {
 		try {
-			const response = await fetch(resolve(`/api/playtests/${data.playtestId}/project`));
-			if (!response.ok) {
-				throw new Error(await response.text());
-			}
-
-			const project = (await response.json()) as PlaytestProjectResponse;
 			const fsDir = await OPFSAdapter.create();
-			const folderName = playtestImportFolderName(project.projectName, data.playtestId);
+			const folderName = playtestImportFolderName(data.projectName, data.playtestId);
 			status = 'Saving playtest locally...';
-			await importPlaytestProject(fsDir, folderName, project.files);
+			await importPlaytestProject(fsDir, folderName, data.files);
 			await saveOpfsPreference();
 
 			importedPlaytest = {
 				projectName: folderName,
-				privateRoomId: project.privateRoomId,
+				privateRoomId: data.privateRoomId,
 				fileSystem: fsDir
 			};
 		} catch (error) {
@@ -58,7 +70,7 @@
 	<PlaySurface
 		projectName={importedPlaytest.projectName}
 		fileSystem={importedPlaytest.fileSystem}
-		privateRoomId={importedPlaytest.privateRoomId}
+		roomConnection={privatePlaytestConnection(importedPlaytest.privateRoomId)}
 		{e2e}
 	/>
 {:else}

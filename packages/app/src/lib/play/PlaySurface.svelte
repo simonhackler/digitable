@@ -12,7 +12,6 @@
 	import '@pixi/layout';
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { resolve } from '$app/paths';
 	import { env } from '$env/dynamic/public';
 	import { loadAndProcessCards } from './pixi-card-loader';
 	import {
@@ -41,15 +40,25 @@
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 
+	type PlayRoomConnection =
+		| { kind: 'localPlay' }
+		| {
+				kind: 'privatePlaytest';
+				privateRoomId: string;
+				getAuthToken: () => Promise<string>;
+		  };
+
+	const defaultRoomConnection: PlayRoomConnection = { kind: 'localPlay' };
+
 	let {
 		projectName,
 		fileSystem,
-		privateRoomId = null,
+		roomConnection = defaultRoomConnection,
 		e2e = false
 	}: {
 		projectName: string;
 		fileSystem: FsDir;
-		privateRoomId?: string | null;
+		roomConnection?: PlayRoomConnection;
 		e2e?: boolean;
 	} = $props();
 
@@ -62,26 +71,6 @@
 
 	function isE2EMode() {
 		return e2e;
-	}
-
-	async function getPrivateRoomOptions(privateRoomId: string) {
-		const response = await fetch(resolve('/api/game-ticket'), {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json'
-			},
-			body: JSON.stringify({ privateRoomId })
-		});
-
-		if (!response.ok) {
-			throw new Error(await response.text());
-		}
-
-		const { ticket } = (await response.json()) as { ticket: string };
-		client.auth.token = ticket;
-		return {
-			privateRoomId
-		};
 	}
 
 	let boardGameItems: SvelteMap<string, BoardGameItemNew> = new SvelteMap();
@@ -598,12 +587,18 @@
 			playableDeckEntries.map((entry) => loadAndProcessCards(projectName, entry.name, fileSystem))
 		);
 		const allComponentsParsed = loadedDecks.flat();
-		const roomName = privateRoomId ? 'private_room' : 'my_room';
-		const roomOptions = privateRoomId ? await getPrivateRoomOptions(privateRoomId) : undefined;
-		const shouldCreateRoom = !privateRoomId;
+		const privatePlaytest = roomConnection.kind === 'privatePlaytest' ? roomConnection : null;
+		const roomType = privatePlaytest ? 'private_room' : 'my_room';
+		const roomOptions = privatePlaytest
+			? { privateRoomId: privatePlaytest.privateRoomId }
+			: undefined;
+		const shouldCreateRoom = !privatePlaytest;
+		if (privatePlaytest) {
+			client.auth.token = await privatePlaytest.getAuthToken();
+		}
 		const room = shouldCreateRoom
-			? await client.create<BoardGameRoomState>(roomName, roomOptions)
-			: await client.joinOrCreate<BoardGameRoomState>(roomName, roomOptions);
+			? await client.create<BoardGameRoomState>(roomType, roomOptions)
+			: await client.joinOrCreate<BoardGameRoomState>(roomType, roomOptions);
 		let s = getStateCallbacks(room);
 		strokeLayer.connect(room, s);
 

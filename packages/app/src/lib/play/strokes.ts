@@ -1,11 +1,11 @@
 import type { SchemaCallbackProxy } from '@colyseus/schema';
 import type { Room } from 'colyseus.js';
 import { Graphics, Point } from 'pixi.js';
+import type { BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import type {
-	BoardGameRoomState,
 	Stroke as StrokeState,
 	StrokeFace
-} from 'boardgame-server/src/rooms/schema/MyRoomState';
+} from 'boardgame-server/src/rooms/schema/stroke-schema';
 import { BoardGameItemNew } from '$lib/pixi/item';
 import type { HandContainer } from './HandContainer';
 

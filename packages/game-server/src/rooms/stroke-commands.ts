@@ -8,7 +8,7 @@ import {
 	type StrokeCap,
 	type StrokeFace,
 	type StrokeJoin
-} from './schema/MyRoomState';
+} from './schema/stroke-schema';
 import type { CommandRoom } from './command-room';
 
 type StrokePointPayload = { x: number; y: number };

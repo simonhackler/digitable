@@ -2,7 +2,7 @@ import type { Application } from 'pixi.js';
 import type { BoardGameItemNew } from '$lib/pixi/item';
 import type { HandContainer } from './HandContainer';
 import type { StrokeLayer } from './strokes';
-import type { StrokeFace } from 'boardgame-server/src/rooms/schema/MyRoomState';
+import type { StrokeFace } from 'boardgame-server/src/rooms/schema/stroke-schema';
 
 export interface PlayE2EState {
 	visibleStackIds: string[];
