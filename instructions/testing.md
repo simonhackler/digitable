@@ -2,6 +2,7 @@
 
 - `bun run playwright test e2e/data-editor.test.ts -g "Name of current test"`
 
+Tests should NEVER test visual changes, e.g asserting a position or something like that. They have to test functionality.
 Use the data-editor.test.ts as a guidline for how to write test files.
 Focus on writing tests that test the outcome of the action. E.g when creating something new make sure it now shows up in the overview.
 Write simple and straightforward test code.

@@ -700,14 +700,16 @@
 	<div class="full relative w-full" style="pointer-events: auto;" {@attach attachApp(app)}></div>
 
 	<div
-		class="bg-background/90 absolute top-3 left-3 z-10 flex items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur"
+		class="bg-background/90 absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur"
+		role="toolbar"
+		aria-label="Play tools"
 	>
 		<button
 			type="button"
 			aria-label="Select tool"
 			aria-pressed={activeTool === 'select'}
 			title="Select"
-			class="text-foreground hover:bg-accent aria-pressed:bg-accent rounded-sm p-2"
+			class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
 			onclick={() => selectTool('select')}
 		>
 			<MousePointer2Icon class="size-4" />
@@ -717,7 +719,7 @@
 			aria-label="Pen tool"
 			aria-pressed={activeTool === 'pen'}
 			title="Pen"
-			class="text-foreground hover:bg-accent aria-pressed:bg-accent rounded-sm p-2"
+			class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
 			onclick={() => selectTool('pen')}
 		>
 			<PenLineIcon class="size-4" />
