@@ -1,7 +1,0 @@
-{
-  "name": "Wasteland Run",
-  "minPlayers": 2,
-  "maxPlayers": 4,
-  "description": "A card-based post-apocalyptic vehicle-building survival race where players buy market upgrades, push through road hazards, and attack rival vehicles on the way to the finish line.",
-  "tags": ["post-apocalyptic", "vehicles", "card game", "racing"]
-}
