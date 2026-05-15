@@ -19,6 +19,14 @@ async function openPixiProject(page: Page, projectSlug: string) {
 	await waitForPixi(page);
 }
 
+async function seedPixiProject(page: Page, projectSlug: string) {
+	await page.goto('/app/games');
+	await seedProjectFiles(page, projectSlug);
+	await useBrowserStorage(page);
+	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+	await expect(page.getByRole('main').getByText(projectSlug)).toBeVisible();
+}
+
 async function openPixiSmokeTest(page: Page) {
 	await openPixiProject(page, 'pixi-play-smoke');
 }
@@ -241,6 +249,59 @@ test('drawing from a 3-card stack keeps the remaining deck visible', async ({ pa
 			visibleBoardCards: 0,
 			handCards: 1
 		});
+});
+
+test('western-cards play mode loads playable cards within benchmark budget', async ({ page }) => {
+	test.setTimeout(60_000);
+	await seedPixiProject(page, 'western-cards');
+
+	const pageErrors: string[] = [];
+	const relevantConsoleIssues: string[] = [];
+	page.on('pageerror', (error) => {
+		pageErrors.push(error.message);
+	});
+	page.on('console', (message) => {
+		const text = message.text();
+		if (text.includes('await_waterfall') || text.includes('Card not found in hybrid results')) {
+			relevantConsoleIssues.push(text);
+		}
+	});
+
+	const start = performance.now();
+	await page.goto('/app/games/western-cards/play?e2e=1');
+	await waitForPixi(page);
+
+	let firstStackId: string | null = null;
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				firstStackId = state.visibleStackIds[0] ?? null;
+				return state.visibleStackIds.length;
+			},
+			{ timeout: 20_000 }
+		)
+		.toBeGreaterThan(0);
+
+	expect(firstStackId).toBeTruthy();
+	await pixiClick(page, firstStackId!);
+	await page.keyboard.press('d');
+	await expect
+		.poll(async () => {
+			const state = await pixiState(page);
+			return state.handCardIds.length;
+		})
+		.toBeGreaterThan(0);
+
+	const loadMs = performance.now() - start;
+	console.log(`western-cards play load benchmark: ${Math.round(loadMs)}ms`);
+	test.info().annotations.push({
+		type: 'benchmark',
+		description: `western-cards play load ${Math.round(loadMs)}ms`
+	});
+	expect(pageErrors).toEqual([]);
+	expect(relevantConsoleIssues).toEqual([]);
+	expect(loadMs).toBeLessThan(8_000);
 });
 
 test('a played card stays visible after being clicked again', async ({ page }) => {

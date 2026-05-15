@@ -257,6 +257,19 @@
 		return payload;
 	}
 
+	async function hasPlayableDeckFiles(systemDir: FsDir, deckName: string) {
+		const deckDir = await systemDir.openDir(deckName);
+		if (deckDir.error) return false;
+
+		const entries = await deckDir.data.list();
+		if (entries.error) return false;
+
+		const fileNames = new Set(
+			entries.data.filter((entry) => entry.kind === 'file').map((entry) => entry.name)
+		);
+		return fileNames.has('front.svg') && fileNames.has('back.svg') && fileNames.has('data.csv');
+	}
+
 	async function initApp() {
 		const app = new Application();
 		await app.init({
@@ -557,7 +570,6 @@
 	}
 
 	async function createRoom(_init: boolean) {
-		console.log('creating room');
 		if (isE2EMode() && !playE2EBridge) {
 			playE2EBridge = installPlayE2EBridge(app, boardGameItems, handContainer, strokeLayer);
 		}
@@ -572,14 +584,23 @@
 		const deckEntries = entries.data
 			.filter((entry) => entry.kind === 'directory')
 			.sort((a, b) => a.name.localeCompare(b.name));
+		const playableDeckEntries = (
+			await Promise.all(
+				deckEntries.map(async (entry) => ({
+					entry,
+					playable: await hasPlayableDeckFiles(data, entry.name)
+				}))
+			)
+		)
+			.filter(({ playable }) => playable)
+			.map(({ entry }) => entry);
 		const loadedDecks = await Promise.all(
-			deckEntries.map((entry) => loadAndProcessCards(projectName, entry.name, fileSystem))
+			playableDeckEntries.map((entry) => loadAndProcessCards(projectName, entry.name, fileSystem))
 		);
 		const allComponentsParsed = loadedDecks.flat();
-		console.log('all comps parsed');
 		const roomName = privateRoomId ? 'private_room' : 'my_room';
 		const roomOptions = privateRoomId ? await getPrivateRoomOptions(privateRoomId) : undefined;
-		const shouldCreateRoom = isE2EMode() && !privateRoomId;
+		const shouldCreateRoom = !privateRoomId;
 		const room = shouldCreateRoom
 			? await client.create<BoardGameRoomState>(roomName, roomOptions)
 			: await client.joinOrCreate<BoardGameRoomState>(roomName, roomOptions);
@@ -613,11 +634,11 @@
 		return room;
 	}
 
-	const app = $state(await initApp());
+	const app = await initApp();
 	// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
-	const previewer = $derived(new PreviewHelper(app));
-	const init = $derived(initEditor(app, previewer));
-	const room = $derived(await createRoom(init));
+	const previewer = new PreviewHelper(app);
+	const init = initEditor(app, previewer);
+	const room = await createRoom(init);
 
 	function attachApp(app: Application): Attachment {
 		return (element) => {
@@ -646,7 +667,6 @@
 	function handleDrawCard(item: BoardGameItemNew) {
 		const stack = item.clientStack;
 		const ogId = item.id;
-		console.log('has stack', stack);
 		if (stack) {
 			const flippable = item.clientFlippable;
 			let id = stack.clientStackState.componentIds[stack.clientStackState.componentIds.length - 1];
@@ -658,7 +678,6 @@
 			newItem.visible = true;
 			newItem.renderable = true;
 			item = newItem;
-			console.log(`drawing stack item id ${newItem.id}`);
 		}
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);
