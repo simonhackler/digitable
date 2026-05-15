@@ -38,14 +38,153 @@
 	const current = $derived(tabCopy[activeTab]);
 </script>
 
+{#snippet previewScene(tab: TabId, compact: boolean)}
+	<div
+		class={`relative z-10 overflow-hidden rounded-xl bg-white/[0.09] p-4 ring-1 ring-white/10 ${
+			compact ? 'min-h-[170px] sm:min-h-[190px]' : 'min-h-[250px] sm:p-5'
+		}`}
+	>
+		{#if compact}
+			<div class="flex items-center justify-between gap-3">
+				<p class="text-xs font-semibold tracking-[0.16em] text-white/65 uppercase">
+					{tab === 'design'
+						? 'Design preview'
+						: tab === 'playtest'
+							? 'Playtest preview'
+							: 'Publish preview'}
+				</p>
+				<span class="rounded-full bg-white/12 px-2.5 py-1 text-xs font-semibold text-white/80">
+					{tab === 'design' ? 'Edit' : tab === 'playtest' ? 'Live' : 'Build'}
+				</span>
+			</div>
+		{/if}
+
+		{#if tab === 'design'}
+			<div
+				class={`relative overflow-hidden rounded-xl bg-[linear-gradient(rgba(255,255,255,0.09)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.09)_1px,transparent_1px)] bg-[length:18px_18px] ring-1 ring-white/10 ${compact ? 'mt-4' : ''} ${
+					compact ? 'h-[118px] sm:h-[140px]' : 'h-[190px] sm:h-[210px]'
+				}`}
+			>
+				<div class="absolute top-3 left-3 flex gap-1.5">
+					<span class="h-2 w-2 rounded-full bg-[#f2c9d1]"></span>
+					<span class="h-2 w-2 rounded-full bg-[#f2b04f]"></span>
+					<span class="h-2 w-2 rounded-full bg-[#9fe1c2]"></span>
+				</div>
+				<div
+					class={`absolute rounded-lg bg-[#f2b04f] p-2 text-[#181818] shadow-[0_14px_26px_rgba(0,0,0,0.18)] ring-2 ring-white/80 ${
+						compact
+							? 'top-8 left-5 h-[76px] w-[58px] sm:h-[92px] sm:w-[68px]'
+							: 'top-10 left-[13%] h-[128px] w-[92px]'
+					}`}
+				>
+					<div class="h-3 rounded bg-white/70"></div>
+					<div class="mt-2 h-8 rounded bg-white/25 sm:h-12"></div>
+					<div class="mt-2 grid grid-cols-2 gap-1">
+						<span class="h-2 rounded bg-white/55"></span>
+						<span class="h-2 rounded bg-white/55"></span>
+					</div>
+				</div>
+				<div
+					class={`absolute rounded-lg bg-white/12 ring-1 ring-white/10 ${
+						compact ? 'top-8 right-5 h-9 w-[42%] sm:h-11' : 'top-10 right-[11%] h-14 w-[44%]'
+					}`}
+				></div>
+				<div
+					class={`absolute rounded-lg bg-[#9fe1c2]/80 ${
+						compact
+							? 'right-[30%] bottom-4 h-9 w-9 sm:h-11 sm:w-11'
+							: 'right-[34%] bottom-10 h-16 w-16'
+					}`}
+				></div>
+				<div
+					class={`absolute rounded-lg bg-white/14 ${
+						compact ? 'right-5 bottom-4 h-9 w-[24%] sm:h-11' : 'right-[11%] bottom-10 h-16 w-[24%]'
+					}`}
+				></div>
+			</div>
+		{:else if tab === 'playtest'}
+			<div
+				class={`relative overflow-hidden rounded-xl bg-white/[0.07] ring-1 ring-white/10 ${compact ? 'mt-4' : ''} ${
+					compact ? 'h-[118px] sm:h-[140px]' : 'h-[190px] sm:h-[210px]'
+				}`}
+			>
+				<div
+					class="absolute top-3 right-3 left-3 grid grid-cols-[auto_1fr_auto] items-center gap-2"
+				>
+					<span class="rounded-full bg-[#f2b04f] px-2 py-1 text-xs font-semibold text-[#181818]">
+						Room open
+					</span>
+					<div class="h-1 rounded-full bg-white/15"></div>
+					<span class="rounded-full bg-white/15 px-2 py-1 text-xs text-white/80">3 players</span>
+				</div>
+				<div
+					class={`absolute rounded-xl bg-[#9fe1c2]/25 p-2 ring-1 ring-[#9fe1c2]/35 ${
+						compact ? 'inset-x-[27%] top-12 bottom-4' : 'inset-x-[30%] top-16 bottom-8'
+					}`}
+				>
+					<div class="grid h-full grid-cols-3 gap-1.5">
+						{#each ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] as square (square)}
+							<span class="rounded bg-white/18"></span>
+						{/each}
+					</div>
+				</div>
+				<div class="absolute top-12 left-4 flex gap-1.5 sm:left-6">
+					<span class="h-8 w-6 rounded bg-white/20"></span>
+					<span class="h-8 w-6 rounded bg-white/20"></span>
+					<span class="h-8 w-6 rounded bg-[#f2c9d1]/80"></span>
+				</div>
+				<div class="absolute right-4 bottom-4 flex gap-1.5 sm:right-6 sm:bottom-6">
+					<span class="h-8 w-6 rounded bg-[#f2b04f]/80"></span>
+					<span class="h-8 w-6 rounded bg-white/20"></span>
+					<span class="h-8 w-6 rounded bg-white/20"></span>
+				</div>
+			</div>
+		{:else}
+			<div
+				class={`relative overflow-hidden rounded-xl bg-white/[0.07] p-3 ring-1 ring-white/10 ${compact ? 'mt-4' : ''} ${
+					compact ? 'h-[118px] sm:h-[140px]' : 'h-[190px] sm:h-[210px]'
+				}`}
+			>
+				<div class="grid h-full grid-cols-3 gap-3">
+					<div class="grid content-between rounded-lg bg-white/[0.1] p-2 ring-1 ring-white/10">
+						<div class="grid grid-cols-2 gap-1 rounded bg-white/8 p-1">
+							{#each ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'] as card (card)}
+								<span class="aspect-[3/4] rounded bg-[#f2b04f]/80"></span>
+							{/each}
+						</div>
+						<p class="truncate text-xs text-white/70">Paper</p>
+					</div>
+					<div class="grid content-between rounded-lg bg-white/[0.1] p-2 ring-1 ring-white/10">
+						<div class="rounded bg-[#9fe1c2]/75 p-2">
+							<div class="h-2 rounded bg-white/40"></div>
+							<div class="mt-2 h-2 rounded bg-white/25"></div>
+							<div class="mt-1.5 h-2 w-2/3 rounded bg-white/25"></div>
+						</div>
+						<p class="truncate text-xs text-white/70">TTS JSON</p>
+					</div>
+					<div class="grid content-between rounded-lg bg-white/[0.1] p-2 ring-1 ring-white/10">
+						<div class="grid grid-cols-2 gap-1">
+							<span class="h-8 rounded bg-[#f2c9d1]/75"></span>
+							<span class="h-8 rounded bg-white/20"></span>
+							<span class="h-8 rounded bg-white/20"></span>
+							<span class="h-8 rounded bg-[#9fe1c2]/70"></span>
+						</div>
+						<p class="truncate text-xs text-white/70">Sheets</p>
+					</div>
+				</div>
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
 <svelte:head>
 	<title>Digitable Studio</title>
 </svelte:head>
 
 <main class="page min-h-screen text-[#151515]">
-	<section class="py-8 sm:py-12">
-		<div class="mx-auto grid max-w-[1120px] gap-8 px-6 sm:gap-10">
-			<div class="reveal mx-auto grid max-w-[720px] gap-4 text-left md:text-center">
+	<section class="py-5 sm:py-6">
+		<div class="mx-auto grid max-w-[1120px] gap-6 px-6 sm:gap-7">
+			<div class="reveal mx-auto grid max-w-[720px] gap-3 text-left md:text-center">
 				<h1 class="font-['Newsreader'] text-4xl md:text-5xl lg:text-6xl">
 					<span class="block">A free and open source boardgame engine.</span>
 				</h1>
@@ -70,7 +209,7 @@
 				</Tabs.Root>
 
 				<div
-					class={`relative overflow-hidden rounded-[26px] p-6 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-10 ${
+					class={`relative overflow-hidden rounded-[26px] p-5 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-7 ${
 						activeTab === 'design'
 							? 'bg-[linear-gradient(130deg,#0c0f1a_0%,#2d3554_45%,#f2b04f_120%)]'
 							: activeTab === 'playtest'
@@ -78,52 +217,15 @@
 								: 'bg-[linear-gradient(130deg,#1a1015_0%,#5b2a3a_50%,#f7c26c_120%)]'
 					}`}
 				>
-					<div
-						class="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-5 max-sm:grid-cols-1"
-					>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4">
-							<p class="text-base tracking-[0.15em] text-white/70 uppercase">
-								{activeTab} panel
-							</p>
-							<div class="mt-2 h-1.5 rounded-full bg-white/20"></div>
-							<div class="mt-2 h-1.5 w-[70%] rounded-full bg-white/20"></div>
-							<div class="mt-2 h-1.5 rounded-full bg-white/20"></div>
-							<div class="mt-2 h-1.5 w-[70%] rounded-full bg-white/20"></div>
-						</div>
-						<div class="min-h-[240px] rounded-2xl bg-white/10 p-4">
-							<p class="text-base tracking-[0.15em] text-white/70 uppercase">Board</p>
-							<div class="mt-4 grid grid-cols-4 gap-1.5">
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-								<span class="aspect-square rounded-lg bg-[#f2b04f]/80"></span>
-							</div>
-						</div>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4">
-							<p class="text-base tracking-[0.15em] text-white/70 uppercase">Cards</p>
-							<div class="mt-4 grid gap-1.5">
-								<div class="h-3 rounded-full bg-white/25"></div>
-								<div class="h-3 rounded-full bg-white/25"></div>
-								<div class="h-3 rounded-full bg-white/25"></div>
-							</div>
-						</div>
-					</div>
+					{@render previewScene(activeTab, true)}
 					<div class="preview-glow" aria-hidden="true"></div>
 				</div>
 			</div>
 
-			<div class="reveal mx-auto grid max-w-[720px] gap-6 text-left md:text-center">
+			<div class="reveal mx-auto grid max-w-[720px] gap-5 text-left md:text-center">
 				<p class="text-xl text-[#4b4b57]">{current.subtitle}</p>
 				<ul
-					class="flex flex-wrap justify-start gap-3 text-xl text-[#2d2d36] md:justify-center md:gap-x-6"
+					class="hidden flex-wrap justify-start gap-3 text-xl text-[#2d2d36] sm:flex md:justify-center md:gap-x-6"
 				>
 					{#each current.bullets as bullet (bullet)}
 						<li class="flex items-center gap-2">
@@ -134,9 +236,7 @@
 				</ul>
 				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
 					<Button href="/sign-in" variant="pill-outline" size="xl">Sign in</Button>
-					<Button href="/app/games" data-sveltekit-reload variant="hero" size="xl">
-						Start creating
-					</Button>
+					<Button href="/app/games" variant="hero" size="xl">Create now</Button>
 				</div>
 			</div>
 		</div>
@@ -151,13 +251,7 @@
 					class="relative overflow-hidden rounded-[26px] bg-[linear-gradient(130deg,#0c0f1a_0%,#2d3554_45%,#f2b04f_120%)] p-6 text-white shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-10"
 				>
 					<div class="mb-4 text-base tracking-[0.2em] text-white/75 uppercase">Design preview</div>
-					<div
-						class="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-5 max-sm:grid-cols-1"
-					>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4"></div>
-						<div class="min-h-[240px] rounded-2xl bg-white/10 p-4"></div>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4"></div>
-					</div>
+					{@render previewScene('design', false)}
 				</div>
 			</div>
 			<div class="reveal order-1 md:order-2">
@@ -198,13 +292,7 @@
 					<div class="mb-4 text-base tracking-[0.2em] text-white/75 uppercase">
 						Playtest preview
 					</div>
-					<div
-						class="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-5 max-sm:grid-cols-1"
-					>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4"></div>
-						<div class="min-h-[240px] rounded-2xl bg-white/10 p-4"></div>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4"></div>
-					</div>
+					{@render previewScene('playtest', false)}
 				</div>
 			</div>
 		</div>
@@ -219,13 +307,7 @@
 					class="relative overflow-hidden rounded-[26px] bg-[linear-gradient(130deg,#1a1015_0%,#5b2a3a_50%,#f7c26c_120%)] p-6 text-white shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-10"
 				>
 					<div class="mb-4 text-base tracking-[0.2em] text-white/75 uppercase">Publish preview</div>
-					<div
-						class="relative z-10 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-5 max-sm:grid-cols-1"
-					>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4"></div>
-						<div class="min-h-[240px] rounded-2xl bg-white/10 p-4"></div>
-						<div class="min-h-[150px] rounded-2xl bg-white/10 p-4"></div>
-					</div>
+					{@render previewScene('publish', false)}
 				</div>
 			</div>
 			<div class="reveal order-1 md:order-2">

@@ -27,23 +27,14 @@
 />
 
 <main class="min-h-screen bg-[#f7f2ea] text-[#151515]">
-	<header class="relative overflow-hidden">
-		<div class="absolute inset-0" aria-hidden="true">
-			<div
-				class="absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,#f7b964_0%,rgba(247,185,100,0)_70%)]"
-			></div>
-			<div
-				class="absolute right-0 bottom-0 h-64 w-64 translate-x-1/3 translate-y-1/3 rounded-full bg-[radial-gradient(circle,#b7d3cc_0%,rgba(183,211,204,0)_70%)]"
-			></div>
-		</div>
-		<div class="relative mx-auto max-w-5xl px-6 pt-14 pb-10">
+	<header>
+		<div class="mx-auto max-w-5xl px-6 pt-14 pb-10">
 			<p class="text-xs font-semibold tracking-[0.3em] text-[#6e5b3a] uppercase">Digitable blog</p>
 			<h1 class="mt-4 max-w-2xl text-4xl leading-tight font-semibold">
 				Stay up to date with the development of digitable.
 			</h1>
 			<p class="mt-4 max-w-2xl text-lg text-[#49424c]">{site.tagline}</p>
 			<div class="mt-6 flex flex-wrap items-center gap-4 text-sm font-semibold">
-				<Button href={resolve('/')} variant="pill-outline" size="default">Back to studio</Button>
 				<Button href={resolve('/rss.xml')} variant="pill-dark" size="default">RSS feed</Button>
 			</div>
 		</div>

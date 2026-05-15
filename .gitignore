@@ -38,3 +38,4 @@ storybook-static
 # Nix VM artifacts
 infrastructure/nix/result
 infrastructure/nix/*.qcow2
+result

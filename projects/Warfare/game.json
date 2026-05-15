@@ -1,0 +1,11 @@
+{
+  "name": "Warfare",
+  "minPlayers": 1,
+  "maxPlayers": 4,
+  "description": "test",
+  "tags": [
+    "Horror",
+    "Educational",
+    "Medieval"
+  ]
+}

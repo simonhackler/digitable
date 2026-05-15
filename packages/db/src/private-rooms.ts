@@ -44,6 +44,16 @@ export async function addPrivateRoomMember(input: {
 	});
 }
 
+export async function getPrivateRoomByInviteCode(inviteCode: string) {
+	const [room] = await db
+		.select()
+		.from(privateRooms)
+		.where(eq(privateRooms.inviteCode, inviteCode))
+		.limit(1);
+
+	return room ?? null;
+}
+
 export async function getActiveMembership(input: { privateRoomId: string; userId: string }) {
 	const [membership] = await db
 		.select()

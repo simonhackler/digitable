@@ -1,4 +1,5 @@
 import { ArraySchema, MapSchema, Schema, SetSchema, type } from '@colyseus/schema';
+import { Stroke } from './stroke-schema';
 
 export interface InitGamePayload {
 	stacks: { componentIds: string[] }[];
@@ -131,6 +132,7 @@ export class BoardGameRoomState extends Schema {
 	@type({ map: Flippable }) flippable: MapSchema<Flippable>;
 	@type({ map: Stack }) stacks: MapSchema<Stack>;
 	@type({ map: Player }) players: MapSchema<Player>;
+	@type({ map: Stroke }) strokes: MapSchema<Stroke>;
 
 	constructor() {
 		super();
@@ -139,5 +141,6 @@ export class BoardGameRoomState extends Schema {
 		this.flippable = new MapSchema<Flippable>();
 		this.stacks = new MapSchema<Stack>();
 		this.players = new MapSchema<Player>();
+		this.strokes = new MapSchema<Stroke>();
 	}
 }

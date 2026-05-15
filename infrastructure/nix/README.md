@@ -10,9 +10,25 @@ The flake builds both SvelteKit apps from source with Bun. It resolves the repo 
 `infrastructure/nix/flake.nix`, so no repo-root environment variable is required.
 
 Secrets are read through `sops-nix` from `infrastructure/nix/secrets/secrets.yaml`. The host expects an age
-identity derived from the server's SSH host key and currently declares `replicate-api-token`, which is rendered
-into `app.env` as `REPLICATE_API_TOKEN`.
+identity derived from the server's SSH host key and currently declares:
+
+- `replicate-api-token`, rendered into `app.env` as `REPLICATE_API_TOKEN`
+- `s3-access-key-id`, rendered into `app.env` as `S3_ACCESS_KEY_ID`
+- `s3-secret-access-key`, rendered into `app.env` as `S3_SECRET_ACCESS_KEY`
+
 Make sure that encrypted key exists in `infrastructure/nix/secrets/secrets.yaml` before deploying.
+
+The production app stores playtest project files in the private Backblaze B2 bucket `digitable`. Non-secret S3
+settings are hardcoded in `hosts/studio.nix`:
+
+- endpoint: `https://s3.eu-central-003.backblazeb2.com`
+- region: `eu-central-003`
+- bucket: `digitable`
+- path-style requests: enabled
+
+Use a bucket-scoped Backblaze Application Key for `s3-access-key-id` and `s3-secret-access-key`; do not use the
+Backblaze master application key. Set `s3-access-key-id` to Backblaze's generated `keyID` value, not the key name
+shown in the Backblaze UI. Set `s3-secret-access-key` to the generated `applicationKey` value.
 
 To add a new secret:
 

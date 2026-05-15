@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+ <rect width="63" height="88" fill="#2f2419"/>
+ <rect x="4" y="4" width="55" height="80" rx="4" fill="#5a4633" stroke="#f7efd9" stroke-width="2"/>
+ <text x="31.5" y="44" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#f7efd9">Back</text>
+</svg>

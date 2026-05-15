@@ -1,21 +1,21 @@
-import { expect, test } from '@playwright/test';
-import * as path from 'node:path';
-import { fullOpfsSeed, opfsEntryExists, readOpfsText, writeOpfsText } from './helpers/opfs';
+import { expect, test, type Page } from '@playwright/test';
+import { opfsEntryExists, readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
 
 test.describe.configure({ mode: 'serial' });
 
+async function showDeckInSidebar(page: Page, deckName: string) {
+	const deckLink = page.getByRole('link', { name: deckName, exact: true });
+	if (!(await deckLink.isVisible())) {
+		await page.getByRole('button', { name: 'Decks' }).click();
+	}
+	await expect(deckLink).toBeVisible();
+}
+
 test('create new game and delete it', async ({ page }) => {
-	const here = path.dirname(test.info().file); // absolute dir of THIS test file
-	const projectsDir = path.resolve(here, '../projects');
 	const gameName = 'Create Game Test';
 	const gameDescription = 'A quick test game description that is long enough for validation.';
 
-	await page.goto('/app/games');
-	await fullOpfsSeed(page, projectsDir);
-
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
-	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+	await seedProjects(page);
 
 	await page.getByRole('button', { name: 'Create Game' }).first().click();
 	await page.getByRole('textbox', { name: 'Gamename' }).fill(gameName);
@@ -46,8 +46,6 @@ test('create new game and delete it', async ({ page }) => {
 });
 
 test('created game appears in the games overview and can create a deck', async ({ page }) => {
-	const here = path.dirname(test.info().file); // absolute dir of THIS test file
-	const projectsDir = path.resolve(here, '../projects');
 	const gameName = 'Overview Create Test';
 	const folderName = 'Overview_Create_Test';
 	const deckName = 'new_game_deck';
@@ -57,12 +55,7 @@ test('created game appears in the games overview and can create a deck', async (
 	const secondGameDescription =
 		'A second created game should also appear on the overview after saving.';
 
-	await page.goto('/app/games');
-	await fullOpfsSeed(page, projectsDir);
-
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
-	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+	await seedProjects(page);
 
 	await page.getByRole('button', { name: 'Create Game' }).first().click();
 	await page.getByRole('textbox', { name: 'Gamename' }).fill(gameName);
@@ -104,15 +97,9 @@ test('created game appears in the games overview and can create a deck', async (
 });
 
 test('create new deck and delete it', async ({ page }) => {
-	const here = path.dirname(test.info().file); // absolute dir of THIS test file
-	const projectsDir = path.resolve(here, '../projects');
 	const deckName = 'e2e_deck';
 
-	await page.goto('/app/games');
-	await fullOpfsSeed(page, projectsDir);
-
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await seedProjects(page);
 
 	await page.getByRole('main').getByText('western-cards').click();
 	await page.getByRole('button', { name: 'Decks' }).click();
@@ -136,17 +123,11 @@ test('create new deck and delete it', async ({ page }) => {
 test('rename deck preserves files, validates names, and persists after reload', async ({
 	page
 }) => {
-	const here = path.dirname(test.info().file); // absolute dir of THIS test file
-	const projectsDir = path.resolve(here, '../projects');
 	const originalDeckName = 'rename_source_deck';
 	const renamedDeckName = 'rename_target_deck';
 	const dataCsv = 'name,count\nScout,3\n';
 
-	await page.goto('/app/games');
-	await fullOpfsSeed(page, projectsDir);
-
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await seedProjects(page);
 
 	await page.getByRole('main').getByText('western-cards').click();
 	await page.getByRole('button', { name: 'Decks' }).click();
@@ -159,6 +140,13 @@ test('rename deck preserves files, validates names, and persists after reload', 
 	);
 	await writeOpfsText(page, `/western-cards/system/${originalDeckName}/data.csv`, dataCsv);
 
+	await page.goto('/app/games/western-cards');
+	await showDeckInSidebar(page, originalDeckName);
+	await page.getByRole('link', { name: originalDeckName, exact: true }).click();
+	await expect(page).toHaveURL(
+		new RegExp(`/app/games/western-cards/decks/${originalDeckName}/editor`)
+	);
+	await showDeckInSidebar(page, originalDeckName);
 	await page.getByRole('button', { name: `More for ${originalDeckName}` }).click();
 	await page.getByRole('menuitem', { name: 'Rename' }).click();
 	await page.getByRole('textbox', { name: 'Deck name' }).fill('bad deck');
@@ -202,17 +190,11 @@ test('rename deck preserves files, validates names, and persists after reload', 
 });
 
 test('create new game from project switcher', async ({ page }) => {
-	const here = path.dirname(test.info().file); // absolute dir of THIS test file
-	const projectsDir = path.resolve(here, '../projects');
 	const gameName = 'Switcher Create Test';
 	const folderName = 'Switcher_Create_Test';
 	const gameDescription = 'A game created from the project switcher keeps the creator on metadata.';
 
-	await page.goto('/app/games');
-	await fullOpfsSeed(page, projectsDir);
-
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await seedProjects(page);
 	await page.getByRole('main').getByText('western-cards').click();
 
 	await page.getByRole('button', { name: /western-cards/ }).click();
@@ -234,14 +216,7 @@ test('create new game from project switcher', async ({ page }) => {
 });
 
 test('layout route no longer renders the layout editor', async ({ page }) => {
-	const here = path.dirname(test.info().file); // absolute dir of THIS test file
-	const projectsDir = path.resolve(here, '../projects');
-
-	await page.goto('/app/games');
-	await fullOpfsSeed(page, projectsDir);
-
-	await page.getByRole('button', { name: 'Use Browser' }).first().click();
-	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await seedProjects(page);
 
 	const response = await page.goto('/app/games/western-cards/decks/western/layout');
 	expect(response?.status()).toBe(404);

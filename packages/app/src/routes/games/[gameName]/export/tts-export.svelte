@@ -13,10 +13,12 @@
 	let {
 		sheets,
 		gameName,
+		exportFolderPath,
 		onExported
 	}: {
 		sheets: Sheet[];
 		gameName: string;
+		exportFolderPath: string;
 		onExported: (sheet: Sheet) => void;
 	} = $props();
 
@@ -268,7 +270,7 @@
 				lastModified: Date.now()
 			});
 
-			const exportDir = await fileSytem.ensureDir(joinFsPath(gameName, 'tts-export'));
+			const exportDir = await fileSytem.ensureDir(exportFolderPath);
 			if (exportDir.error) throw exportDir.error;
 			const written = await exportDir.data.write(file.name, file);
 			if (written.error) throw written.error;

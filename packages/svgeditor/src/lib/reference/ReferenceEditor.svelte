@@ -19,7 +19,7 @@
 		centerOnLoad?: boolean;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
-		toolbarActions?: Snippet;
+		toolbarActions?: () => ReturnType<Snippet>;
 	};
 
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -46,6 +46,7 @@
 		showRulers: true,
 		...(config ?? {})
 	}));
+	const extraActions = $derived(toolbarActions as Snippet | undefined);
 
 	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		dispatch('change', event.detail);
@@ -317,7 +318,7 @@
 		<div class="flex flex-col gap-3">
 			<Card class="min-h-[360px] overflow-hidden">
 				<div class="bg-muted/40 border-b px-4 py-3">
-					<Toolbar {controller} variant="actions" extraActions={toolbarActions} />
+					<Toolbar {controller} variant="actions" {extraActions} />
 				</div>
 				<CardContent class="h-[60vh] min-h-[360px] p-0">
 					<div class="h-full p-4">

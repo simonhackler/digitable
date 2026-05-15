@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { base, resolve } from '$app/paths';
+	import AuthBackdrop from '$lib/components/AuthBackdrop.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import type { PageProps } from './$types';
 
+	let { data }: PageProps = $props();
 	let email = $state('');
 	let password = $state('');
-	let errorMessage = $state('');
+	let errorMessage = $derived(data.googleError);
 	let isSubmitting = $state(false);
+	let isGoogleSubmitting = $state(false);
 
 	async function readErrorMessage(response: Response) {
 		const contentType = response.headers.get('content-type') ?? '';
@@ -27,8 +31,7 @@
 		return text || 'Sign in failed. Check your credentials and try again.';
 	}
 
-	async function handleSubmit(event: SubmitEvent & { currentTarget: HTMLFormElement }) {
-		event.preventDefault();
+	async function handleSubmit() {
 		errorMessage = '';
 		isSubmitting = true;
 
@@ -51,46 +54,62 @@
 
 		window.location.assign('/app/games');
 	}
+
+	async function handleGoogleSignIn() {
+		errorMessage = '';
+		isGoogleSubmitting = true;
+
+		const response = await fetch(`${base}/api/auth/sign-in/social`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({
+				provider: 'google',
+				callbackURL: '/app/games',
+				errorCallbackURL: '/sign-in?error=google'
+			})
+		});
+
+		if (!response.ok) {
+			errorMessage = await readErrorMessage(response);
+			isGoogleSubmitting = false;
+			return;
+		}
+
+		const body = (await response.json()) as { url?: unknown };
+
+		if (typeof body.url === 'string' && body.url.length > 0) {
+			window.location.assign(body.url);
+			return;
+		}
+
+		errorMessage = 'Google sign in did not return a redirect URL.';
+		isGoogleSubmitting = false;
+	}
 </script>
 
 <svelte:head>
 	<title>Sign In | Digitable</title>
 </svelte:head>
 
-<div
-	class="min-h-screen bg-[radial-gradient(circle_at_top_left,#fde7b3_0%,transparent_28%),radial-gradient(circle_at_bottom_right,#cad8ff_0%,transparent_32%),linear-gradient(180deg,#f7f3ea_0%,#fdfcf8_100%)] text-[#171717]"
->
+<div class="relative min-h-screen overflow-hidden bg-[#737d91] text-[#f8f4eb]">
+	<AuthBackdrop />
 	<main
-		class="mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center"
+		class="pointer-events-none relative z-10 mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center"
 	>
 		<section class="flex flex-col justify-center gap-6">
-			<p class="text-sm font-semibold tracking-[0.3em] text-[#6d5d37] uppercase">Digitable App</p>
+			<p class="text-sm font-semibold tracking-[0.3em] text-white/75 uppercase">Digitable App</p>
 			<div class="max-w-xl space-y-4">
 				<h1 class="font-['Newsreader'] text-4xl leading-tight sm:text-5xl">
 					Pick your project back up without losing momentum.
 				</h1>
-				<p class="text-lg text-[#4f4a42] sm:text-xl">
-					Sign in to open your games, jump into playtests, and keep your design files moving.
-				</p>
-			</div>
-			<div class="grid gap-3 text-sm text-[#3f3a32] sm:max-w-md">
-				<div
-					class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur"
-				>
-					Your projects stay in the app, ready to edit or playtest.
-				</div>
-				<div
-					class="rounded-2xl border border-white/70 bg-white/65 px-4 py-3 shadow-[0_18px_35px_rgba(35,30,22,0.08)] backdrop-blur"
-				>
-					Private rooms and game tickets keep collaborative sessions tied to your account.
-				</div>
 			</div>
 		</section>
 
 		<section class="mx-auto w-full max-w-md">
 			<form
-				class="rounded-[28px] border border-black/8 bg-white/88 p-6 shadow-[0_30px_70px_rgba(20,20,20,0.12)] backdrop-blur sm:p-8"
-				onsubmit={handleSubmit}
+				class="pointer-events-auto rounded-[28px] border border-white/45 bg-white/95 p-6 text-[#171717] shadow-[0_30px_70px_rgba(20,20,20,0.22)] backdrop-blur sm:p-8"
 			>
 				<div class="space-y-2">
 					<p class="text-sm font-semibold tracking-[0.24em] text-[#8a6c27] uppercase">Sign in</p>
@@ -107,6 +126,43 @@
 				</div>
 
 				<div class="mt-6 grid gap-4">
+					{#if data.googleAuthEnabled}
+						<Button
+							class="w-full justify-center border-black/10 bg-white text-[#171717] hover:bg-[#f8f8f8]"
+							type="button"
+							variant="outline"
+							size="lg"
+							disabled={isSubmitting || isGoogleSubmitting}
+							onclick={handleGoogleSignIn}
+						>
+							<svg class="size-5" viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									fill="#4285F4"
+									d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+								/>
+								<path
+									fill="#34A853"
+									d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+								/>
+								<path
+									fill="#FBBC05"
+									d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"
+								/>
+								<path
+									fill="#EA4335"
+									d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.31 9.14 5.38 12 5.38z"
+								/>
+							</svg>
+							{isGoogleSubmitting ? 'Opening Google...' : 'Continue with Google'}
+						</Button>
+
+						<div class="flex items-center gap-3 text-xs font-medium text-[#6f695f]">
+							<div class="h-px flex-1 bg-black/10"></div>
+							<span>or</span>
+							<div class="h-px flex-1 bg-black/10"></div>
+						</div>
+					{/if}
+
 					<Input
 						type="email"
 						bind:value={email}
@@ -134,19 +190,15 @@
 					</p>
 				{/if}
 
-				<Button class="mt-6 w-full justify-center" type="submit" size="lg" disabled={isSubmitting}>
+				<Button
+					class="mt-6 w-full justify-center"
+					type="button"
+					size="lg"
+					disabled={isSubmitting}
+					onclick={handleSubmit}
+				>
 					{isSubmitting ? 'Signing in...' : 'Sign in'}
 				</Button>
-
-				<p class="mt-4 text-center text-sm text-[#5d584f]">
-					Want to start from scratch?
-					<a
-						class="font-medium text-[#171717] underline underline-offset-4"
-						href={resolve('/sign-up')}
-					>
-						Go to sign up
-					</a>
-				</p>
 			</form>
 		</section>
 	</main>

@@ -63,7 +63,7 @@
 		<Sidebar.Content>
 			<CreateMenu activeGame={activeProject} fileSystem={projectFolderResult.data} />
 			<ExportMenu activeGame={activeProject} />
-			<PlayMenu activeGame={activeProject} />
+			<PlayMenu activeGame={activeProject} fileSystem={projectFolderResult.data} />
 			<Sidebar.Group />
 		</Sidebar.Content>
 	{/if}
