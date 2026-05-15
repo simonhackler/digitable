@@ -39,7 +39,7 @@
     // lib.optionalAttrs (!enableAppSecrets) {
       BETTER_AUTH_SECRET = "vm-local-better-auth-secret-change-before-production";
     };
-  appSecretsServiceConfig = lib.optionalAttrs enableAppSecrets {
+  appSecretServiceConfig = lib.optionalAttrs enableAppSecrets {
     EnvironmentFile = config.sops.templates."app.env".path;
   };
   mkNodeService = {
@@ -88,9 +88,13 @@ in {
     defaultSopsFormat = "yaml";
 
     secrets.replicate-api-token = {};
+    secrets.s3-access-key-id = {};
+    secrets.s3-secret-access-key = {};
 
     templates."app.env".content = ''
       REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
+      S3_ACCESS_KEY_ID=${config.sops.placeholder.s3-access-key-id}
+      S3_SECRET_ACCESS_KEY=${config.sops.placeholder.s3-secret-access-key}
     '';
   };
 
@@ -191,7 +195,6 @@ in {
     description = "Digitable Studio";
     port = studioPort;
     workingDirectory = "${studioPackage}/packages/studio";
-    extraServiceConfig = appSecretsServiceConfig;
     extraEnvironment = {
       BETTER_AUTH_URL = studioOrigin;
     };
@@ -201,16 +204,24 @@ in {
     description = "Digitable App";
     port = appPort;
     workingDirectory = "${studioPackage}/packages/app";
-    extraServiceConfig = appSecretsServiceConfig;
-    extraEnvironment = {
-      BETTER_AUTH_URL = "${studioOrigin}/app";
-      OTEL_SERVICE_NAME = "digitable-app";
-      OTEL_SERVICE_VERSION = tracewayAppVersion;
-      PUBLIC_APP_VERSION = tracewayAppVersion;
-      PUBLIC_TRACEWAY_CONNECTION = "${tracewayProjectToken}@${tracewayUrl}/api/report";
-      TRACEWAY_PROJECT_TOKEN = tracewayProjectToken;
-      TRACEWAY_URL = tracewayUrl;
-    };
+    extraServiceConfig = appSecretServiceConfig;
+    extraEnvironment =
+      {
+        BETTER_AUTH_URL = "${studioOrigin}/app";
+        OTEL_SERVICE_NAME = "digitable-app";
+        OTEL_SERVICE_VERSION = tracewayAppVersion;
+        PUBLIC_APP_VERSION = tracewayAppVersion;
+        PUBLIC_TRACEWAY_CONNECTION = "${tracewayProjectToken}@${tracewayUrl}/api/report";
+        TRACEWAY_PROJECT_TOKEN = tracewayProjectToken;
+        TRACEWAY_URL = tracewayUrl;
+        BODY_SIZE_LIMIT = "256M";
+      }
+      // lib.optionalAttrs enableAppSecrets {
+        S3_BUCKET = "digitable";
+        S3_ENDPOINT = "https://s3.eu-central-003.backblazeb2.com";
+        S3_FORCE_PATH_STYLE = "true";
+        S3_REGION = "eu-central-003";
+      };
   };
 
   systemd.services.game-server = mkNodeService {

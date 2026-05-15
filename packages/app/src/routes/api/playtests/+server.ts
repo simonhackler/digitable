@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { createPrivateRoom } from '@svg-table/db/private-rooms';
-import { savePlaytestProject, type IncomingPlaytestFile } from '$lib/server/playtest-storage';
+import {
+	savePlaytestProject,
+	validatePlaytestStorageConfig,
+	type IncomingPlaytestFile
+} from '$lib/server/playtest-storage';
 
 type CreatePlaytestBody = {
 	projectName?: unknown;
@@ -35,6 +39,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (!locals.user) {
 		error(401, 'Not authenticated');
 	}
+
+	validatePlaytestStorageConfig();
 
 	const body = (await request.json()) as CreatePlaytestBody;
 	if (typeof body.projectName !== 'string' || body.projectName.length === 0) {

@@ -42,6 +42,18 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 	return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
+export function validateS3AccessKeyId(accessKeyId: string | undefined): void {
+	if (accessKeyId === undefined) return;
+
+	if (accessKeyId.trim() !== accessKeyId || accessKeyId.length === 0) {
+		throw new Error('S3_ACCESS_KEY_ID must not be empty or contain surrounding whitespace');
+	}
+
+	if (!/^[A-Za-z0-9]+$/.test(accessKeyId)) {
+		throw new Error('S3_ACCESS_KEY_ID must be the provider key id, not a display name');
+	}
+}
+
 function getEndpoint() {
 	if (!env.S3_ENDPOINT) {
 		return env.MINIO_PORT ? `http://127.0.0.1:${env.MINIO_PORT}` : undefined;
@@ -67,6 +79,8 @@ function getS3Config() {
 	const accessKeyId = env.S3_ACCESS_KEY_ID ?? env.MINIO_ROOT_USER;
 	const secretAccessKey = env.S3_SECRET_ACCESS_KEY ?? env.MINIO_ROOT_PASSWORD;
 
+	validateS3AccessKeyId(accessKeyId);
+
 	return {
 		bucket: required(env.S3_BUCKET, 'S3_BUCKET'),
 		client: new S3Client({
@@ -82,6 +96,10 @@ function getS3Config() {
 					: undefined
 		})
 	};
+}
+
+export function validatePlaytestStorageConfig() {
+	getS3Config();
 }
 
 async function ensureBucket() {
