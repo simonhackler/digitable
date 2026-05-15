@@ -2,7 +2,9 @@
 
 ## Goal
 
-Make image columns in the data editor reliable enough for normal deck-building workflows: SVG image fields should appear as image columns, users should be able to choose or generate image values, previews should update immediately, and saved data should reload/export consistently.
+Make image columns in the data editor reliable enough for normal deck-building workflows:
+SVG image fields should appear as image columns, users should be able to choose or generate image values,
+previews should update immediately, and saved data should reload/export consistently.
 
 ## Current State
 
@@ -34,9 +36,11 @@ Make image columns in the data editor reliable enough for normal deck-building w
   - List images from the project `files/` directory and useful subfolders such as `files/generated/`.
   - Write the selected project-relative path into the selected cells.
   - Trigger the same preview update and autosave path as normal cell edits.
+- Allow uploading from the data editor.
 - Keep generated images in `files/generated/`.
 - When image generation succeeds, fill only empty target cells by default.
 - Missing or broken image files should render as transparent placeholders, not break the data editor.
+- Make sure the images display correctly in the svg editor view
 
 ## Implementation Notes
 

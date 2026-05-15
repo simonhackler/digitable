@@ -84,7 +84,7 @@ async function userAcceptances(userId: string) {
 test('sign up records current policy acceptances', async ({ page, context }) => {
 	const email = `legal-ui-e2e-${Date.now()}@example.com`;
 
-	await page.goto('/sign-up');
+	await page.goto('/sign-up', { waitUntil: 'networkidle' });
 	await expect(page.getByRole('heading', { name: 'Create your Digitable account' })).toBeVisible();
 
 	await page.getByLabel('Name').fill('Legal UI E2E');

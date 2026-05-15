@@ -7,8 +7,23 @@ const name = 'Auth E2E';
 test.describe.configure({ mode: 'serial' });
 test.setTimeout(60000);
 
+test('google auth controls are hidden without provider credentials', async ({ page }) => {
+	test.skip(
+		Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+		'Google credentials are configured'
+	);
+
+	await page.goto('/app/sign-in', { waitUntil: 'networkidle' });
+	await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeHidden();
+
+	await page.goto('/app/sign-up', { waitUntil: 'networkidle' });
+	await expect(page.getByRole('heading', { name: 'Create your Digitable account' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeHidden();
+});
+
 test('sign up creates an account and opens the app', async ({ page }) => {
-	await page.goto('/sign-up', { waitUntil: 'networkidle' });
+	await page.goto('/app/sign-up', { waitUntil: 'networkidle' });
 
 	await expect(page.getByRole('heading', { name: 'Create your Digitable account' })).toBeVisible();
 
@@ -24,7 +39,7 @@ test('sign up creates an account and opens the app', async ({ page }) => {
 
 test('sign in opens the app for an existing account', async ({ page, context }) => {
 	await context.clearCookies();
-	await page.goto('/sign-in', { waitUntil: 'networkidle' });
+	await page.goto('/app/sign-in', { waitUntil: 'networkidle' });
 
 	await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 

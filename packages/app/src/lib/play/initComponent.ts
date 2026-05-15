@@ -1,6 +1,6 @@
 import type { SchemaCallbackProxy } from '@colyseus/schema';
 import type { Room } from 'colyseus.js';
-import { Container, Sprite } from 'pixi.js';
+import { Container, Sprite, type Texture } from 'pixi.js';
 import { BoardGameItemNew, CardContainer } from '$lib/pixi/item';
 import { assert } from '$lib/utils/assert';
 import {
@@ -16,8 +16,8 @@ import {
 
 export interface ParsedSvg {
 	id: string;
-	front: Sprite;
-	back: Sprite;
+	front: Container;
+	back: Container;
 }
 
 export interface InitComponentDependencies {
@@ -26,9 +26,24 @@ export interface InitComponentDependencies {
 	isDragging: () => boolean;
 }
 
+function firstTexture(container: Container): Texture | null {
+	if (container instanceof Sprite) {
+		return container.texture;
+	}
+
+	for (const child of container.children) {
+		const texture = firstTexture(child as Container);
+		if (texture) return texture;
+	}
+
+	return null;
+}
+
 async function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
 	const cardContainer = topItem.itemContainer as CardContainer;
-	const tex = !isFaceUp ? cardContainer.backSprite.texture : cardContainer.frontSprite.texture;
+	const face = !isFaceUp ? cardContainer.backSprite : cardContainer.frontSprite;
+	const tex = firstTexture(face);
+	assert(tex, 'Stack card texture not found');
 
 	const topSprite = new Sprite(tex);
 	topSprite.setSize(topItem.getSize());
@@ -69,7 +84,6 @@ export async function initComponent(
 		assert(stack, 'Stack not found in state');
 		const stacks: BoardGameItemNew[] = [];
 		for (const id of stack.componentIds) {
-			console.log(id);
 			if (!boardGameItems.has(id)) {
 				initComponent(deps, hybridResults, state.components.get(id)!, state, s, room);
 			}
@@ -106,7 +120,6 @@ export async function initComponent(
 		if (flippable) {
 			frontendFlip = new ClientFlippable(sharedClientValues, flippable);
 			frontendFlip.onFlipped.subscribe((_flippable) => {
-				console.log('flipped');
 				rebuild(frontendFlip);
 			});
 		}

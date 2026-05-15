@@ -1,10 +1,10 @@
-import { Container, Sprite } from 'pixi.js';
+import { Container } from 'pixi.js';
 import type { LayoutStyles } from '@pixi/layout';
 import type {
 	ClientFlippable,
 	ClientPosition,
 	ClientStack
-} from '../../routes/games/[gameName]/play/frontend-components/position';
+} from '$lib/play/frontend-components/position';
 
 export class BoardGameItemNew extends Container {
 	public readonly id: string;
@@ -39,12 +39,14 @@ export class BoardGameItemNew extends Container {
 		if (clientPosition) {
 			this.position.set(clientPosition.clientPositionState.x, clientPosition.clientPositionState.y);
 			this.visible = clientPosition.clientPositionState.visible;
+			this.renderable = clientPosition.clientPositionState.visible;
 			clientPosition.onPositionChanged.subscribe((newPos) => {
 				if (this.destroyed) return;
 				if (this.isInHand) return;
 				const position = this.position;
 				if (!position) return;
-				this.visible = true;
+				this.visible = newPos.visible;
+				this.renderable = newPos.visible;
 				position.set(newPos.x, newPos.y);
 			});
 		}
@@ -63,10 +65,10 @@ export class BoardGameItemNew extends Container {
 
 // This could extend Flippable?
 export class CardContainer extends Container {
-	public readonly frontSprite: Sprite;
-	public readonly backSprite: Sprite;
+	public readonly frontSprite: Container;
+	public readonly backSprite: Container;
 
-	constructor(frontSprite: Sprite, backSprite: Sprite) {
+	constructor(frontSprite: Container, backSprite: Container) {
 		super({
 			layout: {
 				aspectRatio: frontSprite.width / frontSprite.height

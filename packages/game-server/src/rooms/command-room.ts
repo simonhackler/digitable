@@ -13,6 +13,7 @@ import {
 } from './schema/MyRoomState';
 import { Command, Dispatcher } from '../command';
 import { randomUUID } from 'crypto';
+import { StrokeCreateCommand, StrokeDeleteCommand } from './stroke-commands';
 
 export class CommandRoom extends Room<BoardGameRoomState> {
 	dispatcher = new Dispatcher(this);
@@ -24,7 +25,9 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 		['draw', DrawCommand],
 		['play', PlayCommand],
 		['stack', StackCommand],
-		['shuffle', ShuffleCommand]
+		['shuffle', ShuffleCommand],
+		['strokeCreate', StrokeCreateCommand],
+		['strokeDelete', StrokeDeleteCommand]
 	]);
 
 	onCreate(_options?: unknown) {
@@ -110,9 +113,9 @@ export class InitCommand extends Command<
 > {
 	execute(payload: this['payload']) {
 		for (const stack of payload.stacks) {
-			// create deck components
 			const deckId = randomUUID();
 			const deckComponent = new Component(deckId, '', 'stack');
+			// TODO positions
 			const deckPosition = new Positionable(400, 400, true);
 			const deckFlip = new Flippable(false);
 			const deckStack = new Stack(stack.componentIds);
@@ -127,7 +130,7 @@ export class InitCommand extends Command<
 			for (let i = 0; i < stack.componentIds.length; i++) {
 				const cardId = stack.componentIds[i];
 				const cardComponent = new Component(cardId, '', 'card');
-				const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, true);
+				const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, false);
 				const cardFlip = new Flippable(false);
 				const _card = new Item(cardComponent, cardPosition, cardFlip);
 
@@ -246,9 +249,9 @@ export class DrawCommand extends Command<
 		player.hand.add(cardId);
 		const cardComponent = this.state.components.get(cardId);
 		cardComponent.owner = payload.sessionId;
-		const position = this.state.positions.get(payload.cardId);
-		if (position) {
-			position.visible = false;
+		const drawnCardPosition = this.state.positions.get(cardId);
+		if (drawnCardPosition) {
+			drawnCardPosition.visible = false;
 		}
 	}
 

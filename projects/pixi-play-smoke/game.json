@@ -1,0 +1,7 @@
+{
+	"name": "Pixi Play Smoke",
+	"minPlayers": 1,
+	"maxPlayers": 4,
+	"description": "Minimal fixture project for Pixi play E2E coverage.",
+	"tags": ["E2E", "Pixi"]
+}

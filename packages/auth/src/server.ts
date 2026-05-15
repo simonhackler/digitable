@@ -10,6 +10,17 @@ type CreateAuthOptions = {
 	baseURL?: string;
 };
 
+function googleCredentials() {
+	const clientId = process.env.GOOGLE_CLIENT_ID;
+	const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+	return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
+export function isGoogleAuthEnabled() {
+	return googleCredentials() !== null;
+}
+
 function compact(values: Array<string | undefined>) {
 	return values.filter((value): value is string => Boolean(value));
 }
@@ -30,6 +41,7 @@ function env(name: string, fallback: string) {
 
 export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOptions = {}) {
 	const cookieDomain = process.env.AUTH_COOKIE_DOMAIN;
+	const google = googleCredentials();
 	const baseURL =
 		options.baseURL ?? env('BETTER_AUTH_URL', `http://localhost:${process.env.PORT ?? '5173'}/app`);
 
@@ -46,6 +58,13 @@ export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOption
 		emailAndPassword: {
 			enabled: true
 		},
+		...(google
+			? {
+					socialProviders: {
+						google
+					}
+				}
+			: {}),
 		plugins,
 		advanced: {
 			useSecureCookies: process.env.NODE_ENV === 'production',

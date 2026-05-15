@@ -14,7 +14,10 @@
   serverPort = config.processes.game-server.ports.http.value;
   postgresPort = config.processes.postgres.ports.main.value;
   databaseUrl = "postgres://${dbUser}:${dbPass}@127.0.0.1:${toString postgresPort}/${dbName}";
+  minioApiPort = config.processes.minio.ports.console.value;
   studioOrigin = "http://localhost:${toString sitePort}";
+  googleClientId = builtins.getEnv "GOOGLE_CLIENT_ID";
+  googleClientSecret = builtins.getEnv "GOOGLE_CLIENT_SECRET";
   playwrightChromium = pkgs.runCommand "playwright-chromium-executable" {} ''
     chromium_dir="$(echo ${pkgs.playwright-driver.browsers}/chromium-*)"
 
@@ -113,10 +116,20 @@ in {
 
     BETTER_AUTH_URL = studioOrigin;
     BETTER_AUTH_SECRET = "devenv-local-auth-secret-change-before-production";
+    # Google OAuth local redirect URI: http://localhost:5180/api/auth/callback/google
+    GOOGLE_CLIENT_ID = googleClientId;
+    GOOGLE_CLIENT_SECRET = googleClientSecret;
     WEB_ORIGIN = studioOrigin;
     SECOND_WEB_ORIGIN = "";
     AUTH_COOKIE_DOMAIN = "";
     REPLICATE_API_TOKEN = "tmp";
+
+    S3_ENDPOINT = "http://127.0.0.1:${toString minioApiPort}";
+    S3_REGION = "us-east-1";
+    S3_BUCKET = "digitable-playtests";
+    S3_ACCESS_KEY_ID = "minioadmin";
+    S3_SECRET_ACCESS_KEY = "minioadmin";
+    S3_FORCE_PATH_STYLE = "true";
 
     PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
@@ -136,6 +149,10 @@ in {
         pass = dbPass;
       }
     ];
+  };
+
+  services.minio = {
+    enable = true;
   };
 
   processes.postgres.ready = lib.mkForce null;
@@ -172,6 +189,18 @@ in {
     ];
   };
 
+  tasks."db:seed" = {
+    exec = "bun run --filter=@svg-table/auth db:seed";
+    showOutput = true;
+    after = ["db:migrate"];
+    before = [
+      "devenv:processes:studio"
+      "devenv:processes:app"
+      "devenv:processes:game-server"
+      "devenv:processes:proxy"
+    ];
+  };
+
   processes = {
     studio = {
       ports.http.allocate = 5174;
@@ -184,6 +213,7 @@ in {
       exec = "bun run --filter=@svg-table/app dev -- --host 127.0.0.1 --port ${toString appPort} --strictPort";
       env.PORT = toString appPort;
       env.ORIGIN = studioOrigin;
+      env.PUBLIC_GAME_SERVER_URL = "ws://localhost:${toString serverPort}";
     };
 
     game-server = {

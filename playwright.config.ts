@@ -4,6 +4,8 @@ import { devices, defineConfig } from '@playwright/test';
 
 const envPath = fileURLToPath(new URL('./.env', import.meta.url));
 const devenvPlaywrightEnvPath = fileURLToPath(new URL('./.devenv/playwright.env', import.meta.url));
+const hasExplicitPlaywrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL !== undefined;
+const hasDevenvPlaywrightEnv = existsSync(devenvPlaywrightEnvPath);
 
 const loadEnvFile = (path: string, { override = false } = {}) => {
 	if (!existsSync(path)) {
@@ -32,10 +34,15 @@ const loadEnvFile = (path: string, { override = false } = {}) => {
 };
 
 loadEnvFile(envPath);
-loadEnvFile(devenvPlaywrightEnvPath, { override: true });
+loadEnvFile(devenvPlaywrightEnvPath, { override: !hasExplicitPlaywrightBaseUrl });
 
-const port = process.env.PORT ?? '5173';
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${port}`;
+if (!hasExplicitPlaywrightBaseUrl && !hasDevenvPlaywrightEnv) {
+	throw new Error(
+		'PLAYWRIGHT_BASE_URL is not set and .devenv/playwright.env does not exist. Start devenv before running Playwright.'
+	);
+}
+
+const baseURL = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
 	use: {
