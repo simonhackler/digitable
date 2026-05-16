@@ -420,115 +420,117 @@
 	} | null = $state(null);
 </script>
 
-<div
-	bind:this={scrollEl}
-	class="flex w-screen flex-nowrap gap-2 overflow-auto scroll-smooth rounded-md border whitespace-nowrap"
->
-	{#each svgsToShow as svg, i (svg.id)}
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- ignore for now, should this then just be a button? -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			onclick={(e) => {
-				const headers = spreadsheet[0].getHeaders(true) as string[];
-				let node: EventTarget | null = e.target;
-				let id: string | null = null;
-				while (node && node !== e.currentTarget) {
-					if (node instanceof Element) {
-						const res = node.id;
-						if (headers.some((c) => c === res)) {
-							id = node.id;
-							break;
+<div class="min-w-0">
+	<div
+		bind:this={scrollEl}
+		class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
+	>
+		{#each svgsToShow as svg, i (svg.id)}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- ignore for now, should this then just be a button? -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div
+				onclick={(e) => {
+					const headers = spreadsheet[0].getHeaders(true) as string[];
+					let node: EventTarget | null = e.target;
+					let id: string | null = null;
+					while (node && node !== e.currentTarget) {
+						if (node instanceof Element) {
+							const res = node.id;
+							if (headers.some((c) => c === res)) {
+								id = node.id;
+								break;
+							}
 						}
+						node = (node as Element).parentElement;
 					}
-					node = (node as Element).parentElement;
-				}
-				let index = -1;
-				if (id) {
-					index = headers.findIndex((c) => c === id);
-				}
-				if (index !== -1) {
-					spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
-					const cell = spreadsheet[0].getCellFromCoords(index, i);
-					spreadsheet[0].openEditor(cell, false, e);
-				} else {
-					spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
-				}
-			}}
-			class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
-			{@attach attachSVG(svg)}
-		></div>
-	{/each}
-</div>
-<div class="px-2 py-2">
-	<Toolbar
-		{deletedSvgColumns}
-		onAddColumn={addColumn}
-		onHover={highlightColumn}
-		onExitHover={(_x) => clearSelectionRects()}
-		{flip}
-		{selection}
-		spreadsheet={spreadsheet[0]}
-		svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
-		{imagePaths}
-		{cards}
-		{showFront}
-	></Toolbar>
-</div>
-<div class="flex items-start gap-2 px-2 pb-2">
-	<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
-		<ContextMenu.Root>
-			<ContextMenu.Trigger>
-				<div id="spreadsheet" {@attach mountSpreadsheet}></div>
-			</ContextMenu.Trigger>
-			<ContextMenu.Content>
-				{#each contextItems as item (item)}
-					{#if item.type === 'line'}
-						<ContextMenu.Separator />
-					{:else}
-						<ContextMenu.Item onclick={item.onclick}>
-							{#if item.icon}
-								<item.icon class="mr-2 h-4 w-4" />
-							{/if}
-							{item.title}
-							{#if item.shortcut}
-								<ContextMenu.Shortcut>
-									{item.shortcut}
-								</ContextMenu.Shortcut>
-							{/if}
-						</ContextMenu.Item>
-					{/if}
-				{/each}
-			</ContextMenu.Content>
-		</ContextMenu.Root>
-		<Button
-			variant="outline"
-			size="icon-sm"
-			class="self-center"
-			aria-label="Append column"
-			title="Append column"
-			onclick={appendColumn}
-		>
-			<PlusIcon class="size-4" />
-		</Button>
-		<Button
-			variant="outline"
-			size="icon-sm"
-			class="justify-self-center"
-			aria-label="Append row"
-			title="Append row"
-			onclick={appendRow}
-		>
-			<PlusIcon class="size-4" />
-		</Button>
+					let index = -1;
+					if (id) {
+						index = headers.findIndex((c) => c === id);
+					}
+					if (index !== -1) {
+						spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
+						const cell = spreadsheet[0].getCellFromCoords(index, i);
+						spreadsheet[0].openEditor(cell, false, e);
+					} else {
+						spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
+					}
+				}}
+				class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
+				{@attach attachSVG(svg)}
+			></div>
+		{/each}
 	</div>
-	<div class="text-muted-foreground pt-1 text-sm" aria-live="polite">
-		{#if saveStatus === 'saving'}
-			Saving
-		{:else if saveStatus === 'error'}
-			Error
-		{:else}
-			Saved
-		{/if}
+	<div class="px-2 py-2">
+		<Toolbar
+			{deletedSvgColumns}
+			onAddColumn={addColumn}
+			onHover={highlightColumn}
+			onExitHover={(_x) => clearSelectionRects()}
+			{flip}
+			{selection}
+			spreadsheet={spreadsheet[0]}
+			svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
+			{imagePaths}
+			{cards}
+			{showFront}
+		></Toolbar>
+	</div>
+	<div class="flex items-start gap-2 px-2 pb-2">
+		<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
+			<ContextMenu.Root>
+				<ContextMenu.Trigger>
+					<div id="spreadsheet" {@attach mountSpreadsheet}></div>
+				</ContextMenu.Trigger>
+				<ContextMenu.Content>
+					{#each contextItems as item (item)}
+						{#if item.type === 'line'}
+							<ContextMenu.Separator />
+						{:else}
+							<ContextMenu.Item onclick={item.onclick}>
+								{#if item.icon}
+									<item.icon class="mr-2 h-4 w-4" />
+								{/if}
+								{item.title}
+								{#if item.shortcut}
+									<ContextMenu.Shortcut>
+										{item.shortcut}
+									</ContextMenu.Shortcut>
+								{/if}
+							</ContextMenu.Item>
+						{/if}
+					{/each}
+				</ContextMenu.Content>
+			</ContextMenu.Root>
+			<Button
+				variant="outline"
+				size="icon-sm"
+				class="self-center"
+				aria-label="Append column"
+				title="Append column"
+				onclick={appendColumn}
+			>
+				<PlusIcon class="size-4" />
+			</Button>
+			<Button
+				variant="outline"
+				size="icon-sm"
+				class="justify-self-center"
+				aria-label="Append row"
+				title="Append row"
+				onclick={appendRow}
+			>
+				<PlusIcon class="size-4" />
+			</Button>
+		</div>
+		<div class="text-muted-foreground pt-1 text-sm" aria-live="polite">
+			{#if saveStatus === 'saving'}
+				Saving
+			{:else if saveStatus === 'error'}
+				Error
+			{:else}
+				Saved
+			{/if}
+		</div>
 	</div>
 </div>

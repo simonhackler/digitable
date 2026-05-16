@@ -1,3 +1,6 @@
 [submodule "svgedit"]
 	path = svgedit
 	url = git@github.com:simonhackler/svgedit.git
+[submodule "vendor/svelte-lexical"]
+	path = vendor/svelte-lexical
+	url = https://github.com/umaranis/svelte-lexical.git

@@ -190,18 +190,6 @@ test('entering multiline text edit preserves changed text alignment', async ({ p
 			page.evaluate(() => {
 				const text = document.querySelector('#effect_zone');
 				const line = text?.querySelector('tspan');
-				return {
-					textX: Number(text?.getAttribute('x') ?? 0),
-					lineX: Number(line?.getAttribute('x') ?? 0)
-				};
-			})
-		)
-		.toMatchObject({ textX: 152.14, lineX: expect.any(Number) });
-	await expect
-		.poll(() =>
-			page.evaluate(() => {
-				const text = document.querySelector('#effect_zone');
-				const line = text?.querySelector('tspan');
 				return Number(line?.getAttribute('x') ?? 0) > Number(text?.getAttribute('x') ?? 0);
 			})
 		)

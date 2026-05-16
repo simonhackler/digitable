@@ -18,8 +18,11 @@
 		games,
 		fileSystem,
 		onSetOpfsAdapter
-	}: { games: Game[]; fileSystem: FsDir; onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => void } =
-		$props();
+	}: {
+		games: Game[];
+		fileSystem: FsDir;
+		onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => Promise<void>;
+	} = $props();
 
 	let activeProject = $derived.by(() => {
 		const game = games.find((game) => game.name === page.params.gameName);
@@ -41,7 +44,7 @@
 		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
 		await saveFolderHandle(folderHandle);
 		const opfsAdapter = new OPFSAdapter(folderHandle);
-		onSetOpfsAdapter(opfsAdapter);
+		await onSetOpfsAdapter(opfsAdapter);
 	}
 
 	function onProjectChange(project: Game) {
