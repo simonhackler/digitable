@@ -24,12 +24,13 @@
 		} | null;
 		spreadsheet: jspreadsheet.WorksheetInstance;
 		svgTemplate: SVGSVGElement;
-		onGenerateImages?: (images: ImageGenResponse) => void;
+		onGenerateImages?: (images: ImageGenResponse) => void | Promise<void>;
 	} = $props();
 
 	let open = $state(false);
 	let isGenerating = $state(false);
 	let generationComplete = $state(false);
+	let errorMessage = $state('');
 
 	// Individual prompts for each image column
 	let columnPrompts = $state<Record<string, string>>({});
@@ -147,21 +148,27 @@
 
 		isGenerating = true;
 		generationComplete = false;
+		errorMessage = '';
 
-		// Convert prompts to the expected format and call generateImages
-		const imagePrompts: ImagePrompt[] = previewPrompts.filter((p) => p.prompt.trim().length > 0);
-		generateImages(imagePrompts).then((images) => {
-			const { data } = images;
+		try {
+			const imagePrompts: ImagePrompt[] = previewPrompts.filter((p) => p.prompt.trim().length > 0);
+			const images = await generateImages(imagePrompts);
+			const { data, error } = images;
 			if (data) {
-				onGenerateImages(data);
+				await onGenerateImages(data);
 				generationComplete = true;
+				open = false;
 				setTimeout(() => {
 					generationComplete = false;
 				}, 2000); // Reset after 2 seconds
+			} else {
+				errorMessage = String(error);
 			}
+		} catch (error) {
+			errorMessage = error instanceof Error ? error.message : String(error);
+		} finally {
 			isGenerating = false;
-		});
-		open = false;
+		}
 	}
 </script>
 
@@ -228,6 +235,10 @@
 				Generate AI images for selected image columns in your cards.
 			</Dialog.Description>
 		</Dialog.Header>
+
+		{#if errorMessage}
+			<div class="text-destructive text-sm" role="alert">{errorMessage}</div>
+		{/if}
 
 		{#if selectionData.hasImageColumns}
 			<div class="grid gap-4 py-4">

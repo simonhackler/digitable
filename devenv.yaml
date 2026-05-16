@@ -1,3 +1,4 @@
+reload: false
 inputs:
   git-hooks:
     url: github:cachix/git-hooks.nix

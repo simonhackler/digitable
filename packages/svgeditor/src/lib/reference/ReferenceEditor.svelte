@@ -20,6 +20,12 @@
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
 		toolbarActions?: () => ReturnType<Snippet>;
+		imageToolAction?: (controller: EditorController) => void | Promise<void>;
+		selectedImageChangeAction?: (controller: EditorController) => void | Promise<void>;
+		selectedImageHrefApplyAction?: (
+			controller: EditorController,
+			href: string
+		) => void | Promise<void>;
 	};
 
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -32,7 +38,10 @@
 		centerOnLoad = true,
 		initialZoom,
 		assetBasePath,
-		toolbarActions
+		toolbarActions,
+		imageToolAction,
+		selectedImageChangeAction,
+		selectedImageHrefApplyAction
 	}: ReferenceEditorProps = $props();
 
 	const dispatch = createEventDispatcher<{ change: ChangeEvent }>();
@@ -141,6 +150,14 @@
 		controller.setFontSize(Math.max(1, base + delta));
 	};
 
+	const handleImageTool = () => {
+		if (imageToolAction) {
+			void imageToolAction(controller);
+			return;
+		}
+		controller.setMode('image');
+	};
+
 	keys.onKeys('v', () => runIfPlainKey(() => controller.setMode('select'), { allowInTree: false }));
 	keys.onKeys('r', () => runIfPlainKey(() => controller.setMode('rect'), { allowInTree: false }));
 	keys.onKeys('c', () => runIfPlainKey(() => controller.setMode('circle'), { allowInTree: false }));
@@ -153,7 +170,7 @@
 		runIfPlainKey(() => controller.setMode('fhpath'), { requireShift: true, allowInTree: false })
 	);
 	keys.onKeys('t', () => runIfPlainKey(() => controller.setMode('text'), { allowInTree: false }));
-	keys.onKeys('i', () => runIfPlainKey(() => controller.setMode('image'), { allowInTree: false }));
+	keys.onKeys('i', () => runIfPlainKey(handleImageTool, { allowInTree: false }));
 
 	onModCombo(['z'], () =>
 		runIfModShortcut(() => {
@@ -312,7 +329,7 @@
 	<div class="grid gap-4 lg:grid-cols-[88px_minmax(0,1fr)_260px]">
 		<Card class="h-fit overflow-hidden">
 			<CardContent class="p-2">
-				<Toolbar {controller} variant="modes" orientation="vertical" />
+				<Toolbar {controller} variant="modes" orientation="vertical" {imageToolAction} />
 			</CardContent>
 		</Card>
 		<div class="flex flex-col gap-3">
@@ -344,7 +361,7 @@
 			</div>
 		</div>
 		<div class="flex flex-col gap-4">
-			<Inspector {controller} />
+			<Inspector {controller} {selectedImageChangeAction} {selectedImageHrefApplyAction} />
 			<StructureTree {controller} disabled={interactionDisabled} />
 		</div>
 	</div>

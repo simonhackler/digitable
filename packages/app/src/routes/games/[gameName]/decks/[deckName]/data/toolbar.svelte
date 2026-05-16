@@ -18,9 +18,7 @@
 		selection = null,
 		spreadsheet,
 		svgTemplate,
-		imagePaths,
-		cards,
-		showFront
+		imagePaths
 	}: {
 		deletedSvgColumns: string[];
 		onAddColumn: (col: string) => void;
@@ -36,31 +34,29 @@
 		spreadsheet: jspreadsheet.WorksheetInstance;
 		svgTemplate: SVGSVGElement;
 		imagePaths: Map<string, string>;
-		cards: import('../../../types').SvgCard[];
-		showFront: boolean;
 	} = $props();
 
 	const gameName = $derived(requireParam('gameName'));
 	const filesystem = getFileSystemContext();
 
 	async function handleGenerateImages(images: ImageGenResponse) {
-		console.log('Generated images:', images);
 		const timestamp = Date.now();
 		const generatedDir = await filesystem.ensureDir(joinFsPath(gameName, 'files', 'generated'));
 		if (generatedDir.error) {
-			console.error('Failed to open generated images folder', generatedDir.error);
-			return;
+			throw new Error(`Failed to open generated images folder: ${generatedDir.error.message}`);
 		}
 
 		for (const image of images.results) {
 			const response = await fetch(image.imageUrl);
+			if (!response.ok) {
+				throw new Error(`Failed to download generated image: ${response.status}`);
+			}
 			const blob = await response.blob();
 			const filename = `${image.rowId}_${timestamp}_${image.columnName}.png`;
 			const file = new File([blob], filename, { type: blob.type });
 			const written = await generatedDir.data.write(file.name, file);
 			if (written.error) {
-				console.error(`Failed to save generated image ${filename}`, written.error);
-				continue;
+				throw new Error(`Failed to save generated image ${filename}: ${written.error.message}`);
 			}
 
 			const headers = spreadsheet.getHeaders(true) as string[];
@@ -122,5 +118,5 @@
 		{svgTemplate}
 		onGenerateImages={handleGenerateImages}
 	/>
-	<ImageSelectionModal {selection} {spreadsheet} {imagePaths} {cards} {showFront} />
+	<ImageSelectionModal {selection} {spreadsheet} {imagePaths} />
 </div>

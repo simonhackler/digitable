@@ -45,12 +45,14 @@
 		controller,
 		variant = 'full',
 		orientation = 'horizontal',
-		extraActions
+		extraActions,
+		imageToolAction
 	} = $props<{
 		controller: EditorController;
 		variant?: ToolbarVariant;
 		orientation?: ToolbarOrientation;
 		extraActions?: Snippet;
+		imageToolAction?: (controller: EditorController) => void | Promise<void>;
 	}>();
 
 	const unitOptions = ['px', 'mm'] as const;
@@ -89,6 +91,14 @@
 		copyTimeout = setTimeout(() => {
 			copyState = 'idle';
 		}, 1500);
+	};
+
+	const selectMode = (mode: EditorMode) => {
+		if (mode === 'image' && imageToolAction) {
+			void imageToolAction(controller);
+			return;
+		}
+		controller.setMode(mode);
 	};
 
 	const canUndo = $derived(controller.isReady && controller.undoCount > 0);
@@ -132,7 +142,7 @@
 					}`}
 					title={`${mode.label} (${mode.shortcut})`}
 					aria-pressed={controller.mode === mode.id}
-					onclick={() => controller.setMode(mode.id)}
+					onclick={() => selectMode(mode.id)}
 				>
 					<mode.icon class="size-4" />
 					<span class="sr-only">{mode.label}</span>

@@ -213,6 +213,26 @@ class EditorController {
 		this.api?.setFontSize(value);
 	};
 
+	insertImage = (
+		href: string,
+		opts?: { width?: number; height?: number; attributes?: Record<string, string> }
+	) => {
+		const id = this.api?.insertImage(href, opts);
+		this.mode = this.api?.getMode() ?? this.mode;
+		this.refreshElementTree();
+		this.refreshHistory();
+		return id ?? null;
+	};
+
+	setSelectedImageHref = (href: string, opts?: { attributes?: Record<string, string> }) => {
+		const changed = this.api?.setSelectedImageHref(href, opts) ?? false;
+		if (changed) {
+			this.refreshElementTree();
+			this.refreshHistory();
+		}
+		return changed;
+	};
+
 	getFontFamily = () => {
 		return this.api?.getFontFamily() ?? '';
 	};

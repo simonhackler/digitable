@@ -29,6 +29,7 @@ This project is a boardgame design and testing tool
 
 Use defensive coding. E.g use assert: import { assert } from '$lib/utils/assert';
 Write code in a functional style. That means return new object and make sure functions recieve everything they use as input parameters.
+Do not write small functions that are used only once. Write a function if it is a bigger logical block or if it is used multiple times.
 
 ## Key Technologies
 
