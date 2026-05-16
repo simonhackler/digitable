@@ -41,6 +41,7 @@ function env(name: string, fallback: string) {
 
 export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOptions = {}) {
 	const cookieDomain = process.env.AUTH_COOKIE_DOMAIN;
+	const cookiePrefix = process.env.BETTER_AUTH_COOKIE_PREFIX;
 	const google = googleCredentials();
 	const baseURL =
 		options.baseURL ?? env('BETTER_AUTH_URL', `http://localhost:${process.env.PORT ?? '5173'}/app`);
@@ -68,6 +69,7 @@ export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOption
 		plugins,
 		advanced: {
 			useSecureCookies: process.env.NODE_ENV === 'production',
+			...(cookiePrefix ? { cookiePrefix } : {}),
 			...(cookieDomain
 				? {
 						crossSubDomainCookies: {

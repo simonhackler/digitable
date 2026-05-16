@@ -49,6 +49,7 @@ export default defineConfig({
 		baseURL
 	},
 	testDir: 'e2e',
+    workers: 1,
 	projects: [
 		{
 			name: 'chromium',

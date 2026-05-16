@@ -36,6 +36,8 @@
 	import { createBoardChrome } from './board-chrome';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
+	import PlaytestNotes from './PlaytestNotes.svelte';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import MousePointer2Icon from '@lucide/svelte/icons/mouse-pointer-2';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
@@ -54,11 +56,13 @@
 		projectName,
 		fileSystem,
 		roomConnection = defaultRoomConnection,
+		playtestFeedback = null,
 		e2e = false
 	}: {
 		projectName: string;
 		fileSystem: FsDir;
 		roomConnection?: PlayRoomConnection;
+		playtestFeedback?: { playtestId: string } | null;
 		e2e?: boolean;
 	} = $props();
 
@@ -117,6 +121,8 @@
 	let selectionManager = new SelectionManager();
 	let activeTool = $state<PlayTool>('select');
 	let selectedStrokeId = $state<string | null>(null);
+	let notesOpen = $state(false);
+	let notesHaveDraft = $state(false);
 	const keys = new PressedKeys();
 
 	function selectTool(tool: PlayTool) {
@@ -729,7 +735,34 @@
 		>
 			<Trash2Icon class="size-4" />
 		</button>
+		{#if playtestFeedback}
+			<button
+				type="button"
+				aria-label={notesHaveDraft ? 'Playtest notes with unsent changes' : 'Playtest notes'}
+				title={notesHaveDraft ? 'Notes with unsent changes' : 'Notes'}
+				class={`relative rounded-sm p-2 ${
+					notesHaveDraft
+						? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
+						: 'text-foreground hover:bg-accent'
+				}`}
+				onclick={() => (notesOpen = true)}
+			>
+				<FileTextIcon class="size-4" />
+				{#if notesHaveDraft}
+					<span class="bg-destructive absolute top-1 right-1 size-2 rounded-full" aria-hidden="true"
+					></span>
+				{/if}
+			</button>
+		{/if}
 	</div>
+
+	{#if playtestFeedback}
+		<PlaytestNotes
+			bind:open={notesOpen}
+			bind:hasDraft={notesHaveDraft}
+			playtestId={playtestFeedback.playtestId}
+		/>
+	{/if}
 
 	<ContextMenu.Root bind:open={showContextMenu}>
 		<ContextMenu.Trigger

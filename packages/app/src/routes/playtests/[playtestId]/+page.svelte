@@ -3,7 +3,6 @@
 	import { page } from '$app/state';
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
-	import { saveOpfsPreference } from '$lib/components/file-browser/adapters/opfs/storage-preference';
 	import PlaySurface from '$lib/play/PlaySurface.svelte';
 	import { importPlaytestProject, playtestImportFolderName } from '$lib/playtests/project-transfer';
 	import { onMount } from 'svelte';
@@ -50,7 +49,6 @@
 			const folderName = playtestImportFolderName(data.projectName, data.playtestId);
 			status = 'Saving playtest locally...';
 			await importPlaytestProject(fsDir, folderName, data.files);
-			await saveOpfsPreference();
 
 			importedPlaytest = {
 				projectName: folderName,
@@ -68,6 +66,7 @@
 		projectName={importedPlaytest.projectName}
 		fileSystem={importedPlaytest.fileSystem}
 		roomConnection={privatePlaytestConnection(importedPlaytest.privateRoomId)}
+		playtestFeedback={{ playtestId: data.playtestId }}
 		{e2e}
 	/>
 {:else}

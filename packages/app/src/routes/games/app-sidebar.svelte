@@ -8,7 +8,7 @@
 	import type { Game } from './types.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import PlayMenu from './play-menu.svelte';
+	import PlaySidebarMenu from './play-sidebar-menu.svelte';
 	import { FsError, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
@@ -63,7 +63,7 @@
 		<Sidebar.Content>
 			<CreateMenu activeGame={activeProject} fileSystem={projectFolderResult.data} />
 			<ExportMenu activeGame={activeProject} />
-			<PlayMenu activeGame={activeProject} fileSystem={projectFolderResult.data} />
+			<PlaySidebarMenu activeGame={activeProject} />
 			<Sidebar.Group />
 		</Sidebar.Content>
 	{/if}

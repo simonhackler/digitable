@@ -16,6 +16,16 @@
   databaseUrl = "postgres://${dbUser}:${dbPass}@127.0.0.1:${toString postgresPort}/${dbName}";
   minioApiPort = config.processes.minio.ports.console.value;
   studioOrigin = "http://localhost:${toString sitePort}";
+  worktreePath = let
+    devenvRoot = builtins.getEnv "DEVENV_ROOT";
+    pwd = builtins.getEnv "PWD";
+  in
+    if devenvRoot != ""
+    then devenvRoot
+    else if pwd != ""
+    then pwd
+    else toString ./.;
+  worktreeId = builtins.substring 0 8 (builtins.hashString "sha256" worktreePath);
   googleClientId = builtins.getEnv "GOOGLE_CLIENT_ID";
   googleClientSecret = builtins.getEnv "GOOGLE_CLIENT_SECRET";
   playwrightChromium = pkgs.runCommand "playwright-chromium-executable" {} ''
@@ -116,7 +126,8 @@ in {
 
     BETTER_AUTH_URL = studioOrigin;
     BETTER_AUTH_SECRET = "devenv-local-auth-secret-change-before-production";
-    # Google OAuth local redirect URI: http://localhost:5180/api/auth/callback/google
+    BETTER_AUTH_COOKIE_PREFIX = "digitable-${worktreeId}";
+    # Google OAuth local redirect URI: ${studioOrigin}/api/auth/callback/google
     GOOGLE_CLIENT_ID = googleClientId;
     GOOGLE_CLIENT_SECRET = googleClientSecret;
     WEB_ORIGIN = studioOrigin;

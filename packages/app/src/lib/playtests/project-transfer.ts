@@ -86,6 +86,10 @@ export function playtestImportFolderName(projectName: string, playtestId: string
 	return `${safeProjectName || 'playtest'}-playtest-${playtestId.slice(0, 8)}`;
 }
 
+export function isPlaytestImportFolderName(folderName: string): boolean {
+	return /-playtest-[0-9a-f]{8}$/i.test(folderName);
+}
+
 export async function importPlaytestProject(
 	fsDir: FsDir,
 	folderName: string,

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export type Mapping = { src: string; dest: string };
 
-const EXCLUDED_DIRECTORY_NAMES = new Set(['tts-export']);
+const EXCLUDED_DIRECTORY_NAMES = new Set(['feedback', 'tts-export']);
 const SEED_CONCURRENCY = 4;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultProjectsDir = path.resolve(here, '../../projects');

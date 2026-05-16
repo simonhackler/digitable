@@ -2,11 +2,13 @@ import {
 	CreateBucketCommand,
 	GetObjectCommand,
 	HeadBucketCommand,
+	ListObjectsV2Command,
 	NoSuchKey,
 	PutObjectCommand,
 	S3Client
 } from '@aws-sdk/client-s3';
 import { env } from '$env/dynamic/private';
+import { Err, Ok, tryAsync, trySync } from 'wellcrafted/result';
 
 export type StoredPlaytestFile = {
 	path: string;
@@ -26,6 +28,17 @@ export type PlaytestMetadata = {
 
 export type IncomingPlaytestFile = StoredPlaytestFile & {
 	contentBase64: string;
+};
+
+export type PlaytestFeedback = {
+	id: string;
+	playtestId: string;
+	title: string;
+	authorUserId: string;
+	authorName: string;
+	submittedAt: string;
+	markdown: string;
+	fileName: string;
 };
 
 let bucketReady: Promise<void> | null = null;
@@ -60,15 +73,18 @@ function getEndpoint() {
 	}
 
 	if (env.MINIO_PORT && env.MINIO_CONSOLE_PORT) {
-		try {
-			const url = new URL(env.S3_ENDPOINT);
-			if (url.hostname === '127.0.0.1' && url.port === env.MINIO_CONSOLE_PORT) {
-				url.port = env.MINIO_PORT;
-				return url.toString();
-			}
-		} catch {
-			return env.S3_ENDPOINT;
-		}
+		const { data: endpoint } = trySync({
+			try: () => {
+				const url = new URL(env.S3_ENDPOINT);
+				if (url.hostname === '127.0.0.1' && url.port === env.MINIO_CONSOLE_PORT) {
+					url.port = env.MINIO_PORT;
+					return url.toString();
+				}
+				return env.S3_ENDPOINT;
+			},
+			catch: () => Ok(env.S3_ENDPOINT)
+		});
+		return endpoint;
 	}
 
 	return env.S3_ENDPOINT;
@@ -104,9 +120,12 @@ export function validatePlaytestStorageConfig() {
 
 async function ensureBucket() {
 	const { bucket, client } = getS3Config();
-	try {
-		await client.send(new HeadBucketCommand({ Bucket: bucket }));
-	} catch {
+	const bucketExists = await tryAsync({
+		try: () => client.send(new HeadBucketCommand({ Bucket: bucket })),
+		catch: () => Ok(null)
+	});
+
+	if (!bucketExists.data) {
 		await client.send(new CreateBucketCommand({ Bucket: bucket }));
 	}
 }
@@ -122,6 +141,10 @@ function projectPrefix(playtestId: string) {
 
 function metadataKey(playtestId: string) {
 	return `playtests/${playtestId}/metadata.json`;
+}
+
+function feedbackPrefix(playtestId: string) {
+	return `playtests/${playtestId}/v1/feedback`;
 }
 
 function normalizeProjectPath(path: string): string {
@@ -144,6 +167,88 @@ function normalizePlaytestId(playtestId: string): string {
 		throw new Error('Invalid playtest id');
 	}
 	return playtestId;
+}
+
+function sanitizeText(value: string, maxLength: number): string {
+	return value
+		.replace(/\r\n?/g, '\n')
+		.replace(/[^\S\n\t ]+/g, ' ')
+		.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+		.slice(0, maxLength)
+		.trim();
+}
+
+function sanitizeTitle(title: string): string {
+	const sanitized = sanitizeText(title, 120).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	return sanitized || 'Playtest note';
+}
+
+function safeFilePart(value: string): string {
+	const safe = value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.slice(0, 48);
+	return safe || 'note';
+}
+
+function yamlString(value: string): string {
+	return JSON.stringify(value);
+}
+
+function feedbackMarkdown(feedback: PlaytestFeedback): string {
+	return [
+		'---',
+		`id: ${yamlString(feedback.id)}`,
+		`playtestId: ${yamlString(feedback.playtestId)}`,
+		`title: ${yamlString(feedback.title)}`,
+		`authorUserId: ${yamlString(feedback.authorUserId)}`,
+		`authorName: ${yamlString(feedback.authorName)}`,
+		`submittedAt: ${yamlString(feedback.submittedAt)}`,
+		'---',
+		'',
+		feedback.markdown,
+		''
+	].join('\n');
+}
+
+function parseFeedbackMarkdown(key: string, body: string): PlaytestFeedback | null {
+	const match = body.match(/^---\n(?<frontmatter>[\s\S]*?)\n---\n\n?(?<markdown>[\s\S]*)$/);
+	if (!match?.groups) return null;
+
+	const metadata = new Map<string, string>();
+	for (const line of match.groups.frontmatter.split('\n')) {
+		const separator = line.indexOf(':');
+		if (separator === -1) continue;
+		const name = line.slice(0, separator).trim();
+		const rawValue = line.slice(separator + 1).trim();
+		const parsedValue = trySync({
+			try: () => JSON.parse(rawValue) as string,
+			catch: () => Ok(rawValue)
+		});
+		metadata.set(name, parsedValue.data);
+	}
+
+	const id = metadata.get('id');
+	const playtestId = metadata.get('playtestId');
+	const submittedAt = metadata.get('submittedAt');
+	if (!id || !playtestId || !submittedAt) return null;
+
+	const feedback: PlaytestFeedback = {
+		id,
+		playtestId,
+		title: metadata.get('title') ?? 'Playtest note',
+		authorUserId: metadata.get('authorUserId') ?? '',
+		authorName: metadata.get('authorName') ?? '',
+		submittedAt,
+		markdown: match.groups.markdown.trimEnd(),
+		fileName: key.split('/').at(-1) ?? `${id}.md`
+	};
+
+	return {
+		...feedback,
+		markdown: feedbackMarkdown(feedback)
+	};
 }
 
 export async function savePlaytestProject(input: {
@@ -181,21 +286,31 @@ export async function loadPlaytestMetadata(playtestId: string): Promise<Playtest
 	await ensureBucketOnce();
 	const { bucket, client } = getS3Config();
 
-	try {
-		const response = await client.send(
-			new GetObjectCommand({
-				Bucket: bucket,
-				Key: metadataKey(normalizePlaytestId(playtestId))
-			})
-		);
-		const body = await response.Body?.transformToString();
-		return body ? (JSON.parse(body) as PlaytestMetadata) : null;
-	} catch (error) {
-		if (error instanceof NoSuchKey || (error as { name?: string }).name === 'NoSuchKey') {
-			return null;
+	const loaded = await tryAsync({
+		try: async () => {
+			const response = await client.send(
+				new GetObjectCommand({
+					Bucket: bucket,
+					Key: metadataKey(normalizePlaytestId(playtestId))
+				})
+			);
+			const body = await response.Body?.transformToString();
+			return body ? (JSON.parse(body) as PlaytestMetadata) : null;
+		},
+		catch: (error) => {
+			if (error instanceof NoSuchKey || (error as { name?: string }).name === 'NoSuchKey') {
+				return Ok(null);
+			}
+
+			return Err(error);
 		}
-		throw error;
+	});
+
+	if (loaded.error) {
+		throw loaded.error;
 	}
+
+	return loaded.data;
 }
 
 export async function loadPlaytestProject(playtestId: string) {
@@ -229,4 +344,78 @@ export async function loadPlaytestProject(playtestId: string) {
 		metadata,
 		files
 	};
+}
+
+export async function savePlaytestFeedback(input: {
+	playtestId: string;
+	id: string;
+	title: string;
+	markdown: string;
+	authorUserId: string;
+	authorName: string | null | undefined;
+	submittedAt: Date;
+}): Promise<PlaytestFeedback> {
+	await ensureBucketOnce();
+	const { bucket, client } = getS3Config();
+	const playtestId = normalizePlaytestId(input.playtestId);
+	const submittedAt = input.submittedAt.toISOString();
+	const title = sanitizeTitle(input.title);
+	const feedback: PlaytestFeedback = {
+		id: input.id,
+		playtestId,
+		title,
+		authorUserId: input.authorUserId,
+		authorName: sanitizeText(input.authorName ?? '', 120),
+		submittedAt,
+		markdown: sanitizeText(input.markdown, 20_000).replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+		fileName: `${submittedAt.replace(/[:.]/g, '-')}-${safeFilePart(title)}-${input.id.slice(0, 8)}.md`
+	};
+
+	await client.send(
+		new PutObjectCommand({
+			Bucket: bucket,
+			Key: `${feedbackPrefix(playtestId)}/${feedback.fileName}`,
+			Body: feedbackMarkdown(feedback),
+			ContentType: 'text/markdown; charset=utf-8'
+		})
+	);
+
+	return feedback;
+}
+
+export async function listPlaytestFeedback(playtestId: string): Promise<PlaytestFeedback[]> {
+	await ensureBucketOnce();
+	const { bucket, client } = getS3Config();
+	const normalizedPlaytestId = normalizePlaytestId(playtestId);
+	const prefix = `${feedbackPrefix(normalizedPlaytestId)}/`;
+	const feedback: PlaytestFeedback[] = [];
+	let continuationToken: string | undefined;
+
+	do {
+		const listed = await client.send(
+			new ListObjectsV2Command({
+				Bucket: bucket,
+				Prefix: prefix,
+				ContinuationToken: continuationToken
+			})
+		);
+
+		for (const item of listed.Contents ?? []) {
+			if (!item.Key || !item.Key.endsWith('.md')) continue;
+			const response = await client.send(
+				new GetObjectCommand({
+					Bucket: bucket,
+					Key: item.Key
+				})
+			);
+			const body = await response.Body?.transformToString();
+			if (!body) continue;
+			const parsed = parseFeedbackMarkdown(item.Key, body);
+			if (parsed) feedback.push(parsed);
+		}
+
+		continuationToken = listed.NextContinuationToken;
+	} while (continuationToken);
+
+	return feedback.sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
 }
