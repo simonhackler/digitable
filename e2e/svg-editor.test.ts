@@ -109,7 +109,7 @@ async function editEffectZoneText(page: Page) {
 		.toBe('block');
 }
 
-test('navigation preserves multiline svg template text between data and svg editors', async ({
+test('navigation preserves multiline svg template text between spreadsheet and layout editors', async ({
 	page
 }) => {
 	await seedProjects(page);
@@ -147,10 +147,10 @@ test('navigation preserves multiline svg template text between data and svg edit
 	expect(roundTrippedFront).toContain('<tspan');
 });
 
-test('typing text in svg editor persists front svg', async ({ page }) => {
+test('typing text in layout editor persists front svg', async ({ page }) => {
 	await openWesternSvgEditor(page);
 	const frontPath = '/western-cards/system/western/front.svg';
-	const nextText = 'saved from svg editor e2e';
+	const nextText = 'saved from layout editor e2e';
 
 	await page.evaluate(() => {
 		const global = window as Window & {

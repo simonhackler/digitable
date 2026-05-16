@@ -3,10 +3,11 @@
 	import { ReferenceEditor } from '@svg-table/svgeditor';
 	import type { createEditorController } from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { Upload } from '@lucide/svelte';
+	import { FlipHorizontal2, Table2, Upload } from '@lucide/svelte';
 	import placeholderFrontSvg from '../../../../../../../static/placeholder.svg?raw';
 	import { useDebounce } from 'runed';
 	import { getFileSystemContext } from '../../../../context';
@@ -179,7 +180,8 @@
 			font_family: 'serif'
 		},
 		initOpacity: 1,
-		baseUnit: 'px'
+		baseUnit: 'px',
+		pageBorderSnapping: true
 	}));
 
 	const writeSvgSide = async (
@@ -374,6 +376,8 @@
 		side = nextSide;
 	};
 
+	const flipSide = () => switchSide(side === 'front' ? 'back' : 'front');
+
 	const handleUploadInputChange = async (event: Event) => {
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
@@ -446,14 +450,23 @@
 </script>
 
 <main class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-	<div class="flex flex-wrap items-center gap-2">
-		<Button variant={side === 'front' ? 'default' : 'outline'} onclick={() => switchSide('front')}>
-			Front
-		</Button>
-		<Button variant={side === 'back' ? 'default' : 'outline'} onclick={() => switchSide('back')}>
-			Back
-		</Button>
-		<Button variant="ghost" href={dataPath}>Data</Button>
+	<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Layout editor toolbar">
+		<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
+			<Button size="sm" variant="ghost" href={dataPath} title="Open Spreadsheet editor">
+				<Table2 class="size-4" />
+				Spreadsheet
+			</Button>
+			<Button
+				size="sm"
+				variant="ghost"
+				class="w-20 justify-start"
+				onclick={flipSide}
+				title="Flip card side"
+			>
+				<FlipHorizontal2 class="size-4" />
+				{side === 'front' ? 'Back' : 'Front'}
+			</Button>
+		</ButtonGroup.Root>
 	</div>
 
 	<input
@@ -490,7 +503,7 @@
 				<div>
 					<h1 class="text-xl font-semibold">No SVG templates</h1>
 					<p class="text-muted-foreground mt-1 text-sm">
-						Create front and back templates to start editing this deck.
+						Create front and back templates to start editing this deck layout.
 					</p>
 				</div>
 				<Dialog.Root bind:open={createTemplatesDialogOpen}>

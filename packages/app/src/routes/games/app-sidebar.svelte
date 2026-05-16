@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { env } from '$env/dynamic/public';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { saveFolderHandle } from '$lib/components/file-browser/adapters/opfs/storage-preference';
+	import { pickProjectsRoot } from '$lib/workspace/projects-root';
 	import CreateMenu from './create-menu.svelte';
 	import ExportMenu from './export-menu.svelte';
 	import ProjectSwitcher from './project-switcher.svelte';
@@ -11,7 +12,7 @@
 	import PlayMenu from './play-menu.svelte';
 	import { FsError, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
+	import type { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
 
 	let {
@@ -39,12 +40,18 @@
 	);
 
 	let user = $derived(page.data.user);
+	let projectsRootError = $state('');
+	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 
 	async function pickFolder() {
-		const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' as const });
-		await saveFolderHandle(folderHandle);
-		const opfsAdapter = new OPFSAdapter(folderHandle);
-		await onSetOpfsAdapter(opfsAdapter);
+		projectsRootError = '';
+		const root = await pickProjectsRoot({ appVersion });
+		if (root.error) {
+			projectsRootError = root.error.message;
+			return;
+		}
+
+		await onSetOpfsAdapter(root.data);
 	}
 
 	function onProjectChange(project: Game) {
@@ -104,5 +111,8 @@
 			{/if}
 		</Sidebar.Menu>
 		<Button onclick={pickFolder}>Change Projects Folder</Button>
+		{#if projectsRootError}
+			<p role="alert" class="px-2 text-sm text-red-600">{projectsRootError}</p>
+		{/if}
 	</Sidebar.Footer>
 </Sidebar.Root>

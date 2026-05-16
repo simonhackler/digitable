@@ -69,6 +69,7 @@
 
 	let activeSideIndex = $state(0);
 	const activeSide = $derived(sides[activeSideIndex] ?? sides[0]);
+	const showFront = $derived(activeSideIndex === 0);
 	const svgsToShow = $derived(cards.map((card) => card.sides[activeSideIndex] ?? card.sides[0]));
 
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
@@ -502,6 +503,8 @@
 			onExitHover={(_x) => clearSelectionRects()}
 			{flip}
 			{selection}
+			{showFront}
+			editorPath={`/games/${projectName}/decks/${cardName}/editor`}
 			spreadsheet={spreadsheet[0]}
 			svgTemplate={activeSide.template}
 			{imagePaths}

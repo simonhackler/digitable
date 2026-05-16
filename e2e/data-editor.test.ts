@@ -61,7 +61,7 @@ async function seedProjectImageColumn(page: Page) {
 	await expect.poll(() => spreadsheetHeaders(page)).toContain('portrait');
 }
 
-test('insert rows in data editor', async ({ page }) => {
+test('insert rows in spreadsheet editor', async ({ page }) => {
 	await openWesternDataEditor(page);
 	await page.locator('tbody > tr > td:nth-child(8)').first().dblclick();
 	await page.getByRole('textbox').fill('wow!');
@@ -77,9 +77,20 @@ test('insert rows in data editor', async ({ page }) => {
 	await page.getByRole('menuitem', { name: 'Insert a new row before' }).click();
 });
 
-test('go to data editor', async ({ page }) => {
+test('go to spreadsheet editor', async ({ page }) => {
 	await seedProjects(page);
 	await expect(page.locator('h1')).toBeVisible();
+});
+
+test('spreadsheet editor toolbar opens layout editor', async ({ page }) => {
+	await openWesternDataEditor(page);
+
+	const toolbar = page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' });
+	await toolbar.getByRole('button', { name: 'Back' }).click();
+	await expect(toolbar.getByRole('button', { name: 'Front' })).toBeVisible();
+
+	await page.getByRole('link', { name: 'Layout' }).click();
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
 });
 
 test('appends missing svg columns after csv columns', async ({ page }) => {
@@ -94,7 +105,7 @@ test('appends missing svg columns after csv columns', async ({ page }) => {
 	await page.getByRole('main').getByText('western-cards').click();
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await page.getByRole('link', { name: 'western', exact: true }).click();
-	await page.getByRole('link', { name: 'Data' }).click();
+	await page.getByRole('link', { name: 'Spreadsheet' }).click();
 
 	await expect.poll(() => spreadsheetHeaders(page)).toContain('late_svg_field');
 	const headers = await spreadsheetHeaders(page);
@@ -201,7 +212,7 @@ test('flipped cards use back-prefixed image column values', async ({ page }) => 
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
 	await expect.poll(() => imageHrefText(page, 'background')).toContain('front-bg-marker');
 
-	await page.getByRole('button', { name: 'Flip cards' }).click();
+	await page.getByRole('button', { name: 'Back' }).click();
 	await expect.poll(() => imageHrefText(page, 'background')).toContain('back-bg-marker');
 });
 

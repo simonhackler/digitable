@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -214,19 +214,20 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-	<Dialog.Trigger
-		class={buttonVariants({ variant: 'outline' })}
-		disabled={!selectionData.hasImageColumns || isGenerating}
-	>
-		{#if isGenerating}
-			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-			Generating...
-		{:else if generationComplete}
-			<Check class="mr-2 h-4 w-4" />
-			Generated!
-		{:else}
-			Generate Images
-		{/if}
+	<Dialog.Trigger disabled={!selectionData.hasImageColumns || isGenerating}>
+		{#snippet child({ props })}
+			<Button {...props} size="sm" variant="ghost" class="w-36 justify-start">
+				{#if isGenerating}
+					<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+					Generating...
+				{:else if generationComplete}
+					<Check class="mr-2 h-4 w-4" />
+					Generated!
+				{:else}
+					Generate Images
+				{/if}
+			</Button>
+		{/snippet}
 	</Dialog.Trigger>
 	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-[900px]">
 		<Dialog.Header>

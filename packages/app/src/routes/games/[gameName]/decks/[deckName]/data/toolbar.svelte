@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import type jspreadsheet from 'jspreadsheet-ce';
 	import GenerateImagesModal from './generate-images-modal.svelte';
@@ -8,6 +9,7 @@
 	import { getFileSystemContext } from '../../../../context';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import { requireParam } from '$lib/utils/assert';
+	import { FlipHorizontal2, LayoutTemplate } from '@lucide/svelte';
 
 	let {
 		deletedSvgColumns,
@@ -16,6 +18,8 @@
 		onExitHover,
 		flip,
 		selection = null,
+		showFront,
+		editorPath,
 		spreadsheet,
 		svgTemplate,
 		imagePaths
@@ -31,6 +35,8 @@
 			borderRightIndex: number;
 			borderBottomIndex: number;
 		} | null;
+		showFront: boolean;
+		editorPath: string;
 		spreadsheet: jspreadsheet.WorksheetInstance;
 		svgTemplate: SVGSVGElement;
 		imagePaths: Map<string, string>;
@@ -85,38 +91,63 @@
 	}
 </script>
 
-<div class="flex w-full items-center gap-2">
-	<Popover.Root>
-		<Popover.Trigger><Button variant="outline">Add Svg data</Button></Popover.Trigger>
-		<Popover.Content class="w-64">
-			{#if deletedSvgColumns.length === 0}
-				<div class="text-muted-foreground p-2 text-center">No deleted SVG columns</div>
-			{:else}
-				<div class="text-muted-foreground p-2 text-center">
-					Add the following columns to the spreadsheet
-				</div>
-				{#each deletedSvgColumns as column (column)}
-					<div class="flex gap-2">
-						<Button
-							variant="default"
-							class="w-full"
-							onclick={() => onAddColumn(column)}
-							onmouseover={() => onHover(column)}
-							onmouseleave={() => onExitHover(column)}
-						>
-							Add <b>{column}</b> to spreadsheet
-						</Button>
+<div
+	class="flex w-full flex-wrap items-center gap-2"
+	role="toolbar"
+	aria-label="Spreadsheet editor toolbar"
+>
+	<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
+		<Button size="sm" variant="ghost" href={editorPath} title="Open Layout editor">
+			<LayoutTemplate class="size-4" />
+			Layout
+		</Button>
+		<Button
+			size="sm"
+			variant="ghost"
+			class="w-20 justify-start"
+			onclick={() => flip()}
+			title="Flip card previews"
+		>
+			<FlipHorizontal2 class="size-4" />
+			{showFront ? 'Back' : 'Front'}
+		</Button>
+	</ButtonGroup.Root>
+	<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
+		<Popover.Root>
+			<Popover.Trigger>
+				{#snippet child({ props })}
+					<Button size="sm" variant="ghost" {...props}>Add SVG data</Button>
+				{/snippet}
+			</Popover.Trigger>
+			<Popover.Content class="w-64">
+				{#if deletedSvgColumns.length === 0}
+					<div class="text-muted-foreground p-2 text-center">No deleted SVG columns</div>
+				{:else}
+					<div class="text-muted-foreground p-2 text-center">
+						Add the following columns to the spreadsheet
 					</div>
-				{/each}
-			{/if}
-		</Popover.Content>
-	</Popover.Root>
-	<Button variant="outline" onclick={() => flip()}>Flip cards</Button>
-	<GenerateImagesModal
-		{selection}
-		{spreadsheet}
-		{svgTemplate}
-		onGenerateImages={handleGenerateImages}
-	/>
-	<ImageSelectionModal {selection} {spreadsheet} {imagePaths} />
+					{#each deletedSvgColumns as column (column)}
+						<div class="flex gap-2">
+							<Button
+								variant="default"
+								class="w-full"
+								onclick={() => onAddColumn(column)}
+								onmouseover={() => onHover(column)}
+								onmouseleave={() => onExitHover(column)}
+							>
+								Add <b>{column}</b> to spreadsheet
+							</Button>
+						</div>
+					{/each}
+				{/if}
+			</Popover.Content>
+		</Popover.Root>
+		<GenerateImagesModal
+			{selection}
+			{spreadsheet}
+			{svgTemplate}
+			onGenerateImages={handleGenerateImages}
+		/>
+		<ImageSelectionModal {selection} {spreadsheet} {imagePaths} />
+	</ButtonGroup.Root>
 </div>
