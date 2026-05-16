@@ -8,7 +8,14 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { Ellipsis, Layers, PenTool, Table, TextCursorInput, Trash2 } from '@lucide/svelte';
+	import {
+		Ellipsis,
+		Layers,
+		LayoutTemplate,
+		Table2,
+		TextCursorInput,
+		Trash2
+	} from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ComponentFileStructure, Game } from './types.js';
 	import RenameDeckDialog from './rename-deck-dialog.svelte';
@@ -311,16 +318,16 @@
 											onSelect={() => goto(resolve(`${path}/editor`))}
 											class="flex w-full justify-start gap-2"
 										>
-											<PenTool />
-											<span>Editor</span>
+											<LayoutTemplate />
+											<span>Layout</span>
 										</DropdownMenu.Item>
 										{/* @ts-expect-error paths*/ null}
 										<DropdownMenu.Item
 											onSelect={() => goto(resolve(`${path}/data`))}
 											class="flex w-full justify-start gap-2"
 										>
-											<Table />
-											<span>Data</span>
+											<Table2 />
+											<span>Spreadsheet</span>
 										</DropdownMenu.Item>
 										<RenameDeckDialog projectFolder={fileSystem} {deck} onRenamed={onDeckRenamed}>
 											{#snippet trigger({ props })}

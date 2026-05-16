@@ -469,6 +469,7 @@
 			onExitHover={(_x) => clearSelectionRects()}
 			{flip}
 			{selection}
+			editorPath={`/games/${projectName}/decks/${cardName}/editor`}
 			spreadsheet={spreadsheet[0]}
 			svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
 			{imagePaths}

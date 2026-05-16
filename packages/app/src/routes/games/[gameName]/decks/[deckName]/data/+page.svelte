@@ -20,8 +20,8 @@
 	>
 		<h1 class="text-xl font-semibold">SVG templates missing</h1>
 		<p class="text-muted-foreground text-sm">
-			Add front and back SVGs in the deck editor before editing data.
+			Add front and back SVGs in the Layout editor before editing spreadsheet data.
 		</p>
-		<Button href={editorPath}>Open editor</Button>
+		<Button href={editorPath}>Open Layout editor</Button>
 	</div>
 {/if}
