@@ -15,16 +15,18 @@ async function spreadsheetHeaders(page: Page) {
 	);
 }
 
+function cardPreview(page: Page, name: string) {
+	return page.locator('main svg').filter({ hasText: name }).first();
+}
+
 test('insert rows in data editor', async ({ page }) => {
 	await openWesternDataEditor(page);
 	await page.locator('tbody > tr > td:nth-child(8)').first().dblclick();
 	await page.getByRole('textbox').fill('wow!');
-	await expect(page.locator('.flex.w-screen > div:nth-child(1)').getByText('wow!')).toBeVisible();
+	await expect(cardPreview(page, 'wow!')).toBeVisible();
 	await page.getByRole('cell', { name: '1', exact: true }).click({ button: 'right' });
 	await page.getByRole('menuitem', { name: 'Delete selected rows' }).click();
-	await expect(
-		page.locator('.flex.w-screen > div:nth-child(1)').getByText('wow!')
-	).not.toBeVisible();
+	await expect(cardPreview(page, 'wow!')).not.toBeVisible();
 
 	await page.getByRole('cell', { name: '1', exact: true }).click({ button: 'right' });
 	await page.getByRole('menuitem', { name: 'Insert a new row after' }).click();
@@ -66,16 +68,12 @@ test('editing data shows save state and persists after navigation', async ({ pag
 
 	await expect(page.getByText('Saving')).toBeVisible();
 	await expect(page.getByText('Saved')).toBeVisible();
-	await expect(
-		page.locator('.flex.w-screen > div:nth-child(1)').getByText('persisted e2e value')
-	).toBeVisible();
+	await expect(cardPreview(page, 'persisted e2e value')).toBeVisible();
 
 	await page.goto('/app/games/western-cards/decks/western/editor');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
 	await page.goto('/app/games/western-cards/decks/western/data');
-	await expect(
-		page.locator('.flex.w-screen > div:nth-child(1)').getByText('persisted e2e value')
-	).toBeVisible();
+	await expect(cardPreview(page, 'persisted e2e value')).toBeVisible();
 });
 
 test('append buttons add one row and one column', async ({ page }) => {

@@ -25,6 +25,11 @@ This project is a boardgame design and testing tool
 - Do not use ad hoc `node -e` scripts that import Playwright for validation. Add or reuse a focused Playwright spec, run it with `bun run playwright test`, and remove temporary specs before finishing.
 - For visual or viewport checks, prefer assertions such as `toBeVisible()` and `toBeInViewport()` in a focused Playwright test. Capture screenshots through the test runner only when they help diagnose a failure.
 
+## Code style
+
+Use defensive coding. E.g use assert: import { assert } from '$lib/utils/assert';
+Write code in a functional style. That means return new object and make sure functions recieve everything they use as input parameters.
+
 ## Key Technologies
 
 - **Frontend**: SvelteKit with Svelte 5, TypeScript, Tailwind CSS
