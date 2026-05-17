@@ -16,13 +16,19 @@
 
 	type EditorController = ReturnType<typeof createEditorController>;
 
-	let { controller, selectedImageChangeAction, selectedImageHrefApplyAction } = $props<{
+	let {
+		controller,
+		selectedImageChangeAction,
+		selectedImageHrefApplyAction,
+		framed = true
+	} = $props<{
 		controller: EditorController;
 		selectedImageChangeAction?: (controller: EditorController) => void | Promise<void>;
 		selectedImageHrefApplyAction?: (
 			controller: EditorController,
 			href: string
 		) => void | Promise<void>;
+		framed?: boolean;
 	}>();
 
 	let posX = $state(111);
@@ -922,11 +928,13 @@
 	});
 </script>
 
-<Card>
-	<CardHeader>
-		<CardTitle>Inspector</CardTitle>
-	</CardHeader>
-	<CardContent class="flex flex-col gap-4">
+<Card class={framed ? undefined : 'border-0 bg-transparent py-0 shadow-none'}>
+	{#if framed}
+		<CardHeader>
+			<CardTitle>Inspector</CardTitle>
+		</CardHeader>
+	{/if}
+	<CardContent class={framed ? 'flex flex-col gap-4' : 'flex flex-col gap-4 px-0'}>
 		<div class="grid gap-4">
 			<div class="grid grid-cols-2 gap-3">
 				<div class="grid gap-1.5">
@@ -1209,7 +1217,9 @@
 						<div class="grid gap-1.5">
 							<Label>Style</Label>
 							<ButtonGroup.Root
-								class="bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs"
+								class={framed
+									? 'bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs'
+									: 'w-fit items-center gap-1'}
 							>
 								<Button
 									size="icon-sm"
@@ -1264,7 +1274,9 @@
 						<div class="grid gap-1.5">
 							<Label>Align</Label>
 							<ButtonGroup.Root
-								class="bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs"
+								class={framed
+									? 'bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs'
+									: 'w-fit items-center gap-1'}
 							>
 								<Button
 									size="icon-sm"

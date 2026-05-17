@@ -14,9 +14,9 @@
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import { requireParam } from '$lib/utils/assert';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
-	import { untrack } from 'svelte';
 	import { isEmbeddedImageReference, resolveImageReference } from '../../../data-loader';
 	import ImageSelector from '../../../image-selector.svelte';
+	import { getDeckSideIndexContext } from '../svg-context.svelte';
 
 	type Side = 'front' | 'back';
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -41,6 +41,7 @@
 	const folder = $derived(joinFsPath(game, 'system', deck));
 	const dataPath = $derived(`/games/${game}/decks/${deck}/data`);
 	const maxSvgUploadSize = 12 * 1024 * 1024;
+	const deckSideIndex = getDeckSideIndexContext();
 
 	const roundTo = (value: number, precision = 2) => {
 		const factor = 10 ** precision;
@@ -154,7 +155,8 @@
 	let back = $derived(svgs.back);
 	let frontMeta = $derived(svgs.meta.front);
 	let backMeta = $derived(svgs.meta.back);
-	let side = $state<Side>(untrack(() => (front || !back ? 'front' : 'back')));
+	const sideIndex = $derived(deckSideIndex.sideIndex);
+	const side = $derived(sideIndex === 0 ? 'front' : 'back');
 	let blankWidth = $state(63);
 	let blankHeight = $state(88);
 	let createTemplatesDialogOpen = $state(false);
@@ -214,7 +216,7 @@
 			back = value;
 			backMeta = getSvgMeta(value);
 		}
-		side = nextSide;
+		deckSideIndex.setSideIndex(sideIndexForSide(nextSide));
 	};
 
 	const getImageHref = (image: SVGImageElement) =>
@@ -363,7 +365,7 @@
 			}),
 			writePlaceholderSvg()
 		]);
-		if (focusSide) side = focusSide;
+		if (focusSide) deckSideIndex.setSideIndex(sideIndexForSide(focusSide));
 		if (closeDialog) createTemplatesDialogOpen = false;
 	};
 
@@ -373,7 +375,7 @@
 			await createBlankTemplates(nextSide, preferredBlankSize, { focusSide: nextSide });
 			return;
 		}
-		side = nextSide;
+		deckSideIndex.setSideIndex(sideIndexForSide(nextSide));
 	};
 
 	const flipSide = () => switchSide(side === 'front' ? 'back' : 'front');
@@ -388,6 +390,7 @@
 	};
 
 	const sideHasSvg = (nextSide: Side) => (nextSide === 'front' ? Boolean(front) : Boolean(back));
+	const sideIndexForSide = (nextSide: Side) => (nextSide === 'front' ? 0 : 1);
 	const sideLabel = (nextSide: Side) => `${nextSide[0].toUpperCase()}${nextSide.slice(1)}`;
 	const imageSelectorTitle = $derived(
 		imagePickerTarget?.mode === 'replace' ? 'Change Image' : 'Select Image'
@@ -449,7 +452,7 @@
 	};
 </script>
 
-<main class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
+<main class="flex h-svh w-full flex-col gap-4 overflow-hidden p-4">
 	<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Layout editor toolbar">
 		<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
 			<Button size="sm" variant="ghost" href={dataPath} title="Open Spreadsheet editor">
@@ -478,23 +481,21 @@
 	/>
 
 	{#if hasAnySvg && svg}
-		<Card>
-			<CardContent class="pt-6">
-				{#key side}
-					<ReferenceEditor
-						value={editorSvg.value}
-						{config}
-						assetBasePath="/svgedit/images/"
-						initialZoom="fit"
-						toolbarActions={uploadToolbarAction}
-						imageToolAction={(controller) => openImagePicker('insert', controller)}
-						selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}
-						selectedImageHrefApplyAction={applySvgEditorImageHref}
-						on:change={handleChange}
-					/>
-				{/key}
-			</CardContent>
-		</Card>
+		{#key side}
+			<div class="min-h-0 flex-1">
+				<ReferenceEditor
+					value={editorSvg.value}
+					{config}
+					assetBasePath="/svgedit/images/"
+					initialZoom="fit"
+					toolbarActions={uploadToolbarAction}
+					imageToolAction={(controller) => openImagePicker('insert', controller)}
+					selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}
+					selectedImageHrefApplyAction={applySvgEditorImageHref}
+					on:change={handleChange}
+				/>
+			</div>
+		{/key}
 	{:else}
 		<Card>
 			<CardContent

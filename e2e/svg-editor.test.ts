@@ -461,6 +461,7 @@ test('structure tree edit accepts h and l and commits text on Enter', async ({ p
 
 	const treeId = await treeIdForElement(page, 'effect_zone');
 	expect(treeId).toBeTruthy();
+	await page.getByRole('tab', { name: 'Structure' }).click();
 	await page.locator(`[data-row-id="${treeId}"] button[aria-label="Rename element"]`).click();
 	const input = page.locator('[data-structure-tree] input').first();
 	await expect(input).toBeVisible();

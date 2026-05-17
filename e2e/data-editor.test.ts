@@ -91,6 +91,12 @@ test('spreadsheet editor toolbar opens layout editor', async ({ page }) => {
 
 	await page.getByRole('link', { name: 'Layout' }).click();
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+	const layoutToolbar = page.getByRole('toolbar', { name: 'Layout editor toolbar' });
+	await expect(layoutToolbar.getByRole('button', { name: 'Front' })).toBeVisible();
+
+	await page.getByRole('link', { name: 'Spreadsheet' }).click();
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+	await expect(toolbar.getByRole('button', { name: 'Front' })).toBeVisible();
 });
 
 test('appends missing svg columns after csv columns', async ({ page }) => {

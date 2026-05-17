@@ -64,5 +64,8 @@
 	}`}
 	detail={selectionData.imageColumns.map((column) => column.name).join(', ')}
 	triggerLabel="Select Image"
+	triggerVariant="ghost"
+	triggerSize="sm"
+	triggerClass="w-32 justify-start"
 	onSelect={applyImageToSelection}
 />

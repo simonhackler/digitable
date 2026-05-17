@@ -22,6 +22,7 @@
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import { ImageEditor } from './custom-image';
+	import { getDeckSideIndexContext } from '../svg-context.svelte';
 
 	const {
 		svgTemplateFront,
@@ -46,6 +47,7 @@
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(requireParam('deckName'));
 	const fileSystem = getFileSystemContext();
+	const deckSideIndex = getDeckSideIndexContext();
 	const sides: SvgSide[] = $derived([
 		{ template: svgTemplateFront, columnPrefix: '' },
 		{ template: svgTemplateBack, columnPrefix: 'back_' }
@@ -67,7 +69,9 @@
 			.map((c) => c.title as string)
 	);
 
-	let activeSideIndex = $state(0);
+	const activeSideIndex = $derived(
+		Math.min(deckSideIndex.sideIndex, Math.max(0, sides.length - 1))
+	);
 	const activeSide = $derived(sides[activeSideIndex] ?? sides[0]);
 	const showFront = $derived(activeSideIndex === 0);
 	const svgsToShow = $derived(cards.map((card) => card.sides[activeSideIndex] ?? card.sides[0]));
@@ -78,7 +82,7 @@
 	let activeSavePromises = $state<Promise<void>[]>([]);
 
 	function flip() {
-		activeSideIndex = (activeSideIndex + 1) % sides.length;
+		deckSideIndex.flipSideIndex(sides.length);
 	}
 
 	function sideOptions(side: SvgSide) {
@@ -454,63 +458,65 @@
 	} | null = $state(null);
 </script>
 
-<div class="min-w-0">
-	<div
-		bind:this={scrollEl}
-		class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
-	>
-		{#each svgsToShow as svg, i (svg.id)}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<!-- ignore for now, should this then just be a button? -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				onclick={(e) => {
-					const headers = spreadsheet[0].getHeaders(true) as string[];
-					let node: EventTarget | null = e.target;
-					let id: string | null = null;
-					while (node && node !== e.currentTarget) {
-						if (node instanceof Element) {
-							const res = node.id;
-							if (findVisibleHeaderIndex(res, headers) !== -1) {
-								id = node.id;
-								break;
+<main class="flex w-full flex-col gap-4 p-4">
+	<Toolbar
+		{deletedSvgColumns}
+		onAddColumn={addColumn}
+		onHover={highlightColumn}
+		onExitHover={(_x) => clearSelectionRects()}
+		{flip}
+		{selection}
+		{showFront}
+		editorPath={`/games/${projectName}/decks/${cardName}/editor`}
+		spreadsheet={spreadsheet[0]}
+		svgTemplate={activeSide.template}
+		{imagePaths}
+	></Toolbar>
+
+	<div class="min-w-0">
+		<div
+			bind:this={scrollEl}
+			class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
+		>
+			{#each svgsToShow as svg, i (svg.id)}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- ignore for now, should this then just be a button? -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<div
+					onclick={(e) => {
+						const headers = spreadsheet[0].getHeaders(true) as string[];
+						let node: EventTarget | null = e.target;
+						let id: string | null = null;
+						while (node && node !== e.currentTarget) {
+							if (node instanceof Element) {
+								const res = node.id;
+								if (findVisibleHeaderIndex(res, headers) !== -1) {
+									id = node.id;
+									break;
+								}
 							}
+							node = (node as Element).parentElement;
 						}
-						node = (node as Element).parentElement;
-					}
-					let index = -1;
-					if (id) {
-						index = findVisibleHeaderIndex(id, headers);
-					}
-					if (index !== -1) {
-						spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
-						const cell = spreadsheet[0].getCellFromCoords(index, i);
-						spreadsheet[0].openEditor(cell, false, e);
-					} else {
-						spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
-					}
-				}}
-				class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
-				{@attach attachSVG(svg)}
-			></div>
-		{/each}
+						let index = -1;
+						if (id) {
+							index = findVisibleHeaderIndex(id, headers);
+						}
+						if (index !== -1) {
+							spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
+							const cell = spreadsheet[0].getCellFromCoords(index, i);
+							spreadsheet[0].openEditor(cell, false, e);
+						} else {
+							spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
+						}
+					}}
+					class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
+					{@attach attachSVG(svg)}
+				></div>
+			{/each}
+		</div>
 	</div>
-	<div class="px-2 py-2">
-		<Toolbar
-			{deletedSvgColumns}
-			onAddColumn={addColumn}
-			onHover={highlightColumn}
-			onExitHover={(_x) => clearSelectionRects()}
-			{flip}
-			{selection}
-			{showFront}
-			editorPath={`/games/${projectName}/decks/${cardName}/editor`}
-			spreadsheet={spreadsheet[0]}
-			svgTemplate={activeSide.template}
-			{imagePaths}
-		></Toolbar>
-	</div>
-	<div class="flex items-start gap-2 px-2 pb-2">
+
+	<div class="flex items-start gap-2">
 		<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
 			<ContextMenu.Root>
 				<ContextMenu.Trigger>
@@ -567,4 +573,4 @@
 			{/if}
 		</div>
 	</div>
-</div>
+</main>
