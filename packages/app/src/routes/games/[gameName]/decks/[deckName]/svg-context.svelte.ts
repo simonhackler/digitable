@@ -1,6 +1,8 @@
 import { createContext } from 'svelte';
 
 export interface LoadedSvgTemplates {
+	frontText: string;
+	backText: string;
 	front: SVGSVGElement | null;
 	back: SVGSVGElement | null;
 }
