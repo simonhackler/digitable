@@ -4,14 +4,16 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type Mapping = { src: string; dest: string };
+type EncodedFile = { dest: string; base64: string };
 
 const EXCLUDED_DIRECTORY_NAMES = new Set(['tts-export']);
-const SEED_CONCURRENCY = 4;
+const MAX_OPFS_BATCH_BASE64_BYTES = 8 * 1024 * 1024;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultProjectsDir = path.resolve(here, '../../projects');
 const DEFAULT_PROJECT_NAMES = ['western-cards'];
 const directoryMappings = new Map<string, Promise<Mapping[]>>();
 const allProjectMappings = new Map<string, Promise<Mapping[]>>();
+const encodedFilePayloads = new Map<string, Promise<EncodedFile[]>>();
 
 const shouldSeedProjectEntry = (name: string) => !name.startsWith('.');
 
@@ -55,7 +57,7 @@ export async function writeBufferToOPFS(page: Page, dest: string, buf: Buffer) {
 	);
 }
 
-async function writeFilesToOPFS(page: Page, files: Array<{ dest: string; base64: string }>) {
+async function writeFilesToOPFS(page: Page, files: EncodedFile[]) {
 	await page.evaluate(async (files) => {
 		const storage = navigator.storage as StorageManager & {
 			getDirectory: () => Promise<FileSystemDirectoryHandle>;
@@ -80,6 +82,51 @@ async function writeFilesToOPFS(page: Page, files: Array<{ dest: string; base64:
 			await writeFile(file.dest, file.base64);
 		}
 	}, files);
+}
+
+function encodedPayloadCacheKey(mappings: Mapping[]) {
+	return mappings.map(({ src, dest }) => `${dest}\0${src}`).join('\0');
+}
+
+async function encodedPayloads(mappings: Mapping[]) {
+	const cacheKey = encodedPayloadCacheKey(mappings);
+	const cached = encodedFilePayloads.get(cacheKey);
+	if (cached) {
+		return cached;
+	}
+
+	const encoded = Promise.all(
+		mappings.map(async ({ src, dest }) => {
+			const buf = await fs.readFile(src);
+			return { dest, base64: buf.toString('base64') };
+		})
+	);
+	encodedFilePayloads.set(cacheKey, encoded);
+	return encoded;
+}
+
+function encodedPayloadBatches(files: EncodedFile[]) {
+	const batches: EncodedFile[][] = [];
+	let batch: EncodedFile[] = [];
+	let batchBytes = 0;
+
+	for (const file of files) {
+		const fileBytes = file.base64.length;
+		if (batch.length > 0 && batchBytes + fileBytes > MAX_OPFS_BATCH_BASE64_BYTES) {
+			batches.push(batch);
+			batch = [];
+			batchBytes = 0;
+		}
+
+		batch.push(file);
+		batchBytes += fileBytes;
+	}
+
+	if (batch.length > 0) {
+		batches.push(batch);
+	}
+
+	return batches;
 }
 
 /**
@@ -129,15 +176,10 @@ export async function projectMappings(projectName: string) {
  * Seed multiple files into OPFS.
  */
 export async function seedOPFS(page: Page, mappings: Mapping[]) {
-	for (let index = 0; index < mappings.length; index += SEED_CONCURRENCY) {
-		const chunk = mappings.slice(index, index + SEED_CONCURRENCY);
-		const files = await Promise.all(
-			chunk.map(async ({ src, dest }) => {
-				const buf = await fs.readFile(src);
-				return { dest, base64: buf.toString('base64') };
-			})
-		);
-		await writeFilesToOPFS(page, files);
+	const files = await encodedPayloads(mappings);
+
+	for (const batch of encodedPayloadBatches(files)) {
+		await writeFilesToOPFS(page, batch);
 	}
 }
 

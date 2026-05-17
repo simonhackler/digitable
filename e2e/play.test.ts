@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { newAuthenticatedPage } from './helpers/auth';
 import { seedProjectFiles, useBrowserStorage } from './helpers/opfs';
 import { pixiClick, pixiDragTo, pixiPoint, pixiState, waitForPixi } from './helpers/pixi';
 
@@ -53,19 +54,6 @@ async function drawStrokeOnItem(page: Page, id: string) {
 	await page.mouse.move(end.x, end.y, { steps: 2 });
 	await page.mouse.up();
 	await page.getByRole('button', { name: 'Select tool' }).click();
-}
-
-async function signUp(page: Page) {
-	const email = `playtest-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
-
-	await page.goto('/sign-up', { waitUntil: 'networkidle' });
-	await page.getByLabel('Name').fill('Playtest E2E');
-	await page.getByLabel('Email').fill(email);
-	await page.getByLabel('Password', { exact: true }).fill('correct-horse-battery-staple');
-	await page.getByLabel('Confirm password').fill('correct-horse-battery-staple');
-	await page.getByRole('checkbox').check();
-	await page.getByRole('button', { name: 'Create account' }).click();
-	await expect(page).toHaveURL(/\/app\/games$/);
 }
 
 test('card strokes are synced to the card and can be deleted', async ({ page }) => {
@@ -391,88 +379,13 @@ test('a played card stays visible after being clicked again', async ({ page }) =
 		});
 });
 
-test('playtest invite imports the project and opens playable cards', async ({ page }) => {
+test('playtest invite imports the project and opens playable cards', async ({
+	browser
+}, testInfo) => {
 	test.setTimeout(90_000);
-
-	await signUp(page);
-	await page.goto(appPath('/games'));
-	await seedProjectFiles(page, 'pixi-play-smoke');
-	await useBrowserStorage(page);
-	await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
-
-	await page.getByRole('button', { name: 'Playtest' }).click();
-	const inviteInput = page.getByLabel('Playtest invite link');
-	await expect(inviteInput).toHaveValue(/\/app\/playtests\/[0-9a-f-]+/);
-	const inviteUrl = await inviteInput.inputValue();
-
-	await page.goto(`${inviteUrl}?e2e=1`);
-	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
-	await waitForPixi(page);
-
-	let firstStackId: string | null = null;
-	await expect
-		.poll(
-			async () => {
-				const state = await pixiState(page);
-				firstStackId = state.visibleStackIds[0] ?? null;
-				return state.visibleStackIds.length;
-			},
-			{ timeout: 20_000 }
-		)
-		.toBe(1);
-
-	expect(firstStackId).toBeTruthy();
-	await pixiClick(page, firstStackId!);
-	await page.keyboard.press('d');
-
-	let handCardId: string | null = null;
-	await expect
-		.poll(
-			async () => {
-				const state = await pixiState(page);
-				handCardId = state.handCardIds[0] ?? null;
-				return {
-					visibleBoardCards: state.visibleBoardCardIds.length,
-					handCards: state.handCardIds.length
-				};
-			},
-			{ timeout: 20_000 }
-		)
-		.toEqual({
-			visibleBoardCards: 1,
-			handCards: 1
-		});
-
-	expect(handCardId).toBeTruthy();
-	await pixiDragTo(page, handCardId!, { x: 640, y: 220 });
-
-	await expect
-		.poll(
-			async () => {
-				const state = await pixiState(page);
-				return {
-					playedCardIsVisible: state.visibleBoardCardIds.includes(handCardId!),
-					handCardIds: state.handCardIds
-				};
-			},
-			{ timeout: 20_000 }
-		)
-		.toEqual({
-			playedCardIsVisible: true,
-			handCardIds: []
-		});
-});
-
-test('playtest invitees share private room state', async ({ page, browser }) => {
-	test.setTimeout(120_000);
-	const secondContext = await browser.newContext({
-		baseURL: test.info().project.use.baseURL as string | undefined
-	});
-	const secondPage = await secondContext.newPage();
+	const { context, page } = await newAuthenticatedPage(browser, testInfo);
 
 	try {
-		await signUp(page);
 		await page.goto(appPath('/games'));
 		await seedProjectFiles(page, 'pixi-play-smoke');
 		await useBrowserStorage(page);
@@ -488,7 +401,88 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 		await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
 		await waitForPixi(page);
 
-		await signUp(secondPage);
+		let firstStackId: string | null = null;
+		await expect
+			.poll(
+				async () => {
+					const state = await pixiState(page);
+					firstStackId = state.visibleStackIds[0] ?? null;
+					return state.visibleStackIds.length;
+				},
+				{ timeout: 20_000 }
+			)
+			.toBe(1);
+
+		expect(firstStackId).toBeTruthy();
+		await pixiClick(page, firstStackId!);
+		await page.keyboard.press('d');
+
+		let handCardId: string | null = null;
+		await expect
+			.poll(
+				async () => {
+					const state = await pixiState(page);
+					handCardId = state.handCardIds[0] ?? null;
+					return {
+						visibleBoardCards: state.visibleBoardCardIds.length,
+						handCards: state.handCardIds.length
+					};
+				},
+				{ timeout: 20_000 }
+			)
+			.toEqual({
+				visibleBoardCards: 1,
+				handCards: 1
+			});
+
+		expect(handCardId).toBeTruthy();
+		await pixiDragTo(page, handCardId!, { x: 640, y: 220 });
+
+		await expect
+			.poll(
+				async () => {
+					const state = await pixiState(page);
+					return {
+						playedCardIsVisible: state.visibleBoardCardIds.includes(handCardId!),
+						handCardIds: state.handCardIds
+					};
+				},
+				{ timeout: 20_000 }
+			)
+			.toEqual({
+				playedCardIsVisible: true,
+				handCardIds: []
+			});
+	} finally {
+		await context.close();
+	}
+});
+
+test('playtest invitees share private room state', async ({ browser }, testInfo) => {
+	test.setTimeout(120_000);
+	const owner = await newAuthenticatedPage(browser, testInfo, 'owner');
+	let invitee: Awaited<ReturnType<typeof newAuthenticatedPage>> | null = null;
+
+	try {
+		invitee = await newAuthenticatedPage(browser, testInfo, 'invitee');
+		const page = owner.page;
+		const secondPage = invitee.page;
+
+		await page.goto(appPath('/games'));
+		await seedProjectFiles(page, 'pixi-play-smoke');
+		await useBrowserStorage(page);
+		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+
+		await page.getByRole('button', { name: 'Playtest' }).click();
+		const inviteInput = page.getByLabel('Playtest invite link');
+		await expect(inviteInput).toHaveValue(/\/app\/playtests\/[0-9a-f-]+/);
+		const inviteUrl = await inviteInput.inputValue();
+
+		await page.goto(`${inviteUrl}?e2e=1`);
+		await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+		await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
+		await waitForPixi(page);
+
 		await secondPage.goto(`${inviteUrl}?e2e=1`);
 		await expect(secondPage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
 		await expect(secondPage.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
@@ -541,6 +535,7 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 				handCardIds: []
 			});
 	} finally {
-		await secondContext.close();
+		await invitee?.context.close();
+		await owner.context.close();
 	}
 });
