@@ -54,6 +54,7 @@
     after = ["network-online.target" "db-migrate.service"];
     wants = ["network-online.target"];
     requires = ["db-migrate.service"];
+    path = [pkgs.nodejs];
 
     environment = {
       HOST = "127.0.0.1";

@@ -10,12 +10,40 @@ import type { Room } from 'colyseus.js';
 
 type Handler<T> = (payload: T) => void;
 
+const POSITION_EPSILON = 0.001;
+const POSITION_INTERPOLATION = 0.2;
+
+type PositionSnapshot = {
+	x: number;
+	y: number;
+	visible: boolean;
+};
+
+type PendingPrediction = {
+	x: number;
+	y: number;
+	visible: boolean;
+	reconcileOnRelease: boolean;
+};
+
 function arraysEqual<T>(a: ArrayLike<T>, b: ArrayLike<T>): boolean {
 	if (a.length !== b.length) return false;
 	for (let i = 0; i < a.length; i += 1) {
 		if (a[i] !== b[i]) return false;
 	}
 	return true;
+}
+
+function samePoint(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+	return Math.abs(a.x - b.x) <= POSITION_EPSILON && Math.abs(a.y - b.y) <= POSITION_EPSILON;
+}
+
+function samePosition(a: PositionSnapshot, b: PositionSnapshot): boolean {
+	return samePoint(a, b) && a.visible === b.visible;
+}
+
+function lerp(start: number, end: number, amount: number): number {
+	return start + (end - start) * amount;
 }
 
 export class Event<T> {
@@ -48,19 +76,83 @@ export class ClientPosition {
 	sharedValues: SharedClientValues;
 	clientPositionState: Positionable;
 	onPositionChanged: Event<Positionable> = new Event();
+	private serverPositionState: PositionSnapshot;
+	private pendingPrediction: PendingPrediction | null = null;
 
 	constructor(sharedValues: SharedClientValues, position: Positionable) {
 		this.sharedValues = sharedValues;
 		this.clientPositionState = new Positionable(position.x, position.y, position.visible);
+		this.serverPositionState = { x: position.x, y: position.y, visible: position.visible };
 
 		sharedValues.s(position).onChange(() => {
-			console.log('position changed', position.x, position.y);
-			this.clientPositionState.x = position.x;
-			this.clientPositionState.y = position.y;
-			this.clientPositionState.visible = position.visible;
-			this.onPositionChanged.emit(position);
+			this.serverPositionState = {
+				x: position.x,
+				y: position.y,
+				visible: position.visible
+			};
+			this.handleServerPositionChanged();
 		});
 	}
+
+	private applyClientPosition(next: PositionSnapshot): boolean {
+		if (samePosition(this.clientPositionState, next)) {
+			return false;
+		}
+		this.clientPositionState.x = next.x;
+		this.clientPositionState.y = next.y;
+		this.clientPositionState.visible = next.visible;
+		this.onPositionChanged.emit(this.clientPositionState);
+		return true;
+	}
+
+	private handleServerPositionChanged() {
+		if (!this.pendingPrediction) {
+			if (this.clientPositionState.visible !== this.serverPositionState.visible) {
+				this.applyClientPosition({
+					x: this.clientPositionState.x,
+					y: this.clientPositionState.y,
+					visible: this.serverPositionState.visible
+				});
+			}
+			return;
+		}
+
+		if (samePosition(this.pendingPrediction, this.serverPositionState)) {
+			this.pendingPrediction = null;
+			this.applyClientPosition(this.serverPositionState);
+			return;
+		}
+
+		const owner = this.sharedValues.component.owner;
+		const ownedByAnotherPlayer = owner !== '' && owner !== this.sharedValues.sessionId;
+		const releasedAfterMoveEnd = this.pendingPrediction.reconcileOnRelease && owner === '';
+
+		if (ownedByAnotherPlayer || releasedAfterMoveEnd) {
+			this.pendingPrediction = null;
+			this.applyClientPosition(this.serverPositionState);
+		}
+	}
+
+	tick(): boolean {
+		if (this.pendingPrediction) {
+			return false;
+		}
+		if (samePoint(this.clientPositionState, this.serverPositionState)) {
+			return false;
+		}
+
+		const next = {
+			x: lerp(this.clientPositionState.x, this.serverPositionState.x, POSITION_INTERPOLATION),
+			y: lerp(this.clientPositionState.y, this.serverPositionState.y, POSITION_INTERPOLATION),
+			visible: this.serverPositionState.visible
+		};
+		if (samePoint(next, this.serverPositionState)) {
+			next.x = this.serverPositionState.x;
+			next.y = this.serverPositionState.y;
+		}
+		return this.applyClientPosition(next);
+	}
+
 	// IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client
 	// Or I will need a frontend command or something like that?
 	// I somehow want to tightly couple server and frontend commands
@@ -75,10 +167,13 @@ export class ClientPosition {
 			);
 			return;
 		}
-		this.clientPositionState.x = x;
-		this.clientPositionState.y = y;
-		this.onPositionChanged.emit(this.clientPositionState);
-		console.log(this.sharedValues.component.owner);
+		this.pendingPrediction = {
+			x,
+			y,
+			visible: this.clientPositionState.visible,
+			reconcileOnRelease: false
+		};
+		this.applyClientPosition({ x, y, visible: this.clientPositionState.visible });
 
 		this.sharedValues.room.send('cmd', {
 			commandType: 'move',
@@ -91,9 +186,13 @@ export class ClientPosition {
 	}
 
 	moveEnd(x: number, y: number) {
-		this.clientPositionState.x = x;
-		this.clientPositionState.y = y;
-		this.onPositionChanged.emit(this.clientPositionState);
+		this.pendingPrediction = {
+			x,
+			y,
+			visible: this.clientPositionState.visible,
+			reconcileOnRelease: true
+		};
+		this.applyClientPosition({ x, y, visible: this.clientPositionState.visible });
 		this.sharedValues.room.send('cmd', {
 			commandType: 'moveend',
 			payload: {
@@ -102,6 +201,11 @@ export class ClientPosition {
 				y
 			}
 		});
+	}
+
+	predictPosition(x: number, y: number, visible: boolean) {
+		this.pendingPrediction = { x, y, visible, reconcileOnRelease: true };
+		this.applyClientPosition({ x, y, visible });
 	}
 }
 

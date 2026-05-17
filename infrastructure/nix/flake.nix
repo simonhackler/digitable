@@ -44,7 +44,7 @@
     gameServerPort = 3002;
     gameServerPublicPort = 2567;
 
-    packageDirs = [
+    workspacePackageDirs = [
       "packages/app"
       "packages/auth"
       "packages/db"
@@ -53,46 +53,149 @@
       "packages/studio"
       "svgedit"
       "svgedit/packages/svgcanvas"
+      "vendor/svelte-lexical/packages/svelte-lexical"
     ];
 
-    packageParentDirs = [
+    sourceParentDirs = [
+      ""
       "packages"
       "svgedit"
       "svgedit/packages"
+      "vendor"
+      "vendor/svelte-lexical"
+      "vendor/svelte-lexical/packages"
     ];
 
-    packageSource = builtins.path {
-      path = repoRootPath;
-      name = "digitable-source";
-      filter = path: type: let
-        rel = lib.removePrefix "${repoRoot}/" (toString path);
-        parts = lib.splitString "/" rel;
-        isPackagePath =
-          builtins.any
-          (dir: rel == dir || lib.hasPrefix "${dir}/" rel)
-          packageDirs;
-        isSourceParent = builtins.elem rel packageParentDirs;
-        isRootFile = builtins.elem rel [
-          ""
-          "bun.lock"
-          "package.json"
-          "tsconfig.json"
-        ];
-      in
-        (isRootFile || isSourceParent || isPackagePath)
-        && !(builtins.any (part: builtins.elem part [
+    mkSource = {
+      name,
+      dirs ? [],
+      files ? [],
+      parentDirs ? sourceParentDirs,
+    }:
+      builtins.path {
+        path = repoRootPath;
+        inherit name;
+        filter = path: type: let
+          rel = lib.removePrefix "${repoRoot}/" (toString path);
+          parts = lib.splitString "/" rel;
+          isSourcePath =
+            builtins.any
+            (dir: rel == dir || lib.hasPrefix "${dir}/" rel)
+            dirs;
+          isSourceParent = builtins.elem rel parentDirs;
+          isSourceFile = builtins.elem rel files;
+        in
+          (isSourceFile || isSourceParent || isSourcePath)
+          && !(builtins.any (part: builtins.elem part [
             ".git"
             ".svelte-kit"
             "build"
             "node_modules"
           ])
           parts);
+      };
+
+    dependencySource = mkSource {
+      name = "digitable-dependency-source";
+      parentDirs =
+        sourceParentDirs
+        ++ workspacePackageDirs
+        ++ [
+          "svgedit/packages/react-test"
+        ];
+      files = [
+        "bun.lock"
+        "package.json"
+        "packages/app/package.json"
+        "packages/auth/package.json"
+        "packages/db/package.json"
+        "packages/game-server/package.json"
+        "packages/studio/package.json"
+        "packages/svgeditor/package.json"
+        "svgedit/bun.lock"
+        "svgedit/package.json"
+        "svgedit/packages/react-test/package.json"
+        "svgedit/packages/svgcanvas/package.json"
+        "vendor/svelte-lexical/packages/svelte-lexical/package.json"
+      ];
+    };
+
+    runtimeWorkspaceSource = mkSource {
+      name = "digitable-runtime-workspace-source";
+      dirs = [
+        "packages/auth"
+        "packages/db"
+        "packages/svgeditor"
+      ];
+      files = [
+        "package.json"
+        "svgedit/package.json"
+      ];
+    };
+
+    svgcanvasSource = mkSource {
+      name = "digitable-svgcanvas-source";
+      dirs = [
+        "svgedit/packages/svgcanvas"
+      ];
+      files = [
+        "svgedit/package.json"
+      ];
+    };
+
+    svelteLexicalSource = mkSource {
+      name = "digitable-svelte-lexical-source";
+      dirs = [
+        "vendor/svelte-lexical/packages/svelte-lexical"
+      ];
+    };
+
+    gameServerSource = mkSource {
+      name = "digitable-game-server-source";
+      dirs = [
+        "packages/db"
+        "packages/game-server"
+      ];
+      files = [
+        "package.json"
+        "tsconfig.json"
+      ];
+    };
+
+    appSource = mkSource {
+      name = "digitable-app-source";
+      dirs = [
+        "packages/app"
+        "packages/auth"
+        "packages/db"
+        "packages/game-server"
+        "packages/svgeditor"
+      ];
+      files = [
+        "bun.lock"
+        "package.json"
+        "tsconfig.json"
+        "svgedit/package.json"
+      ];
+    };
+
+    studioWebSource = mkSource {
+      name = "digitable-studio-web-source";
+      dirs = [
+        "packages/auth"
+        "packages/db"
+        "packages/studio"
+      ];
+      files = [
+        "bun.lock"
+        "package.json"
+      ];
     };
 
     bunDependencies = pkgs.stdenv.mkDerivation {
       pname = "digitable-bun-dependencies";
       version = "0.0.1";
-      src = packageSource;
+      src = dependencySource;
 
       nativeBuildInputs = [
         pkgs.bun
@@ -105,7 +208,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-UxqDzy0CMz1bX6nFh13FqqQTG3y+t3MlDDvyJgEMx5U=";
+      outputHash = "sha256-JH1MzZPcjfPB81P4sMpXNJqvdI/IDQQ6GMFWM/MHils=";
 
       installPhase = ''
         runHook preInstall
@@ -123,7 +226,7 @@
 
         mkdir -p "$out"
         cp -a node_modules "$out/node_modules"
-        for packageDir in ${lib.escapeShellArgs packageDirs}; do
+        for packageDir in ${lib.escapeShellArgs workspacePackageDirs}; do
           if [ -d "$packageDir/node_modules" ]; then
             mkdir -p "$out/$packageDir"
             cp -a "$packageDir/node_modules" "$out/$packageDir/node_modules"
@@ -134,13 +237,175 @@
       '';
     };
 
-    studioPackage = pkgs.stdenv.mkDerivation {
-      pname = "studio";
+    setupNodeModules = {
+      packageNodeModuleDirs ? [],
+      linkRootWorkspaces ? true,
+    }: ''
+      cp -a ${bunDependencies}/node_modules ./node_modules
+      chmod -R u+w ./node_modules
+      for packageDir in ${lib.escapeShellArgs packageNodeModuleDirs}; do
+        if [ -d "${bunDependencies}/$packageDir/node_modules" ]; then
+          mkdir -p "$packageDir"
+          cp -a "${bunDependencies}/$packageDir/node_modules" "$packageDir/node_modules"
+          chmod -R u+w "$packageDir/node_modules"
+        fi
+      done
+      ${lib.optionalString linkRootWorkspaces ''
+        rm -f node_modules/studio node_modules/boardgame-server
+        rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
+        rm -f node_modules/@svg-table/svgeditor
+        rm -f node_modules/@svgedit/svgcanvas
+        ln -s ../packages/studio node_modules/studio
+        ln -s ../packages/game-server node_modules/boardgame-server
+        mkdir -p node_modules/@svg-table
+        ln -s ../../packages/app node_modules/@svg-table/app
+        ln -s ../../packages/auth node_modules/@svg-table/auth
+        ln -s ../../packages/db node_modules/@svg-table/db
+        ln -s ../../packages/svgeditor node_modules/@svg-table/svgeditor
+        mkdir -p node_modules/@svgedit
+        ln -s ../../svgedit/packages/svgcanvas node_modules/@svgedit/svgcanvas
+      ''}
+      patchShebangs node_modules
+      for packageDir in ${lib.escapeShellArgs packageNodeModuleDirs}; do
+        if [ -d "$packageDir/node_modules" ]; then
+          patchShebangs "$packageDir/node_modules"
+        fi
+      done
+    '';
+
+    svgcanvasPackage = pkgs.stdenv.mkDerivation {
+      pname = "digitable-svgcanvas";
       version = "0.0.1";
-      src = packageSource;
+      src = svgcanvasSource;
 
       nativeBuildInputs = [
-        pkgs.bun
+        pkgs.nodejs
+      ];
+
+      dontConfigure = true;
+
+      buildPhase = ''
+        runHook preBuild
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+        export CI=1
+
+        ${setupNodeModules {
+        packageNodeModuleDirs = [
+          "svgedit"
+          "svgedit/packages/svgcanvas"
+        ];
+        linkRootWorkspaces = false;
+      }}
+
+        (cd svgedit/packages/svgcanvas && ../../node_modules/.bin/vite build)
+
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p $out/svgedit/packages/svgcanvas
+        cp svgedit/packages/svgcanvas/package.json $out/svgedit/packages/svgcanvas/package.json
+        cp svgedit/packages/svgcanvas/svgcanvas.d.ts $out/svgedit/packages/svgcanvas/svgcanvas.d.ts
+        cp -r svgedit/packages/svgcanvas/dist $out/svgedit/packages/svgcanvas/dist
+
+        runHook postInstall
+      '';
+    };
+
+    svelteLexicalPackage = pkgs.stdenv.mkDerivation {
+      pname = "digitable-svelte-lexical";
+      version = "0.0.1";
+      src = svelteLexicalSource;
+
+      nativeBuildInputs = [
+        pkgs.nodejs
+      ];
+
+      dontConfigure = true;
+
+      buildPhase = ''
+        runHook preBuild
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+        export CI=1
+
+        ${setupNodeModules {
+        packageNodeModuleDirs = [
+          "vendor/svelte-lexical/packages/svelte-lexical"
+        ];
+        linkRootWorkspaces = false;
+      }}
+
+        (cd vendor/svelte-lexical/packages/svelte-lexical && ./node_modules/.bin/svelte-kit sync && ./node_modules/.bin/svelte-package)
+
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p $out/vendor/svelte-lexical/packages/svelte-lexical
+        cp vendor/svelte-lexical/packages/svelte-lexical/package.json $out/vendor/svelte-lexical/packages/svelte-lexical/package.json
+        cp -r vendor/svelte-lexical/packages/svelte-lexical/dist $out/vendor/svelte-lexical/packages/svelte-lexical/dist
+
+        runHook postInstall
+      '';
+    };
+
+    gameServerPackage = pkgs.stdenv.mkDerivation {
+      pname = "digitable-game-server";
+      version = "0.0.1";
+      src = gameServerSource;
+
+      nativeBuildInputs = [
+        pkgs.nodejs
+      ];
+
+      dontConfigure = true;
+
+      buildPhase = ''
+        runHook preBuild
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+        export CI=1
+
+        ${setupNodeModules {
+        packageNodeModuleDirs = [
+          "packages/db"
+          "packages/game-server"
+        ];
+      }}
+
+        (cd packages/game-server && ./node_modules/.bin/rimraf build && ./node_modules/.bin/tsc)
+
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p $out/packages/game-server
+        cp packages/game-server/package.json $out/packages/game-server/package.json
+        cp packages/game-server/tsconfig.json $out/packages/game-server/tsconfig.json
+        cp -r packages/game-server/src $out/packages/game-server/src
+        cp -r packages/game-server/build $out/packages/game-server/build
+
+        runHook postInstall
+      '';
+    };
+
+    appPackage = pkgs.stdenv.mkDerivation {
+      pname = "digitable-app";
+      version = "0.0.1";
+      src = appSource;
+
+      nativeBuildInputs = [
         pkgs.nodejs
       ];
 
@@ -155,37 +420,69 @@
         export BETTER_AUTH_URL="http://localhost"
         export BETTER_AUTH_SECRET="nix-build-only"
 
-        cp -a ${bunDependencies}/node_modules ./node_modules
-        chmod -R u+w ./node_modules
-        for packageDir in ${lib.escapeShellArgs packageDirs}; do
-          if [ -d "${bunDependencies}/$packageDir/node_modules" ]; then
-            cp -a "${bunDependencies}/$packageDir/node_modules" "$packageDir/node_modules"
-            chmod -R u+w "$packageDir/node_modules"
-          fi
-        done
-        rm -f node_modules/studio node_modules/boardgame-server
-        rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
-        rm -f node_modules/@svg-table/svgeditor
-        rm -f node_modules/@svgedit/svgcanvas
-        ln -s ../packages/studio node_modules/studio
-        ln -s ../packages/game-server node_modules/boardgame-server
-        mkdir -p node_modules/@svg-table
-        ln -s ../../packages/app node_modules/@svg-table/app
-        ln -s ../../packages/auth node_modules/@svg-table/auth
-        ln -s ../../packages/db node_modules/@svg-table/db
-        ln -s ../../packages/svgeditor node_modules/@svg-table/svgeditor
-        mkdir -p node_modules/@svgedit
-        ln -s ../../svgedit/packages/svgcanvas node_modules/@svgedit/svgcanvas
-        patchShebangs node_modules
-        for packageDir in ${lib.escapeShellArgs packageDirs}; do
-          if [ -d "$packageDir/node_modules" ]; then
-            patchShebangs "$packageDir/node_modules"
-          fi
-        done
+        mkdir -p svgedit/packages
+        rm -rf svgedit/packages/svgcanvas
+        cp -r ${svgcanvasPackage}/svgedit/packages/svgcanvas svgedit/packages/svgcanvas
+        mkdir -p vendor/svelte-lexical/packages
+        rm -rf vendor/svelte-lexical/packages/svelte-lexical
+        cp -r ${svelteLexicalPackage}/vendor/svelte-lexical/packages/svelte-lexical vendor/svelte-lexical/packages/svelte-lexical
+        chmod -R u+w vendor/svelte-lexical/packages/svelte-lexical
 
-        (cd svgedit/packages/svgcanvas && ../../node_modules/.bin/vite build)
-        (cd packages/game-server && ./node_modules/.bin/rimraf build && ./node_modules/.bin/tsc)
+        ${setupNodeModules {
+        packageNodeModuleDirs = [
+          "packages/app"
+          "packages/auth"
+          "packages/db"
+          "packages/game-server"
+          "packages/svgeditor"
+          "vendor/svelte-lexical/packages/svelte-lexical"
+        ];
+      }}
+
         (cd packages/app && ./node_modules/.bin/vite build)
+
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p $out/packages/app
+        cp packages/app/package.json $out/packages/app/package.json
+        cp -r packages/app/build $out/packages/app/build
+
+        runHook postInstall
+      '';
+    };
+
+    studioWebPackage = pkgs.stdenv.mkDerivation {
+      pname = "digitable-studio-web";
+      version = "0.0.1";
+      src = studioWebSource;
+
+      nativeBuildInputs = [
+        pkgs.nodejs
+      ];
+
+      dontConfigure = true;
+
+      buildPhase = ''
+        runHook preBuild
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+        export CI=1
+        export BETTER_AUTH_URL="http://localhost"
+        export BETTER_AUTH_SECRET="nix-build-only"
+
+        ${setupNodeModules {
+        packageNodeModuleDirs = [
+          "packages/auth"
+          "packages/db"
+          "packages/studio"
+        ];
+      }}
+
         (cd packages/studio && ./node_modules/.bin/vite build)
 
         runHook postBuild
@@ -195,29 +492,77 @@
         runHook preInstall
 
         mkdir -p $out/packages/studio
-        mkdir -p $out/packages/app
-        mkdir -p $out/packages/game-server
 
         cp packages/studio/package.json $out/packages/studio/package.json
         cp -r packages/studio/build $out/packages/studio/build
-        cp -a packages/studio/node_modules $out/packages/studio/node_modules
-        cp packages/app/package.json $out/packages/app/package.json
-        cp -r packages/app/build $out/packages/app/build
-        cp -a packages/app/node_modules $out/packages/app/node_modules
+
+        runHook postInstall
+      '';
+    };
+
+    studioPackage = pkgs.stdenv.mkDerivation {
+      pname = "studio";
+      version = "0.0.1";
+      src = runtimeWorkspaceSource;
+
+      nativeBuildInputs = [
+        pkgs.bun
+        pkgs.nodejs
+      ];
+
+      dontConfigure = true;
+      dontBuild = true;
+
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p $out/packages/studio
+        mkdir -p $out/packages/app
+        mkdir -p $out/packages/game-server
+
+        cp ${studioWebPackage}/packages/studio/package.json $out/packages/studio/package.json
+        cp -r ${studioWebPackage}/packages/studio/build $out/packages/studio/build
+        cp ${appPackage}/packages/app/package.json $out/packages/app/package.json
+        cp -r ${appPackage}/packages/app/build $out/packages/app/build
         cp -r packages/auth $out/packages/auth
         cp -r packages/db $out/packages/db
-        cp packages/game-server/package.json $out/packages/game-server/package.json
-        cp packages/game-server/tsconfig.json $out/packages/game-server/tsconfig.json
-        cp -r packages/game-server/src $out/packages/game-server/src
-        cp -r packages/game-server/build $out/packages/game-server/build
-        cp -a packages/game-server/node_modules $out/packages/game-server/node_modules
+        cp ${gameServerPackage}/packages/game-server/package.json $out/packages/game-server/package.json
+        cp ${gameServerPackage}/packages/game-server/tsconfig.json $out/packages/game-server/tsconfig.json
+        cp -r ${gameServerPackage}/packages/game-server/src $out/packages/game-server/src
+        cp -r ${gameServerPackage}/packages/game-server/build $out/packages/game-server/build
         cp -r packages/svgeditor $out/packages/svgeditor
+        mkdir -p $out/vendor/svelte-lexical/packages/svelte-lexical
+        cp ${svelteLexicalPackage}/vendor/svelte-lexical/packages/svelte-lexical/package.json $out/vendor/svelte-lexical/packages/svelte-lexical/package.json
+        cp -r ${svelteLexicalPackage}/vendor/svelte-lexical/packages/svelte-lexical/dist $out/vendor/svelte-lexical/packages/svelte-lexical/dist
         mkdir -p $out/svgedit/packages
         cp svgedit/package.json $out/svgedit/package.json
-        cp -a svgedit/node_modules $out/svgedit/node_modules
+        cp -r ${svgcanvasPackage}/svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas
+        chmod -R u+w $out/svgedit/packages/svgcanvas
+
+        cp -a ${bunDependencies}/node_modules $out/node_modules
+        chmod -R u+w $out/node_modules
+        rm -f $out/node_modules/studio $out/node_modules/boardgame-server
+        rm -f $out/node_modules/@svg-table/app $out/node_modules/@svg-table/auth $out/node_modules/@svg-table/db
+        rm -f $out/node_modules/@svg-table/svgeditor
+        rm -f $out/node_modules/@svgedit/svgcanvas
+        ln -s ../packages/studio $out/node_modules/studio
+        ln -s ../packages/game-server $out/node_modules/boardgame-server
+        mkdir -p $out/node_modules/@svg-table
+        ln -s ../../packages/app $out/node_modules/@svg-table/app
+        ln -s ../../packages/auth $out/node_modules/@svg-table/auth
+        ln -s ../../packages/db $out/node_modules/@svg-table/db
+        ln -s ../../packages/svgeditor $out/node_modules/@svg-table/svgeditor
+        mkdir -p $out/node_modules/@svgedit
+        ln -s ../../svgedit/packages/svgcanvas $out/node_modules/@svgedit/svgcanvas
+
+        for packageDir in ${lib.escapeShellArgs workspacePackageDirs}; do
+          if [ -d "${bunDependencies}/$packageDir/node_modules" ]; then
+            mkdir -p "$out/$packageDir"
+            cp -a "${bunDependencies}/$packageDir/node_modules" "$out/$packageDir/node_modules"
+            chmod -R u+w "$out/$packageDir/node_modules"
+          fi
+        done
         rm -f $out/svgedit/node_modules/@svgedit/react-test
-        cp -r svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas
-        cp -a node_modules $out/node_modules
 
         runHook postInstall
       '';

@@ -332,6 +332,12 @@
 		handContainer = new HandContainer(app);
 		screenContainer.addChild(handContainer.container);
 		strokeLayer = new StrokeLayer(boardGameItems, handContainer);
+		app.ticker.add(() => {
+			for (const item of boardGameItems.values()) {
+				if (item.isInHand) continue;
+				item.clientPosition?.tick();
+			}
+		});
 
 		const width = 200;
 		const height = 200;
@@ -724,6 +730,7 @@
 	}
 
 	function handlePlayCard(item: BoardGameItemNew) {
+		item.clientPosition?.predictPosition(item.x, item.y, true);
 		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
 		strokeLayer.refreshAll();
 	}
