@@ -16,7 +16,7 @@
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 	import { isEmbeddedImageReference, resolveImageReference } from '../../../data-loader';
 	import ImageSelector from '../../../image-selector.svelte';
-	import { getDeckSideIndexContext } from '../svg-context.svelte';
+	import { getDeckSideIndexContext, getToLoadSvgsContext } from '../svg-context.svelte';
 
 	type Side = 'front' | 'back';
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -112,51 +112,16 @@
 		return new XMLSerializer().serializeToString(doc);
 	};
 
-	async function loadSvgs(path: string) {
-		const deckDir = await fileSystem.openDir(path);
-		if (deckDir.error) {
-			console.error('Failed to open deck folder', deckDir.error);
-			return {
-				front: '',
-				back: '',
-				meta: {
-					front: {},
-					back: {}
-				}
-			};
-		}
+	const loadSvgTemplates = getToLoadSvgsContext();
+	const svgs = $derived(await loadSvgTemplates());
 
-		const [frontRes, backRes] = await Promise.all([
-			deckDir.data.readText('front.svg'),
-			deckDir.data.readText('back.svg')
-		]);
-		if (frontRes.error) {
-			console.error('Failed to load front.svg', frontRes.error);
-		}
-		if (backRes.error) {
-			console.error('Failed to load back.svg', backRes.error);
-		}
-		const front = frontRes.error ? null : frontRes.data;
-		const back = backRes.error ? null : backRes.data;
-		return {
-			front: front ?? '',
-			back: back ?? '',
-			meta: {
-				front: getSvgMeta(front),
-				back: getSvgMeta(back)
-			}
-		};
-	}
-
-	const svgsProm = $derived(loadSvgs(folder));
-	const svgs = $derived(await svgsProm);
-
-	let front = $derived(svgs.front);
-	let back = $derived(svgs.back);
-	let frontMeta = $derived(svgs.meta.front);
-	let backMeta = $derived(svgs.meta.back);
+	let front = $derived(svgs.frontText);
+	let back = $derived(svgs.backText);
+	let frontMeta = $derived(getSvgMeta(svgs.frontText));
+	let backMeta = $derived(getSvgMeta(svgs.backText));
 	const sideIndex = $derived(deckSideIndex.sideIndex);
 	const side = $derived(sideIndex === 0 ? 'front' : 'back');
+	const editorKey = $derived(`${game}/${deck}/${side}`);
 	let blankWidth = $state(63);
 	let blankHeight = $state(88);
 	let createTemplatesDialogOpen = $state(false);
@@ -481,7 +446,7 @@
 	/>
 
 	{#if hasAnySvg && svg}
-		{#key side}
+		{#key editorKey}
 			<div class="min-h-0 flex-1">
 				<ReferenceEditor
 					value={editorSvg.value}

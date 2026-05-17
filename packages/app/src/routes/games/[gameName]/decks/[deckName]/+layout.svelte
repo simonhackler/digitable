@@ -26,7 +26,7 @@
 		const deckDir = await fileSystem.openDir(fullFolderPath);
 		if (deckDir.error) {
 			console.error(deckDir.error);
-			return { front: null, back: null };
+			return { frontText: '', backText: '', front: null, back: null };
 		}
 
 		const [front, back] = await Promise.all([
@@ -36,6 +36,8 @@
 		const svgFileFront = front.error ? null : front.data;
 		const svgFileBack = back.error ? null : back.data;
 		return {
+			frontText: svgFileFront ?? '',
+			backText: svgFileBack ?? '',
 			front: svgFileFront ? loadSvgTemplate(svgFileFront) : null,
 			back: svgFileBack ? loadSvgTemplate(svgFileBack) : null
 		};
