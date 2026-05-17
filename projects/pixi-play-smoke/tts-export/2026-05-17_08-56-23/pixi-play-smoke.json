@@ -1,0 +1,38 @@
+{
+  "ObjectStates": [
+    {
+      "Name": "Deck",
+      "Nickname": "western",
+      "Transform": {
+        "posX": 0,
+        "posY": 3,
+        "posZ": 0,
+        "rotX": 0,
+        "rotY": 180,
+        "rotZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1
+      },
+      "DeckIDs": [
+        100,
+        101
+      ],
+      "CustomDeck": {
+        "1": {
+          "FaceURL": "tts-export/2026-05-17_08-56-23/western_0_70_sheet.png",
+          "BackURL": "tts-export/2026-05-17_08-56-23/western_0_70_back_sheet.png",
+          "NumWidth": 10,
+          "NumHeight": 2,
+          "BackIsHidden": false,
+          "UniqueBack": true,
+          "Type": 0
+        }
+      },
+      "ContainedObjects": [],
+      "LuaScript": "",
+      "LuaScriptState": "",
+      "GUID": "wykb"
+    }
+  ]
+}

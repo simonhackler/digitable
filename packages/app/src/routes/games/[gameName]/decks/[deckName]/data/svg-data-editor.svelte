@@ -10,7 +10,6 @@
 	import { getFileSystemContext } from '../../../../context';
 	import {
 		generateSvg,
-		initialSetupForSvgItem,
 		updateSvg,
 		createHighlightRect,
 		appendHighlightToSvg
@@ -18,16 +17,23 @@
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';
-	import { loadSvgsAndData } from '../../../data-loader';
-	import type { SvgCard } from '../../../types';
+	import { loadSvgsAndDataForSides, resolveImageReference } from '../../../data-loader';
 	import { assert, requireParam } from '$lib/utils/assert';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import { ImageEditor } from './custom-image';
+	import { getDeckSideIndexContext } from '../svg-context.svelte';
 
 	const {
 		svgTemplateFront,
 		svgTemplateBack
 	}: { svgTemplateFront: SVGSVGElement; svgTemplateBack: SVGSVGElement } = $props();
+
+	type SvgSide = {
+		template: SVGSVGElement;
+		columnPrefix: string;
+	};
+	type SvgCard = { sides: SVGSVGElement[] };
 
 	let scrollEl = $state<HTMLElement | null>(null);
 	// $inspect(scrollEl);
@@ -41,35 +47,20 @@
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(requireParam('deckName'));
 	const fileSystem = getFileSystemContext();
+	const deckSideIndex = getDeckSideIndexContext();
+	const sides: SvgSide[] = $derived([
+		{ template: svgTemplateFront, columnPrefix: '' },
+		{ template: svgTemplateBack, columnPrefix: 'back_' }
+	]);
 
 	const { svgData, spreadsheetData, imagePaths } = $derived(
-		await loadSvgsAndData(
-			projectName,
-			cardName,
-			fileSystem,
-			svgTemplateFront,
-			svgTemplateBack,
-			false
-		)
+		await loadSvgsAndDataForSides(projectName, cardName, fileSystem, sides, false)
 	);
 
+	const spreadsheetHeaders = $derived(spreadsheetData.cols.map((c) => c.title as string));
+
 	// TODO: I want this to be derived but there is something i don't understand about derived, reactivity and the object references
-	let cards: SvgCard[] = $derived(
-		spreadsheetData.data.map((row) => ({
-			front: generateSvg(
-				svgTemplateFront,
-				spreadsheetData.cols.map((c) => c.title as string),
-				row,
-				imagePaths
-			),
-			back: generateSvg(
-				svgTemplateBack,
-				spreadsheetData.cols.map((c) => c.title as string).map((c) => c),
-				row,
-				imagePaths
-			)
-		}))
-	);
+	let cards: SvgCard[] = $derived(spreadsheetData.data.map((row) => generateCard(row)));
 
 	// Ideally this would be set directly from a reactive value from the spreadsheet
 	let deletedSvgColumns = $derived(
@@ -78,8 +69,12 @@
 			.map((c) => c.title as string)
 	);
 
-	let showFront = $state(true);
-	const svgsToShow = $derived(showFront ? cards.map((c) => c.front) : cards.map((c) => c.back));
+	const activeSideIndex = $derived(
+		Math.min(deckSideIndex.sideIndex, Math.max(0, sides.length - 1))
+	);
+	const activeSide = $derived(sides[activeSideIndex] ?? sides[0]);
+	const showFront = $derived(activeSideIndex === 0);
+	const svgsToShow = $derived(cards.map((card) => card.sides[activeSideIndex] ?? card.sides[0]));
 
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
 	let selectionRects: SVGRectElement[] = [];
@@ -87,7 +82,48 @@
 	let activeSavePromises = $state<Promise<void>[]>([]);
 
 	function flip() {
-		showFront = !showFront;
+		deckSideIndex.flipSideIndex(sides.length);
+	}
+
+	function sideOptions(side: SvgSide) {
+		return side.columnPrefix ? { columnPrefix: side.columnPrefix } : {};
+	}
+
+	function generateCard(row: string[]): SvgCard {
+		return {
+			sides: sides.map((side) =>
+				generateSvg(side.template, spreadsheetHeaders, row, imagePaths, sideOptions(side))
+			)
+		};
+	}
+
+	function columnBelongsToSide(side: SvgSide, col: string) {
+		if (side.columnPrefix) return col.startsWith(side.columnPrefix);
+		return !sides.some((other) => other.columnPrefix && col.startsWith(other.columnPrefix));
+	}
+
+	function elementIdForSideColumn(side: SvgSide, col: string) {
+		if (!columnBelongsToSide(side, col)) return '';
+		return side.columnPrefix ? col.slice(side.columnPrefix.length) : col;
+	}
+
+	function updateCardSvgColumn(card: SvgCard, col: string, value: string) {
+		sides.forEach((side, index) => {
+			const elementId = elementIdForSideColumn(side, col);
+			if (elementId) updateSvg(card.sides[index], elementId, value, imagePaths);
+		});
+	}
+
+	function findVisibleHeaderIndex(elementId: string, headers: string[]) {
+		if (!activeSide.columnPrefix) return headers.findIndex((header) => header === elementId);
+		const sideIndex = headers.findIndex(
+			(header) => header === `${activeSide.columnPrefix}${elementId}`
+		);
+		return sideIndex >= 0 ? sideIndex : headers.findIndex((header) => header === elementId);
+	}
+
+	function getVisibleSvgElementId(col: string) {
+		return elementIdForSideColumn(activeSide, col);
 	}
 
 	async function saveCsv(): Promise<void> {
@@ -224,7 +260,7 @@
 				const headers = spreadsheet[0].getHeaders(true) as string[];
 				for (let x = borderLeftIndex; x <= borderRightIndex; x++) {
 					for (let y = borderTopIndex; y <= borderBottomIndex; y++) {
-						const target = svgsToShow[y].getElementById(headers[x]);
+						const target = svgsToShow[y].getElementById(getVisibleSvgElementId(headers[x]));
 						if (target) {
 							highlight(target, svgsToShow[y]);
 						}
@@ -244,24 +280,16 @@
 						const svgCol = svgData.get(col);
 						if (svgCol) {
 							deletedSvgColumns.push(svgCol.title);
-							for (const card of cards) {
-								updateSvg(card.front, col, svgCol.data[0], imagePaths);
-								updateSvg(card.back, col, svgCol.data[0], imagePaths);
-							}
+							for (const card of cards) updateCardSvgColumn(card, col, svgCol.data[0]);
 						}
 					}
 				}
 				return true;
 			},
 			oninsertrow(_instance, rows) {
-				const headers = spreadsheet[0].getHeaders(true) as string[];
 				const rowsData = rows.map((row) => row.data.map((x) => String(x ?? '')));
 				const minRow = Math.min(...rows.map((row) => row.row || 0));
-
-				const newCards: SvgCard[] = rowsData.map((row) => ({
-					front: generateSvg(svgTemplateFront, headers, row, imagePaths),
-					back: generateSvg(svgTemplateBack, headers, row, imagePaths)
-				}));
+				const newCards = rowsData.map(generateCard);
 				cards = [...cards.slice(0, minRow), ...newCards, ...cards.slice(minRow, cards.length)];
 				scheduleSave();
 			},
@@ -280,7 +308,12 @@
 							e.target instanceof HTMLInputElement,
 							'Expected event target to be an HTMLInputElement'
 						);
-						addImageAndUpdateSvg(x, y, e.target.value.toString());
+						const value = e.target.value.toString();
+						if (isImageColumn(x)) {
+							updateSpreadsheetDataValue(x, y, value);
+							scheduleSave();
+						}
+						addImageAndUpdateSvg(x, y, value);
 					}
 				};
 			},
@@ -315,14 +348,23 @@
 
 	async function addImageAndUpdateSvg(x: number, y: number, value: string) {
 		const headers = spreadsheet[0].getHeaders(true) as string[];
-		if (!imagePaths.has(value)) {
-			const filesDir = await fileSystem.openDir(joinFsPath(projectName, 'files'));
-			const file = filesDir.error ? filesDir : await filesDir.data.read(value);
-			imagePaths.set(value, file.error ? '' : URL.createObjectURL(file.data));
+		const columns = spreadsheet[0].getConfig()?.columns ?? [];
+		if (columns[x]?.type === ImageEditor && !imagePaths.has(value)) {
+			imagePaths.set(value, await resolveImageReference(fileSystem, projectName, value));
 		}
-		updateSvg(cards[y].front, headers[x], value, imagePaths);
-		updateSvg(cards[y].back, headers[x], value, imagePaths);
+		updateCardSvgColumn(cards[y], headers[x], value);
 		cards = [...cards]; //TODO FORCE update for imageSelectionModal, very hacky.
+	}
+
+	function isImageColumn(x: number) {
+		const columns = spreadsheet[0].getConfig()?.columns ?? [];
+		return columns[x]?.type === ImageEditor;
+	}
+
+	function updateSpreadsheetDataValue(x: number, y: number, value: string) {
+		const data = spreadsheet[0].getConfig()?.data as CellValue[][] | undefined;
+		if (!data?.[y]) return;
+		data[y][x] = value;
 	}
 
 	function attachSVG(svg: SVGSVGElement): Attachment {
@@ -347,7 +389,8 @@
 			throw new Error(`Column ${col} not found in svgData.cols`);
 		}
 		for (const svg of svgsToShow) {
-			highlight(svg.getElementById(col)!, svg);
+			const target = svg.getElementById(getVisibleSvgElementId(col));
+			if (target) highlight(target, svg);
 		}
 	}
 
@@ -366,9 +409,7 @@
 			[
 				{
 					title: col,
-					//type: 'text',
-					// TODO choose correct type, text or ImageEditor
-					//type: ImageEditor,
+					type: column.type,
 					width: 120
 				}
 			]
@@ -379,10 +420,7 @@
 			Array(cards.length).fill((column.data[0] as CellValue) || '')
 		);
 
-		for (const card of cards) {
-			initialSetupForSvgItem(card.front, col, data[0], imagePaths);
-			initialSetupForSvgItem(card.back, col, data[0], imagePaths);
-		}
+		for (const card of cards) updateCardSvgColumn(card, col, data[0]);
 		scheduleSave();
 	}
 
@@ -420,64 +458,65 @@
 	} | null = $state(null);
 </script>
 
-<div class="min-w-0">
-	<div
-		bind:this={scrollEl}
-		class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
-	>
-		{#each svgsToShow as svg, i (svg.id)}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<!-- ignore for now, should this then just be a button? -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				onclick={(e) => {
-					const headers = spreadsheet[0].getHeaders(true) as string[];
-					let node: EventTarget | null = e.target;
-					let id: string | null = null;
-					while (node && node !== e.currentTarget) {
-						if (node instanceof Element) {
-							const res = node.id;
-							if (headers.some((c) => c === res)) {
-								id = node.id;
-								break;
+<main class="flex w-full flex-col gap-4 p-4">
+	<Toolbar
+		{deletedSvgColumns}
+		onAddColumn={addColumn}
+		onHover={highlightColumn}
+		onExitHover={(_x) => clearSelectionRects()}
+		{flip}
+		{selection}
+		{showFront}
+		editorPath={`/games/${projectName}/decks/${cardName}/editor`}
+		spreadsheet={spreadsheet[0]}
+		svgTemplate={activeSide.template}
+		{imagePaths}
+	></Toolbar>
+
+	<div class="min-w-0">
+		<div
+			bind:this={scrollEl}
+			class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
+		>
+			{#each svgsToShow as svg, i (svg.id)}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- ignore for now, should this then just be a button? -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<div
+					onclick={(e) => {
+						const headers = spreadsheet[0].getHeaders(true) as string[];
+						let node: EventTarget | null = e.target;
+						let id: string | null = null;
+						while (node && node !== e.currentTarget) {
+							if (node instanceof Element) {
+								const res = node.id;
+								if (findVisibleHeaderIndex(res, headers) !== -1) {
+									id = node.id;
+									break;
+								}
 							}
+							node = (node as Element).parentElement;
 						}
-						node = (node as Element).parentElement;
-					}
-					let index = -1;
-					if (id) {
-						index = headers.findIndex((c) => c === id);
-					}
-					if (index !== -1) {
-						spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
-						const cell = spreadsheet[0].getCellFromCoords(index, i);
-						spreadsheet[0].openEditor(cell, false, e);
-					} else {
-						spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
-					}
-				}}
-				class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
-				{@attach attachSVG(svg)}
-			></div>
-		{/each}
+						let index = -1;
+						if (id) {
+							index = findVisibleHeaderIndex(id, headers);
+						}
+						if (index !== -1) {
+							spreadsheet[0].updateSelectionFromCoords(index, i, index, i);
+							const cell = spreadsheet[0].getCellFromCoords(index, i);
+							spreadsheet[0].openEditor(cell, false, e);
+						} else {
+							spreadsheet[0].updateSelectionFromCoords(null, i, null, i);
+						}
+					}}
+					class="h-full shrink-0 rounded-lg border-8 border-zinc-950"
+					{@attach attachSVG(svg)}
+				></div>
+			{/each}
+		</div>
 	</div>
-	<div class="px-2 py-2">
-		<Toolbar
-			{deletedSvgColumns}
-			onAddColumn={addColumn}
-			onHover={highlightColumn}
-			onExitHover={(_x) => clearSelectionRects()}
-			{flip}
-			{selection}
-			editorPath={`/games/${projectName}/decks/${cardName}/editor`}
-			spreadsheet={spreadsheet[0]}
-			svgTemplate={showFront ? svgTemplateFront : svgTemplateBack}
-			{imagePaths}
-			{cards}
-			{showFront}
-		></Toolbar>
-	</div>
-	<div class="flex items-start gap-2 px-2 pb-2">
+
+	<div class="flex items-start gap-2">
 		<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
 			<ContextMenu.Root>
 				<ContextMenu.Trigger>
@@ -534,4 +573,4 @@
 			{/if}
 		</div>
 	</div>
-</div>
+</main>

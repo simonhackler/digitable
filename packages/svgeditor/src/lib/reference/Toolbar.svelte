@@ -45,12 +45,16 @@
 		controller,
 		variant = 'full',
 		orientation = 'horizontal',
-		extraActions
+		framed = true,
+		extraActions,
+		imageToolAction
 	} = $props<{
 		controller: EditorController;
 		variant?: ToolbarVariant;
 		orientation?: ToolbarOrientation;
+		framed?: boolean;
 		extraActions?: Snippet;
+		imageToolAction?: (controller: EditorController) => void | Promise<void>;
 	}>();
 
 	const unitOptions = ['px', 'mm'] as const;
@@ -91,6 +95,14 @@
 		}, 1500);
 	};
 
+	const selectMode = (mode: EditorMode) => {
+		if (mode === 'image' && imageToolAction) {
+			void imageToolAction(controller);
+			return;
+		}
+		controller.setMode(mode);
+	};
+
 	const canUndo = $derived(controller.isReady && controller.undoCount > 0);
 	const canRedo = $derived(controller.isReady && controller.redoCount > 0);
 	const undoTooltip = $derived.by(() =>
@@ -112,9 +124,18 @@
 		return `${base} ${distribute}`.trim();
 	});
 	const modeGroupClass = $derived.by(() =>
-		orientation === 'vertical'
-			? 'items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
-			: 'flex-wrap items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
+		framed
+			? orientation === 'vertical'
+				? 'items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
+				: 'flex-wrap items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
+			: orientation === 'vertical'
+				? 'items-center gap-1'
+				: 'flex-wrap items-center gap-1'
+	);
+	const actionGroupClass = $derived(
+		framed
+			? 'bg-background/70 flex-wrap items-center gap-1 rounded-xl border p-1 shadow-sm'
+			: 'flex-wrap items-center gap-1'
 	);
 </script>
 
@@ -132,7 +153,7 @@
 					}`}
 					title={`${mode.label} (${mode.shortcut})`}
 					aria-pressed={controller.mode === mode.id}
-					onclick={() => controller.setMode(mode.id)}
+					onclick={() => selectMode(mode.id)}
 				>
 					<mode.icon class="size-4" />
 					<span class="sr-only">{mode.label}</span>
@@ -142,9 +163,7 @@
 	{/if}
 	{#if showActions}
 		<div class="flex flex-wrap items-center gap-2">
-			<ButtonGroup.Root
-				class="bg-background/70 flex-wrap items-center gap-1 rounded-xl border p-1 shadow-sm"
-			>
+			<ButtonGroup.Root class={actionGroupClass}>
 				<Button
 					size="sm"
 					variant="ghost"
@@ -211,7 +230,7 @@
 						</Button>
 					</PopoverTrigger>
 					<PopoverContent align="end" class="w-80 border-none p-0 shadow-none">
-						<GridControls {controller} />
+						<GridControls {controller} {framed} />
 					</PopoverContent>
 				</Popover>
 				<Button

@@ -1,6 +1,13 @@
 <script lang="ts">
 	import type { createEditorController } from '../svelte/createEditorController.svelte.ts';
-	import { AlignCenter, AlignLeft, AlignRight, Minus, Plus } from '@lucide/svelte';
+	import {
+		AlignCenter,
+		AlignLeft,
+		AlignRight,
+		Image as ImageIcon,
+		Minus,
+		Plus
+	} from '@lucide/svelte';
 	import { Button } from '$svgeditor/components/ui/button/index.js';
 	import * as ButtonGroup from '$svgeditor/components/ui/button-group/index.js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$svgeditor/components/ui/card/index.js';
@@ -9,7 +16,20 @@
 
 	type EditorController = ReturnType<typeof createEditorController>;
 
-	let { controller } = $props<{ controller: EditorController }>();
+	let {
+		controller,
+		selectedImageChangeAction,
+		selectedImageHrefApplyAction,
+		framed = true
+	} = $props<{
+		controller: EditorController;
+		selectedImageChangeAction?: (controller: EditorController) => void | Promise<void>;
+		selectedImageHrefApplyAction?: (
+			controller: EditorController,
+			href: string
+		) => void | Promise<void>;
+		framed?: boolean;
+	}>();
 
 	let posX = $state(111);
 	let posY = $state(240);
@@ -29,6 +49,7 @@
 	let fontUnderline = $state(false);
 	let fontFamily = $state('serif');
 	let textAnchor = $state<TextAnchor>('start');
+	let imageHref = $state('');
 
 	type BBox = { x: number; y: number; width: number; height: number };
 	type TextAnchor = 'start' | 'middle' | 'end';
@@ -364,6 +385,9 @@
 	const canEditOpacity = $derived(hasSelection);
 	const canEditStroke = $derived(hasSelection);
 	const canEditText = $derived(hasTextSelection);
+	const canEditImage = $derived(
+		hasSingleSelection && selectedElement?.tagName.toLowerCase() === 'image'
+	);
 	const fontFamilyOptionsWithCustom = $derived.by(() => {
 		const current = fontFamily.trim();
 		if (!current) return fontFamilyOptions;
@@ -522,6 +546,7 @@
 			fontBold = false;
 			fontItalic = false;
 			fontUnderline = false;
+			imageHref = '';
 			return;
 		}
 
@@ -620,6 +645,12 @@
 			fontItalic = false;
 			fontUnderline = false;
 			textAnchor = 'start';
+		}
+
+		if (primary?.tagName.toLowerCase() === 'image') {
+			imageHref = getImageHref(primary);
+		} else {
+			imageHref = '';
 		}
 	};
 
@@ -837,6 +868,25 @@
 		}
 	};
 
+	const getImageHref = (element: Element) =>
+		element.getAttribute('data-digitable-original-href') ??
+		element.getAttribute('href') ??
+		element.getAttribute('xlink:href') ??
+		'';
+
+	const applyImageHref = () => {
+		if (!canEditImage || !selectedImageHrefApplyAction) return;
+		const nextHref = imageHref.trim();
+		if (!nextHref || nextHref === (selectedElement ? getImageHref(selectedElement) : '')) return;
+		void selectedImageHrefApplyAction(controller, nextHref);
+	};
+
+	const handleImageHrefKeydown = (event: KeyboardEvent) => {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+		applyImageHref();
+	};
+
 	const toggleBold = () => {
 		if (!canEditText) return;
 		fontBold = !fontBold;
@@ -878,11 +928,13 @@
 	});
 </script>
 
-<Card>
-	<CardHeader>
-		<CardTitle>Inspector</CardTitle>
-	</CardHeader>
-	<CardContent class="flex flex-col gap-4">
+<Card class={framed ? undefined : 'border-0 bg-transparent py-0 shadow-none'}>
+	{#if framed}
+		<CardHeader>
+			<CardTitle>Inspector</CardTitle>
+		</CardHeader>
+	{/if}
+	<CardContent class={framed ? 'flex flex-col gap-4' : 'flex flex-col gap-4 px-0'}>
 		<div class="grid gap-4">
 			<div class="grid grid-cols-2 gap-3">
 				<div class="grid gap-1.5">
@@ -1165,7 +1217,9 @@
 						<div class="grid gap-1.5">
 							<Label>Style</Label>
 							<ButtonGroup.Root
-								class="bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs"
+								class={framed
+									? 'bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs'
+									: 'w-fit items-center gap-1'}
 							>
 								<Button
 									size="icon-sm"
@@ -1220,7 +1274,9 @@
 						<div class="grid gap-1.5">
 							<Label>Align</Label>
 							<ButtonGroup.Root
-								class="bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs"
+								class={framed
+									? 'bg-background/70 w-fit items-center gap-1 rounded-md border p-1 shadow-xs'
+									: 'w-fit items-center gap-1'}
 							>
 								<Button
 									size="icon-sm"
@@ -1272,6 +1328,33 @@
 								</Button>
 							</ButtonGroup.Root>
 						</div>
+					</div>
+				</div>
+			{/if}
+
+			{#if canEditImage && selectedImageChangeAction}
+				<div class="border-t pt-3">
+					<p class="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Image</p>
+					<div class="mt-3 grid gap-3">
+						<div class="grid gap-1.5">
+							<Label for="inspector-image-file">File</Label>
+							<Input
+								id="inspector-image-file"
+								bind:value={imageHref}
+								disabled={!selectedImageHrefApplyAction}
+								onkeydown={handleImageHrefKeydown}
+								onblur={applyImageHref}
+							/>
+						</div>
+						<Button
+							size="sm"
+							variant="outline"
+							class="w-full justify-start"
+							onclick={() => void selectedImageChangeAction?.(controller)}
+						>
+							<ImageIcon class="size-4" />
+							Change Image
+						</Button>
 					</div>
 				</div>
 			{/if}

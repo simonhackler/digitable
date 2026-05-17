@@ -2,12 +2,12 @@
 	import { createEventDispatcher } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { PressedKeys } from 'runed';
-	import { Card, CardContent } from '$svgeditor/components/ui/card/index.js';
 	import type { ChangeEvent, ReadyEvent, SvgCanvasConfig, SvgEditorApi } from '../core/types';
 	import { createEditorController } from '../svelte/createEditorController.svelte.ts';
 	import SvgCanvasHost from '../svelte/SvgCanvasHost.svelte';
 	import Inspector from './Inspector.svelte';
 	import StructureTree from './StructureTree.svelte';
+	import * as Tabs from '$svgeditor/components/ui/tabs/index.js';
 	import Toolbar from './Toolbar.svelte';
 	import ZoomControls from './ZoomControls.svelte';
 
@@ -20,6 +20,12 @@
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
 		toolbarActions?: () => ReturnType<Snippet>;
+		imageToolAction?: (controller: EditorController) => void | Promise<void>;
+		selectedImageChangeAction?: (controller: EditorController) => void | Promise<void>;
+		selectedImageHrefApplyAction?: (
+			controller: EditorController,
+			href: string
+		) => void | Promise<void>;
 	};
 
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -32,7 +38,10 @@
 		centerOnLoad = true,
 		initialZoom,
 		assetBasePath,
-		toolbarActions
+		toolbarActions,
+		imageToolAction,
+		selectedImageChangeAction,
+		selectedImageHrefApplyAction
 	}: ReferenceEditorProps = $props();
 
 	const dispatch = createEventDispatcher<{ change: ChangeEvent }>();
@@ -141,6 +150,14 @@
 		controller.setFontSize(Math.max(1, base + delta));
 	};
 
+	const handleImageTool = () => {
+		if (imageToolAction) {
+			void imageToolAction(controller);
+			return;
+		}
+		controller.setMode('image');
+	};
+
 	keys.onKeys('v', () => runIfPlainKey(() => controller.setMode('select'), { allowInTree: false }));
 	keys.onKeys('r', () => runIfPlainKey(() => controller.setMode('rect'), { allowInTree: false }));
 	keys.onKeys('c', () => runIfPlainKey(() => controller.setMode('circle'), { allowInTree: false }));
@@ -153,7 +170,7 @@
 		runIfPlainKey(() => controller.setMode('fhpath'), { requireShift: true, allowInTree: false })
 	);
 	keys.onKeys('t', () => runIfPlainKey(() => controller.setMode('text'), { allowInTree: false }));
-	keys.onKeys('i', () => runIfPlainKey(() => controller.setMode('image'), { allowInTree: false }));
+	keys.onKeys('i', () => runIfPlainKey(handleImageTool, { allowInTree: false }));
 
 	onModCombo(['z'], () =>
 		runIfModShortcut(() => {
@@ -308,44 +325,65 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex flex-col gap-4">
-	<div class="grid gap-4 lg:grid-cols-[88px_minmax(0,1fr)_260px]">
-		<Card class="h-fit overflow-hidden">
-			<CardContent class="p-2">
-				<Toolbar {controller} variant="modes" orientation="vertical" />
-			</CardContent>
-		</Card>
-		<div class="flex flex-col gap-3">
-			<Card class="min-h-[360px] overflow-hidden">
-				<div class="bg-muted/40 border-b px-4 py-3">
-					<Toolbar {controller} variant="actions" {extraActions} />
+<div class="bg-background flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
+	<div class="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+		<div class="flex min-h-0 min-w-0 flex-col gap-3">
+			<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+				<div class="bg-muted/40 px-4 py-3">
+					<Toolbar {controller} variant="actions" framed={false} {extraActions} />
 				</div>
-				<CardContent class="h-[60vh] min-h-[360px] p-0">
-					<div class="h-full p-4">
-						<SvgCanvasHost
-							{value}
-							config={resolvedConfig}
-							{disabled}
-							{readonly}
-							{centerOnLoad}
-							{initialZoom}
-							{assetBasePath}
-							on:ready={handleReady}
-							on:change={handleChange}
-							on:selectionchange={controller.handleSelectionChange}
-							on:modechange={controller.handleModeChange}
-							on:error={controller.handleError}
+				<div class="flex min-h-0 flex-1">
+					<div class="flex w-12 shrink-0 justify-center py-4">
+						<Toolbar
+							{controller}
+							variant="modes"
+							orientation="vertical"
+							framed={false}
+							{imageToolAction}
 						/>
 					</div>
-				</CardContent>
-			</Card>
+					<div class="min-h-0 min-w-0 flex-1">
+						<div class="h-full py-4 pr-4">
+							<SvgCanvasHost
+								{value}
+								config={resolvedConfig}
+								{disabled}
+								{readonly}
+								{centerOnLoad}
+								{initialZoom}
+								{assetBasePath}
+								on:ready={handleReady}
+								on:change={handleChange}
+								on:selectionchange={controller.handleSelectionChange}
+								on:modechange={controller.handleModeChange}
+								on:error={controller.handleError}
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
 			<div class="flex justify-end">
 				<ZoomControls {controller} />
 			</div>
 		</div>
-		<div class="flex flex-col gap-4">
-			<Inspector {controller} />
-			<StructureTree {controller} disabled={interactionDisabled} />
+		<div class="min-h-0 min-w-0">
+			<Tabs.Root value="inspector" class="h-full min-h-0 gap-3">
+				<Tabs.List class="w-full">
+					<Tabs.Trigger value="inspector">Inspector</Tabs.Trigger>
+					<Tabs.Trigger value="structure">Structure</Tabs.Trigger>
+				</Tabs.List>
+				<Tabs.Content value="inspector" class="min-h-0 overflow-auto pr-1">
+					<Inspector
+						{controller}
+						framed={false}
+						{selectedImageChangeAction}
+						{selectedImageHrefApplyAction}
+					/>
+				</Tabs.Content>
+				<Tabs.Content value="structure" class="min-h-0 overflow-auto pr-1">
+					<StructureTree {controller} framed={false} disabled={interactionDisabled} />
+				</Tabs.Content>
+			</Tabs.Root>
 		</div>
 	</div>
 </div>

@@ -8,6 +8,7 @@ import {
 	getTextColumnValue,
 	getTextFrameBounds,
 	getSvgDataMap,
+	getSvgDataMapForSides,
 	initialSetupForSvgItem,
 	loadSvgTemplate,
 	parseSvg
@@ -270,6 +271,25 @@ describe('svg-helpers', () => {
 		);
 	});
 
+	it('extracts columns for arbitrary prefixed sides', () => {
+		const front = patchSvgRoot(
+			loadSvgTemplate(`<svg xmlns="http://www.w3.org/2000/svg"><text id="label">Front</text></svg>`)
+		);
+		const die = patchSvgRoot(
+			loadSvgTemplate(`<svg xmlns="http://www.w3.org/2000/svg"><text id="face">One</text></svg>`)
+		);
+
+		const data = getSvgDataMapForSides([
+			{ template: front },
+			{ template: die, columnPrefix: 'die_' }
+		]);
+
+		expect(data.has('label')).toBe(true);
+		expect(data.has('die_face')).toBe(true);
+		expect(die.getElementById('face')).not.toBeNull();
+		expect(die.getElementById('die_face')).toBeNull();
+	});
+
 	it('generates svg text with tspans instead of foreignObject', () => {
 		const template = patchSvgRoot(
 			loadSvgTemplate(
@@ -427,5 +447,30 @@ describe('svg-helpers', () => {
 		const serialized = new XMLSerializer().serializeToString(svg);
 		expect(serialized.match(/xmlns:xlink=/g)).toHaveLength(1);
 		expect(serialized).toContain('xlink:href="data:image/png;base64,AQ=="');
+	});
+
+	it('uses prefixed back image columns for unprefixed back template ids', () => {
+		const svg = patchSvgRoot(
+			loadSvgTemplate(
+				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
+					<image id="background" href="../../files/template_blank.png" />
+				</svg>`
+			)
+		);
+		const imagePaths = new Map([
+			['front.png', 'data:image/png;base64,FRONT=='],
+			['back.png', 'data:image/png;base64,BACK==']
+		]);
+
+		const generated = generateSvg(
+			svg,
+			['background', 'back_background'],
+			['front.png', 'back.png'],
+			imagePaths,
+			{ columnPrefix: 'back_' }
+		);
+
+		const image = generated.getElementById('background');
+		expect(image?.getAttribute('href')).toBe('data:image/png;base64,BACK==');
 	});
 });

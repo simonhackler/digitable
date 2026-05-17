@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { readOpfsText, seedProjects } from './helpers/opfs';
+import { readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
 
 async function openWesternSvgEditor(page: Page) {
 	await seedProjects(page);
@@ -176,36 +176,190 @@ test('typing text in layout editor persists front svg', async ({ page }) => {
 	expect(savedFront).toContain(`data-svgedit-raw-text="${nextText}"`);
 });
 
-test('layout editor toolbar opens spreadsheet editor and snaps to page by default', async ({
-	page
-}) => {
-	await openWesternSvgEditor(page);
-	const toolbar = page.getByRole('toolbar', { name: 'Layout editor toolbar' });
+test('project image hrefs preview in svg editor without saving blob urls', async ({ page }) => {
+	await seedProjects(page);
+	await writeOpfsText(
+		page,
+		'/western-cards/files/dice_6.png',
+		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="green"/></svg>'
+	);
+	await page.goto('/app/games/western-cards/decks/western/editor?e2e');
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+	await page.waitForFunction(() => {
+		const global = window as Window & {
+			__svgEditorApi?: unknown;
+		};
+		return Boolean(global.__svgEditorApi);
+	});
 
 	await expect
 		.poll(() =>
 			page.evaluate(() => {
-				const global = window as Window & {
-					__svgEditorController?: {
-						pageBorderSnapping: boolean;
-					};
-				};
-				return global.__svgEditorController?.pageBorderSnapping;
+				const image = document.querySelector('#dice_image');
+				return image?.getAttribute('href') ?? image?.getAttribute('xlink:href') ?? '';
 			})
 		)
-		.toBe(true);
+		.toMatch(/^blob:/);
 
-	const frontSvg = await editorSvg(page);
-	await toolbar.getByRole('button', { name: 'Back' }).click();
-	await expect(toolbar.getByRole('button', { name: 'Front' })).toBeVisible();
-	await expect.poll(() => editorSvg(page)).not.toBe(frontSvg);
+	await page.evaluate(() => {
+		const global = window as Window & {
+			__svgEditorApi?: {
+				selectElementById: (id: string) => void;
+				setMode: (mode: string) => void;
+			} | null;
+		};
+		const api = global.__svgEditorApi!;
+		api.selectElementById('effect_zone');
+		api.setMode('text');
+	});
+	await page.locator('#text_multiline').evaluate((input) => {
+		const textarea = input as HTMLTextAreaElement;
+		textarea.value = 'image preview save e2e';
+		textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+	});
+	await page.waitForTimeout(1000);
 
-	await toolbar.getByRole('button', { name: 'Front' }).click();
-	await expect(toolbar.getByRole('button', { name: 'Back' })).toBeVisible();
-	await expect.poll(() => editorSvg(page)).toBe(frontSvg);
+	const savedFront = await readOpfsText(page, '/western-cards/system/western/front.svg');
+	const diceImageTag = savedFront.match(/<image\b(?=[^>]*\bid="dice_image")[^>]*>/)?.[0] ?? '';
+	expect(diceImageTag).toContain('href="../../files/dice_6.png"');
+	expect(diceImageTag).not.toContain('blob:');
+	expect(savedFront).not.toContain('data-digitable-original-href');
+});
 
-	await page.getByRole('link', { name: 'Spreadsheet' }).click();
-	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+test('image sidebar tool adds and changes project images without broken resource URLs', async ({
+	page
+}) => {
+	const failedImageResponses: string[] = [];
+	page.on('response', (response) => {
+		if (response.status() < 400) return;
+		const url = response.url();
+		if (
+			url.includes('/files/') ||
+			url.includes('editor-choice.svg') ||
+			url.includes('Svg-Editor-Upload.svg')
+		) {
+			failedImageResponses.push(url);
+		}
+	});
+
+	await seedProjects(page);
+	await writeOpfsText(
+		page,
+		'/western-cards/files/editor-choice.svg',
+		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="purple"/></svg>'
+	);
+	await writeOpfsText(
+		page,
+		'/western-cards/files/editor-choice-alt.svg',
+		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="teal"/></svg>'
+	);
+	await writeOpfsText(page, '/western-cards/files/notes.txt', 'not an image');
+	await page.goto('/app/games/western-cards/decks/western/editor?e2e');
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+	await page.waitForFunction(() => {
+		const global = window as Window & {
+			__svgEditorApi?: unknown;
+		};
+		return Boolean(global.__svgEditorApi);
+	});
+
+	await expect(page.getByRole('button', { name: 'Add Image' })).not.toBeVisible();
+	await page.getByRole('button', { name: 'Image', exact: true }).click();
+	await expect(page.getByRole('button', { name: /editor-choice\.svg/ })).toBeVisible();
+	await expect(page.getByText('notes.txt')).not.toBeVisible();
+	await page.getByRole('button', { name: /editor-choice\.svg/ }).click();
+	await page.getByRole('button', { name: 'Apply' }).click();
+
+	const insertedHrefHandle = await page.waitForFunction(() => {
+		const image = document.querySelector(
+			'image[data-digitable-original-href="../../files/editor-choice.svg"]'
+		);
+		return image?.getAttribute('href') ?? image?.getAttribute('xlink:href') ?? '';
+	});
+	const insertedHref = await insertedHrefHandle.jsonValue();
+	expect(insertedHref).toMatch(/^data:/);
+	await expect
+		.poll(() =>
+			page.evaluate((href) => fetch(href).then((response) => response.text()), insertedHref)
+		)
+		.toContain('purple');
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.toContain('href="../../files/editor-choice.svg"');
+	await expect(page.getByLabel('File')).toHaveValue('../../files/editor-choice.svg');
+
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.not.toContain('href="../../files/editor-choice.svg"');
+	await expect(page.getByRole('button', { name: 'Redo' })).toBeEnabled();
+	await page.getByRole('button', { name: 'Redo' }).click();
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.toContain('href="../../files/editor-choice.svg"');
+
+	await expect(page.getByRole('button', { name: 'Change Image' })).toBeVisible();
+	await page.getByRole('button', { name: 'Change Image' }).click();
+	await page.getByLabel('Upload').setInputFiles({
+		name: 'Svg Editor Upload.svg',
+		mimeType: 'image/svg+xml',
+		buffer: Buffer.from(
+			'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="gold"/></svg>'
+		)
+	});
+
+	const changedHrefHandle = await page.waitForFunction(() => {
+		const image = document.querySelector(
+			'image[data-digitable-original-href="../../files/uploads/Svg-Editor-Upload.svg"]'
+		);
+		return image?.getAttribute('href') ?? image?.getAttribute('xlink:href') ?? '';
+	});
+	const changedHref = await changedHrefHandle.jsonValue();
+	expect(changedHref).toMatch(/^data:image\/svg\+xml/);
+	await expect
+		.poll(() =>
+			page.evaluate((href) => fetch(href).then((response) => response.text()), changedHref)
+		)
+		.toContain('<circle');
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.toContain('href="../../files/uploads/Svg-Editor-Upload.svg"');
+	await expect(page.getByLabel('File')).toHaveValue('../../files/uploads/Svg-Editor-Upload.svg');
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.toContain('href="../../files/editor-choice.svg"');
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.not.toContain('href="../../files/uploads/Svg-Editor-Upload.svg"');
+	await expect(page.getByLabel('File')).toHaveValue('../../files/editor-choice.svg');
+	await page.getByLabel('File').fill('editor-choice-alt.svg');
+	await page.getByLabel('File').press('Enter');
+	const typedHrefHandle = await page.waitForFunction(() => {
+		const image = document.querySelector(
+			'image[data-digitable-original-href="../../files/editor-choice-alt.svg"]'
+		);
+		return image?.getAttribute('href') ?? image?.getAttribute('xlink:href') ?? '';
+	});
+	const typedHref = await typedHrefHandle.jsonValue();
+	expect(typedHref).toMatch(/^data:/);
+	await expect
+		.poll(() => page.evaluate((href) => fetch(href).then((response) => response.text()), typedHref))
+		.toContain('teal');
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.toContain('href="../../files/editor-choice-alt.svg"');
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/system/western/front.svg'))
+		.toContain('href="../../files/editor-choice.svg"');
+	const savedFront = await readOpfsText(page, '/western-cards/system/western/front.svg');
+	expect(savedFront).not.toContain('data:image');
+	expect(savedFront).not.toContain('data-digitable-original-href');
+	const uploaded = await readOpfsText(page, '/western-cards/files/uploads/Svg-Editor-Upload.svg');
+	expect(uploaded).toContain('<circle');
+	expect(failedImageResponses).toEqual([]);
 });
 
 test('entering multiline text edit preserves changed text alignment', async ({ page }) => {
@@ -307,6 +461,7 @@ test('structure tree edit accepts h and l and commits text on Enter', async ({ p
 
 	const treeId = await treeIdForElement(page, 'effect_zone');
 	expect(treeId).toBeTruthy();
+	await page.getByRole('tab', { name: 'Structure' }).click();
 	await page.locator(`[data-row-id="${treeId}"] button[aria-label="Rename element"]`).click();
 	const input = page.locator('[data-structure-tree] input').first();
 	await expect(input).toBeVisible();

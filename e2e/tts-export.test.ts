@@ -196,6 +196,13 @@ function contentTypeFor(fileName: string) {
 	return fileName.endsWith('.json') ? 'application/json' : 'image/png';
 }
 
+function decodeSvgDataUrl(dataUrl: string) {
+	const [, payload = ''] = dataUrl.split(',', 2);
+	return dataUrl.includes(';base64,')
+		? Buffer.from(payload, 'base64').toString('utf8')
+		: decodeURIComponent(payload);
+}
+
 async function attachTtsExportFile(
 	page: Page,
 	testInfo: TestInfo,
@@ -250,7 +257,6 @@ test('inlines local image refs before rasterizing TTS sheets', async ({ page }) 
 
 	const hiddenSheetMarkup = await page.locator('.hide #sheet').evaluate((sheet) => sheet.innerHTML);
 	expect(hiddenSheetMarkup).not.toContain('/placeholder.svg');
-	expect(hiddenSheetMarkup).toContain('#0f172a');
 
 	const remainingImageHrefs = await page
 		.locator('.hide #sheet svg image')
@@ -258,6 +264,7 @@ test('inlines local image refs before rasterizing TTS sheets', async ({ page }) 
 			images.map((image) => image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '')
 		);
 	expect(remainingImageHrefs.some((href) => href.includes('/placeholder.svg'))).toBe(false);
+	expect(remainingImageHrefs.some((href) => decodeSvgDataUrl(href).includes('#0f172a'))).toBe(true);
 
 	expect(exportErrors.filter((message) => message.includes('Error taking image'))).toEqual([]);
 	expect(
