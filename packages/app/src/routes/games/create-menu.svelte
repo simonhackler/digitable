@@ -12,6 +12,7 @@
 		Ellipsis,
 		Layers,
 		LayoutTemplate,
+		LoaderCircle,
 		Table2,
 		TextCursorInput,
 		Trash2
@@ -29,9 +30,19 @@
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 	import { BookOpenText } from '@lucide/svelte';
+	import {
+		createPremadeDeck,
+		getPremadeDeckPreset,
+		premadeDeckPresets,
+		unavailablePremadeDecks,
+		type PremadeDeckPresetId
+	} from '$lib/premade-decks';
 
 	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
 	let openCreateDeckDialog = $state(false);
+	let isCreatingDeck = $state(false);
+	let createDeckError = $state('');
+	type DeckMode = 'blank' | 'premade';
 
 	const deckDimension = z.preprocess((value) => {
 		if (typeof value === 'string') return Number(value.replace(',', '.'));
@@ -55,10 +66,33 @@
 	const form = superForm(defaults(zod4(newDeckSchema)), {
 		SPA: true,
 		validators: zod4(newDeckSchema),
-		onUpdate({ form }) {
+		async onUpdate({ form }) {
+			if (isCreatingDeck) return;
 			if (!form.valid || !activeGame) return;
+			if (activeGame.decks.some((deck) => deck.name === form.data.deckName)) {
+				createDeckError = 'A deck with this name already exists.';
+				return;
+			}
 
-			switchPathAndCreateSvgs(activeGame, form.data.deckName, form.data.width, form.data.height);
+			isCreatingDeck = true;
+			createDeckError = '';
+			let created = false;
+			if (deckMode === 'premade') {
+				created = await switchPathAndCreatePremadeDeck(
+					activeGame,
+					form.data.deckName,
+					selectedPremadeDeck
+				);
+			} else {
+				created = await switchPathAndCreateSvgs(
+					activeGame,
+					form.data.deckName,
+					form.data.width,
+					form.data.height
+				);
+			}
+
+			if (!created) isCreatingDeck = false;
 		}
 	});
 
@@ -73,20 +107,56 @@
 		const normalizedHeight = Number(String(height).replace(',', '.'));
 		const frontSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		const backSvg = createEmptySvg(normalizedWidth, normalizedHeight);
-		await Promise.all([
+		const uploaded = await Promise.all([
 			uploadSvgAsSide(fileSystem, deckName, frontSvg, 'front'),
 			uploadSvgAsSide(fileSystem, deckName, backSvg, 'back')
 		]);
+		if (uploaded.some((done) => !done)) {
+			createDeckError = 'Could not create the deck files.';
+			return false;
+		}
+
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
 		await goto(resolve(path));
-		activeGame.decks.push({ name: deckName });
+		activeGame.decks = [...activeGame.decks, { name: deckName }];
 
+		resetCreateDeckForm();
+		return true;
+	}
+
+	async function switchPathAndCreatePremadeDeck(
+		activeGame: Game,
+		deckName: string,
+		presetId: PremadeDeckPresetId
+	) {
+		const path = `/games/${activeGame.name}/decks/${deckName}/data`;
+		const created = await createPremadeDeck({ fileSystem, deckName, presetId });
+		if (created.error) {
+			console.error(created.error);
+			createDeckError = 'Could not create the pre-made deck.';
+			return false;
+		}
+
+		await tick();
+		// @ts-expect-error Weird sveltekit typing
+		await goto(resolve(path));
+		activeGame.decks = [...activeGame.decks, { name: deckName }];
+
+		resetCreateDeckForm();
+		return true;
+	}
+
+	function resetCreateDeckForm() {
 		openCreateDeckDialog = false;
 		$formData.deckName = '';
+		deckMode = 'blank';
+		selectedPremadeDeck = 'french-playing-cards';
 		selectedCardFormat = 'poker';
 		$formData.width = cardFormats.poker.width;
 		$formData.height = cardFormats.poker.height;
+		isCreatingDeck = false;
+		createDeckError = '';
 	}
 
 	async function uploadSvgAsSide(
@@ -100,10 +170,13 @@
 		const deckDir = await fileSystem.ensureDir(joinFsPath('system', deckName));
 		if (deckDir.error) {
 			console.error(deckDir.error);
-			return;
+			return false;
 		}
 		const svgWrite = await deckDir.data.write(svgFile.name, svgFile);
-		if (svgWrite.error) console.error(svgWrite.error);
+		if (svgWrite.error) {
+			console.error(svgWrite.error);
+			return false;
+		}
 
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
@@ -111,10 +184,15 @@
 		const filesDir = await fileSystem.ensureDir('files');
 		if (filesDir.error) {
 			console.error(filesDir.error);
-			return;
+			return false;
 		}
 		const placeholderWrite = await filesDir.data.write(file.name, file);
-		if (placeholderWrite.error) console.error(placeholderWrite.error);
+		if (placeholderWrite.error) {
+			console.error(placeholderWrite.error);
+			return false;
+		}
+
+		return true;
 	}
 
 	function onDeckRenamed(oldName: string, newName: string) {
@@ -164,9 +242,17 @@
 	const { form: formData, enhance, constraints } = form;
 	let selectedCardFormat = $state<keyof typeof cardFormats>('poker');
 	const selectedCardLabel = $derived(cardFormats[selectedCardFormat].name);
+	let deckMode = $state<DeckMode>('blank');
+	let selectedPremadeDeck = $state<PremadeDeckPresetId>('french-playing-cards');
+	const selectedPremadeDeckPreset = $derived(getPremadeDeckPreset(selectedPremadeDeck));
 
 	$effect(() => {
-		if (!selectedCardFormat) return;
+		if (deckMode === 'premade') {
+			$formData.width = selectedPremadeDeckPreset.width;
+			$formData.height = selectedPremadeDeckPreset.height;
+			return;
+		}
+
 		const card = cardFormats[selectedCardFormat];
 		$formData.width = card.width;
 		$formData.height = card.height;
@@ -206,7 +292,19 @@
 								<Dialog.Content>
 									<Dialog.Header>
 										<Dialog.Title>New deck</Dialog.Title>
-										<form use:enhance>
+										<form use:enhance class="space-y-3">
+											<div class="space-y-1">
+												<div class="text-sm font-medium">Deck type</div>
+												<Select.Root type="single" bind:value={deckMode}>
+													<Select.Trigger class="w-full" disabled={isCreatingDeck}>
+														{deckMode === 'premade' ? 'Pre-made deck' : 'Blank deck'}
+													</Select.Trigger>
+													<Select.Content>
+														<Select.Item value="blank">Blank deck</Select.Item>
+														<Select.Item value="premade">Pre-made deck</Select.Item>
+													</Select.Content>
+												</Select.Root>
+											</div>
 											<Form.Field {form} name="deckName">
 												<Form.Control>
 													{#snippet children({ props })}
@@ -214,22 +312,50 @@
 															{...props}
 															placeholder="deck name"
 															bind:value={$formData.deckName}
+															disabled={isCreatingDeck}
 														/>
 													{/snippet}
 												</Form.Control>
 												<Form.Description />
 												<Form.FieldErrors />
 											</Form.Field>
-											<Select.Root type="single" bind:value={selectedCardFormat}>
-												<Select.Trigger class="mb-2 w-full">
-													{selectedCardLabel}
-												</Select.Trigger>
-												<Select.Content>
-													{#each cardFormatEntries as [card, format] (card)}
-														<Select.Item value={card}>{format.name}</Select.Item>
+
+											{#if deckMode === 'premade'}
+												<div class="space-y-1">
+													<div class="text-sm font-medium">Preset</div>
+													<Select.Root type="single" bind:value={selectedPremadeDeck}>
+														<Select.Trigger class="w-full" disabled={isCreatingDeck}>
+															{selectedPremadeDeckPreset.name}
+														</Select.Trigger>
+														<Select.Content>
+															{#each premadeDeckPresets as preset (preset.id)}
+																<Select.Item value={preset.id}>{preset.name}</Select.Item>
+															{/each}
+														</Select.Content>
+													</Select.Root>
+													<p class="text-muted-foreground text-xs">
+														{selectedPremadeDeckPreset.description}
+														{selectedPremadeDeckPreset.cardCount} cards.
+													</p>
+													{#each unavailablePremadeDecks as preset (preset.name)}
+														<p class="text-muted-foreground text-xs">
+															{preset.name}: {preset.description}
+														</p>
 													{/each}
-												</Select.Content>
-											</Select.Root>
+												</div>
+											{:else}
+												<Select.Root type="single" bind:value={selectedCardFormat}>
+													<Select.Trigger class="w-full" disabled={isCreatingDeck}>
+														{selectedCardLabel}
+													</Select.Trigger>
+													<Select.Content>
+														{#each cardFormatEntries as [card, format] (card)}
+															<Select.Item value={card}>{format.name}</Select.Item>
+														{/each}
+													</Select.Content>
+												</Select.Root>
+											{/if}
+
 											<div class="flex gap-2">
 												<Form.Field {form} name="width">
 													<Form.Control>
@@ -242,6 +368,7 @@
 																	bind:value={$formData.width}
 																	{...$constraints.width}
 																	inputmode="decimal"
+																	disabled={deckMode === 'premade' || isCreatingDeck}
 																/>
 															</div>
 														{/snippet}
@@ -260,6 +387,7 @@
 																	bind:value={$formData.height}
 																	{...$constraints.height}
 																	inputmode="decimal"
+																	disabled={deckMode === 'premade' || isCreatingDeck}
 																/>
 															</div>
 														{/snippet}
@@ -268,8 +396,21 @@
 													<Form.FieldErrors />
 												</Form.Field>
 											</div>
-											<Button type="submit" disabled={!activeGame}>
-												<PlusIcon /> Create new deck
+											{#if createDeckError}
+												<p role="alert" class="text-destructive text-sm">{createDeckError}</p>
+											{/if}
+											<Button
+												type="submit"
+												disabled={!activeGame || isCreatingDeck}
+												aria-busy={isCreatingDeck}
+											>
+												{#if isCreatingDeck}
+													<LoaderCircle class="size-4 animate-spin" />
+													Creating...
+												{:else}
+													<PlusIcon />
+													Create new deck
+												{/if}
 											</Button>
 										</form>
 									</Dialog.Header>
