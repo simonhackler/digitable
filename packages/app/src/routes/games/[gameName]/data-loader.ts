@@ -2,12 +2,13 @@ import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/ad
 import type { Column } from 'jspreadsheet-ce';
 import { parseCsvFile } from './csv-helper';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
-import { getSvgDataMap } from './svg-helpers';
+import { getSvgDataMapForSides, type SvgDataSide } from './svg-helpers';
 import type { ColumnWithData } from './types';
 
 const LOCAL_FILE_MARKER = '/files/';
-const TRANSPARENT_IMAGE =
+export const TRANSPARENT_IMAGE =
 	'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E';
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.avif']);
 
 const blobToDataUrl = (blob: Blob) =>
 	new Promise<string>((resolve) => {
@@ -18,6 +19,13 @@ const blobToDataUrl = (blob: Blob) =>
 
 export const isEmbeddedImageReference = (value: string) =>
 	/^(data|blob|https?|file):/i.test(value.trim());
+
+export const isImageFileName = (path: string) => {
+	const trimmed = path.trim().split(/[?#]/, 1)[0].toLowerCase();
+	const lastDot = trimmed.lastIndexOf('.');
+	if (lastDot < 0) return false;
+	return IMAGE_EXTENSIONS.has(trimmed.slice(lastDot));
+};
 
 export function getProjectFilePath(projectName: string, value: string): string | null {
 	const trimmed = value.trim();
@@ -32,6 +40,52 @@ export function getProjectFilePath(projectName: string, value: string): string |
 
 	if (!localPath) return null;
 	return `/${projectName}/files/${localPath}`;
+}
+
+export async function resolveImageReference(
+	fileSystem: FsDir,
+	projectName: string,
+	value: string,
+	useDataUrls = false
+) {
+	const img = value.trim();
+	if (!img) return '';
+	if (isEmbeddedImageReference(img)) return img;
+
+	const filePath = getProjectFilePath(projectName, img);
+	if (!filePath) return TRANSPARENT_IMAGE;
+
+	const file = await fileSystem.read(joinFsPath(filePath));
+	if (file.error) return TRANSPARENT_IMAGE;
+
+	return useDataUrls ? await blobToDataUrl(file.data) : URL.createObjectURL(file.data);
+}
+
+export async function listProjectImageFiles(fileSystem: FsDir, projectName: string) {
+	const rootPath = joinFsPath(projectName, 'files');
+	const images: string[] = [];
+
+	async function walk(relativePath: string) {
+		const fullPath = relativePath ? joinFsPath(rootPath, relativePath) : rootPath;
+		const entries = await fileSystem.list(fullPath);
+		if (entries.error) return;
+
+		await Promise.all(
+			entries.data.map(async (entry) => {
+				const entryPath = relativePath ? joinFsPath(relativePath, entry.name) : entry.name;
+				if (entry.kind === 'directory') {
+					await walk(entryPath);
+					return;
+				}
+				if (isImageFileName(entry.name)) {
+					images.push(entryPath);
+				}
+			})
+		);
+	}
+
+	await walk('');
+	return images.sort((a, b) => a.localeCompare(b));
 }
 
 export async function loadSpreadsheetData(
@@ -140,36 +194,14 @@ export async function loadImagePaths(
 	if (imageStrings.length === 0) {
 		return new Map<string, string>();
 	}
-	const downloadPaths = imageStrings.map((img) => getProjectFilePath(projectName, img));
-	const files = await Promise.all(
-		downloadPaths.map(async (path) => {
-			if (!path) return null;
-			const file = await fileSystem.read(joinFsPath(path));
-			return file.error ? null : file.data;
-		})
-	);
 	const imagePaths = new Map<string, string>();
 	await Promise.all(
-		imageStrings.map(async (img, i) => {
+		imageStrings.map(async (img) => {
 			if (!img) {
 				imagePaths.set(img, '');
 				return;
 			}
-			if (isEmbeddedImageReference(img)) {
-				imagePaths.set(img, img);
-				return;
-			}
-
-			const file = files[i];
-			if (file) {
-				if (useDataUrls) {
-					imagePaths.set(img, await blobToDataUrl(file));
-				} else {
-					imagePaths.set(img, URL.createObjectURL(file));
-				}
-			} else {
-				imagePaths.set(img, TRANSPARENT_IMAGE);
-			}
+			imagePaths.set(img, await resolveImageReference(fileSystem, projectName, img, useDataUrls));
 		})
 	);
 	return imagePaths;
@@ -183,7 +215,23 @@ export async function loadSvgsAndData(
 	svgTemplateBack: SVGSVGElement,
 	useDataUrls = true
 ) {
-	const svgData = getSvgDataMap(svgTemplateFront, svgTemplateBack);
+	return loadSvgsAndDataForSides(
+		projectName,
+		cardName,
+		fileSystem,
+		[{ template: svgTemplateFront }, { template: svgTemplateBack, columnPrefix: 'back_' }],
+		useDataUrls
+	);
+}
+
+export async function loadSvgsAndDataForSides(
+	projectName: string,
+	cardName: string,
+	fileSystem: FsDir,
+	sides: SvgDataSide[],
+	useDataUrls = true
+) {
+	const svgData = getSvgDataMapForSides(sides);
 	const spreadsheetData = await loadSpreadsheetData(svgData, projectName, cardName, fileSystem);
 	const imagePaths = await loadImagePaths(spreadsheetData, fileSystem, projectName, useDataUrls);
 	return {

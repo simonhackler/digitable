@@ -3,7 +3,12 @@
 	import { requireParam } from '$lib/utils/assert';
 	import { getFileSystemContext } from '../../../context';
 	import { loadSvgTemplate } from '../../svg-helpers';
-	import { setToLoadSvgsContext, type LoadedSvgTemplates } from './svg-context.svelte';
+	import {
+		createDeckSideIndexState,
+		setDeckSideIndexContext,
+		setToLoadSvgsContext,
+		type LoadedSvgTemplates
+	} from './svg-context.svelte';
 
 	let { children } = $props();
 
@@ -12,6 +17,7 @@
 	const fullFolderPath = $derived(joinFsPath(currentProject, 'system', currentCard));
 
 	const fileSystem = getFileSystemContext();
+	const deckSideIndex = createDeckSideIndexState();
 
 	async function loadSvgTemplates(
 		fileSystem: FsDir,
@@ -36,6 +42,13 @@
 	}
 
 	setToLoadSvgsContext(() => loadSvgTemplates(fileSystem, fullFolderPath));
+	setDeckSideIndexContext(deckSideIndex);
+
+	$effect(() => {
+		if (currentProject && currentCard) {
+			deckSideIndex.sideIndex = 0;
+		}
+	});
 </script>
 
 {@render children()}

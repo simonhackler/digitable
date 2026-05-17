@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onNavigate } from '$app/navigation';
 	import { ReferenceEditor } from '@svg-table/svgeditor';
+	import type { createEditorController } from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
@@ -13,9 +14,16 @@
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import { requireParam } from '$lib/utils/assert';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
-	import { untrack } from 'svelte';
+	import { isEmbeddedImageReference, resolveImageReference } from '../../../data-loader';
+	import ImageSelector from '../../../image-selector.svelte';
+	import { getDeckSideIndexContext } from '../svg-context.svelte';
 
 	type Side = 'front' | 'back';
+	type EditorController = ReturnType<typeof createEditorController>;
+	type ImagePickerTarget = {
+		mode: 'insert' | 'replace';
+		controller: EditorController;
+	};
 	type SvgMeta = {
 		width?: string;
 		height?: string;
@@ -23,6 +31,9 @@
 	};
 
 	const DEFAULT_TEXT_FONT_SIZE = 24;
+	const SVG_MIME_TYPE = 'image/svg+xml';
+	const XLINK_NS = 'http://www.w3.org/1999/xlink';
+	const ORIGINAL_HREF_ATTR = 'data-digitable-original-href';
 
 	const fileSystem = getFileSystemContext();
 	const game = $derived(requireParam('gameName'));
@@ -30,6 +41,7 @@
 	const folder = $derived(joinFsPath(game, 'system', deck));
 	const dataPath = $derived(`/games/${game}/decks/${deck}/data`);
 	const maxSvgUploadSize = 12 * 1024 * 1024;
+	const deckSideIndex = getDeckSideIndexContext();
 
 	const roundTo = (value: number, precision = 2) => {
 		const factor = 10 ** precision;
@@ -143,13 +155,17 @@
 	let back = $derived(svgs.back);
 	let frontMeta = $derived(svgs.meta.front);
 	let backMeta = $derived(svgs.meta.back);
-	let side = $state<Side>(untrack(() => (front || !back ? 'front' : 'back')));
+	const sideIndex = $derived(deckSideIndex.sideIndex);
+	const side = $derived(sideIndex === 0 ? 'front' : 'back');
 	let blankWidth = $state(63);
 	let blankHeight = $state(88);
 	let createTemplatesDialogOpen = $state(false);
 	let uploadInput: HTMLInputElement | null = $state(null);
+	let imageSelectorOpen = $state(false);
+	let imagePickerTarget = $state<ImagePickerTarget | null>(null);
 
 	const svg = $derived(side === 'front' ? front : back);
+	const editorSvg = $derived(await resolveSvgImagesForEditor(svg, game));
 	const activeMeta = $derived(side === 'front' ? frontMeta : backMeta);
 	const hasAnySvg = $derived(Boolean(front || back));
 	const preferredBlankSize = $derived(
@@ -200,8 +216,118 @@
 			back = value;
 			backMeta = getSvgMeta(value);
 		}
-		side = nextSide;
+		deckSideIndex.setSideIndex(sideIndexForSide(nextSide));
 	};
+
+	const getImageHref = (image: SVGImageElement) =>
+		image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
+
+	const setImageHref = (image: SVGImageElement, value: string) => {
+		const svgRoot =
+			image.ownerSVGElement ??
+			(image.ownerDocument.documentElement as unknown as SVGSVGElement | null);
+		if (svgRoot && !svgRoot.hasAttribute('xmlns:xlink')) {
+			svgRoot.setAttribute('xmlns:xlink', XLINK_NS);
+		}
+		image.setAttribute('href', value);
+		image.setAttributeNS(XLINK_NS, 'xlink:href', value);
+	};
+
+	const projectImagePathToSvgHref = (imagePath: string) =>
+		`../../files/${imagePath.trim().replace(/^\/+/, '')}`;
+
+	const normalizeSvgImageFileInput = (value: string) => {
+		const trimmed = value.trim();
+		if (!trimmed || isEmbeddedImageReference(trimmed)) return trimmed;
+		const filesMarker = '/files/';
+		const filesIndex = trimmed.lastIndexOf(filesMarker);
+		if (filesIndex >= 0) {
+			return projectImagePathToSvgHref(trimmed.slice(filesIndex + filesMarker.length));
+		}
+		const localPath = trimmed
+			.replace(/^(\.\.\/)+files\//, '')
+			.replace(/^files\//, '')
+			.replace(/^\/+/, '');
+		return projectImagePathToSvgHref(localPath);
+	};
+
+	function openImagePicker(mode: ImagePickerTarget['mode'], controller: EditorController) {
+		imagePickerTarget = { mode, controller };
+		imageSelectorOpen = true;
+	}
+
+	async function applySvgEditorImageSelection(imagePath: string) {
+		if (!imagePickerTarget || !imagePath) return;
+		const href = projectImagePathToSvgHref(imagePath);
+		const resolvedHref = await resolveImageReference(fileSystem, game, href, true);
+		const attributes = { [ORIGINAL_HREF_ATTR]: href };
+		if (imagePickerTarget.mode === 'replace') {
+			imagePickerTarget.controller.setSelectedImageHref(resolvedHref, { attributes });
+			return;
+		}
+		imagePickerTarget.controller.insertImage(resolvedHref, { attributes });
+	}
+
+	async function applySvgEditorImageHref(controller: EditorController, value: string) {
+		const href = normalizeSvgImageFileInput(value);
+		if (!href) return;
+		const resolvedHref = await resolveImageReference(fileSystem, game, href, true);
+		controller.setSelectedImageHref(resolvedHref, {
+			attributes: { [ORIGINAL_HREF_ATTR]: href }
+		});
+	}
+
+	async function resolveSvgImagesForEditor(value: string, projectName: string) {
+		if (!value) return { value, objectUrls: [] };
+
+		const doc = new DOMParser().parseFromString(value, SVG_MIME_TYPE);
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return { value, objectUrls: [] };
+
+		const objectUrls: string[] = [];
+		await Promise.all(
+			Array.from(root.querySelectorAll<SVGImageElement>('image')).map(async (image) => {
+				const href = getImageHref(image).trim();
+				if (!href || isEmbeddedImageReference(href)) return;
+
+				const resolvedHref = await resolveImageReference(fileSystem, projectName, href);
+				image.setAttribute(ORIGINAL_HREF_ATTR, href);
+				setImageHref(image, resolvedHref);
+				if (resolvedHref.startsWith('blob:')) objectUrls.push(resolvedHref);
+			})
+		);
+
+		return {
+			value: new XMLSerializer().serializeToString(doc),
+			objectUrls
+		};
+	}
+
+	function normalizeEditorSvgImages(value: string) {
+		if (!value) return value;
+
+		const doc = new DOMParser().parseFromString(value, SVG_MIME_TYPE);
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+
+		for (const image of Array.from(root.querySelectorAll<SVGImageElement>('image'))) {
+			const originalHref = image.getAttribute(ORIGINAL_HREF_ATTR);
+			if (!originalHref) continue;
+			setImageHref(image, originalHref);
+			image.removeAttribute(ORIGINAL_HREF_ATTR);
+		}
+
+		return new XMLSerializer().serializeToString(doc);
+	}
+
+	$effect(() => {
+		const objectUrls = editorSvg.objectUrls;
+		return () => {
+			for (const objectUrl of objectUrls) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	});
 
 	const writePlaceholderSvg = async () => {
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
@@ -239,7 +365,7 @@
 			}),
 			writePlaceholderSvg()
 		]);
-		if (focusSide) side = focusSide;
+		if (focusSide) deckSideIndex.setSideIndex(sideIndexForSide(focusSide));
 		if (closeDialog) createTemplatesDialogOpen = false;
 	};
 
@@ -249,7 +375,7 @@
 			await createBlankTemplates(nextSide, preferredBlankSize, { focusSide: nextSide });
 			return;
 		}
-		side = nextSide;
+		deckSideIndex.setSideIndex(sideIndexForSide(nextSide));
 	};
 
 	const flipSide = () => switchSide(side === 'front' ? 'back' : 'front');
@@ -264,7 +390,16 @@
 	};
 
 	const sideHasSvg = (nextSide: Side) => (nextSide === 'front' ? Boolean(front) : Boolean(back));
+	const sideIndexForSide = (nextSide: Side) => (nextSide === 'front' ? 0 : 1);
 	const sideLabel = (nextSide: Side) => `${nextSide[0].toUpperCase()}${nextSide.slice(1)}`;
+	const imageSelectorTitle = $derived(
+		imagePickerTarget?.mode === 'replace' ? 'Change Image' : 'Select Image'
+	);
+	const imageSelectorDescription = $derived(
+		imagePickerTarget?.mode === 'replace'
+			? `Replace the selected image in the ${sideLabel(side)} SVG`
+			: `Add an image to the ${sideLabel(side)} SVG`
+	);
 
 	let activeSavePromises = $state<Promise<void>[]>([]);
 
@@ -306,17 +441,18 @@
 	const handleChange = (event: CustomEvent<{ svg: string; source: 'user' | 'external' }>) => {
 		const { svg: value, source } = event.detail;
 		if (source !== 'user') return;
+		const normalizedValue = normalizeEditorSvgImages(value);
 		if (side === 'front') {
-			front = value;
+			front = normalizedValue;
 		}
 		if (side === 'back') {
-			back = value;
+			back = normalizedValue;
 		}
-		scheduleSave(side, value);
+		scheduleSave(side, normalizedValue);
 	};
 </script>
 
-<main class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
+<main class="flex h-svh w-full flex-col gap-4 overflow-hidden p-4">
 	<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Layout editor toolbar">
 		<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
 			<Button size="sm" variant="ghost" href={dataPath} title="Open Spreadsheet editor">
@@ -345,20 +481,21 @@
 	/>
 
 	{#if hasAnySvg && svg}
-		<Card>
-			<CardContent class="pt-6">
-				{#key side}
-					<ReferenceEditor
-						value={svg}
-						{config}
-						assetBasePath="/svgedit/images/"
-						initialZoom="fit"
-						toolbarActions={uploadToolbarAction}
-						on:change={handleChange}
-					/>
-				{/key}
-			</CardContent>
-		</Card>
+		{#key side}
+			<div class="min-h-0 flex-1">
+				<ReferenceEditor
+					value={editorSvg.value}
+					{config}
+					assetBasePath="/svgedit/images/"
+					initialZoom="fit"
+					toolbarActions={uploadToolbarAction}
+					imageToolAction={(controller) => openImagePicker('insert', controller)}
+					selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}
+					selectedImageHrefApplyAction={applySvgEditorImageHref}
+					on:change={handleChange}
+				/>
+			</div>
+		{/key}
 	{:else}
 		<Card>
 			<CardContent
@@ -439,3 +576,11 @@
 		Upload
 	</Button>
 {/snippet}
+
+<ImageSelector
+	bind:open={imageSelectorOpen}
+	showTrigger={false}
+	title={imageSelectorTitle}
+	description={imageSelectorDescription}
+	onSelect={applySvgEditorImageSelection}
+/>

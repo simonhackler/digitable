@@ -45,9 +45,14 @@
 	const AUTO_SCROLL_EDGE = 28;
 	const AUTO_SCROLL_STEP = 12;
 
-	let { controller, disabled = false } = $props<{
+	let {
+		controller,
+		disabled = false,
+		framed = true
+	} = $props<{
 		controller: EditorController;
 		disabled?: boolean;
+		framed?: boolean;
 	}>();
 
 	let rootEl = $state<HTMLElement | null>(null);
@@ -399,14 +404,18 @@
 	};
 </script>
 
-<Card>
-	<CardHeader>
-		<CardTitle>Structure</CardTitle>
-	</CardHeader>
-	<CardContent class="p-0">
+<Card class={framed ? undefined : 'border-0 bg-transparent py-0 shadow-none'}>
+	{#if framed}
+		<CardHeader>
+			<CardTitle>Structure</CardTitle>
+		</CardHeader>
+	{/if}
+	<CardContent class={framed ? 'p-0' : 'px-0'}>
 		<div
 			bind:this={rootEl}
-			class="relative max-h-[40vh] overflow-auto px-2 py-2"
+			class={framed
+				? 'relative max-h-[40vh] overflow-auto px-2 py-2'
+				: 'relative max-h-[40vh] overflow-auto py-2'}
 			data-structure-tree
 			role="region"
 			aria-label="Structure tree"

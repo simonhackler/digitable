@@ -45,6 +45,7 @@ if (!hasExplicitPlaywrightBaseUrl && !hasDevenvPlaywrightEnv) {
 const baseURL = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
+	workers: 1,
 	use: {
 		baseURL
 	},

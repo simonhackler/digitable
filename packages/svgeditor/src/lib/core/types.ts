@@ -28,6 +28,10 @@ export type SvgCanvasRawApi = {
 		extInitFunc: (args: Record<string, unknown>) => unknown,
 		opts?: { importLocale?: unknown }
 	) => unknown | Promise<unknown>;
+	addSVGElementsFromJson?: (data: {
+		element: string;
+		attr?: Record<string, string | number>;
+	}) => Element;
 	addToSelection?: (elems: Element[], showGrips?: boolean) => void;
 	alignSelectedElements?: (type: string, relativeTo: string) => void;
 	bind?: (event: string, callback: (...args: unknown[]) => void) => void;
@@ -51,6 +55,7 @@ export type SvgCanvasRawApi = {
 	getSvgRoot?: () => SVGSVGElement;
 	getSvgString: () => string;
 	getZoom: () => number;
+	getNextId?: () => string;
 	moveSelectedElements?: (
 		dx: number,
 		dy: number,
@@ -201,7 +206,12 @@ export type SvgEditorApi = {
 
 	getElementTree(): ElementTreeNode[];
 	getElementById(id: string): Element | null;
+	insertImage(
+		href: string,
+		opts?: { width?: number; height?: number; attributes?: Record<string, string> }
+	): string | null;
 	selectElementById(id: string, opts?: { add?: boolean }): void;
+	setSelectedImageHref(href: string, opts?: { attributes?: Record<string, string> }): boolean;
 	moveElement(
 		elementId: string,
 		targetParentId: string | null,

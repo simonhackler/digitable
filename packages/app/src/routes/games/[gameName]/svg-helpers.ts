@@ -170,37 +170,47 @@ export function parseSvg(svg: SVGSVGElement, prefix = ''): ColumnWithData[] {
 	return textColumns.concat(imageColumns);
 }
 
+export type SvgDataSide = {
+	template: SVGSVGElement;
+	columnPrefix?: string;
+};
+
+export function getSvgDataMapForSides(sides: SvgDataSide[]): Map<string, ColumnWithData> {
+	const dataMap = new Map<string, ColumnWithData>();
+	for (const side of sides) {
+		parseSvg(side.template.cloneNode(true) as SVGSVGElement, side.columnPrefix).forEach((col) => {
+			dataMap.set(col.title, col);
+		});
+	}
+	return dataMap;
+}
+
 export function getSvgDataMap(
 	frontSvg: SVGSVGElement,
 	backSvg: SVGSVGElement
 ): Map<string, ColumnWithData> {
-	const frontData = parseSvg(frontSvg.cloneNode(true) as SVGSVGElement);
-	const backData = parseSvg(backSvg.cloneNode(true) as SVGSVGElement, 'back_');
-	const dataMap = new Map<string, ColumnWithData>();
-
-	frontData.forEach((col) => {
-		dataMap.set(col.title, col);
-	});
-	backData.forEach((col) => {
-		dataMap.set(col.title, col);
-	});
-
-	return dataMap;
+	return getSvgDataMapForSides([
+		{ template: frontSvg },
+		{ template: backSvg, columnPrefix: 'back_' }
+	]);
 }
 
 export function generateSvg(
 	svgTemplate: SVGSVGElement,
 	headers: string[],
 	row: string[],
-	imagePaths: Map<string, string>
+	imagePaths: Map<string, string>,
+	options: { columnPrefix?: string } = {}
 ): SVGSVGElement {
 	const svg = svgTemplate.cloneNode(true) as SVGSVGElement;
 	// add a random id after date
 	svg.id = `generated-svg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 	svg.style.contain = 'layout style paint';
 	headers.forEach((col, idx) => {
+		if (options.columnPrefix && !col.startsWith(options.columnPrefix)) return;
+		const elementId = options.columnPrefix ? col.slice(options.columnPrefix.length) : col;
 		const data = row[idx] || '';
-		initialSetupForSvgItem(svg, col, data, imagePaths);
+		initialSetupForSvgItem(svg, elementId, data, imagePaths);
 	});
 	return svg;
 }
