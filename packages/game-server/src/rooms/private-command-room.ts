@@ -3,6 +3,8 @@ import { verifyAndConsumeGameTicket } from '@svg-table/db/tickets';
 
 import { CommandRoom } from './command-room';
 
+const PRIVATE_ROOM_RECONNECTION_SECONDS = 60;
+
 type JoinOptions = {
 	privateRoomId?: string;
 };
@@ -59,5 +61,15 @@ export class PrivateCommandRoom extends CommandRoom {
 			client.auth = auth;
 		}
 		super.onJoin(client, options);
+	}
+
+	async onLeave(client: Client<unknown, PrivateRoomAuth>, consented?: boolean) {
+		if (consented) return;
+
+		try {
+			await this.allowReconnection(client, PRIVATE_ROOM_RECONNECTION_SECONDS);
+		} catch {
+			// Reconnection window expired.
+		}
 	}
 }

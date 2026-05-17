@@ -72,9 +72,29 @@
 	}
 	const client = new Client(gameServerUrl);
 	let playE2EBridge: ReturnType<typeof installPlayE2EBridge> | null = null;
+	const privatePlaytestReconnectTokenPrefix = 'svg-table:playtest-reconnect-token:';
 
 	function isE2EMode() {
 		return e2e;
+	}
+
+	function privatePlaytestReconnectTokenKey(privateRoomId: string) {
+		return `${privatePlaytestReconnectTokenPrefix}${privateRoomId}`;
+	}
+
+	function getPrivatePlaytestReconnectToken(privateRoomId: string) {
+		if (typeof sessionStorage === 'undefined') return null;
+		return sessionStorage.getItem(privatePlaytestReconnectTokenKey(privateRoomId));
+	}
+
+	function setPrivatePlaytestReconnectToken(privateRoomId: string, room: Room<BoardGameRoomState>) {
+		if (typeof sessionStorage === 'undefined') return;
+		sessionStorage.setItem(privatePlaytestReconnectTokenKey(privateRoomId), room.reconnectionToken);
+	}
+
+	function clearPrivatePlaytestReconnectToken(privateRoomId: string) {
+		if (typeof sessionStorage === 'undefined') return;
+		sessionStorage.removeItem(privatePlaytestReconnectTokenKey(privateRoomId));
 	}
 
 	let boardGameItems: SvelteMap<string, BoardGameItemNew> = new SvelteMap();
@@ -599,12 +619,24 @@
 			? { privateRoomId: privatePlaytest.privateRoomId }
 			: undefined;
 		const shouldCreateRoom = !privatePlaytest;
-		if (privatePlaytest) {
-			client.auth.token = await privatePlaytest.getAuthToken();
+		let room: Room<BoardGameRoomState> | null = null;
+		if (shouldCreateRoom) {
+			room = await client.create<BoardGameRoomState>(roomType, roomOptions);
+		} else {
+			const reconnectToken = getPrivatePlaytestReconnectToken(privatePlaytest.privateRoomId);
+			if (reconnectToken) {
+				try {
+					room = await client.reconnect<BoardGameRoomState>(reconnectToken);
+				} catch {
+					clearPrivatePlaytestReconnectToken(privatePlaytest.privateRoomId);
+				}
+			}
+			if (!room) {
+				client.auth.token = await privatePlaytest.getAuthToken();
+				room = await client.joinOrCreate<BoardGameRoomState>(roomType, roomOptions);
+			}
+			setPrivatePlaytestReconnectToken(privatePlaytest.privateRoomId, room);
 		}
-		const room = shouldCreateRoom
-			? await client.create<BoardGameRoomState>(roomType, roomOptions)
-			: await client.joinOrCreate<BoardGameRoomState>(roomType, roomOptions);
 		let s = getStateCallbacks(room);
 		strokeLayer.connect(room, s);
 

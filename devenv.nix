@@ -64,6 +64,19 @@
       bun run playwright test --reporter=list
     fi
   '';
+  playwrightCliConfig = pkgs.writeTextDir ".playwright/cli.config.json" (builtins.toJSON {
+    browser = {
+      browserName = "chromium";
+      launchOptions = {
+        executablePath = "${playwrightChromium}";
+      };
+    };
+  });
+  playwrightCli = pkgs.writeShellScriptBin "playwright-cli" ''
+    export PWTEST_CLI_GLOBAL_CONFIG="${playwrightCliConfig}"
+    export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+    exec "${worktreePath}/node_modules/.bin/playwright-cli" "$@"
+  '';
 in {
   dotenv.disableHint = true;
 
@@ -110,6 +123,7 @@ in {
   };
 
   packages = with pkgs; [
+    playwrightCli
     bun
     caddy
     postgresql_16
@@ -143,6 +157,7 @@ in {
     S3_FORCE_PATH_STYLE = "true";
 
     PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH = "${playwrightChromium}";
   };
