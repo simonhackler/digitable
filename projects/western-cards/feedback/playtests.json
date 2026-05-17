@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "playtests": [
+    {
+      "playtestId": "46b594c7-bed8-4c45-b335-ce618249f9d0",
+      "createdAt": "2026-05-17T19:58:37.668Z",
+      "importedFeedbackIds": [
+        "944049ec-5ed1-4605-817b-e203e31c4630",
+        "e0f5236c-553e-450e-a3a8-7f3985efd886"
+      ]
+    },
+    {
+      "playtestId": "0342adff-12d6-4015-82e4-1a0e6b6d22dc",
+      "createdAt": "2026-05-17T21:25:50.114Z",
+      "importedFeedbackIds": []
+    },
+    {
+      "playtestId": "30d0e3a3-93b2-4928-adf0-02014f68918d",
+      "createdAt": "2026-05-17T21:26:21.369Z",
+      "importedFeedbackIds": [
+        "09d77061-dba5-419f-a7ba-4e3012835511",
+        "f1c2e6b9-9621-452c-b179-870dbb76d904"
+      ]
+    }
+  ]
+}
