@@ -148,11 +148,7 @@ export async function importRegisteredPlaytestFeedback(input: {
 		for (const note of feedbackData) {
 			if (importedIds.has(note.id)) continue;
 
-			const writePath = joinFsPath(
-				'feedback',
-				sessionFolder(playtest),
-				feedbackFileName(note)
-			);
+			const writePath = joinFsPath('feedback', sessionFolder(playtest), feedbackFileName(note));
 			const written = await input.gameDir.write(writePath, note.markdown);
 			if (written.error) {
 				return Err(written.error);

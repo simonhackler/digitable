@@ -14,7 +14,7 @@ import { Ok, Err, trySync, tryAsync, type Result } from 'wellcrafted/result';
 Results are plain objects with two properties — `data` and `error`. Successful results carry a `T` in `data` with `error: null`; failed results carry an `E` in `error` with `data: null`.
 
 ```typescript
-type Ok<T>  = { data: T; error: null };
+type Ok<T> = { data: T; error: null };
 type Err<E> = { error: E; data: null };
 type Result<T, E> = Ok<T> | Err<E>;
 ```
@@ -24,8 +24,8 @@ This is the same destructuring shape used by Supabase and SvelteKit load functio
 ```typescript
 const { data, error } = await someOperation();
 if (error !== null) {
-  // error is E, data is null
-  return;
+	// error is E, data is null
+	return;
 }
 // data is T here
 ```
@@ -36,13 +36,19 @@ if (error !== null) {
 
 ```typescript
 // Wrong — Ok(null) is legal; this treats success as failure
-if (result.data === null) { /* handle "error" */ }
+if (result.data === null) {
+	/* handle "error" */
+}
 
 // Right — non-null on the error side means Err, by convention
-if (result.error !== null) { /* handle error */ }
+if (result.error !== null) {
+	/* handle error */
+}
 
 // Right — named guard, same check, clearer intent
-if (isErr(result)) { /* handle error */ }
+if (isErr(result)) {
+	/* handle error */
+}
 ```
 
 **Don't call `Err(null)`.** It produces `{ data: null, error: null }` — structurally identical to `Ok(null)`. Under the shape, `isErr`/`isOk` read it as Ok, so `Err(null)` silently becomes success. `Err(undefined)` is also discouraged — the discriminator technically works (`undefined !== null` is true), but the value is meaningless and trips `if (error)` falsy checks downstream. Either:
@@ -74,23 +80,23 @@ Wrap throwing operations into Results. The `catch` handler receives the raw erro
 import { defineErrors, extractErrorMessage } from 'wellcrafted/error';
 
 const JsonError = defineErrors({
-  ParseFailed: ({ input, cause }: { input: string; cause: unknown }) => ({
-    message: `Invalid JSON: ${extractErrorMessage(cause)}`,
-    input: input.slice(0, 100),
-    cause,
-  }),
+	ParseFailed: ({ input, cause }: { input: string; cause: unknown }) => ({
+		message: `Invalid JSON: ${extractErrorMessage(cause)}`,
+		input: input.slice(0, 100),
+		cause
+	})
 });
 
 // Synchronous
 const { data, error } = trySync({
-  try: () => JSON.parse(rawInput),
-  catch: (cause) => JsonError.ParseFailed({ input: rawInput, cause }),
+	try: () => JSON.parse(rawInput),
+	catch: (cause) => JsonError.ParseFailed({ input: rawInput, cause })
 });
 
 // Asynchronous — always await
 const { data, error } = await tryAsync({
-  try: () => fetch(url).then((r) => r.json()),
-  catch: (cause) => HttpError.Connection({ url, cause }),
+	try: () => fetch(url).then((r) => r.json()),
+	catch: (cause) => HttpError.Connection({ url, cause })
 });
 ```
 
@@ -111,8 +117,8 @@ When `catch` returns `Ok(fallback)` instead of `Err`, the return type narrows to
 
 ```typescript
 const { data: config } = trySync({
-  try: (): unknown => JSON.parse(configJson),
-  catch: () => Ok({ theme: 'dark', fontSize: 14 }),
+	try: (): unknown => JSON.parse(configJson),
+	catch: () => Ok({ theme: 'dark', fontSize: 14 })
 });
 // config is always defined — the catch recovered
 ```
@@ -120,8 +126,8 @@ const { data: config } = trySync({
 ```typescript
 // File existence check with fallback
 const { data: exists } = trySync({
-  try: () => fs.existsSync(path),
-  catch: () => Ok(false),
+	try: () => fs.existsSync(path),
+	catch: () => Ok(false)
 });
 ```
 
@@ -132,8 +138,8 @@ const { data: exists } = trySync({
 ```typescript
 // CORRECT: Wrap only the call that can throw
 const { data: response, error } = await tryAsync({
-  try: () => fetch(`/api/users/${userId}`),
-  catch: (cause) => UserError.FetchFailed({ userId, cause }),
+	try: () => fetch(`/api/users/${userId}`),
+	catch: (cause) => UserError.FetchFailed({ userId, cause })
 });
 if (error !== null) return Err(error);
 
@@ -145,13 +151,13 @@ return Ok(user);
 ```typescript
 // WRONG: Wrapping too much
 const { data, error } = await tryAsync({
-  try: async () => {
-    const response = await fetch(`/api/users/${userId}`);
-    const user = await response.json();
-    await updateCache(user);
-    return user;
-  },
-  catch: (error) => Err(error), // Too vague
+	try: async () => {
+		const response = await fetch(`/api/users/${userId}`);
+		const user = await response.json();
+		await updateCache(user);
+		return user;
+	},
+	catch: (error) => Err(error) // Too vague
 });
 ```
 
@@ -174,14 +180,14 @@ return Ok({ user, posts });
 // WRONG: Nested error handling
 const { data: user, error: fetchError } = await getUser(userId);
 if (!fetchError) {
-  const { data: posts, error: postsError } = await getPosts(user.id);
-  if (!postsError) {
-    return Ok({ user, posts });
-  } else {
-    return Err(postsError);
-  }
+	const { data: posts, error: postsError } = await getPosts(user.id);
+	if (!postsError) {
+		return Ok({ user, posts });
+	} else {
+		return Err(postsError);
+	}
 } else {
-  return Err(fetchError);
+	return Err(fetchError);
 }
 ```
 
@@ -192,13 +198,13 @@ Include multiple operations in one block when they must succeed or fail together
 ```typescript
 // Atomic operation — all steps are part of "save document"
 const { data, error } = await tryAsync({
-  try: async () => {
-    const validated = schema.parse(document);
-    const saved = await db.documents.insert(validated);
-    await index.add(saved.id, saved.content);
-    return saved;
-  },
-  catch: (cause) => DbError.InsertFailed({ cause }),
+	try: async () => {
+		const validated = schema.parse(document);
+		const saved = await db.documents.insert(validated);
+		await index.add(saved.id, saved.content);
+		return saved;
+	},
+	catch: (cause) => DbError.InsertFailed({ cause })
 });
 ```
 
@@ -234,11 +240,11 @@ import { isOk, isErr } from 'wellcrafted/result';
 const result = await getUser(userId);
 
 if (isOk(result)) {
-  console.log(result.data.name);
+	console.log(result.data.name);
 }
 
 if (isErr(result)) {
-  console.log(result.error.message);
+	console.log(result.error.message);
 }
 ```
 
@@ -276,11 +282,11 @@ const { ok, err } = partitionResults(results);
 
 ## Wrapping Summary
 
-| Scenario | Approach |
-| --- | --- |
-| Single risky operation | Wrap just that operation |
-| Sequential operations | Wrap each separately, return immediately on error |
-| Atomic operations | Wrap together in one block |
-| Different error types | Separate blocks with appropriate error types |
+| Scenario               | Approach                                          |
+| ---------------------- | ------------------------------------------------- |
+| Single risky operation | Wrap just that operation                          |
+| Sequential operations  | Wrap each separately, return immediately on error |
+| Atomic operations      | Wrap together in one block                        |
+| Different error types  | Separate blocks with appropriate error types      |
 
 See also: `define-errors` skill for error variant definitions. `patterns` skill for service architecture.

@@ -173,7 +173,10 @@ function sanitizeText(value: string, maxLength: number): string {
 	return value
 		.replace(/\r\n?/g, '\n')
 		.replace(/[^\S\n\t ]+/g, ' ')
-		.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+		.replace(/[\s\S]/g, (character) => {
+			const code = character.charCodeAt(0);
+			return code === 127 || (code < 32 && code !== 9 && code !== 10) ? '' : character;
+		})
 		.slice(0, maxLength)
 		.trim();
 }

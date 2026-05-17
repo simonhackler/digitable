@@ -29,7 +29,7 @@ const { data, error } = trySync({
 		// Gracefully handle parsing/validation errors
 		console.log('Using default configuration');
 		return Ok(defaultConfig); // Return Ok with fallback
-	},
+	}
 });
 
 // ASYNCHRONOUS: Use tryAsync for async operations
@@ -43,7 +43,7 @@ await tryAsync({
 		// Gracefully handle the error
 		console.log(`Process was already terminated`);
 		return Ok(undefined); // Return Ok(undefined) for void functions
-	},
+	}
 });
 
 // Both support the same catch patterns
@@ -54,7 +54,7 @@ const syncResult = trySync({
 		return Ok('fallback-value');
 		// For unrecoverable errors, pass the raw cause — the constructor handles extractErrorMessage
 		return CompletionError.ConnectionFailed({ cause: error });
-	},
+	}
 });
 ```
 
@@ -105,13 +105,13 @@ const { data: config } = trySync({
 	catch: (e) => {
 		console.log('Invalid config, using defaults');
 		return Ok({ theme: 'dark', autoSave: true });
-	},
+	}
 });
 
 // SYNCHRONOUS: File system check
 const { data: exists } = trySync({
 	try: () => fs.existsSync(path),
-	catch: () => Ok(false), // Assume doesn't exist if check fails
+	catch: () => Ok(false) // Assume doesn't exist if check fails
 });
 
 // ASYNCHRONOUS: Graceful process termination
@@ -122,7 +122,7 @@ await tryAsync({
 	catch: (e) => {
 		console.log('Process already dead, continuing...');
 		return Ok(undefined);
-	},
+	}
 });
 
 // ASYNCHRONOUS: File operations with fallback
@@ -131,15 +131,14 @@ const { data: content } = await tryAsync({
 	catch: (e) => {
 		console.log('File not found, using default');
 		return Ok('default content');
-	},
+	}
 });
 
 // EITHER: Error propagation (works with both)
 // Pass the raw caught error as cause — the defineErrors constructor calls extractErrorMessage
 const { data, error } = await tryAsync({
 	try: () => criticalOperation(),
-	catch: (error) =>
-		CompletionError.ConnectionFailed({ cause: error }),
+	catch: (error) => CompletionError.ConnectionFailed({ cause: error })
 });
 if (error) return Err(error);
 ```
@@ -174,8 +173,7 @@ if (error) return Err(error);
 // ✅ GOOD: Wrap only the risky operation, pass raw cause to constructor
 const { data: stream, error: streamError } = await tryAsync({
 	try: () => navigator.mediaDevices.getUserMedia({ audio: true }),
-	catch: (error) =>
-		DeviceStreamError.PermissionDenied({ cause: error }),
+	catch: (error) => DeviceStreamError.PermissionDenied({ cause: error })
 });
 
 if (streamError) return Err(streamError);
@@ -195,7 +193,7 @@ const { data, error } = await tryAsync({
 		await someOtherAsyncCall();
 		return processResults();
 	},
-	catch: (error) => Err(error), // Too vague! No specific error type
+	catch: (error) => Err(error) // Too vague! No specific error type
 });
 ```
 
@@ -208,9 +206,7 @@ const { data, error } = await tryAsync({
 const { data: devices, error: enumerateError } = await enumerateDevices();
 if (enumerateError) return Err(enumerateError);
 
-const { data: stream, error: streamError } = await getStreamForDevice(
-	devices[0],
-);
+const { data: stream, error: streamError } = await getStreamForDevice(devices[0]);
 if (streamError) return Err(streamError);
 
 // Happy path continues cleanly
@@ -221,9 +217,7 @@ return Ok(stream);
 // ❌ BAD: Nested error handling
 const { data: devices, error: enumerateError } = await enumerateDevices();
 if (!enumerateError) {
-	const { data: stream, error: streamError } = await getStreamForDevice(
-		devices[0],
-	);
+	const { data: stream, error: streamError } = await getStreamForDevice(devices[0]);
 	if (!streamError) {
 		return Ok(stream);
 	} else {
@@ -251,8 +245,7 @@ const { data: mediaRecorder, error: recorderError } = trySync({
 		recorder.start(TIMESLICE_MS);
 		return recorder;
 	},
-	catch: (error) =>
-		RecorderError.InitFailed({ cause: error }),
+	catch: (error) => RecorderError.InitFailed({ cause: error })
 });
 ```
 
@@ -262,18 +255,16 @@ const { data: mediaRecorder, error: recorderError } = trySync({
 
 ```typescript
 // From device-stream.ts — cause: error at call site, extractErrorMessage in constructor
-async function getStreamForDeviceIdentifier(
-	deviceIdentifier: DeviceIdentifier,
-) {
+async function getStreamForDeviceIdentifier(deviceIdentifier: DeviceIdentifier) {
 	return tryAsync({
 		try: async () => {
 			const stream = await navigator.mediaDevices.getUserMedia({
-				audio: { ...constraints, deviceId: { exact: deviceIdentifier } },
+				audio: { ...constraints, deviceId: { exact: deviceIdentifier } }
 			});
 			return stream;
 		},
 		catch: (error) =>
-			DeviceStreamError.DeviceConnectionFailed({ deviceId: deviceIdentifier, cause: error }),
+			DeviceStreamError.DeviceConnectionFailed({ deviceId: deviceIdentifier, cause: error })
 	});
 }
 ```
@@ -344,9 +335,9 @@ async ({ body, headers, status }) => {
 			chat({
 				adapter,
 				messages,
-				abortController,
+				abortController
 			}),
-		catch: (e) => Err(e instanceof Error ? e : new Error(String(e))),
+		catch: (e) => Err(e instanceof Error ? e : new Error(String(e)))
 	});
 
 	if (chatError) {
@@ -391,7 +382,7 @@ After (trySync with early return):
 ```typescript
 const { data: result, error } = trySync({
 	try: () => riskyCall(),
-	catch: (e) => Err(e instanceof Error ? e : new Error(String(e))),
+	catch: (e) => Err(e instanceof Error ? e : new Error(String(e)))
 });
 
 if (error) return status(500, error.message);

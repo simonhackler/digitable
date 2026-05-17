@@ -7,10 +7,10 @@ description: Define typed, serializable error variants with defineErrors from we
 
 ```typescript
 import {
-  defineErrors,
-  extractErrorMessage,
-  type InferErrors,
-  type InferError,
+	defineErrors,
+	extractErrorMessage,
+	type InferErrors,
+	type InferError
 } from 'wellcrafted/error';
 ```
 
@@ -34,9 +34,9 @@ See also: `result-types` skill for `trySync`/`tryAsync` wrapping patterns.
 
 ```typescript
 const UserError = defineErrors({
-  AlreadyExists: () => ({
-    message: 'A user with this email already exists',
-  }),
+	AlreadyExists: () => ({
+		message: 'A user with this email already exists'
+	})
 });
 type UserError = InferErrors<typeof UserError>;
 
@@ -48,11 +48,11 @@ return UserError.AlreadyExists();
 
 ```typescript
 const DbError = defineErrors({
-  NotFound: ({ table, id }: { table: string; id: string }) => ({
-    message: `${table} '${id}' not found`,
-    table,
-    id,
-  }),
+	NotFound: ({ table, id }: { table: string; id: string }) => ({
+		message: `${table} '${id}' not found`,
+		table,
+		id
+	})
 });
 type DbError = InferErrors<typeof DbError>;
 
@@ -90,21 +90,21 @@ catch: (error) => FileError.ReadFailed({ path: '/tmp/config.json', cause: error 
 
 ```typescript
 const HttpError = defineErrors({
-  Connection: ({ url, cause }: { url: string; cause: unknown }) => ({
-    message: `Failed to connect to ${url}: ${extractErrorMessage(cause)}`,
-    url,
-    cause,
-  }),
-  Timeout: ({ url, ms }: { url: string; ms: number }) => ({
-    message: `Request to ${url} timed out after ${ms}ms`,
-    url,
-    ms,
-  }),
-  Response: ({ status, body }: { status: number; body: unknown }) => ({
-    message: `HTTP ${status}: ${extractErrorMessage(body)}`,
-    status,
-    body,
-  }),
+	Connection: ({ url, cause }: { url: string; cause: unknown }) => ({
+		message: `Failed to connect to ${url}: ${extractErrorMessage(cause)}`,
+		url,
+		cause
+	}),
+	Timeout: ({ url, ms }: { url: string; ms: number }) => ({
+		message: `Request to ${url} timed out after ${ms}ms`,
+		url,
+		ms
+	}),
+	Response: ({ status, body }: { status: number; body: unknown }) => ({
+		message: `HTTP ${status}: ${extractErrorMessage(body)}`,
+		status,
+		body
+	})
 });
 type HttpError = InferErrors<typeof HttpError>;
 // HttpError is automatically the union of all three variants
@@ -120,26 +120,26 @@ Each layer defines its own error vocabulary. Inner errors become `cause` fields 
 ```typescript
 // Low-level: HTTP errors
 const HttpError = defineErrors({
-  Connection: ({ url, cause }: { url: string; cause: unknown }) => ({
-    message: `Failed to connect to ${url}: ${extractErrorMessage(cause)}`,
-    url,
-    cause,
-  }),
+	Connection: ({ url, cause }: { url: string; cause: unknown }) => ({
+		message: `Failed to connect to ${url}: ${extractErrorMessage(cause)}`,
+		url,
+		cause
+	})
 });
 
 // High-level: domain errors wrap HTTP errors via cause
 const UserError = defineErrors({
-  FetchFailed: ({ userId, cause }: { userId: string; cause: unknown }) => ({
-    message: `Failed to fetch user ${userId}: ${extractErrorMessage(cause)}`,
-    userId,
-    cause,
-  }),
+	FetchFailed: ({ userId, cause }: { userId: string; cause: unknown }) => ({
+		message: `Failed to fetch user ${userId}: ${extractErrorMessage(cause)}`,
+		userId,
+		cause
+	})
 });
 
 // The HTTP error becomes cause in the domain error
 const { data, error } = await tryAsync({
-  try: () => fetch(`/api/users/${userId}`),
-  catch: (cause) => UserError.FetchFailed({ userId, cause }),
+	try: () => fetch(`/api/users/${userId}`),
+	catch: (cause) => UserError.FetchFailed({ userId, cause })
 });
 ```
 
@@ -166,8 +166,8 @@ const TimeoutError = defineErrors({ Timeout: () => ({ message: 'Timed out' }) })
 
 // CORRECT — all variants for a domain in one call
 const HttpError = defineErrors({
-  NotFound: () => ({ message: 'Not found' }),
-  Timeout: () => ({ message: 'Timed out' }),
+	NotFound: () => ({ message: 'Not found' }),
+	Timeout: () => ({ message: 'Timed out' })
 });
 ```
 
@@ -186,19 +186,19 @@ catch: (error) => MyError.Failed({ cause: error });
 ```typescript
 // WRONG — "Service" says nothing about the failure mode
 const UserError = defineErrors({
-  Service: ({ message }: { message: string }) => ({ message }),
+	Service: ({ message }: { message: string }) => ({ message })
 });
 
 // CORRECT — name each variant by what actually went wrong
 const UserError = defineErrors({
-  AlreadyExists: ({ email }: { email: string }) => ({
-    message: `User ${email} already exists`,
-    email,
-  }),
-  CreateFailed: ({ cause }: { cause: unknown }) => ({
-    message: `Failed to create user: ${extractErrorMessage(cause)}`,
-    cause,
-  }),
+	AlreadyExists: ({ email }: { email: string }) => ({
+		message: `User ${email} already exists`,
+		email
+	}),
+	CreateFailed: ({ cause }: { cause: unknown }) => ({
+		message: `Failed to create user: ${extractErrorMessage(cause)}`,
+		cause
+	})
 });
 ```
 
@@ -207,23 +207,23 @@ const UserError = defineErrors({
 ```typescript
 // WRONG — one variant with an operation string hides failure modes
 const DbError = defineErrors({
-  Failed: ({ operation, cause }: { operation: string; cause: unknown }) => ({
-    message: `Failed to ${operation}: ${extractErrorMessage(cause)}`,
-    operation,
-    cause,
-  }),
+	Failed: ({ operation, cause }: { operation: string; cause: unknown }) => ({
+		message: `Failed to ${operation}: ${extractErrorMessage(cause)}`,
+		operation,
+		cause
+	})
 });
 
 // CORRECT — each operation is its own variant
 const DbError = defineErrors({
-  QueryFailed: ({ cause }: { cause: unknown }) => ({
-    message: `Query failed: ${extractErrorMessage(cause)}`,
-    cause,
-  }),
-  InsertFailed: ({ cause }: { cause: unknown }) => ({
-    message: `Insert failed: ${extractErrorMessage(cause)}`,
-    cause,
-  }),
+	QueryFailed: ({ cause }: { cause: unknown }) => ({
+		message: `Query failed: ${extractErrorMessage(cause)}`,
+		cause
+	}),
+	InsertFailed: ({ cause }: { cause: unknown }) => ({
+		message: `Insert failed: ${extractErrorMessage(cause)}`,
+		cause
+	})
 });
 ```
 
@@ -232,27 +232,24 @@ const DbError = defineErrors({
 ```typescript
 // WRONG — reason field creates a sub-discriminant, forces double narrowing
 const FormError = defineErrors({
-  Invalid: (input: {
-    reason: 'bad_email' | 'weak_password' | 'mismatch';
-    value?: string;
-  }) => ({
-    message: { bad_email: `Invalid email: '${input.value}'`, /* ... */ }[input.reason],
-    ...input,
-  }),
+	Invalid: (input: { reason: 'bad_email' | 'weak_password' | 'mismatch'; value?: string }) => ({
+		message: { bad_email: `Invalid email: '${input.value}'` /* ... */ }[input.reason],
+		...input
+	})
 });
 
 // CORRECT — each failure is its own variant with honest types
 const FormError = defineErrors({
-  InvalidEmail: ({ value }: { value: string }) => ({
-    message: `Invalid email: '${value}'`,
-    value,
-  }),
-  WeakPassword: () => ({
-    message: 'Password must be at least 8 characters',
-  }),
-  PasswordMismatch: () => ({
-    message: 'Passwords do not match',
-  }),
+	InvalidEmail: ({ value }: { value: string }) => ({
+		message: `Invalid email: '${value}'`,
+		value
+	}),
+	WeakPassword: () => ({
+		message: 'Password must be at least 8 characters'
+	}),
+	PasswordMismatch: () => ({
+		message: 'Passwords do not match'
+	})
 });
 ```
 

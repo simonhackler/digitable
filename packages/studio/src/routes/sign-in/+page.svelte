@@ -194,12 +194,7 @@
 					</p>
 				{/if}
 
-				<Button
-					class="mt-6 w-full justify-center"
-					type="submit"
-					size="lg"
-					disabled={isSubmitting}
-				>
+				<Button class="mt-6 w-full justify-center" type="submit" size="lg" disabled={isSubmitting}>
 					{isSubmitting ? 'Signing in...' : 'Sign in'}
 				</Button>
 			</form>

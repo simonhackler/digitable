@@ -130,7 +130,9 @@
 		}
 
 		playtests = registry.data.playtests;
-		await Promise.all(registry.data.playtests.map((playtest) => loadFeedbackFor(playtest.playtestId)));
+		await Promise.all(
+			registry.data.playtests.map((playtest) => loadFeedbackFor(playtest.playtestId))
+		);
 		await importFeedback();
 	}
 
@@ -269,11 +271,7 @@
 									<Clipboard class="mr-2 h-4 w-4" />
 									Copy
 								</Button>
-								<Button
-									variant="outline"
-									size="sm"
-									href={`/playtests/${playtest.playtestId}`}
-								>
+								<Button variant="outline" size="sm" href={`/playtests/${playtest.playtestId}`}>
 									<ExternalLink class="mr-2 h-4 w-4" />
 									Open
 								</Button>
@@ -289,7 +287,8 @@
 						<div class="flex items-center justify-between gap-3">
 							<h2 class="text-base font-medium">Feedback</h2>
 							<p class="text-muted-foreground text-sm">
-								{feedback.length} {feedback.length === 1 ? 'note' : 'notes'}
+								{feedback.length}
+								{feedback.length === 1 ? 'note' : 'notes'}
 							</p>
 						</div>
 
@@ -303,7 +302,9 @@
 							<div class="space-y-3">
 								{#each feedback as note (note.id)}
 									<article class="border-border rounded-md border p-4">
-										<div class="mb-3 flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+										<div
+											class="mb-3 flex flex-col gap-1 md:flex-row md:items-start md:justify-between"
+										>
 											<div>
 												<h3 class="font-medium">{note.title}</h3>
 												<p class="text-muted-foreground text-sm">
@@ -314,7 +315,8 @@
 												{formatDate(note.submittedAt)}
 											</time>
 										</div>
-										<pre class="bg-muted whitespace-pre-wrap rounded-md p-3 text-sm">{visibleMarkdown(
+										<pre
+											class="bg-muted rounded-md p-3 text-sm whitespace-pre-wrap">{visibleMarkdown(
 												note.markdown
 											)}</pre>
 									</article>
