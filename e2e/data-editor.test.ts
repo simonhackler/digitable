@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { opfsEntryExists, readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
+import {
+	opfsEntryExists,
+	readOpfsText,
+	seedProjectFiles,
+	seedProjects,
+	useBrowserStorage,
+	writeOpfsText
+} from './helpers/opfs';
 
 async function openWesternDataEditor(page: Page) {
 	await seedProjects(page);
@@ -61,6 +68,24 @@ async function seedProjectImageColumn(page: Page) {
 	await expect.poll(() => spreadsheetHeaders(page)).toContain('portrait');
 }
 
+async function removeOpfsFile(page: Page, sourcePath: string) {
+	await page.evaluate(async (sourcePath) => {
+		const storage = navigator.storage as StorageManager & {
+			getDirectory: () => Promise<FileSystemDirectoryHandle>;
+		};
+		const root = await storage.getDirectory();
+		const parts = sourcePath.replace(/^\/+/, '').split('/').filter(Boolean);
+		const fileName = parts.pop();
+		if (!fileName) return;
+
+		let dir = root;
+		for (const part of parts) {
+			dir = await dir.getDirectoryHandle(part);
+		}
+		await dir.removeEntry(fileName).catch(() => {});
+	}, sourcePath);
+}
+
 test('insert rows in spreadsheet editor', async ({ page }) => {
 	await openWesternDataEditor(page);
 	await page.locator('tbody > tr > td:nth-child(8)').first().dblclick();
@@ -80,6 +105,24 @@ test('insert rows in spreadsheet editor', async ({ page }) => {
 test('go to spreadsheet editor', async ({ page }) => {
 	await seedProjects(page);
 	await expect(page.locator('h1')).toBeVisible();
+});
+
+test('generated fallback spreadsheet data is saved to csv', async ({ page }) => {
+	await page.goto('/app/games');
+	await seedProjectFiles(page, 'map');
+	await useBrowserStorage(page);
+	await removeOpfsFile(page, '/map/system/map/data.csv');
+	await expect(await opfsEntryExists(page, '/map/system/map/data.csv')).toBe(false);
+
+	await page.goto('/app/games/map/decks/map/data');
+	await expect(page).toHaveURL(/\/app\/games\/map\/decks\/map\/data/);
+	await expect.poll(() => spreadsheetHeaders(page)).toContain('text56');
+	await expect(page.getByText('Saved')).toBeVisible();
+
+	await expect.poll(() => opfsEntryExists(page, '/map/system/map/data.csv')).toBe(true);
+	const csv = await readOpfsText(page, '/map/system/map/data.csv');
+	expect(csv).toContain('id');
+	expect(csv).toContain('text56');
 });
 
 test('spreadsheet editor toolbar opens layout editor', async ({ page }) => {

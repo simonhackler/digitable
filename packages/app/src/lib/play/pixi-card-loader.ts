@@ -10,6 +10,27 @@ const serializer = new XMLSerializer();
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
+function parseSvgLength(value: string | null) {
+	const parsed = Number.parseFloat(value ?? '');
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function addWhiteBackground(svg: SVGSVGElement): SVGSVGElement {
+	const viewBox = svg.viewBox.baseVal;
+	const x = viewBox.width > 0 ? viewBox.x : 0;
+	const y = viewBox.height > 0 ? viewBox.y : 0;
+	const width = viewBox.width || parseSvgLength(svg.getAttribute('width')) || 1;
+	const height = viewBox.height || parseSvgLength(svg.getAttribute('height')) || 1;
+	const rect = document.createElementNS(SVG_NS, 'rect');
+	rect.setAttribute('x', String(x));
+	rect.setAttribute('y', String(y));
+	rect.setAttribute('width', String(width));
+	rect.setAttribute('height', String(height));
+	rect.setAttribute('fill', '#ffffff');
+	svg.insertBefore(rect, svg.firstChild);
+	return svg;
+}
+
 function createImagesOnlySvg(sourceSvg: SVGSVGElement): SVGSVGElement {
 	const newSvg = document.createElementNS(SVG_NS, 'svg');
 
@@ -78,7 +99,11 @@ export async function createHybridContainer(
 ) {
 	const imagesOnlySvg = createImagesOnlySvg(svg);
 	const strippedSvg = stripImagesFromSvg(svg);
-	const svgTexture = await svgToTexture(strippedSvg, textureCache);
+	const hasImageLayer = imagesOnlySvg.querySelector('image') !== null;
+	const svgTexture = await svgToTexture(
+		hasImageLayer ? strippedSvg : addWhiteBackground(strippedSvg),
+		textureCache
+	);
 	const svgSprite = new Sprite({
 		texture: svgTexture,
 		layout: {
@@ -89,11 +114,11 @@ export async function createHybridContainer(
 		}
 	});
 
-	if (imagesOnlySvg.querySelector('image') === null) {
+	if (!hasImageLayer) {
 		return svgSprite;
 	}
 
-	const imageTexture = await svgToTexture(imagesOnlySvg, textureCache);
+	const imageTexture = await svgToTexture(addWhiteBackground(imagesOnlySvg), textureCache);
 	const imageBackground = new Sprite(imageTexture);
 	const container = new LayoutContainer({
 		layout: {
