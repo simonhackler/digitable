@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
+import { opfsEntryExists, readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
 
 async function openWesternDataEditor(page: Page) {
 	await seedProjects(page);
@@ -125,4 +125,89 @@ test('creating decks resets the form and accepts decimal comma dimensions', asyn
 	expect(firstFront).toContain('viewBox="0 0 55.9 87.1"');
 	const secondFront = await readOpfsText(page, '/western-cards/system/comma_two/front.svg');
 	expect(secondFront).toContain('viewBox="0 0 41 63"');
+});
+
+test('creates a pre-made French playing card deck', async ({ page }) => {
+	await seedProjects(page);
+	await page.getByRole('main').getByText('western-cards').click();
+	await page.getByRole('button', { name: 'Decks' }).click();
+	await page.locator('[data-sidebar="menu-sub-button"]').filter({ hasText: 'New' }).click();
+
+	await page.getByRole('button', { name: 'Blank deck' }).click();
+	await page.getByRole('option', { name: 'Pre-made deck' }).click();
+	await page.getByPlaceholder('deck name').fill('french_builtin');
+	await page.getByRole('button', { name: 'Create new deck' }).click();
+
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/french_builtin\/data/);
+	await expect(page.getByRole('link', { name: 'french_builtin', exact: true })).toBeVisible();
+
+	await expect
+		.poll(() => opfsEntryExists(page, '/western-cards/system/french_builtin/front.svg'))
+		.toBe(true);
+	await expect
+		.poll(() =>
+			opfsEntryExists(
+				page,
+				'/western-cards/files/premade-decks/french-playing-cards/ace_of_spades.png'
+			)
+		)
+		.toBe(true);
+
+	const data = await readOpfsText(page, '/western-cards/system/french_builtin/data.csv');
+	expect(data).toContain('card_face');
+	expect(data).toContain('ace_of_spades.png');
+	expect(data.split('\n')).toHaveLength(55);
+	await expect(page.locator('main svg image').first()).toBeVisible();
+});
+
+test('creates a generated number and color deck', async ({ page }) => {
+	await seedProjects(page);
+	await page.getByRole('main').getByText('western-cards').click();
+	await page.getByRole('button', { name: 'Decks' }).click();
+	await page.locator('[data-sidebar="menu-sub-button"]').filter({ hasText: 'New' }).click();
+
+	await page.getByRole('button', { name: 'Blank deck' }).click();
+	await page.getByRole('option', { name: 'Pre-made deck' }).click();
+	await page.getByRole('button', { name: 'French playing cards' }).click();
+	await page.getByRole('option', { name: 'Number and color deck' }).click();
+	await page.getByPlaceholder('deck name').fill('numbers_builtin');
+	await page.getByRole('button', { name: 'Create new deck' }).click();
+
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/numbers_builtin\/data/);
+	await expect
+		.poll(() => opfsEntryExists(page, '/western-cards/files/premade-decks/number-color/red_1.svg'))
+		.toBe(true);
+
+	const data = await readOpfsText(page, '/western-cards/system/numbers_builtin/data.csv');
+	expect(data).toContain('Red 1');
+	expect(data).toContain('Yellow 13');
+	expect(data.split('\n')).toHaveLength(53);
+	await expect(page.locator('main svg image').first()).toBeVisible();
+});
+
+test('creates a pre-made French Tarot deck', async ({ page }) => {
+	await seedProjects(page);
+	await page.getByRole('main').getByText('western-cards').click();
+	await page.getByRole('button', { name: 'Decks' }).click();
+	await page.locator('[data-sidebar="menu-sub-button"]').filter({ hasText: 'New' }).click();
+
+	await page.getByRole('button', { name: 'Blank deck' }).click();
+	await page.getByRole('option', { name: 'Pre-made deck' }).click();
+	await page.getByRole('button', { name: 'French playing cards' }).click();
+	await page.getByRole('option', { name: 'French Tarot' }).click();
+	await page.getByPlaceholder('deck name').fill('tarot_builtin');
+	await page.getByRole('button', { name: 'Create new deck' }).click();
+
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/tarot_builtin\/data/);
+	await expect
+		.poll(() =>
+			opfsEntryExists(page, '/western-cards/files/premade-decks/french-tarot/tarot_trump_21.svg')
+		)
+		.toBe(true);
+
+	const data = await readOpfsText(page, '/western-cards/system/tarot_builtin/data.csv');
+	expect(data).toContain('tarot_group');
+	expect(data).toContain('tarot_fool.svg');
+	expect(data.split('\n')).toHaveLength(79);
+	await expect(page.locator('main svg image').first()).toBeVisible();
 });
