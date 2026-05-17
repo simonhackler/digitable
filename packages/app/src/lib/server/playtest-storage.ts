@@ -68,26 +68,30 @@ export function validateS3AccessKeyId(accessKeyId: string | undefined): void {
 }
 
 function getEndpoint() {
-	if (!env.S3_ENDPOINT) {
+	const s3Endpoint = env.S3_ENDPOINT;
+	const minioPort = env.MINIO_PORT;
+	const minioConsolePort = env.MINIO_CONSOLE_PORT;
+
+	if (!s3Endpoint) {
 		return env.MINIO_PORT ? `http://127.0.0.1:${env.MINIO_PORT}` : undefined;
 	}
 
-	if (env.MINIO_PORT && env.MINIO_CONSOLE_PORT) {
+	if (minioPort && minioConsolePort) {
 		const { data: endpoint } = trySync({
 			try: () => {
-				const url = new URL(env.S3_ENDPOINT);
-				if (url.hostname === '127.0.0.1' && url.port === env.MINIO_CONSOLE_PORT) {
-					url.port = env.MINIO_PORT;
+				const url = new URL(s3Endpoint);
+				if (url.hostname === '127.0.0.1' && url.port === minioConsolePort) {
+					url.port = minioPort;
 					return url.toString();
 				}
-				return env.S3_ENDPOINT;
+				return s3Endpoint;
 			},
-			catch: () => Ok(env.S3_ENDPOINT)
+			catch: () => Ok(s3Endpoint)
 		});
 		return endpoint;
 	}
 
-	return env.S3_ENDPOINT;
+	return s3Endpoint;
 }
 
 function getS3Config() {
