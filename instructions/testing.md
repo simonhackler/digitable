@@ -6,6 +6,7 @@ Tests should NEVER test visual changes, e.g asserting a position or something li
 Use the data-editor.test.ts as a guidline for how to write test files.
 Focus on writing tests that test the outcome of the action. E.g when creating something new make sure it now shows up in the overview.
 Write simple and straightforward test code.
+NEVER write a test to assert that you just removed something.
 When writing tests use an iterative red-green testing approach. That means the test should first fail and then pass.
 So you should ALWAYS run the test make it fail, update the test code, then run the test again to make it pass.
 Keep building up the test in this fail/pass loop until the final test is implemented.

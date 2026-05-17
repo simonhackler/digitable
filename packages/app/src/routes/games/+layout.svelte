@@ -6,6 +6,7 @@
 	import type { Game } from './types';
 	import { setFileSystemContext, setGamesContext } from './context';
 	import { generateAgentFiles } from '$lib/utils/agent-generator.js';
+	import { isPlaytestImportFolderName } from '$lib/playtests/project-transfer';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
@@ -21,6 +22,7 @@
 		const games: Game[] = [];
 		for (const entry of root.data) {
 			if (entry.kind !== 'directory') continue;
+			if (isPlaytestImportFolderName(entry.name)) continue;
 
 			const projectPath = entry.name;
 			const projectDir = await fileSystem.openDir(projectPath);

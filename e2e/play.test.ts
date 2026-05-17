@@ -55,17 +55,94 @@ async function drawStrokeOnItem(page: Page, id: string) {
 	await page.getByRole('button', { name: 'Select tool' }).click();
 }
 
+async function readFeedbackMarkdownFiles(page: Page, projectSlug: string) {
+	return page.evaluate(async (projectSlug) => {
+		const storage = navigator.storage as StorageManager & {
+			getDirectory: () => Promise<FileSystemDirectoryHandle>;
+		};
+		const root = await storage.getDirectory();
+
+		try {
+			let dir = await root.getDirectoryHandle(projectSlug);
+			dir = await dir.getDirectoryHandle('feedback');
+			const files: string[] = [];
+
+			async function collectMarkdown(directory: FileSystemDirectoryHandle) {
+				for await (const [name, handle] of directory.entries()) {
+					if (handle.kind === 'directory') {
+						await collectMarkdown(handle);
+					} else if (name.endsWith('.md')) {
+						const file = await handle.getFile();
+						files.push(await file.text());
+					}
+				}
+			}
+
+			await collectMarkdown(dir);
+			return files;
+		} catch {
+			return [];
+		}
+	}, projectSlug);
+}
+
+async function readFeedbackMarkdownFilePaths(page: Page, projectSlug: string) {
+	return page.evaluate(async (projectSlug) => {
+		const storage = navigator.storage as StorageManager & {
+			getDirectory: () => Promise<FileSystemDirectoryHandle>;
+		};
+		const root = await storage.getDirectory();
+
+		try {
+			let dir = await root.getDirectoryHandle(projectSlug);
+			dir = await dir.getDirectoryHandle('feedback');
+			const paths: string[] = [];
+
+			async function collectMarkdown(directory: FileSystemDirectoryHandle, currentPath = '') {
+				for await (const [name, handle] of directory.entries()) {
+					const nextPath = currentPath ? `${currentPath}/${name}` : name;
+					if (handle.kind === 'directory') {
+						await collectMarkdown(handle, nextPath);
+					} else if (name.endsWith('.md')) {
+						paths.push(nextPath);
+					}
+				}
+			}
+
+			await collectMarkdown(dir);
+			return paths;
+		} catch {
+			return [];
+		}
+	}, projectSlug);
+}
+
 async function signUp(page: Page) {
 	const email = `playtest-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
 
-	await page.goto('/sign-up', { waitUntil: 'networkidle' });
+	await page.goto(appPath('/sign-up'), { waitUntil: 'networkidle' });
 	await page.getByLabel('Name').fill('Playtest E2E');
 	await page.getByLabel('Email').fill(email);
 	await page.getByLabel('Password', { exact: true }).fill('correct-horse-battery-staple');
 	await page.getByLabel('Confirm password').fill('correct-horse-battery-staple');
 	await page.getByRole('checkbox').check();
 	await page.getByRole('button', { name: 'Create account' }).click();
-	await expect(page).toHaveURL(/\/app\/games$/);
+	await expect(page).toHaveURL(/\/app\/games$/, { timeout: 20_000 });
+}
+
+async function startPlaytestAndGetInvite(page: Page, projectSlug: string) {
+	await page.goto(appPath(`/games/${projectSlug}`));
+	await page.getByRole('link', { name: 'Playtests' }).click();
+	await expect(page).toHaveURL(new RegExp(`/app/games/${projectSlug}/playtests`));
+	await expect(page.getByRole('heading', { name: 'Playtests' })).toBeVisible();
+	await page.getByRole('button', { name: 'Start playtest' }).click();
+	const inviteInput = page.getByLabel('Playtest invite link');
+	await expect(inviteInput).toHaveValue(/\/app\/playtests\/[0-9a-f-]+/);
+	await expect(page.getByRole('link', { name: 'Open' }).first()).toHaveAttribute(
+		'href',
+		/\/app\/playtests\/[0-9a-f-]+$/
+	);
+	return inviteInput.inputValue();
 }
 
 test('card strokes are synced to the card and can be deleted', async ({ page }) => {
@@ -400,15 +477,16 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	await useBrowserStorage(page);
 	await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
 
-	await page.getByRole('button', { name: 'Playtest' }).click();
-	const inviteInput = page.getByLabel('Playtest invite link');
-	await expect(inviteInput).toHaveValue(/\/app\/playtests\/[0-9a-f-]+/);
-	const inviteUrl = await inviteInput.inputValue();
+	const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
+	await page.evaluate(() => localStorage.setItem('storage-preference', 'directory'));
 	await page.goto(`${inviteUrl}?e2e=1`);
 	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
 	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
 	await waitForPixi(page);
+	await expect
+		.poll(() => page.evaluate(() => localStorage.getItem('storage-preference')))
+		.toBe('directory');
 
 	let firstStackId: string | null = null;
 	await expect
@@ -462,6 +540,10 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 			playedCardIsVisible: true,
 			handCardIds: []
 		});
+
+	await page.goto(appPath('/games'));
+	await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+	await expect(page.getByRole('main').getByText(/-playtest-[0-9a-f]{8}/)).toHaveCount(0);
 });
 
 test('playtest invitees share private room state', async ({ page, browser }) => {
@@ -478,10 +560,7 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 		await useBrowserStorage(page);
 		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
 
-		await page.getByRole('button', { name: 'Playtest' }).click();
-		const inviteInput = page.getByLabel('Playtest invite link');
-		await expect(inviteInput).toHaveValue(/\/app\/playtests\/[0-9a-f-]+/);
-		const inviteUrl = await inviteInput.inputValue();
+		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
 		await page.goto(`${inviteUrl}?e2e=1`);
 		await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
@@ -540,6 +619,96 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 				playedCardIsVisible: true,
 				handCardIds: []
 			});
+	} finally {
+		await secondContext.close();
+	}
+});
+
+test('playtest invitee notes are imported into the creator game feedback folder', async ({
+	page,
+	browser
+}) => {
+	test.setTimeout(120_000);
+	const secondContext = await browser.newContext({
+		baseURL: test.info().project.use.baseURL as string | undefined
+	});
+	const secondPage = await secondContext.newPage();
+
+	try {
+		await signUp(page);
+		await page.goto(appPath('/games'));
+		await seedProjectFiles(page, 'pixi-play-smoke');
+		await useBrowserStorage(page);
+		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+
+		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
+
+		await signUp(secondPage);
+		await secondPage.goto(`${inviteUrl}?e2e=1`);
+		await expect(secondPage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+		await waitForPixi(secondPage);
+
+		await secondPage.getByRole('button', { name: 'Playtest notes' }).click();
+		await secondPage
+			.getByRole('textbox', { name: 'Playtest note' })
+			.fill('This worked well.\n<script>alert("xss")</script>');
+		await secondPage.keyboard.press('Escape');
+		await expect(
+			secondPage.getByRole('button', { name: 'Playtest notes with unsent changes' })
+		).toBeVisible();
+		await secondPage.getByRole('button', { name: 'Playtest notes with unsent changes' }).click();
+		await expect(secondPage.getByRole('textbox', { name: 'Playtest note' })).toContainText(
+			'This worked well.'
+		);
+		await secondPage.getByRole('button', { name: 'Submit note' }).click();
+		await expect(secondPage.getByText('Submitted')).toBeVisible();
+		await secondPage.keyboard.press('Escape');
+		await expect(secondPage.getByRole('button', { name: 'Playtest notes' })).toBeVisible();
+
+		await page.goto(appPath('/games/pixi-play-smoke'));
+		await expect
+			.poll(async () => readFeedbackMarkdownFiles(page, 'pixi-play-smoke'), { timeout: 5_000 })
+			.toEqual([]);
+
+		await page.goto(appPath('/games/pixi-play-smoke/playtests'));
+		await expect(page.getByText('Playtest note')).toBeVisible({ timeout: 20_000 });
+		await expect(page.getByText('This worked well.')).toBeVisible();
+		await expect(page.getByText('Imported 1 feedback note')).toBeVisible({ timeout: 20_000 });
+		await expect(page.getByRole('button', { name: 'Refresh feedback' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Import new feedback' })).toHaveCount(0);
+		await expect
+			.poll(async () => readFeedbackMarkdownFilePaths(page, 'pixi-play-smoke'))
+			.toContainEqual(
+				expect.stringMatching(
+					/^playtest-session-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}\//
+				)
+			);
+
+		await expect
+			.poll(
+				async () =>
+					(await readFeedbackMarkdownFiles(page, 'pixi-play-smoke')).find((note) =>
+						note.includes('This worked well.')
+					) ?? '',
+				{ timeout: 20_000 }
+			)
+			.toContain('This worked well.\n&lt;script&gt;alert("xss")&lt;/script&gt;');
+		await expect
+			.poll(
+				async () =>
+					(await readFeedbackMarkdownFiles(page, 'pixi-play-smoke')).find((note) =>
+						note.includes('This worked well.')
+					) ?? ''
+			)
+			.not.toContain('@example.com');
+		await expect
+			.poll(
+				async () =>
+					(await readFeedbackMarkdownFiles(page, 'pixi-play-smoke')).find((note) =>
+						note.includes('This worked well.')
+					) ?? ''
+			)
+			.not.toContain('authorEmail');
 	} finally {
 		await secondContext.close();
 	}
