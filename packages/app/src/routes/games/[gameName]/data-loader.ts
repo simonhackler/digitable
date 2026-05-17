@@ -149,7 +149,8 @@ export async function loadSpreadsheetData(
 
 		return {
 			cols: newCols,
-			data
+			data,
+			generatedFromTemplates: false
 		};
 	} else {
 		return {
@@ -168,7 +169,8 @@ export async function loadSpreadsheetData(
 					crypto.randomUUID(),
 					...Array.from(svgData.keys()).map((key) => svgData.get(key)?.data[0] || '')
 				]
-			]
+			],
+			generatedFromTemplates: true
 		};
 	}
 }

@@ -80,6 +80,7 @@
 	let selectionRects: SVGRectElement[] = [];
 	let saveStatus = $state<'saved' | 'saving' | 'error'>('saved');
 	let activeSavePromises = $state<Promise<void>[]>([]);
+	let savedGeneratedCsv = false;
 
 	function flip() {
 		deckSideIndex.flipSideIndex(sides.length);
@@ -338,6 +339,10 @@
 
 		// Store the spreadsheet instance globally for other functions to access
 		spreadsheet = instance;
+		if (spreadsheetData.generatedFromTemplates && !savedGeneratedCsv) {
+			savedGeneratedCsv = true;
+			void saveCsvAndTrack();
+		}
 
 		return () => {
 			if (instance) {

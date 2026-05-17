@@ -1,0 +1,7 @@
+{
+	"name": "Map",
+	"minPlayers": 1,
+	"maxPlayers": 4,
+	"description": "Single-card map project.",
+	"tags": ["Map"]
+}
