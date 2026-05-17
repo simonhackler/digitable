@@ -237,6 +237,71 @@
       '';
     };
 
+    runtimeBunDependencies = pkgs.stdenv.mkDerivation {
+      pname = "digitable-runtime-bun-dependencies";
+      version = "0.0.1";
+      src = dependencySource;
+
+      nativeBuildInputs = [
+        pkgs.bun
+        pkgs.nodejs
+        pkgs.python3
+      ];
+
+      dontConfigure = true;
+      dontBuild = true;
+      dontFixup = true;
+      outputHashAlgo = "sha256";
+      outputHashMode = "recursive";
+      outputHash = "sha256-fQ5RzeT1EwVLTQaeCBt/SiP1lQEW1G2UrcscpIrv6CA=";
+
+      installPhase = ''
+        runHook preInstall
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+
+        node <<'EOF'
+        const fs = require("node:fs");
+        const manifests = [
+          "package.json",
+          "packages/app/package.json",
+          "packages/auth/package.json",
+          "packages/db/package.json",
+          "packages/game-server/package.json",
+          "packages/studio/package.json",
+          "packages/svgeditor/package.json",
+          "svgedit/packages/svgcanvas/package.json",
+          "vendor/svelte-lexical/packages/svelte-lexical/package.json",
+        ];
+
+        for (const manifest of manifests) {
+          const packageJson = JSON.parse(fs.readFileSync(manifest, "utf8"));
+          delete packageJson.devDependencies;
+          fs.writeFileSync(manifest, JSON.stringify(packageJson, null, 2) + "\n");
+        }
+        EOF
+
+        bun install --ignore-scripts --cpu=x64 --os=linux --no-save
+        rm -f node_modules/studio node_modules/boardgame-server
+        rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
+        rm -f node_modules/@svg-table/svgeditor
+        rm -f node_modules/@svgedit/svgcanvas
+        find node_modules -xtype l -delete
+
+        mkdir -p "$out"
+        cp -a node_modules "$out/node_modules"
+        for packageDir in ${lib.escapeShellArgs workspacePackageDirs}; do
+          if [ -d "$packageDir/node_modules" ]; then
+            mkdir -p "$out/$packageDir"
+            cp -a "$packageDir/node_modules" "$out/$packageDir/node_modules"
+          fi
+        done
+
+        runHook postInstall
+      '';
+    };
+
     setupNodeModules = {
       packageNodeModuleDirs ? [],
       linkRootWorkspaces ? true,
@@ -341,7 +406,10 @@
         linkRootWorkspaces = false;
       }}
 
-        (cd vendor/svelte-lexical/packages/svelte-lexical && ./node_modules/.bin/svelte-kit sync && ./node_modules/.bin/svelte-package)
+        packageDir=vendor/svelte-lexical/packages/svelte-lexical
+        test -d "$packageDir/src/lib"
+        (cd "$packageDir" && node ./node_modules/.bin/svelte-kit sync)
+        (cd "$packageDir" && node ./node_modules/.bin/svelte-package --input src/lib --output dist --tsconfig tsconfig.json)
 
         runHook postBuild
       '';
@@ -512,6 +580,7 @@
 
       dontConfigure = true;
       dontBuild = true;
+      dontFixup = true;
 
       installPhase = ''
         runHook preInstall
@@ -539,8 +608,8 @@
         cp -r ${svgcanvasPackage}/svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas
         chmod -R u+w $out/svgedit/packages/svgcanvas
 
-        cp -a ${bunDependencies}/node_modules $out/node_modules
-        chmod -R u+w $out/node_modules
+        cp -as ${runtimeBunDependencies}/node_modules $out/node_modules
+        find $out/node_modules -type d -exec chmod u+w {} +
         rm -f $out/node_modules/studio $out/node_modules/boardgame-server
         rm -f $out/node_modules/@svg-table/app $out/node_modules/@svg-table/auth $out/node_modules/@svg-table/db
         rm -f $out/node_modules/@svg-table/svgeditor
@@ -556,13 +625,19 @@
         ln -s ../../svgedit/packages/svgcanvas $out/node_modules/@svgedit/svgcanvas
 
         for packageDir in ${lib.escapeShellArgs workspacePackageDirs}; do
-          if [ -d "${bunDependencies}/$packageDir/node_modules" ]; then
+          if [ -d "${runtimeBunDependencies}/$packageDir/node_modules" ]; then
             mkdir -p "$out/$packageDir"
-            cp -a "${bunDependencies}/$packageDir/node_modules" "$out/$packageDir/node_modules"
-            chmod -R u+w "$out/$packageDir/node_modules"
+            cp -as "${runtimeBunDependencies}/$packageDir/node_modules" "$out/$packageDir/node_modules"
+            find "$out/$packageDir/node_modules" -type d -exec chmod u+w {} +
           fi
         done
         rm -f $out/svgedit/node_modules/@svgedit/react-test
+
+        brokenSymlink="$(find "$out" -xtype l -print -quit)"
+        if [ -n "$brokenSymlink" ]; then
+          echo "ERROR: broken symlink in studio package: $brokenSymlink"
+          exit 1
+        fi
 
         runHook postInstall
       '';
