@@ -45,11 +45,12 @@ if (!hasExplicitPlaywrightBaseUrl && !hasDevenvPlaywrightEnv) {
 const baseURL = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
+	workers: 1,
 	use: {
 		baseURL
 	},
 	testDir: 'e2e',
-    workers: 1,
+	workers: 1,
 	projects: [
 		{
 			name: 'chromium',

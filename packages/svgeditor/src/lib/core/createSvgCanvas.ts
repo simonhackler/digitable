@@ -24,6 +24,18 @@ type SvgCanvasLike = SvgCanvasRawApi & {
 	};
 };
 
+type HistoryHandler = {
+	handleHistoryEvent?: (eventType: string, command: unknown) => void;
+};
+
+type HistoryCommand = {
+	apply: (handler?: HistoryHandler) => void;
+	elements: () => Element[];
+	getText: () => string;
+	type: () => string;
+	unapply: (handler?: HistoryHandler) => void;
+};
+
 type CreateSvgCanvasArgs = {
 	container: HTMLElement;
 	canvasContainer?: HTMLElement | null;
@@ -816,6 +828,154 @@ export const createSvgCanvas = ({
 		return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="${SVG_NS}" width="${escapeXmlAttribute(width)}" height="${escapeXmlAttribute(height)}" viewBox="${escapeXmlAttribute(viewBox)}"></svg>`;
 	};
 
+	const parsePositiveDimension = (value: string | null | undefined) => {
+		if (!value) return null;
+		const parsed = Number.parseFloat(value);
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+	};
+
+	const getSvgContentSize = () => {
+		const svgContent = canvas.getSvgContent?.();
+		const viewBox = svgContent?.getAttribute('viewBox');
+		if (viewBox) {
+			const parts = viewBox.split(/[ ,]+/).map((part) => Number(part));
+			const width = parts[2];
+			const height = parts[3];
+			if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+				return { width, height };
+			}
+		}
+
+		const width = parsePositiveDimension(svgContent?.getAttribute('width'));
+		const height = parsePositiveDimension(svgContent?.getAttribute('height'));
+		if (width && height) return { width, height };
+		return { width: 300, height: 150 };
+	};
+
+	const findImageInsertionParent = (root: Element) =>
+		root.querySelector(':scope > g.layer > g') ?? root.querySelector(':scope > g.layer') ?? root;
+
+	const setImageHref = (image: Element, href: string) => {
+		if (canvas.setHref) {
+			canvas.setHref(image, href);
+			return;
+		}
+		image.setAttribute('href', href);
+		image.setAttributeNS(XLINK_NS, 'xlink:href', href);
+	};
+
+	const removeAttribute = (element: Element, name: string) => {
+		if (name === 'xlink:href') {
+			element.removeAttributeNS(XLINK_NS, 'href');
+			element.removeAttribute('xlink:href');
+			return;
+		}
+		element.removeAttribute(name);
+	};
+
+	const setAttribute = (element: Element, name: string, value: string) => {
+		if (name === 'xlink:href') {
+			element.setAttributeNS(XLINK_NS, 'xlink:href', value);
+			return;
+		}
+		element.setAttribute(name, value);
+	};
+
+	const readAttributeSnapshot = (element: Element, names: string[]) => {
+		const snapshot: Record<string, string | null> = {};
+		for (const name of names) {
+			snapshot[name] =
+				name === 'xlink:href'
+					? (element.getAttributeNS(XLINK_NS, 'href') ?? element.getAttribute('xlink:href'))
+					: element.getAttribute(name);
+		}
+		return snapshot;
+	};
+
+	const applyAttributeSnapshot = (element: Element, snapshot: Record<string, string | null>) => {
+		for (const [name, value] of Object.entries(snapshot)) {
+			if (value === null) {
+				removeAttribute(element, name);
+			} else {
+				setAttribute(element, name, value);
+			}
+		}
+	};
+
+	const addCommandToHistory = (command: HistoryCommand) => {
+		canvas.undoMgr?.addCommandToHistory?.(command);
+	};
+
+	const selectElement = (element: Element) => {
+		if (canvas.selectOnly) {
+			canvas.selectOnly([element], true);
+		} else if (canvas.addToSelection) {
+			canvas.addToSelection([element], true);
+		}
+		selectionHandler();
+	};
+
+	const emitElementChanged = (element?: Element | null) => {
+		const fallback = canvas.getSvgContent?.();
+		const changedElement = element ?? fallback;
+		if (!changedElement) return;
+		canvas.call?.('changed', [changedElement]);
+		selectionHandler();
+	};
+
+	const applyAttributes = (element: Element, attributes?: Record<string, string>) => {
+		for (const [name, value] of Object.entries(attributes ?? {})) {
+			element.setAttribute(name, value);
+		}
+	};
+
+	const createImageElement = (
+		href: string,
+		opts?: { width?: number; height?: number; attributes?: Record<string, string> }
+	) => {
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgContent) return null;
+
+		const size = getSvgContentSize();
+		const shorterSide = Math.min(size.width, size.height);
+		const width = opts?.width ?? Math.max(1, Math.round(shorterSide * 0.35 * 100) / 100);
+		const height = opts?.height ?? width;
+		const x = Math.round(((size.width - width) / 2) * 100) / 100;
+		const y = Math.round(((size.height - height) / 2) * 100) / 100;
+		const id = canvas.getNextId?.() ?? `image_${Date.now().toString(36)}`;
+
+		if (canvas.addSVGElementsFromJson) {
+			const image = canvas.addSVGElementsFromJson({
+				element: 'image',
+				attr: {
+					id,
+					x,
+					y,
+					width,
+					height,
+					preserveAspectRatio: 'xMidYMid meet',
+					style: 'pointer-events:inherit'
+				}
+			});
+			setImageHref(image, href);
+			applyAttributes(image, opts?.attributes);
+			return image;
+		}
+
+		const image = svgContent.ownerDocument.createElementNS(SVG_NS, 'image');
+		image.setAttribute('id', id);
+		image.setAttribute('x', String(x));
+		image.setAttribute('y', String(y));
+		image.setAttribute('width', String(width));
+		image.setAttribute('height', String(height));
+		image.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+		image.setAttribute('style', 'pointer-events:inherit');
+		setImageHref(image, href);
+		applyAttributes(image, opts?.attributes);
+		findImageInsertionParent(svgContent).append(image);
+		return image;
+	};
+
 	const applySvgString = (
 		svg: string,
 		{ center = true, emitChange = false }: { center?: boolean; emitChange?: boolean } = {}
@@ -1229,6 +1389,47 @@ export const createSvgCanvas = ({
 		getElementById(id) {
 			return resolveElementById(id);
 		},
+		insertImage(href, opts) {
+			if (!href.trim()) return null;
+			const image = createImageElement(href, opts);
+			if (!image) return null;
+			const parent = image.parentNode;
+			const nextSibling = image.nextSibling;
+			const command = {
+				text: 'Insert Image',
+				getText() {
+					return this.text;
+				},
+				type() {
+					return 'InsertImageCommand';
+				},
+				elements() {
+					return [image];
+				},
+				apply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_apply', this);
+					if (parent && image.parentNode !== parent) {
+						parent.insertBefore(image, nextSibling);
+					}
+					selectElement(image);
+					emitElementChanged(image);
+					handler?.handleHistoryEvent?.('after_apply', this);
+				},
+				unapply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_unapply', this);
+					if (image.parentNode) {
+						image.parentNode.removeChild(image);
+					}
+					canvas.clearSelection?.(true);
+					emitElementChanged(parent instanceof Element ? parent : null);
+					handler?.handleHistoryEvent?.('after_unapply', this);
+				}
+			};
+			addCommandToHistory(command);
+			selectElement(image);
+			emitElementChanged(image);
+			return image.getAttribute('id');
+		},
 		selectElementById(id, opts) {
 			const element = resolveElementById(id);
 			if (!element) return;
@@ -1245,6 +1446,44 @@ export const createSvgCanvas = ({
 			}
 			canvas.clearSelection?.(true);
 			canvas.addToSelection?.(selection, true);
+		},
+		setSelectedImageHref(href, opts) {
+			const selected = canvas.getSelectedElements?.()?.[0];
+			if (!selected || selected.tagName.toLowerCase() !== 'image') return false;
+			const attributeNames = ['href', 'xlink:href', ...Object.keys(opts?.attributes ?? {})];
+			const previousAttributes = readAttributeSnapshot(selected, attributeNames);
+			setImageHref(selected, href);
+			applyAttributes(selected, opts?.attributes);
+			const nextAttributes = readAttributeSnapshot(selected, attributeNames);
+			const command = {
+				text: 'Change Image',
+				getText() {
+					return this.text;
+				},
+				type() {
+					return 'ChangeImageCommand';
+				},
+				elements() {
+					return [selected];
+				},
+				apply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_apply', this);
+					applyAttributeSnapshot(selected, nextAttributes);
+					selectElement(selected);
+					emitElementChanged(selected);
+					handler?.handleHistoryEvent?.('after_apply', this);
+				},
+				unapply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_unapply', this);
+					applyAttributeSnapshot(selected, previousAttributes);
+					selectElement(selected);
+					emitElementChanged(selected);
+					handler?.handleHistoryEvent?.('after_unapply', this);
+				}
+			};
+			addCommandToHistory(command);
+			emitElementChanged(selected);
+			return true;
 		},
 		moveElement(elementId, targetParentId, position) {
 			const svgContent = canvas.getSvgContent?.();

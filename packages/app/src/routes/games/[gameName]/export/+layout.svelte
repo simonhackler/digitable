@@ -82,7 +82,8 @@
 						svgTemplateBack,
 						spreadsheetData.cols.map((c) => c.title as string),
 						row,
-						imagePaths
+						imagePaths,
+						{ columnPrefix: 'back_' }
 					)
 				);
 			});

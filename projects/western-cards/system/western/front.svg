@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="63mm" height="88mm" version="1.1" xml:space="preserve" viewBox="0 0 63 88">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="63mm" height="88mm" version="1.1" xml:space="preserve" viewBox="0 0 63 88">
  <defs id="defs1">
   <rect height="130" id="rect1" width="210" x="100" y="120"/>
   <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="120" id="svg_1" opacity="0.5" width="10" x="20" y="60"/>
@@ -15,10 +15,10 @@
  <g class="layer">
   <title>Layer 1</title>
   <g id="layer1" transform="matrix(1 0 0 1 0 0)">
-   <image height="88" href="../../files/template_blank.png" id="background" preserveAspectRatio="none" width="63" x="0" y="0"/>
-   <image height="35.64" href="../../files/dice_6.png" id="dice_image" preserveAspectRatio="none" width="35.64" x="13.62" y="14.59"/>
-   <text data-svgedit-line-height="51.2" data-svgedit-multiline="true" data-svgedit-raw-text="Sfds f" data-svgedit-shape-inside-ref="#rect1" data-svgedit-text-overflow="false" data-svgedit-wrap-height="130" data-svgedit-wrap-width="210" display="inline" font-family="sans-serif" font-size="42.67" font-stretch="normal" font-style="normal" font-weight="normal" id="effect_zone" letter-spacing="0px" text-anchor="start" transform="matrix(0.264583 0 0 0.264583 -23.2253 24.0748)" x="152.14" xml:space="preserve" y="162.67">
-    <tspan font-size="42.67" id="svg_5" x="152.14" y="162.67">Sfds f</tspan>
+   <image xmlns:xlink="http://www.w3.org/1999/xlink" height="88" href="../../files/template_blank.png" id="background" preserveAspectRatio="none" width="63" x="0" y="0" xlink:href="../../files/template_blank.png"/>
+   <image xmlns:xlink="http://www.w3.org/1999/xlink" height="35.64" href="../../files/dice_6.png" id="dice_image" preserveAspectRatio="none" width="35.64" x="13.62" y="14.59" xlink:href="../../files/dice_6.png"/>
+   <text data-svgedit-line-height="51.2" data-svgedit-multiline="true" data-svgedit-raw-text="Sfds f" data-svgedit-shape-inside-ref="#rect1" data-svgedit-text-overflow="false" data-svgedit-wrap-height="130" data-svgedit-wrap-width="210" display="inline" font-family="sans-serif" font-size="42.67" font-stretch="normal" font-style="normal" font-weight="normal" id="effect_zone" letter-spacing="0px" text-align="center" text-anchor="start" transform="matrix(0.264583 0 0 0.264583 -33.2253 24.0748)" x="152.14" xml:space="preserve" y="162.67">
+    <tspan font-size="42.67" id="svg_5" x="202.61" y="162.67">Sfds f</tspan>
    </text>
   </g>
  </g>

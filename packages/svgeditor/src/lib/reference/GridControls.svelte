@@ -7,7 +7,7 @@
 
 	type EditorController = ReturnType<typeof createEditorController>;
 
-	let { controller } = $props<{ controller: EditorController }>();
+	let { controller, framed = true } = $props<{ controller: EditorController; framed?: boolean }>();
 
 	const handleStepInput = () => {
 		controller.setGridStep(controller.gridStep);
@@ -18,11 +18,11 @@
 	};
 </script>
 
-<Card>
-	<CardHeader>
+<Card class={framed ? undefined : 'border-0 bg-transparent py-0 shadow-none'}>
+	<CardHeader class={framed ? undefined : 'px-0'}>
 		<CardTitle>Grid</CardTitle>
 	</CardHeader>
-	<CardContent class="flex flex-col gap-3">
+	<CardContent class={framed ? 'flex flex-col gap-3' : 'flex flex-col gap-3 px-0'}>
 		<div class="flex items-center justify-between gap-3">
 			<Label for="grid-visible" title="Toggle grid (Ctrl/Cmd+')">Show grid</Label>
 			<Switch
