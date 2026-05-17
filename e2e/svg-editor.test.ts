@@ -109,7 +109,7 @@ async function editEffectZoneText(page: Page) {
 		.toBe('block');
 }
 
-test('navigation preserves multiline svg template text between data and svg editors', async ({
+test('navigation preserves multiline svg template text between spreadsheet and layout editors', async ({
 	page
 }) => {
 	await seedProjects(page);
@@ -147,10 +147,10 @@ test('navigation preserves multiline svg template text between data and svg edit
 	expect(roundTrippedFront).toContain('<tspan');
 });
 
-test('typing text in svg editor persists front svg', async ({ page }) => {
+test('typing text in layout editor persists front svg', async ({ page }) => {
 	await openWesternSvgEditor(page);
 	const frontPath = '/western-cards/system/western/front.svg';
-	const nextText = 'saved from svg editor e2e';
+	const nextText = 'saved from layout editor e2e';
 
 	await page.evaluate(() => {
 		const global = window as Window & {
@@ -174,6 +174,38 @@ test('typing text in svg editor persists front svg', async ({ page }) => {
 	const savedFront = await readOpfsText(page, frontPath);
 	expect(savedFront).toContain(nextText);
 	expect(savedFront).toContain(`data-svgedit-raw-text="${nextText}"`);
+});
+
+test('layout editor toolbar opens spreadsheet editor and snaps to page by default', async ({
+	page
+}) => {
+	await openWesternSvgEditor(page);
+	const toolbar = page.getByRole('toolbar', { name: 'Layout editor toolbar' });
+
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const global = window as Window & {
+					__svgEditorController?: {
+						pageBorderSnapping: boolean;
+					};
+				};
+				return global.__svgEditorController?.pageBorderSnapping;
+			})
+		)
+		.toBe(true);
+
+	const frontSvg = await editorSvg(page);
+	await toolbar.getByRole('button', { name: 'Back' }).click();
+	await expect(toolbar.getByRole('button', { name: 'Front' })).toBeVisible();
+	await expect.poll(() => editorSvg(page)).not.toBe(frontSvg);
+
+	await toolbar.getByRole('button', { name: 'Front' }).click();
+	await expect(toolbar.getByRole('button', { name: 'Back' })).toBeVisible();
+	await expect.poll(() => editorSvg(page)).toBe(frontSvg);
+
+	await page.getByRole('link', { name: 'Spreadsheet' }).click();
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
 });
 
 test('entering multiline text edit preserves changed text alignment', async ({ page }) => {

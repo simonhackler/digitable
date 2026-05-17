@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type jspreadsheet from 'jspreadsheet-ce';
@@ -222,11 +222,10 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-	<Dialog.Trigger
-		class={buttonVariants({ variant: 'outline' })}
-		disabled={!selectionData.hasImageColumns}
-	>
-		Select Images
+	<Dialog.Trigger disabled={!selectionData.hasImageColumns}>
+		{#snippet child({ props })}
+			<Button {...props} size="sm" variant="ghost" class="w-32 justify-start">Select Images</Button>
+		{/snippet}
 	</Dialog.Trigger>
 	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-[900px]">
 		<Dialog.Header>

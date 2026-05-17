@@ -19,7 +19,7 @@ function cardPreview(page: Page, name: string) {
 	return page.locator('main svg').filter({ hasText: name }).first();
 }
 
-test('insert rows in data editor', async ({ page }) => {
+test('insert rows in spreadsheet editor', async ({ page }) => {
 	await openWesternDataEditor(page);
 	await page.locator('tbody > tr > td:nth-child(8)').first().dblclick();
 	await page.getByRole('textbox').fill('wow!');
@@ -35,9 +35,20 @@ test('insert rows in data editor', async ({ page }) => {
 	await page.getByRole('menuitem', { name: 'Insert a new row before' }).click();
 });
 
-test('go to data editor', async ({ page }) => {
+test('go to spreadsheet editor', async ({ page }) => {
 	await seedProjects(page);
 	await expect(page.locator('h1')).toBeVisible();
+});
+
+test('spreadsheet editor toolbar opens layout editor', async ({ page }) => {
+	await openWesternDataEditor(page);
+
+	const toolbar = page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' });
+	await toolbar.getByRole('button', { name: 'Back' }).click();
+	await expect(toolbar.getByRole('button', { name: 'Front' })).toBeVisible();
+
+	await page.getByRole('link', { name: 'Layout' }).click();
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
 });
 
 test('appends missing svg columns after csv columns', async ({ page }) => {
@@ -52,7 +63,7 @@ test('appends missing svg columns after csv columns', async ({ page }) => {
 	await page.getByRole('main').getByText('western-cards').click();
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await page.getByRole('link', { name: 'western', exact: true }).click();
-	await page.getByRole('link', { name: 'Data' }).click();
+	await page.getByRole('link', { name: 'Spreadsheet' }).click();
 
 	await expect.poll(() => spreadsheetHeaders(page)).toContain('late_svg_field');
 	const headers = await spreadsheetHeaders(page);
