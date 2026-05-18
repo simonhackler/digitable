@@ -281,6 +281,29 @@ test('drawing from a 2-card stack keeps one card on the board', async ({ page })
 		});
 });
 
+test('single-card source opens as a loose board card', async ({ page }) => {
+	test.setTimeout(60_000);
+	await openPixiProject(page, 'pixi-play-single-card');
+
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				return {
+					visibleStacks: state.visibleStackIds.length,
+					visibleBoardCards: state.visibleBoardCardIds.length,
+					handCards: state.handCardIds.length
+				};
+			},
+			{ timeout: 20_000 }
+		)
+		.toEqual({
+			visibleStacks: 0,
+			visibleBoardCards: 1,
+			handCards: 0
+		});
+});
+
 test('drawing from a 3-card stack keeps the remaining deck visible', async ({ page }) => {
 	test.setTimeout(60_000);
 	await openPixiProject(page, 'pixi-play-three-card');
