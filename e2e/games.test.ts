@@ -105,6 +105,7 @@ test('create new deck and delete it', async ({ page }) => {
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await page.getByRole('button', { name: 'New' }).click();
 
+	await expect(page.getByRole('img', { name: 'Portrait card preview' })).toBeVisible();
 	await page.getByPlaceholder('deck name').fill(deckName);
 	await page.getByRole('button', { name: 'Create new deck' }).click();
 
