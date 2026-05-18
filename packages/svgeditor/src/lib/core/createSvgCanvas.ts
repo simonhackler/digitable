@@ -1025,6 +1025,13 @@ export const createSvgCanvas = ({
 	const emitCanvasChange = () => {
 		canvas.call?.('changed', [canvas.getSvgContent?.()]);
 	};
+	const applySelectedElementChange = (change: () => void) => {
+		const before = canvas.getSvgString();
+		change();
+		if (canvas.getSvgString() !== before) {
+			emitCanvasChange();
+		}
+	};
 	const getActiveTextElement = () => {
 		const selected = canvas.getSelectedElements?.()?.[0];
 		if (selected?.tagName === 'text') return selected as SVGTextElement;
@@ -1289,13 +1296,13 @@ export const createSvgCanvas = ({
 			return canvas.getZoom() || 1;
 		},
 		setFill(color) {
-			canvas.changeSelectedAttribute?.('fill', color);
+			applySelectedElementChange(() => canvas.changeSelectedAttribute?.('fill', color));
 		},
 		setStroke(color) {
-			canvas.changeSelectedAttribute?.('stroke', color);
+			applySelectedElementChange(() => canvas.changeSelectedAttribute?.('stroke', color));
 		},
 		setStrokeWidth(value) {
-			canvas.changeSelectedAttribute?.('stroke-width', value);
+			applySelectedElementChange(() => canvas.changeSelectedAttribute?.('stroke-width', value));
 		},
 		getFontSize() {
 			return canvas.getFontSize?.() ?? 0;
@@ -1303,26 +1310,26 @@ export const createSvgCanvas = ({
 		setFontSize(value) {
 			if (!Number.isFinite(value)) return;
 			const next = Math.max(1, value);
-			canvas.setFontSize?.(next);
+			applySelectedElementChange(() => canvas.setFontSize?.(next));
 		},
 		getFontFamily() {
 			return canvas.getFontFamily?.() ?? '';
 		},
 		setFontFamily(value) {
 			if (!value) return;
-			canvas.setFontFamily?.(value);
+			applySelectedElementChange(() => canvas.setFontFamily?.(value));
 		},
 		getBold() {
 			return Boolean(canvas.getBold?.());
 		},
 		setBold(value) {
-			canvas.setBold?.(value);
+			applySelectedElementChange(() => canvas.setBold?.(value));
 		},
 		getItalic() {
 			return Boolean(canvas.getItalic?.());
 		},
 		setItalic(value) {
-			canvas.setItalic?.(value);
+			applySelectedElementChange(() => canvas.setItalic?.(value));
 		},
 		focusTextInput() {
 			multilineTextInput.focus();

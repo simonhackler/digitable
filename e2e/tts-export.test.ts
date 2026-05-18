@@ -296,6 +296,8 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	await expect(page.getByText(`Saved to ${exportPath}`)).toBeVisible();
 
 	const exportFileNames = [
+		'ggd_0_70_sheet.png',
+		'ggd_0_70_back_sheet.png',
 		'western_0_70_sheet.png',
 		'western_0_70_back_sheet.png',
 		'next_deck_0_70_sheet.png',
@@ -323,14 +325,17 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	const exportJson = JSON.parse(await readOpfsTextFile(page, `${exportPath}/western-cards.json`));
 	expect(
 		exportJson.ObjectStates.map((state: { Nickname: string }) => state.Nickname).sort()
-	).toEqual(['next_deck', 'western']);
+	).toEqual(['ggd', 'next_deck', 'western']);
 	const westernDeck = exportJson.ObjectStates.find(
 		(state: { Nickname: string }) => state.Nickname === 'western'
 	);
 	if (!westernDeck) {
 		throw new Error('western deck missing from TTS export');
 	}
-	const customDeck = westernDeck.CustomDeck['1'];
+	const customDeck = Object.values(westernDeck.CustomDeck)[0] as {
+		FaceURL: string;
+		BackURL: string;
+	};
 	expect(customDeck.FaceURL).toBe(`${jsonExportPath}/western_0_70_sheet.png`);
 	expect(customDeck.BackURL).toBe(`${jsonExportPath}/western_0_70_back_sheet.png`);
 
