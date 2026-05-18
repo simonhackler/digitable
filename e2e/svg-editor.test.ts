@@ -30,6 +30,14 @@ async function editorSvg(page: Page) {
 	});
 }
 
+function normalizeSerializedSvg(svg: string) {
+	return svg
+		.replace(/<\?xml[^>]*\?>/g, '')
+		.replace(/\s+/g, ' ')
+		.replace(/>\s+</g, '><')
+		.trim();
+}
+
 async function selectEffectZone(page: Page) {
 	await page.evaluate(() => {
 		const global = window as Window & {
@@ -108,6 +116,59 @@ async function editEffectZoneText(page: Page) {
 		)
 		.toBe('block');
 }
+
+test('undo and redo persist serialized layout svg edits and reset after side switch', async ({
+	page
+}) => {
+	await openWesternSvgEditor(page);
+	const frontPath = '/western-cards/system/western/front.svg';
+	const nextFill = '#ff00aa';
+	const initialEditorSvg = normalizeSerializedSvg(await editorSvg(page));
+
+	await selectEffectZone(page);
+	await page.evaluate((nextFill) => {
+		const global = window as Window & {
+			__svgEditorController?: {
+				setFill: (color: string) => void;
+			};
+		};
+		global.__svgEditorController!.setFill(nextFill);
+	}, nextFill);
+
+	await expect
+		.poll(async () => normalizeSerializedSvg(await editorSvg(page)))
+		.not.toBe(initialEditorSvg);
+	const editedEditorSvg = normalizeSerializedSvg(await editorSvg(page));
+	expect(editedEditorSvg).toContain(`fill="${nextFill}"`);
+	await expect.poll(() => readOpfsText(page, frontPath)).toContain(`fill="${nextFill}"`);
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Redo' })).toBeDisabled();
+
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect
+		.poll(async () => normalizeSerializedSvg(await editorSvg(page)))
+		.toBe(initialEditorSvg);
+	await expect.poll(() => readOpfsText(page, frontPath)).not.toContain(`fill="${nextFill}"`);
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Redo' })).toBeEnabled();
+
+	await page.getByRole('button', { name: 'Redo' }).click();
+	await expect
+		.poll(async () => normalizeSerializedSvg(await editorSvg(page)))
+		.toBe(editedEditorSvg);
+	await expect.poll(() => readOpfsText(page, frontPath)).toContain(`fill="${nextFill}"`);
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Redo' })).toBeDisabled();
+
+	await page.getByRole('button', { name: 'Back' }).click();
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Redo' })).toBeDisabled();
+
+	await page.getByRole('button', { name: 'Front' }).click();
+	await expect.poll(() => readOpfsText(page, frontPath)).toContain(`fill="${nextFill}"`);
+	await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Redo' })).toBeDisabled();
+});
 
 test('navigation preserves multiline svg template text between spreadsheet and layout editors', async ({
 	page
