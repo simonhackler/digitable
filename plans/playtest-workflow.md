@@ -2,51 +2,54 @@
 
 ## Summary
 
-Turn playtests into a clearer host-led session flow with loading feedback, a lobby, timed active play, persistent notes, end-of-session survey, and readable creator review.
+Turn playtests into versioned design snapshots with many playable sessions. A playtest owns the frozen project/SVG files, survey definition, lifecycle state, and session history. Each session is a separate room with its own URL, Colyseus lifecycle, notes, survey answers, and command replay.
 
-## Quick Fixes
+## Key Changes
 
-- Add step status plus spinner when starting a playtest.
-- Add step status plus spinner when opening a playtest invite.
-- Start/open statuses should name the current phase, such as exporting, uploading, saving locally, importing locally, and joining room.
-
-## Larger Features
-
-- Change lifecycle to lobby -> active session -> survey.
-- Host starts the active session from the lobby.
-- Host ends the active session and sends players to survey.
-- Track only session `startedAt`, session `endedAt`, and note/survey timestamps. Do not track lobby join time in v1.
-- Make notes a persistent side panel during active play so players can type immediately.
-- Carry any unsent note draft into the survey when the host ends the session.
-- Survey submits final written feedback. Players do not set usefulness, sentiment, or labels in v1.
-- Creator review screen supports reviewer-owned sentiment, usefulness rating, and custom feedback-type labels.
-- Feedback labels are reviewer-defined, support multiple labels per feedback entry, and label the type of feedback.
-- Playtest goals are saved as Markdown in the playtest folder. They do not need separate import behavior.
-- Imported feedback becomes one Markdown file per player, ordered chronologically inside the file.
-- Review screen focuses on readable text review: session timing, player feedback, reviewer labels, reviewer sentiment, and usefulness.
+- Store immutable SHA-256 hashes when creating a playtest: per uploaded file, aggregate project hash, and aggregate playable SVG/data hash.
+- Keep playtest snapshots immutable. Testing a new file or SVG version creates a new playtest.
+- Add playtest states: `open`, `closed`, and `deleted`.
+- Closing a playtest blocks new sessions but preserves old sessions, replay, notes, surveys, and imports.
+- Deleting a playtest removes it from the designer workflow and invalidates public access in v1.
+- Change `/playtests/:playtestId` into a public playtest lobby that lists open rooms.
+- Let anonymous playtesters create a room or join an existing open room from the playtest lobby.
+- Add `/playtests/:playtestId/sessions/:sessionId` as the direct session URL.
+- Sessions start in a lobby. Any participant can start play, so sessions work without the designer present.
+- A session closes when a participant ends it or when everybody disconnects after the reconnection window.
+- Once closed, the Colyseus server blocks new joins, closes remaining connections, commits the session, and the session appears under the current playtest.
+- Add lightweight anonymous playtester identities for users who join through a playtest link.
+- Store anonymous participant identity with a playtest cookie and use it for room membership, notes, survey answers, and replay attribution.
+- Add a designer survey builder with text, rating, checkbox, and multiple-choice questions, including required flags.
+- Require players to complete the survey at session end.
+- Keep the rich notes panel available during active play so players can quickly record notes.
+- Persist notes with session timestamps so they appear at the right points in replay/review.
+- Record a server-side command timeline for each session.
+- Build replay from the command timeline and overlay notes and survey events at matching timestamps.
+- Creator review shows playtest snapshot info, committed sessions, player notes, survey answers, replay, reviewer labels, reviewer sentiment, and usefulness rating.
 
 ## Public Interfaces / Types
 
-- Add playtest lifecycle state for lobby, active, ended/survey.
-- Add `startedAt` and `endedAt` to playtest/session metadata.
-- Store note and survey timestamps.
-- Add review metadata for usefulness rating, reviewer sentiment, and custom multi-label feedback types.
-- Adjust feedback import output to generate one Markdown file per player.
+- Extend playtest metadata with `status`, `closedAt`, `deletedAt`, `snapshotHash`, `playableHash`, and file manifest entries containing `path`, `size`, `contentType`, and `sha256`.
+- Add session metadata with `sessionId`, `playtestId`, `privateRoomId`, `status`, `createdAt`, `startedAt`, `endedAt`, `committedAt`, participants, and connection summary.
+- Add session APIs for listing open sessions, creating a session, joining a session, starting play, ending play, submitting notes, submitting survey answers, and reading committed replay/review data.
+- Update Colyseus private rooms so session close blocks new joins, disconnects active clients, and commits only after no clients remain.
+- Update feedback import to group feedback by playtest session and preserve chronological notes, survey answers, replay references, and reviewer metadata.
 
 ## Test Plan
 
-- E2E: starting a playtest shows phase feedback and disables duplicate starts.
-- E2E: opening an invite shows phase feedback while importing locally and joining the room.
-- E2E: players land in lobby before host starts.
-- E2E: host starts session and active Play surface opens for players.
-- E2E: persistent note panel remains available during active play.
-- E2E: host ends session and players are routed to survey.
-- E2E: unsent note draft appears in the survey.
-- Unit/integration: session stores `startedAt`, `endedAt`, and submitted feedback timestamps.
-- Unit/import: feedback import creates one chronological Markdown file per player.
+- E2E: creating a playtest stores immutable file/SVG hashes and shows snapshot information on the designer screen.
+- E2E: closed playtests reject new session creation but still show prior committed sessions.
+- E2E: deleted playtests disappear from the designer list and public links no longer open.
+- E2E: anonymous player opens a playtest link, creates or joins an open room, enters lobby, starts play, writes rich notes, ends or is routed to survey, and submits required answers.
+- E2E: session closes when all participants disconnect after the reconnection window.
+- E2E: ending a session closes Colyseus connections and the committed session appears under the playtest.
+- Integration: session commit persists command timeline, note timestamps, survey answers, participant attribution, and connection end state.
+- Unit/import: feedback import creates chronological review artifacts grouped by session and player.
 
 ## Assumptions
 
-- Player-authored sentiment and player-authored labels are out of scope.
-- Command replay UI is handled by the Play surface command history plan, not this first review screen.
-- Goals Markdown is saved with the playtest folder and does not need to be imported into normal project feedback files.
+- Playtest snapshots are immutable.
+- Sessions can work without the designer present.
+- V1 replay is command replay, not browser video or screen recording.
+- Anonymous playtester identity is scoped to playtesting and does not require normal sign-up.
+- Hard deletion of S3 objects and historical session artifacts is deferred unless explicitly required later.
