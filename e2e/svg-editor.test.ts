@@ -117,6 +117,43 @@ async function editEffectZoneText(page: Page) {
 		.toBe('block');
 }
 
+function markerSvg(marker: string) {
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88"><text id="deck_marker" x="4" y="12">${marker}</text></svg>`;
+}
+
+test('layout editor reloads svg when navigating between decks', async ({ page }) => {
+	await seedProjects(page);
+	await writeOpfsText(
+		page,
+		'/western-cards/system/western/front.svg',
+		markerSvg('first deck marker')
+	);
+	await writeOpfsText(
+		page,
+		'/western-cards/system/western_1/front.svg',
+		markerSvg('second deck marker')
+	);
+
+	await page.goto('/app/games/western-cards/decks/western/editor?e2e');
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+	await expect.poll(() => editorSvg(page)).toContain('first deck marker');
+
+	await page.goto('/app/games/western-cards/decks/western_1/editor?e2e');
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western_1\/editor/);
+	await expect.poll(() => editorSvg(page)).toContain('second deck marker');
+	await expect.poll(() => editorSvg(page)).not.toContain('first deck marker');
+
+	await writeOpfsText(
+		page,
+		'/western-cards/system/western/front.svg',
+		markerSvg('first deck current marker')
+	);
+	await page.goto('/app/games/western-cards/decks/western/editor?e2e');
+	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+	await expect.poll(() => editorSvg(page)).toContain('first deck current marker');
+	await expect.poll(() => editorSvg(page)).not.toContain('second deck marker');
+});
+
 test('undo and redo persist serialized layout svg edits and reset after side switch', async ({
 	page
 }) => {
