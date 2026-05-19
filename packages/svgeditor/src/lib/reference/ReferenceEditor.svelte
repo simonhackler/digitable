@@ -2,7 +2,13 @@
 	import { createEventDispatcher } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { PressedKeys } from 'runed';
-	import type { ChangeEvent, ReadyEvent, SvgCanvasConfig, SvgEditorApi } from '../core/types';
+	import type {
+		ChangeEvent,
+		ReadyEvent,
+		SelectionChangeEvent,
+		SvgCanvasConfig,
+		SvgEditorApi
+	} from '../core/types';
 	import { createEditorController } from '../svelte/createEditorController.svelte.ts';
 	import SvgCanvasHost from '../svelte/SvgCanvasHost.svelte';
 	import Inspector from './Inspector.svelte';
@@ -19,7 +25,10 @@
 		centerOnLoad?: boolean;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
+		activePanel?: string;
 		toolbarActions?: () => ReturnType<Snippet>;
+		tablePanel?: () => ReturnType<Snippet>;
+		componentPanel?: () => ReturnType<Snippet>;
 		imageToolAction?: (controller: EditorController) => void | Promise<void>;
 		selectedImageChangeAction?: (controller: EditorController) => void | Promise<void>;
 		selectedImageHrefApplyAction?: (
@@ -38,13 +47,19 @@
 		centerOnLoad = true,
 		initialZoom,
 		assetBasePath,
+		activePanel = $bindable('inspector'),
 		toolbarActions,
+		tablePanel,
+		componentPanel,
 		imageToolAction,
 		selectedImageChangeAction,
 		selectedImageHrefApplyAction
 	}: ReferenceEditorProps = $props();
 
-	const dispatch = createEventDispatcher<{ change: ChangeEvent }>();
+	const dispatch = createEventDispatcher<{
+		change: ChangeEvent;
+		selectionchange: SelectionChangeEvent;
+	}>();
 	const controller = createEditorController();
 	const keys = new PressedKeys();
 
@@ -56,10 +71,17 @@
 		...(config ?? {})
 	}));
 	const extraActions = $derived(toolbarActions as Snippet | undefined);
+	const extraTablePanel = $derived(tablePanel as Snippet | undefined);
+	const extraComponentPanel = $derived(componentPanel as Snippet | undefined);
 
 	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		dispatch('change', event.detail);
 		controller.handleChange(event);
+	};
+
+	const handleSelectionChange = (event: CustomEvent<SelectionChangeEvent>) => {
+		controller.handleSelectionChange(event);
+		dispatch('selectionchange', event.detail);
 	};
 
 	const shouldExposeE2E = () => {
@@ -354,7 +376,7 @@
 								{assetBasePath}
 								on:ready={handleReady}
 								on:change={handleChange}
-								on:selectionchange={controller.handleSelectionChange}
+								on:selectionchange={handleSelectionChange}
 								on:modechange={controller.handleModeChange}
 								on:error={controller.handleError}
 							/>
@@ -367,10 +389,16 @@
 			</div>
 		</div>
 		<div class="min-h-0 min-w-0">
-			<Tabs.Root value="inspector" class="h-full min-h-0 gap-3">
+			<Tabs.Root bind:value={activePanel} class="h-full min-h-0 gap-3">
 				<Tabs.List class="w-full">
 					<Tabs.Trigger value="inspector">Inspector</Tabs.Trigger>
 					<Tabs.Trigger value="structure">Structure</Tabs.Trigger>
+					{#if extraTablePanel}
+						<Tabs.Trigger value="table">Table</Tabs.Trigger>
+					{/if}
+					{#if extraComponentPanel}
+						<Tabs.Trigger value="component">Component</Tabs.Trigger>
+					{/if}
 				</Tabs.List>
 				<Tabs.Content value="inspector" class="min-h-0 overflow-auto pr-1">
 					<Inspector
@@ -383,6 +411,16 @@
 				<Tabs.Content value="structure" class="min-h-0 overflow-auto pr-1">
 					<StructureTree {controller} framed={false} disabled={interactionDisabled} />
 				</Tabs.Content>
+				{#if extraTablePanel}
+					<Tabs.Content value="table" class="min-h-0 overflow-auto pr-1">
+						{@render extraTablePanel()}
+					</Tabs.Content>
+				{/if}
+				{#if extraComponentPanel}
+					<Tabs.Content value="component" class="min-h-0 overflow-auto pr-1">
+						{@render extraComponentPanel()}
+					</Tabs.Content>
+				{/if}
 			</Tabs.Root>
 		</div>
 	</div>
