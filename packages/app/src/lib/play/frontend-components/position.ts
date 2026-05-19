@@ -76,20 +76,15 @@ export class ClientPosition {
 	sharedValues: SharedClientValues;
 	clientPositionState: Positionable;
 	onPositionChanged: Event<Positionable> = new Event();
-	private serverPositionState: PositionSnapshot;
+	private serverPositionState: Positionable;
 	private pendingPrediction: PendingPrediction | null = null;
 
 	constructor(sharedValues: SharedClientValues, position: Positionable) {
 		this.sharedValues = sharedValues;
 		this.clientPositionState = new Positionable(position.x, position.y, position.visible);
-		this.serverPositionState = { x: position.x, y: position.y, visible: position.visible };
+		this.serverPositionState = position;
 
 		sharedValues.s(position).onChange(() => {
-			this.serverPositionState = {
-				x: position.x,
-				y: position.y,
-				visible: position.visible
-			};
 			this.handleServerPositionChanged();
 		});
 	}
