@@ -17,7 +17,7 @@ const shouldSeedProjectEntry = (name: string) => !name.startsWith('.');
 
 const shouldSeedPath = (dest: string) => {
 	const parts = dest.split('/').filter(Boolean);
-	return !parts.includes('tts-export');
+	return !parts.includes('tts-export') && !parts.includes('system') && !parts.includes('files');
 };
 
 const shouldSeedProjectAsset = (dest: string, includeFileAssets: boolean) => {
@@ -25,7 +25,7 @@ const shouldSeedProjectAsset = (dest: string, includeFileAssets: boolean) => {
 		return true;
 	}
 
-	return !dest.split('/').includes('files');
+	return !dest.split('/').includes('assets');
 };
 
 export async function writeBufferToOPFS(page: Page, dest: string, buf: Buffer) {
@@ -186,12 +186,23 @@ export async function useBrowserStorage(page: Page, useBrowserButtonIndex = 0) {
 	if (!(await useBrowserButton.isVisible({ timeout: 2000 }).catch(() => false))) {
 		await saveOpfsStoragePreference(page);
 		await page.goto('/app/games');
-		await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+		await migrateProjectsIfPrompted(page);
 		return;
 	}
 
 	await useBrowserButton.click();
 	await page.getByRole('button', { name: 'Use Browser storage' }).click();
+	await migrateProjectsIfPrompted(page);
+}
+
+export async function migrateProjectsIfPrompted(page: Page) {
+	await expect(page.getByRole('heading', { name: /Board Games|Migrate Projects/ })).toBeVisible();
+
+	const migrationHeading = page.getByRole('heading', { name: 'Migrate Projects' });
+	if (await migrationHeading.isVisible()) {
+		await page.getByRole('button', { name: 'Migrate projects' }).click();
+	}
+	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
 }
 
 export async function saveOpfsStoragePreference(page: Page) {
@@ -233,7 +244,7 @@ export async function openSeededProjects(page: Page, options?: { projectNames?: 
 	}
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
-	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+	await migrateProjectsIfPrompted(page);
 }
 
 export async function seedProjects(page: Page) {

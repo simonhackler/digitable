@@ -16,6 +16,7 @@
 	import { tick } from 'svelte';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
+	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import {
 		createPremadeDeck,
 		getPremadeDeckPreset,
@@ -161,7 +162,7 @@
 	) {
 		const svgString = new XMLSerializer().serializeToString(svg);
 		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		const deckDir = await fileSystem.ensureDir(joinFsPath('system', deckName));
+		const deckDir = await fileSystem.ensureDir(joinFsPath(COMPONENTS_DIR, deckName));
 		if (deckDir.error) {
 			console.error(deckDir.error);
 			return false;
@@ -175,7 +176,7 @@
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		const filesDir = await fileSystem.ensureDir('files');
+		const filesDir = await fileSystem.ensureDir(ASSETS_DIR);
 		if (filesDir.error) {
 			console.error(filesDir.error);
 			return false;

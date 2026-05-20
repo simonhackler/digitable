@@ -7,6 +7,7 @@
 	import { ProjectData, setProjectDataContext } from './export-context.svelte';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { requireParam } from '$lib/utils/assert';
+	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 
 	const projectName = $derived(requireParam('gameName'));
 	const fileSystem = getFileSystemContext();
@@ -16,18 +17,18 @@
 
 	async function getFoldersToExport(fileSystem: FsDir, projectName: string, useDataUrls: boolean) {
 		const projectData = new ProjectData();
-		const systemDir = await fileSystem.openDir(joinFsPath(projectName, 'system'));
-		if (systemDir.error) {
-			throw new Error(systemDir.error.message);
+		const componentsDir = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
+		if (componentsDir.error) {
+			throw new Error(componentsDir.error.message);
 		}
 
-		const systemEntries = await systemDir.data.list();
-		if (systemEntries.error) throw new Error(systemEntries.error.message);
+		const componentEntries = await componentsDir.data.list();
+		if (componentEntries.error) throw new Error(componentEntries.error.message);
 
-		for (const entry of systemEntries.data) {
+		for (const entry of componentEntries.data) {
 			if (entry.kind !== 'directory') continue;
 
-			const deckDir = await systemDir.data.openDir(entry.name);
+			const deckDir = await componentsDir.data.openDir(entry.name);
 			if (deckDir.error) continue;
 
 			const deckEntries = await deckDir.data.list();

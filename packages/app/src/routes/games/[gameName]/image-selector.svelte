@@ -12,6 +12,7 @@
 	import { Image, Loader2, Upload } from '@lucide/svelte';
 	import { getFileSystemContext } from '../context';
 	import { isImageFileName, listProjectImageFiles, resolveImageReference } from './data-loader';
+	import { ASSETS_DIR } from '$lib/workspace/project-layout';
 
 	type ImageChoice = {
 		path: string;
@@ -155,7 +156,7 @@
 		errorMessage = '';
 		loading = true;
 		try {
-			const uploadDir = await filesystem.ensureDir(joinFsPath(gameName, 'files', 'uploads'));
+			const uploadDir = await filesystem.ensureDir(joinFsPath(gameName, ASSETS_DIR, 'uploads'));
 			if (uploadDir.error) throw new Error(uploadDir.error.message);
 
 			const existingEntries = await uploadDir.data.list();

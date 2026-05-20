@@ -31,7 +31,8 @@ export const createGameSchema = z
 		tags: z
 			.array(z.string())
 			.min(1, 'At least one tag is required')
-			.max(10, 'Maximum 10 tags allowed')
+			.max(10, 'Maximum 10 tags allowed'),
+		digitableVersion: z.string().optional()
 	})
 	.refine((data) => data.minPlayers <= data.maxPlayers, {
 		message: 'Minimum players must be less than or equal to maximum players',

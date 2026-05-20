@@ -28,7 +28,8 @@ async function saveOpfsRootAsDirectoryPreference(page: Page, options: SavedRootO
 					JSON.stringify({
 						name: 'Western Cards',
 						description: 'Seeded workspace root validation project.',
-						tags: ['E2E']
+						tags: ['E2E'],
+						digitableVersion: 'test-version'
 					})
 				);
 				await gameWritable.close();

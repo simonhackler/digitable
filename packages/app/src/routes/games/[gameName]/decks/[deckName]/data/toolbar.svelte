@@ -8,6 +8,7 @@
 	import type { ImageGenResponse } from './image-generator.js';
 	import { getFileSystemContext } from '../../../../context';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { ASSETS_DIR } from '$lib/workspace/project-layout';
 	import { requireParam } from '$lib/utils/assert';
 	import { FlipHorizontal2, LayoutTemplate } from '@lucide/svelte';
 
@@ -47,7 +48,7 @@
 
 	async function handleGenerateImages(images: ImageGenResponse) {
 		const timestamp = Date.now();
-		const generatedDir = await filesystem.ensureDir(joinFsPath(gameName, 'files', 'generated'));
+		const generatedDir = await filesystem.ensureDir(joinFsPath(gameName, ASSETS_DIR, 'generated'));
 		if (generatedDir.error) {
 			throw new Error(`Failed to open generated images folder: ${generatedDir.error.message}`);
 		}

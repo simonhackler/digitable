@@ -16,6 +16,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { PROJECT_VERSION } from '$lib/workspace/project-layout';
 
 	const fileSystem = getFileSystemContext();
 	const games = getGamesContext();
@@ -67,7 +68,8 @@
 				minPlayers: 1,
 				maxPlayers: 4,
 				description: '',
-				tags: []
+				tags: [],
+				digitableVersion: PROJECT_VERSION
 			},
 			isEditMode: false
 		};
@@ -88,7 +90,7 @@
 					isSubmitting = true;
 					showSuccessMessage = false;
 
-					const data: CreateGameForm = form.data;
+					const data: CreateGameForm = { ...form.data, digitableVersion: PROJECT_VERSION };
 					const folderName = data.name.replace(/\s+/g, '_');
 					const gameData = JSON.stringify(data, null, 2);
 					const gameFile = new File([gameData], 'game.json', { type: 'application/json' });

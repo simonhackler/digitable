@@ -1,11 +1,12 @@
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 import type { Column } from 'jspreadsheet-ce';
 import { parseCsvFile } from './csv-helper';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import { getSvgDataMapForSides, type SvgDataSide } from './svg-helpers';
 import type { ColumnWithData } from './types';
 
-const LOCAL_FILE_MARKER = '/files/';
+const LOCAL_ASSET_MARKER = `/${ASSETS_DIR}/`;
 export const TRANSPARENT_IMAGE =
 	'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E';
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.avif']);
@@ -32,14 +33,17 @@ export function getProjectFilePath(projectName: string, value: string): string |
 	if (!trimmed || isEmbeddedImageReference(trimmed)) return null;
 
 	const withoutQuery = trimmed.split(/[?#]/, 1)[0];
-	const filesIndex = withoutQuery.lastIndexOf(LOCAL_FILE_MARKER);
+	const assetsIndex = withoutQuery.lastIndexOf(LOCAL_ASSET_MARKER);
 	const localPath =
-		filesIndex >= 0
-			? withoutQuery.slice(filesIndex + LOCAL_FILE_MARKER.length)
-			: withoutQuery.replace(/^(\.\.\/)+/, '').replace(/^\/+/, '');
+		assetsIndex >= 0
+			? withoutQuery.slice(assetsIndex + LOCAL_ASSET_MARKER.length)
+			: withoutQuery
+					.replace(/^(\.\.\/)+/, '')
+					.replace(/^\/+/, '')
+					.replace(new RegExp(`^${ASSETS_DIR}/`), '');
 
 	if (!localPath) return null;
-	return `/${projectName}/files/${localPath}`;
+	return `/${projectName}/${ASSETS_DIR}/${localPath}`;
 }
 
 export async function resolveImageReference(
@@ -62,7 +66,7 @@ export async function resolveImageReference(
 }
 
 export async function listProjectImageFiles(fileSystem: FsDir, projectName: string) {
-	const rootPath = joinFsPath(projectName, 'files');
+	const rootPath = joinFsPath(projectName, ASSETS_DIR);
 	const images: string[] = [];
 
 	async function walk(relativePath: string) {
@@ -95,7 +99,7 @@ export async function loadSpreadsheetData(
 	fileSystem: FsDir
 ) {
 	const csvTextResult = await fileSystem.readText(
-		joinFsPath(currentProject, 'system', currentCard, 'data.csv')
+		joinFsPath(currentProject, COMPONENTS_DIR, currentCard, 'data.csv')
 	);
 	const csvFile = csvTextResult.error
 		? null
