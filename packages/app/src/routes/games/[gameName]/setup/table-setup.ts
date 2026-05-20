@@ -55,6 +55,16 @@ export type TableSetupSvgAssets = {
 	placementCardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 };
 
+export type SetupSvgJson =
+	| string
+	| {
+			element: string;
+			attr?: Record<string, string | number>;
+			children?: SetupSvgJson[];
+	  };
+
+export type SetupSvgElementJson = Exclude<SetupSvgJson, string>;
+
 export const SETUP_JSON_PATH = 'setup/table.json';
 export const SETUP_SVG_PATH = 'setup/table.svg';
 const TABLE_ATTR = 'data-digitable-table';
@@ -68,9 +78,15 @@ const PRESET_ATTR = 'data-preset-id';
 const RESIZABLE_ATTR = 'data-svgedit-resizable';
 const ACCEPTED_DECKS_ATTR = 'data-accepted-deck-names';
 const ACCEPTED_CARDS_ATTR = 'data-accepted-card-ids';
-const LOCKED_ATTRS = `${RESIZABLE_ATTR}="false" data-locked="true" pointer-events="none"`;
+const DECK_STACK_ATTR = 'data-deck-stack';
+const LOCKED_ATTRS = `${RESIZABLE_ATTR}="false" data-locked="true"`;
 const CARD_WIDTH = 110;
 const CARD_HEIGHT = 150;
+const LEGACY_TABLE_BACKGROUND_FILL = '#166534';
+const LEGACY_TABLE_BORDER_STROKE = '#bbf7d0';
+
+const nonResizableAttrs = () => ({ [RESIZABLE_ATTR]: 'false' });
+const lockedAttrs = () => ({ ...nonResizableAttrs(), 'data-locked': 'true' });
 
 export const tablePresets: TablePreset[] = [
 	{ id: 'two-player', name: '2-player', width: 1200, height: 700 },
@@ -235,14 +251,18 @@ function normalizeEditorDimension(value: number, fallback: number): number {
 }
 
 function transformParts(value: string | null) {
-	if (!value) return { x: 0, y: 0, rotation: 0 };
+	if (!value) return { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 };
 	const matrix = value.match(/matrix\(([^)]+)\)/);
 	if (matrix) {
 		const values = matrix[1].split(/[,\s]+/).map((part) => Number(part));
-		const [a, b, , , e, f] = values;
+		const [a, b, c, d, e, f] = values;
+		const scaleX = Math.hypot(Number.isFinite(a) ? a : 1, Number.isFinite(b) ? b : 0);
+		const scaleY = Math.hypot(Number.isFinite(c) ? c : 0, Number.isFinite(d) ? d : 1);
 		return {
 			x: Number.isFinite(e) ? e : 0,
 			y: Number.isFinite(f) ? f : 0,
+			scaleX: Number.isFinite(scaleX) && scaleX > 0 ? scaleX : 1,
+			scaleY: Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1,
 			rotation:
 				Number.isFinite(a) && Number.isFinite(b)
 					? Math.round(Math.atan2(b, a) * (180 / Math.PI))
@@ -251,12 +271,32 @@ function transformParts(value: string | null) {
 	}
 	const translate = value.match(/translate\(([^)]+)\)/);
 	const rotate = value.match(/rotate\(([^)]+)\)/);
+	const scale = value.match(/scale\(([^)]+)\)/);
 	const translateValues = translate?.[1].split(/[,\s]+/).map((part) => Number(part)) ?? [];
+	const scaleValues = scale?.[1].split(/[,\s]+/).map((part) => Number(part)) ?? [];
 	const rotation = Number.parseFloat(rotate?.[1] ?? '0');
+	const scaleX = Number.isFinite(scaleValues[0]) && scaleValues[0] > 0 ? scaleValues[0] : 1;
+	const scaleY = Number.isFinite(scaleValues[1]) && scaleValues[1] > 0 ? scaleValues[1] : scaleX;
 	return {
 		x: Number.isFinite(translateValues[0]) ? translateValues[0] : 0,
 		y: Number.isFinite(translateValues[1]) ? translateValues[1] : 0,
-		rotation: Number.isFinite(rotation) ? rotation : 0
+		rotation: Number.isFinite(rotation) ? rotation : 0,
+		scaleX,
+		scaleY
+	};
+}
+
+function visualBoundsOrigin(group: Element): { x: number; y: number; hasGraphics: boolean } {
+	const graphics = Array.from(group.getElementsByTagName('*')).filter((element) => {
+		const tag = element.tagName.toLowerCase();
+		return tag === 'rect' || tag === 'image';
+	});
+	const xValues = graphics.map((element) => parseNumberAttribute(element, 'x', 0));
+	const yValues = graphics.map((element) => parseNumberAttribute(element, 'y', 0));
+	return {
+		x: xValues.length > 0 ? Math.min(...xValues) : 0,
+		y: yValues.length > 0 ? Math.min(...yValues) : 0,
+		hasGraphics: graphics.length > 0
 	};
 }
 
@@ -279,6 +319,23 @@ function elementsByKind(root: Element, kind: string): Element[] {
 function firstElementByTag(root: Element, tagName: string): Element | null {
 	if (typeof root.querySelector === 'function') return root.querySelector(tagName);
 	return root.getElementsByTagName(tagName)[0] ?? null;
+}
+
+function isLegacyTableBackground(element: Element): boolean {
+	if (element.tagName.toLowerCase() !== 'rect') return false;
+	return (
+		element.getAttribute('fill') === LEGACY_TABLE_BACKGROUND_FILL ||
+		element.getAttribute('stroke') === LEGACY_TABLE_BORDER_STROKE
+	);
+}
+
+function removeLegacyTableBackground(root: Element) {
+	const children = Array.from(root.childNodes).filter(
+		(child): child is Element => child.nodeType === 1
+	);
+	for (const child of children) {
+		if (isLegacyTableBackground(child)) child.parentNode?.removeChild(child);
+	}
 }
 
 export function svgToTableSetup(svg: string, fallback = createDefaultTableSetup()): TableSetup {
@@ -310,11 +367,13 @@ export function svgToTableSetup(svg: string, fallback = createDefaultTableSetup(
 		const cardIds = sortedStrings(parseJsonStringArray(group.getAttribute(CARD_IDS_ATTR)));
 		const transform = transformParts(group.getAttribute('transform'));
 		if (!deckName) return [];
+		const origin = visualBoundsOrigin(group);
+		const topLeftGeometry = origin.hasGraphics && origin.x >= 0 && origin.y >= 0;
 		const base = {
 			id,
 			deckName,
-			x: transform.x,
-			y: transform.y,
+			x: topLeftGeometry ? transform.x + origin.x * transform.scaleX + CARD_WIDTH / 2 : transform.x,
+			y: topLeftGeometry ? transform.y + origin.y * transform.scaleY + CARD_HEIGHT / 2 : transform.y,
 			rotation: transform.rotation,
 			label: textLabel(group, deckName)
 		};
@@ -331,14 +390,18 @@ export function svgToTableSetup(svg: string, fallback = createDefaultTableSetup(
 		const rect = firstElementByTag(group, 'rect');
 		const id = group.getAttribute('id') ?? crypto.randomUUID();
 		const transform = transformParts(group.getAttribute('transform'));
+		const rectX = parseNumberAttribute(rect, 'x', 0);
+		const rectY = parseNumberAttribute(rect, 'y', 0);
+		const rectWidth = positiveNumber(parseNumberAttribute(rect, 'width', 240), 240);
+		const rectHeight = positiveNumber(parseNumberAttribute(rect, 'height', 320), 320);
 		return [
 			{
 				id,
 				label: textLabel(group, 'Slot'),
-				x: parseNumberAttribute(rect, 'x', 0) + transform.x,
-				y: parseNumberAttribute(rect, 'y', 0) + transform.y,
-				width: positiveNumber(parseNumberAttribute(rect, 'width', 240), 240),
-				height: positiveNumber(parseNumberAttribute(rect, 'height', 320), 320),
+				x: transform.x + rectX * transform.scaleX,
+				y: transform.y + rectY * transform.scaleY,
+				width: positiveNumber(rectWidth * transform.scaleX, 240),
+				height: positiveNumber(rectHeight * transform.scaleY, 320),
 				acceptedDeckNames: sortedStrings(
 					parseJsonStringArray(group.getAttribute(ACCEPTED_DECKS_ATTR))
 				),
@@ -386,6 +449,7 @@ export function normalizeTableSvgWithAssets(
 	root.setAttribute(TABLE_ATTR, 'true');
 	root.setAttribute(PRESET_ATTR, setup.table.presetId);
 
+	removeLegacyTableBackground(root);
 	syncGeneratedElements(doc, root, setup, assets);
 
 	return new XMLSerializer().serializeToString(root);
@@ -424,27 +488,229 @@ function placementCardSvg(assets: TableSetupSvgAssets, placementId: string): str
 	return source[placementId] ?? null;
 }
 
+function cardImageHref(cardSvg: string): string {
+	return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`;
+}
+
+function cardImageElementJson(cardSvg: string, x = 0, y = 0): SetupSvgElementJson {
+	return {
+		element: 'image',
+		attr: {
+			x,
+			y,
+			width: CARD_WIDTH,
+			height: CARD_HEIGHT,
+			preserveAspectRatio: 'xMidYMid meet',
+			href: cardImageHref(cardSvg),
+			...lockedAttrs()
+		}
+	};
+}
+
 function cardImageMarkup(cardSvg: string): string {
-	const href = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`;
-	return `<image x="${-CARD_WIDTH / 2}" y="${-CARD_HEIGHT / 2}" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" preserveAspectRatio="xMidYMid meet" href="${escapeXml(href)}" ${LOCKED_ATTRS}/>`;
+	const href = cardImageHref(cardSvg);
+	return `<image x="0" y="0" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" preserveAspectRatio="xMidYMid meet" href="${escapeXml(href)}" ${LOCKED_ATTRS}/>`;
+}
+
+function deckStackElementsJson(x = 0, y = 0): SetupSvgElementJson[] {
+	return [
+		{
+			element: 'rect',
+			attr: {
+				x: x + 14,
+				y: y + 14,
+				width: CARD_WIDTH,
+				height: CARD_HEIGHT,
+				rx: 10,
+				fill: '#0f172a',
+				'fill-opacity': 0.28,
+				stroke: '#0f172a',
+				'stroke-opacity': 0.45,
+				'stroke-width': 2,
+				[DECK_STACK_ATTR]: 'true',
+				...lockedAttrs()
+			}
+		},
+		{
+			element: 'rect',
+			attr: {
+				x: x + 7,
+				y: y + 7,
+				width: CARD_WIDTH,
+				height: CARD_HEIGHT,
+				rx: 10,
+				fill: '#f8fafc',
+				stroke: '#334155',
+				'stroke-opacity': 0.65,
+				'stroke-width': 2,
+				[DECK_STACK_ATTR]: 'true',
+				...lockedAttrs()
+			}
+		}
+	];
+}
+
+function deckStackMarkup(): string[] {
+	return [
+		`    <rect x="14" y="14" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="#0f172a" fill-opacity="0.28" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`,
+		`    <rect x="7" y="7" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.65" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`
+	];
+}
+
+function fallbackPlacementElementsJson(
+	item: SetupPlacement,
+	label: string,
+	kind: string,
+	x = 0,
+	y = 0
+) {
+	const fill = item.type === 'deck' ? '#fef3c7' : '#f0fdf4';
+	const stroke = item.type === 'deck' ? '#b45309' : '#15803d';
+	return [
+		...(item.type === 'deck' ? deckStackElementsJson(x, y) : []),
+		{
+			element: 'rect',
+			attr: {
+				x,
+				y,
+				width: CARD_WIDTH,
+				height: CARD_HEIGHT,
+				rx: 10,
+				fill,
+				stroke,
+				'stroke-width': 3,
+				...lockedAttrs()
+			}
+		},
+		{
+			element: 'text',
+			attr: {
+				x: x + CARD_WIDTH / 2,
+				y: y + CARD_HEIGHT / 2 - 6,
+				'text-anchor': 'middle',
+				fill: '#111827',
+				'font-family': 'system-ui, sans-serif',
+				'font-size': 20,
+				'font-weight': 700,
+				...lockedAttrs()
+			},
+			children: [label]
+		},
+		{
+			element: 'text',
+			attr: {
+				x: x + CARD_WIDTH / 2,
+				y: y + CARD_HEIGHT / 2 + 24,
+				'text-anchor': 'middle',
+				fill: '#4b5563',
+				'font-family': 'system-ui, sans-serif',
+				'font-size': 16,
+				...lockedAttrs()
+			},
+			children: [kind]
+		}
+	];
 }
 
 function fallbackPlacementMarkup(item: SetupPlacement, label: string, kind: string): string[] {
 	const fill = item.type === 'deck' ? '#fef3c7' : '#f0fdf4';
 	const stroke = item.type === 'deck' ? '#b45309' : '#15803d';
 	return [
-		`    <rect x="${-CARD_WIDTH / 2}" y="${-CARD_HEIGHT / 2}" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${RESIZABLE_ATTR}="false"/>`,
-		`    <text x="0" y="-6" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="20" font-weight="700" ${LOCKED_ATTRS}>${label}</text>`,
-		`    <text x="0" y="24" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="16" ${LOCKED_ATTRS}>${kind}</text>`
+		...(item.type === 'deck' ? deckStackMarkup() : []),
+		`    <rect x="0" y="0" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${RESIZABLE_ATTR}="false"/>`,
+		`    <text x="${CARD_WIDTH / 2}" y="${CARD_HEIGHT / 2 - 6}" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="20" font-weight="700" ${LOCKED_ATTRS}>${label}</text>`,
+		`    <text x="${CARD_WIDTH / 2}" y="${CARD_HEIGHT / 2 + 24}" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="16" ${LOCKED_ATTRS}>${kind}</text>`
 	];
+}
+
+export function slotToSvgElementJson(item: SetupSlot): SetupSvgElementJson {
+	return {
+		element: 'g',
+		attr: {
+			id: item.id,
+			[KIND_ATTR]: 'slot',
+			[LABEL_ATTR]: item.label,
+			[ACCEPTED_DECKS_ATTR]: JSON.stringify(sortedStrings(item.acceptedDeckNames)),
+			[ACCEPTED_CARDS_ATTR]: JSON.stringify(sortedStrings(item.acceptedCardIds))
+		},
+		children: [
+			{
+				element: 'rect',
+				attr: {
+					x: item.x,
+					y: item.y,
+					width: item.width,
+					height: item.height,
+					rx: 14,
+					fill: '#dbeafe',
+					'fill-opacity': 0.32,
+					stroke: '#2563eb',
+					'stroke-width': 4,
+					'stroke-dasharray': '14 10'
+				}
+			},
+			{
+				element: 'text',
+				attr: {
+					x: item.x + 16,
+					y: item.y + 32,
+					fill: '#1e3a8a',
+					'font-family': 'system-ui, sans-serif',
+					'font-size': 28,
+					'font-weight': 700,
+					...lockedAttrs()
+				},
+				children: [item.label]
+			}
+		]
+	};
+}
+
+export function placementToSvgElementJson(
+	item: SetupPlacement,
+	assets: TableSetupSvgAssets = {}
+): SetupSvgElementJson {
+	const kind = item.type;
+	const cardSvg = placementCardSvg(assets, item.id);
+	const attr: Record<string, string | number> = {
+		id: item.id,
+		[KIND_ATTR]: 'placement',
+		[TYPE_ATTR]: kind,
+		[DECK_ATTR]: item.deckName,
+		[LABEL_ATTR]: item.label,
+		[RESIZABLE_ATTR]: 'false'
+	};
+	if (item.type === 'card') {
+		attr[CARD_ATTR] = item.cardId;
+	}
+	if (item.type === 'deck') {
+		attr[CARD_IDS_ATTR] = JSON.stringify(sortedStrings(item.cardIds));
+	}
+	const visualX = item.x - CARD_WIDTH / 2;
+	const visualY = item.y - CARD_HEIGHT / 2;
+	const visual = cardSvg
+		? [
+				...(item.type === 'deck' ? deckStackElementsJson(visualX, visualY) : []),
+				cardImageElementJson(cardSvg, visualX, visualY)
+			]
+		: fallbackPlacementElementsJson(item, item.label, kind, visualX, visualY);
+	if (item.rotation) {
+		attr.transform = `rotate(${item.rotation} ${item.x} ${item.y})`;
+	}
+
+	return {
+		element: 'g',
+		attr,
+		children: visual
+	};
 }
 
 function slotMarkup(item: SetupSlot): string {
 	const label = escapeXml(item.label);
 	return [
-		`  <g id="${escapeXml(item.id)}" ${KIND_ATTR}="slot" ${LABEL_ATTR}="${label}" ${ACCEPTED_DECKS_ATTR}="${escapeXml(JSON.stringify(sortedStrings(item.acceptedDeckNames)))}" ${ACCEPTED_CARDS_ATTR}="${escapeXml(JSON.stringify(sortedStrings(item.acceptedCardIds)))}">`,
-		`    <rect x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" rx="14" fill="#dbeafe" fill-opacity="0.32" stroke="#2563eb" stroke-width="4" stroke-dasharray="14 10"/>`,
-		`    <text x="${item.x + 16}" y="${item.y + 32}" fill="#1e3a8a" font-family="system-ui, sans-serif" font-size="28" font-weight="700" ${LOCKED_ATTRS}>${label}</text>`,
+		`  <g id="${escapeXml(item.id)}" ${KIND_ATTR}="slot" ${LABEL_ATTR}="${label}" ${ACCEPTED_DECKS_ATTR}="${escapeXml(JSON.stringify(sortedStrings(item.acceptedDeckNames)))}" ${ACCEPTED_CARDS_ATTR}="${escapeXml(JSON.stringify(sortedStrings(item.acceptedCardIds)))}" transform="translate(${item.x} ${item.y})">`,
+		`    <rect x="0" y="0" width="${item.width}" height="${item.height}" rx="14" fill="#dbeafe" fill-opacity="0.32" stroke="#2563eb" stroke-width="4" stroke-dasharray="14 10"/>`,
+		`    <text x="16" y="32" fill="#1e3a8a" font-family="system-ui, sans-serif" font-size="28" font-weight="700" ${LOCKED_ATTRS}>${label}</text>`,
 		'  </g>'
 	].join('\n');
 }
@@ -459,11 +725,13 @@ function placementMarkup(item: SetupPlacement, assets: TableSetupSvgAssets): str
 			: '';
 	const cardSvg = placementCardSvg(assets, item.id);
 	const visual = cardSvg
-		? [`    ${cardImageMarkup(cardSvg)}`]
+		? [...(item.type === 'deck' ? deckStackMarkup() : []), `    ${cardImageMarkup(cardSvg)}`]
 		: fallbackPlacementMarkup(item, label, kind);
+	const transformX = item.x - CARD_WIDTH / 2;
+	const transformY = item.y - CARD_HEIGHT / 2;
 
 	return [
-		`  <g id="${escapeXml(item.id)}" ${KIND_ATTR}="placement" ${TYPE_ATTR}="${kind}" ${DECK_ATTR}="${escapeXml(item.deckName)}"${cardAttrs}${deckAttrs} ${LABEL_ATTR}="${label}" ${RESIZABLE_ATTR}="false" transform="translate(${item.x} ${item.y}) rotate(${item.rotation})">`,
+		`  <g id="${escapeXml(item.id)}" ${KIND_ATTR}="placement" ${TYPE_ATTR}="${kind}" ${DECK_ATTR}="${escapeXml(item.deckName)}"${cardAttrs}${deckAttrs} ${LABEL_ATTR}="${label}" ${RESIZABLE_ATTR}="false" transform="translate(${transformX} ${transformY}) rotate(${item.rotation} ${CARD_WIDTH / 2} ${CARD_HEIGHT / 2})">`,
 		...visual,
 		'  </g>'
 	].join('\n');
@@ -545,12 +813,6 @@ export function setupToSvg(setup: TableSetup, assets: TableSetupSvgAssets = {}):
 
 	return [
 		`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Digitable table setup" ${TABLE_ATTR}="true" ${PRESET_ATTR}="${escapeXml(setup.table.presetId)}">`,
-		'  <rect width="100%" height="100%" rx="32" fill="#166534"/>',
-		'  <rect x="24" y="24" width="' +
-			(width - 48) +
-			'" height="' +
-			(height - 48) +
-			'" rx="24" fill="none" stroke="#bbf7d0" stroke-width="6" stroke-opacity="0.8"/>',
 		slotsMarkup,
 		placementsMarkup,
 		'</svg>',

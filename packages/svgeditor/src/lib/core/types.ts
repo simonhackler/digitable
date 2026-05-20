@@ -22,16 +22,25 @@ export type SvgCanvasBBox = {
 	height: number;
 };
 
+export type SvgElementJson =
+	| string
+	| {
+			element: string;
+			namespace?: string;
+			attr?: Record<string, string | number>;
+			children?: SvgElementJson[];
+			curStyles?: boolean;
+	  };
+
+export type SvgElementJsonNode = Exclude<SvgElementJson, string>;
+
 export type SvgCanvasRawApi = {
 	addExtension?: (
 		name: string,
 		extInitFunc: (args: Record<string, unknown>) => unknown,
 		opts?: { importLocale?: unknown }
 	) => unknown | Promise<unknown>;
-	addSVGElementsFromJson?: (data: {
-		element: string;
-		attr?: Record<string, string | number>;
-	}) => Element;
+	addSVGElementsFromJson?: (data: SvgElementJson) => Element | Text | null;
 	addToSelection?: (elems: Element[], showGrips?: boolean) => void;
 	alignSelectedElements?: (type: string, relativeTo: string) => void;
 	bind?: (event: string, callback: (...args: unknown[]) => void) => void;
@@ -206,6 +215,16 @@ export type SvgEditorApi = {
 
 	getElementTree(): ElementTreeNode[];
 	getElementById(id: string): Element | null;
+	insertSvgElement(
+		data: SvgElementJsonNode,
+		opts?: { selectId?: string; historyLabel?: string }
+	): string | null;
+	updateSvgElement(
+		id: string,
+		data: SvgElementJsonNode,
+		opts?: { select?: boolean; historyLabel?: string }
+	): boolean;
+	removeElementById(id: string, opts?: { historyLabel?: string }): boolean;
 	insertImage(
 		href: string,
 		opts?: { width?: number; height?: number; attributes?: Record<string, string> }

@@ -23,9 +23,13 @@
 		disabled?: boolean;
 		readonly?: boolean;
 		centerOnLoad?: boolean;
+		centerOnExternalValueChange?: boolean;
+		syncExternalValueUpdates?: boolean;
+		selectedElementId?: string | null;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
 		activePanel?: string;
+		api?: SvgEditorApi | null;
 		toolbarActions?: () => ReturnType<Snippet>;
 		tablePanel?: () => ReturnType<Snippet>;
 		componentPanel?: () => ReturnType<Snippet>;
@@ -45,9 +49,13 @@
 		disabled = false,
 		readonly = false,
 		centerOnLoad = true,
+		centerOnExternalValueChange = centerOnLoad,
+		syncExternalValueUpdates = false,
+		selectedElementId = undefined,
 		initialZoom,
 		assetBasePath,
 		activePanel = $bindable('inspector'),
+		api = $bindable(null),
 		toolbarActions,
 		tablePanel,
 		componentPanel,
@@ -73,10 +81,12 @@
 	const extraActions = $derived(toolbarActions as Snippet | undefined);
 	const extraTablePanel = $derived(tablePanel as Snippet | undefined);
 	const extraComponentPanel = $derived(componentPanel as Snippet | undefined);
+	let selectionSyncToken = 0;
 
 	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		dispatch('change', event.detail);
 		controller.handleChange(event);
+		if (event.detail.source === 'external') scheduleControlledSelection();
 	};
 
 	const handleSelectionChange = (event: CustomEvent<SelectionChangeEvent>) => {
@@ -99,6 +109,7 @@
 			global.__svgEditorApi = controller.api;
 			global.__svgEditorController = controller;
 		}
+		scheduleControlledSelection();
 	};
 
 	const isEditableTarget = (target: EventTarget | null) => {
@@ -159,6 +170,29 @@
 		if (requireShift && !keys.has('shift')) return;
 		if (!requireShift && keys.has('shift')) return;
 		action();
+	};
+
+	const syncControlledSelection = (targetId: string | null, token: number, attempt = 0) => {
+		if (token !== selectionSyncToken) return;
+		if (targetId === null) {
+			controller.clearSelection();
+			return;
+		}
+		if (!controller.api?.getElementById(targetId)) {
+			if (attempt < 4) {
+				requestAnimationFrame(() => syncControlledSelection(targetId, token, attempt + 1));
+			}
+			return;
+		}
+		controller.selectTreeElement(targetId);
+	};
+
+	const scheduleControlledSelection = () => {
+		if (selectedElementId === undefined) return;
+		if (!controller.isReady) return;
+		const targetId = selectedElementId;
+		const token = ++selectionSyncToken;
+		requestAnimationFrame(() => syncControlledSelection(targetId, token));
 	};
 
 	const onModCombo = (combo: string[], handler: () => void) => {
@@ -368,10 +402,13 @@
 						<div class="h-full py-4 pr-4">
 							<SvgCanvasHost
 								{value}
+								bind:api
 								config={resolvedConfig}
 								{disabled}
 								{readonly}
 								{centerOnLoad}
+								{centerOnExternalValueChange}
+								{syncExternalValueUpdates}
 								{initialZoom}
 								{assetBasePath}
 								on:ready={handleReady}

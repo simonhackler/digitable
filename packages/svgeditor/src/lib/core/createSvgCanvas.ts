@@ -4,7 +4,8 @@ import type {
 	ElementTreeNode,
 	SvgCanvasConfig,
 	SvgCanvasRawApi,
-	SvgEditorApi
+	SvgEditorApi,
+	SvgElementJsonNode
 } from './types';
 
 export type SvgCanvasConstructor = new (
@@ -74,6 +75,8 @@ const RAW_TEXT_ATTR = 'data-svgedit-raw-text';
 const WRAP_WIDTH_ATTR = 'data-svgedit-wrap-width';
 const WRAP_HEIGHT_ATTR = 'data-svgedit-wrap-height';
 const SHAPE_INSIDE_ATTR = 'data-svgedit-shape-inside-ref';
+const DIGITABLE_KIND_ATTR = 'data-digitable-kind';
+const RESIZABLE_ATTR = 'data-svgedit-resizable';
 
 const normalizeGridColor = (value: unknown) => {
 	if (typeof value !== 'string' || !value.trim()) return DEFAULT_GRID_COLOR;
@@ -809,6 +812,7 @@ export const createSvgCanvas = ({
 	};
 
 	const changeHandler = () => {
+		correctSelectedSetupSelectors();
 		onChange?.(canvas.getSvgString());
 	};
 
@@ -854,6 +858,14 @@ export const createSvgCanvas = ({
 
 	const findImageInsertionParent = (root: Element) =>
 		root.querySelector(':scope > g.layer > g') ?? root.querySelector(':scope > g.layer') ?? root;
+
+	const isElementNode = (node: Element | Text | null): node is Element =>
+		Boolean(node && node.nodeType === Node.ELEMENT_NODE);
+
+	const jsonElementId = (data: SvgElementJsonNode) => {
+		const id = data.attr?.id;
+		return typeof id === 'string' && id.trim() ? id : null;
+	};
 
 	const setImageHref = (image: Element, href: string) => {
 		if (canvas.setHref) {
@@ -906,12 +918,121 @@ export const createSvgCanvas = ({
 		canvas.undoMgr?.addCommandToHistory?.(command);
 	};
 
+	type SelectorLike = {
+		selectorGroup?: Element;
+		selectorRect?: Element;
+		gripCoords?: Record<string, [number, number]>;
+	};
+
+	type SelectorManagerLike = {
+		requestSelector?: (elem: Element) => SelectorLike | null;
+		selectorGrips?: Record<string, Element | null>;
+		selectorGripsGroup?: Element | null;
+		rotateGripConnector?: Element | null;
+		rotateGrip?: Element | null;
+	};
+
+	const setupSelectionRoot = (element: Element | null | undefined) =>
+		element?.hasAttribute?.(DIGITABLE_KIND_ATTR) ? element : null;
+
+	const canResizeSelectedSetupElement = (element: Element) =>
+		element.closest?.(`[${RESIZABLE_ATTR}="false"]`) === null;
+
+	const getGraphicsRectInSelectorSpace = (element: Element, selectorElement: Element) => {
+		if (!(element instanceof SVGGraphicsElement)) return null;
+		if (!(selectorElement instanceof SVGGraphicsElement)) return null;
+		const svgRoot = element.ownerSVGElement;
+		const elementMatrix = element.getScreenCTM();
+		const selectorMatrix = selectorElement.getScreenCTM();
+		if (!svgRoot || !elementMatrix || !selectorMatrix) return null;
+		let bbox: DOMRect | SVGRect;
+		try {
+			bbox = element.getBBox();
+		} catch {
+			return null;
+		}
+		const selectorInverse = selectorMatrix.inverse();
+		const points = [
+			[bbox.x, bbox.y],
+			[bbox.x + bbox.width, bbox.y],
+			[bbox.x + bbox.width, bbox.y + bbox.height],
+			[bbox.x, bbox.y + bbox.height]
+		].map(([x, y]) => {
+			const point = svgRoot.createSVGPoint();
+			point.x = x;
+			point.y = y;
+			return point.matrixTransform(elementMatrix).matrixTransform(selectorInverse);
+		});
+		const xs = points.map((point) => point.x);
+		const ys = points.map((point) => point.y);
+		const offset = 1;
+		const left = Math.min(...xs) - offset;
+		const top = Math.min(...ys) - offset;
+		const right = Math.max(...xs) + offset;
+		const bottom = Math.max(...ys) + offset;
+		return {
+			left,
+			top,
+			right,
+			bottom,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+
+	const correctSetupSelector = (element: Element | null | undefined) => {
+		const setupRoot = setupSelectionRoot(element);
+		if (!setupRoot) return;
+		const manager = canvas.selectorManager as SelectorManagerLike | undefined;
+		const selector = manager?.requestSelector?.(setupRoot);
+		if (!selector?.selectorRect) return;
+		const rect = getGraphicsRectInSelectorSpace(setupRoot, selector.selectorRect);
+		if (!rect) return;
+
+		const d = `M${rect.left},${rect.top} L${rect.right},${rect.top} ${rect.right},${rect.bottom} ${rect.left},${rect.bottom}z`;
+		selector.selectorGroup?.setAttribute('transform', '');
+		selector.selectorRect.setAttribute('d', d);
+		selector.gripCoords = {
+			nw: [rect.left, rect.top],
+			n: [rect.left + rect.width / 2, rect.top],
+			ne: [rect.right, rect.top],
+			e: [rect.right, rect.top + rect.height / 2],
+			se: [rect.right, rect.bottom],
+			s: [rect.left + rect.width / 2, rect.bottom],
+			sw: [rect.left, rect.bottom],
+			w: [rect.left, rect.top + rect.height / 2]
+		};
+
+		for (const [dir, coords] of Object.entries(selector.gripCoords)) {
+			const grip = manager?.selectorGrips?.[dir];
+			grip?.setAttribute('cx', String(coords[0]));
+			grip?.setAttribute('cy', String(coords[1]));
+		}
+		manager?.rotateGripConnector?.setAttribute('x1', String(rect.left + rect.width / 2));
+		manager?.rotateGripConnector?.setAttribute('y1', String(rect.top));
+		manager?.rotateGripConnector?.setAttribute('x2', String(rect.left + rect.width / 2));
+		manager?.rotateGripConnector?.setAttribute('y2', String(rect.top - 20));
+		manager?.rotateGrip?.setAttribute('cx', String(rect.left + rect.width / 2));
+		manager?.rotateGrip?.setAttribute('cy', String(rect.top - 20));
+
+		if (!canResizeSelectedSetupElement(setupRoot)) {
+			manager?.selectorGripsGroup?.setAttribute('display', 'none');
+		}
+	};
+
+	const correctSelectedSetupSelectors = () => {
+		for (const element of canvas.getSelectedElements?.() ?? []) {
+			correctSetupSelector(element);
+		}
+	};
+
 	const selectElement = (element: Element) => {
 		if (canvas.selectOnly) {
 			canvas.selectOnly([element], true);
 		} else if (canvas.addToSelection) {
 			canvas.addToSelection([element], true);
 		}
+		correctSetupSelector(element);
 		selectionHandler();
 	};
 
@@ -920,6 +1041,7 @@ export const createSvgCanvas = ({
 		const changedElement = element ?? fallback;
 		if (!changedElement) return;
 		canvas.call?.('changed', [changedElement]);
+		correctSelectedSetupSelectors();
 		selectionHandler();
 	};
 
@@ -957,6 +1079,7 @@ export const createSvgCanvas = ({
 					style: 'pointer-events:inherit'
 				}
 			});
+			if (!isElementNode(image)) return null;
 			setImageHref(image, href);
 			applyAttributes(image, opts?.attributes);
 			return image;
@@ -974,6 +1097,66 @@ export const createSvgCanvas = ({
 		applyAttributes(image, opts?.attributes);
 		findImageInsertionParent(svgContent).append(image);
 		return image;
+	};
+
+	const addSvgElementFromJson = (data: SvgElementJsonNode) => {
+		if (!canvas.addSVGElementsFromJson) return null;
+		const element = canvas.addSVGElementsFromJson(data);
+		return isElementNode(element) ? element : null;
+	};
+
+	const createInsertElementCommand = (
+		element: Element,
+		parent: ParentNode | null,
+		nextSibling: ChildNode | null,
+		label: string
+	): HistoryCommand => ({
+		apply(handler?: HistoryHandler) {
+			handler?.handleHistoryEvent?.('before_apply', this);
+			if (parent && element.parentNode !== parent) {
+				const reference = nextSibling && nextSibling.parentNode === parent ? nextSibling : null;
+				parent.insertBefore(element, reference);
+			}
+			selectElement(element);
+			emitElementChanged(element);
+			handler?.handleHistoryEvent?.('after_apply', this);
+		},
+		unapply(handler?: HistoryHandler) {
+			handler?.handleHistoryEvent?.('before_unapply', this);
+			if (element.parentNode) {
+				element.parentNode.removeChild(element);
+			}
+			canvas.clearSelection?.(true);
+			emitElementChanged(parent instanceof Element ? parent : null);
+			handler?.handleHistoryEvent?.('after_unapply', this);
+		},
+		elements() {
+			return [element];
+		},
+		getText() {
+			return label;
+		},
+		type() {
+			return 'InsertElementCommand';
+		}
+	});
+
+	const replaceElementWithSnapshot = (
+		id: string,
+		snapshot: Element,
+		fallback: Element | null,
+		selectAfterReplace: boolean
+	) => {
+		const live = resolveElementById(id) ?? fallback;
+		const parent = live?.parentNode;
+		if (!live || !parent) return null;
+		const replacement = snapshot.cloneNode(true) as Element;
+		parent.replaceChild(replacement, live);
+		if (selectAfterReplace) {
+			selectElement(replacement);
+		}
+		emitElementChanged(replacement);
+		return replacement;
 	};
 
 	const applySvgString = (
@@ -999,6 +1182,7 @@ export const createSvgCanvas = ({
 	};
 
 	const selectionHandler = () => {
+		correctSelectedSetupSelectors();
 		const selected = canvas.getSelectedElements?.() ?? [];
 		onSelectionChange?.({
 			selectedElements: selected,
@@ -1395,6 +1579,119 @@ export const createSvgCanvas = ({
 		},
 		getElementById(id) {
 			return resolveElementById(id);
+		},
+		insertSvgElement(data, opts) {
+			const explicitId = jsonElementId(data);
+			if (explicitId && resolveElementById(explicitId)) return null;
+			const element = addSvgElementFromJson(data);
+			if (!element) return null;
+
+			const parent = element.parentNode;
+			const nextSibling = element.nextSibling;
+			addCommandToHistory(
+				createInsertElementCommand(
+					element,
+					parent,
+					nextSibling,
+					opts?.historyLabel ?? `Insert ${element.tagName}`
+				)
+			);
+
+			const selectTarget =
+				opts?.selectId && resolveElementById(opts.selectId)
+					? resolveElementById(opts.selectId)
+					: element;
+			selectElement(selectTarget ?? element);
+			emitElementChanged(element);
+			return element.getAttribute('id');
+		},
+		updateSvgElement(id, data, opts) {
+			const existing = resolveElementById(id);
+			if (!existing) return false;
+			const before = existing.cloneNode(true) as Element;
+			const updated = addSvgElementFromJson({
+				...data,
+				attr: {
+					...(data.attr ?? {}),
+					id
+				}
+			});
+			if (!updated) return false;
+			const after = updated.cloneNode(true) as Element;
+			let current: Element | null = updated;
+			const shouldSelect = opts?.select ?? true;
+			const command = {
+				text: opts?.historyLabel ?? `Update ${updated.tagName}`,
+				apply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_apply', this);
+					current = replaceElementWithSnapshot(id, after, current, shouldSelect) ?? current;
+					handler?.handleHistoryEvent?.('after_apply', this);
+				},
+				unapply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_unapply', this);
+					current = replaceElementWithSnapshot(id, before, current, shouldSelect) ?? current;
+					handler?.handleHistoryEvent?.('after_unapply', this);
+				},
+				elements() {
+					return current ? [current] : [];
+				},
+				getText() {
+					return this.text;
+				},
+				type() {
+					return 'UpdateElementCommand';
+				}
+			};
+			addCommandToHistory(command);
+			if (shouldSelect) selectElement(updated);
+			emitElementChanged(updated);
+			return true;
+		},
+		removeElementById(id, opts) {
+			const element = resolveElementById(id);
+			const parent = element?.parentNode ?? null;
+			if (!element || !parent) return false;
+			const nextSibling = element.nextSibling;
+			let current: Element | null = element;
+			const command = {
+				text: opts?.historyLabel ?? `Remove ${element.tagName}`,
+				apply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_apply', this);
+					const live = resolveElementById(id) ?? current;
+					if (live?.parentNode) {
+						current = live;
+						live.parentNode.removeChild(live);
+					}
+					canvas.clearSelection?.(true);
+					emitElementChanged(parent instanceof Element ? parent : null);
+					handler?.handleHistoryEvent?.('after_apply', this);
+				},
+				unapply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_unapply', this);
+					if (current && current.parentNode !== parent) {
+						const reference =
+							nextSibling && nextSibling.parentNode === parent ? nextSibling : null;
+						parent.insertBefore(current, reference);
+					}
+					if (current) selectElement(current);
+					emitElementChanged(current);
+					handler?.handleHistoryEvent?.('after_unapply', this);
+				},
+				elements() {
+					return current ? [current] : [];
+				},
+				getText() {
+					return this.text;
+				},
+				type() {
+					return 'RemoveElementCommand';
+				}
+			};
+			element.parentNode?.removeChild(element);
+			addCommandToHistory(command);
+			canvas.clearSelection?.(true);
+			emitElementChanged(parent instanceof Element ? parent : null);
+			return true;
 		},
 		insertImage(href, opts) {
 			if (!href.trim()) return null;

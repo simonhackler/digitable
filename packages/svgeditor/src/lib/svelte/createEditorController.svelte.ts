@@ -6,6 +6,7 @@ import type {
 	ModeChangeEvent,
 	ReadyEvent,
 	SelectionChangeEvent,
+	SvgElementJsonNode,
 	SvgEditorApi
 } from '../core/types';
 
@@ -222,6 +223,39 @@ class EditorController {
 		this.refreshElementTree();
 		this.refreshHistory();
 		return id ?? null;
+	};
+
+	insertSvgElement = (
+		data: SvgElementJsonNode,
+		opts?: { selectId?: string; historyLabel?: string }
+	) => {
+		const id = this.api?.insertSvgElement(data, opts);
+		this.mode = this.api?.getMode() ?? this.mode;
+		this.refreshElementTree();
+		this.refreshHistory();
+		return id ?? null;
+	};
+
+	updateSvgElement = (
+		id: string,
+		data: SvgElementJsonNode,
+		opts?: { select?: boolean; historyLabel?: string }
+	) => {
+		const changed = this.api?.updateSvgElement(id, data, opts) ?? false;
+		if (changed) {
+			this.refreshElementTree();
+			this.refreshHistory();
+		}
+		return changed;
+	};
+
+	removeElementById = (id: string, opts?: { historyLabel?: string }) => {
+		const changed = this.api?.removeElementById(id, opts) ?? false;
+		if (changed) {
+			this.refreshElementTree();
+			this.refreshHistory();
+		}
+		return changed;
 	};
 
 	setSelectedImageHref = (href: string, opts?: { attributes?: Record<string, string> }) => {

@@ -9,7 +9,8 @@
 	import {
 		ReferenceEditor,
 		type ChangeEvent,
-		type SelectionChangeEvent
+		type SelectionChangeEvent,
+		type SvgEditorApi
 	} from '@svg-table/svgeditor';
 	import { Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -22,13 +23,16 @@
 		createDefaultTableSetup,
 		normalizeTableSvg,
 		parseTableSetup,
+		placementToSvgElementJson,
 		serializeTableSetup,
 		setupToSvg,
+		slotToSvgElementJson,
 		svgToTableSetup,
 		SETUP_JSON_PATH,
 		SETUP_SVG_PATH,
 		tablePresets,
 		type SetupPlacement,
+		type SetupSvgElementJson,
 		type SetupSlot,
 		type TablePresetId,
 		type TableSetup
@@ -97,6 +101,50 @@
 		}
 	}
 
+	async function loadDeckEntry(deckName: string): Promise<DeckEntry> {
+		try {
+			const front = await fileSystem.readText(
+				joinFsPath(projectName, 'system', deckName, 'front.svg')
+			);
+			if (front.error) {
+				return {
+					name: deckName,
+					cards: await loadFallbackCards(deckName)
+				};
+			}
+			const frontTemplate = loadSvgTemplate(front.data);
+			const { spreadsheetData, imagePaths } = await loadSvgsAndDataForSides(
+				projectName,
+				deckName,
+				fileSystem,
+				[{ template: frontTemplate }],
+				true
+			);
+			const headers = spreadsheetData.cols.map((column) => String(column.title));
+			const idIndex = headers.indexOf('id');
+			const labelIndex = headers.findIndex((header) => header !== 'id');
+			const cards = spreadsheetData.data.map((row, index) => {
+				const rowId = String(idIndex >= 0 ? row[idIndex] : index + 1);
+				const fallback = `${deckName} ${index + 1}`;
+				const label = String(labelIndex >= 0 ? row[labelIndex] || fallback : fallback);
+				const frontSvg = serializeSvg(generateSvg(frontTemplate, headers, row, imagePaths));
+				return {
+					id: `${deckName}:${rowId}`,
+					rowId,
+					deckName,
+					label,
+					frontSvg
+				};
+			});
+			return { name: deckName, cards };
+		} catch {
+			return {
+				name: deckName,
+				cards: await loadFallbackCards(deckName)
+			};
+		}
+	}
+
 	async function loadDeckLibrary(): Promise<DeckEntry[]> {
 		const systemDir = await fileSystem.openDir(joinFsPath(projectName, 'system'));
 		if (systemDir.error) return [];
@@ -106,40 +154,7 @@
 			entries.data
 				.filter((entry) => entry.kind === 'directory')
 				.sort((a, b) => a.name.localeCompare(b.name))
-				.map(async (entry) => {
-					const front = await systemDir.data.readText(joinFsPath(entry.name, 'front.svg'));
-					if (front.error) {
-						return {
-							name: entry.name,
-							cards: await loadFallbackCards(entry.name)
-						};
-					}
-					const frontTemplate = loadSvgTemplate(front.data);
-					const { spreadsheetData, imagePaths } = await loadSvgsAndDataForSides(
-						projectName,
-						entry.name,
-						fileSystem,
-						[{ template: frontTemplate }],
-						true
-					);
-					const headers = spreadsheetData.cols.map((column) => String(column.title));
-					const idIndex = headers.indexOf('id');
-					const labelIndex = headers.findIndex((header) => header !== 'id');
-					const cards = spreadsheetData.data.map((row, index) => {
-						const rowId = String(idIndex >= 0 ? row[idIndex] : index + 1);
-						const fallback = `${entry.name} ${index + 1}`;
-						const label = String(labelIndex >= 0 ? row[labelIndex] || fallback : fallback);
-						const frontSvg = serializeSvg(generateSvg(frontTemplate, headers, row, imagePaths));
-						return {
-							id: `${entry.name}:${rowId}`,
-							rowId,
-							deckName: entry.name,
-							label,
-							frontSvg
-						};
-					});
-					return { name: entry.name, cards };
-				})
+				.map((entry) => loadDeckEntry(entry.name))
 		);
 		return decks;
 	}
@@ -166,7 +181,7 @@
 	let isLoading = $state(true);
 	let addComponentOpen = $state(false);
 	let editorSvg = $state(setupToSvg(fallbackSetup));
-	let editorKey = $state(0);
+	let editorApi = $state<SvgEditorApi | null>(null);
 	let editorPanel = $state('component');
 	let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let saveGeneration = 0;
@@ -175,6 +190,7 @@
 	const selectedPlacement = $derived(
 		setup.placements.find((placement) => placement.id === selectedPlacementId) ?? null
 	);
+	const selectedSetupElementId = $derived(selectedPlacementId ?? selectedSlotId);
 	const selectedDeckCards = $derived(
 		selectedPlacement?.type === 'deck'
 			? cards.filter((card) => card.deckName === selectedPlacement.deckName)
@@ -210,7 +226,6 @@
 							svgAssetsForSetup(loadedSetup.setup, loadedDecks)
 						)
 					: setupToSvg(loadedSetup.setup, svgAssetsForSetup(loadedSetup.setup, loadedDecks));
-				editorKey += 1;
 				isLoading = false;
 				status = 'Loaded';
 			})
@@ -225,8 +240,16 @@
 		if (autosaveTimer) clearTimeout(autosaveTimer);
 	});
 
+	function currentEditorSvg() {
+		return editorApi?.getSvg() ?? editorSvg;
+	}
+
 	function syncFromEditor() {
-		setup = svgToTableSetup(editorSvg, setup);
+		const svg = currentEditorSvg();
+		editorSvg = svg;
+		const syncedSetup = svgToTableSetup(svg, setup);
+		setup = syncedSetup;
+		return syncedSetup;
 	}
 
 	function cardById(cardId: string, sourceDecks = decks) {
@@ -256,16 +279,57 @@
 	function applySetup(nextSetup: TableSetup, options: { preserveSvg?: boolean } = {}) {
 		setup = nextSetup;
 		editorSvg = renderSetupSvg(nextSetup, options.preserveSvg === false ? null : editorSvg);
-		editorKey += 1;
+		scheduleAutosave();
+	}
+
+	function insertSetupElement(
+		nextSetup: TableSetup,
+		elementId: string,
+		element: SetupSvgElementJson
+	) {
+		setup = nextSetup;
+		if (!editorApi?.insertSvgElement(element, { selectId: elementId, historyLabel: 'Add setup element' })) {
+			editorSvg = renderSetupSvg(nextSetup, currentEditorSvg());
+			scheduleAutosave();
+			return;
+		}
+		editorSvg = editorApi.getSvg();
+		scheduleAutosave();
+	}
+
+	function updateSetupElement(
+		nextSetup: TableSetup,
+		elementId: string,
+		element: SetupSvgElementJson
+	) {
+		setup = nextSetup;
+		if (!editorApi?.updateSvgElement(elementId, element, { select: true, historyLabel: 'Update setup element' })) {
+			editorSvg = renderSetupSvg(nextSetup, currentEditorSvg());
+			scheduleAutosave();
+			return;
+		}
+		editorSvg = editorApi.getSvg();
+		scheduleAutosave();
+	}
+
+	function removeSetupElement(nextSetup: TableSetup, elementId: string) {
+		setup = nextSetup;
+		if (!editorApi?.removeElementById(elementId, { historyLabel: 'Remove setup element' })) {
+			editorSvg = renderSetupSvg(nextSetup, currentEditorSvg());
+			scheduleAutosave();
+			return;
+		}
+		editorSvg = editorApi.getSvg();
 		scheduleAutosave();
 	}
 
 	function setPreset(presetId: TablePresetId) {
 		const preset = tablePresets.find((candidate) => candidate.id === presetId);
 		if (!preset) return;
+		const currentSetup = syncFromEditor();
 		applySetup(
 			{
-				...setup,
+				...currentSetup,
 				table: {
 					presetId,
 					width: preset.width,
@@ -277,11 +341,12 @@
 	}
 
 	function updateTableSize(key: 'width' | 'height', value: number) {
+		const currentSetup = syncFromEditor();
 		applySetup(
 			{
-				...setup,
+				...currentSetup,
 				table: {
-					...setup.table,
+					...currentSetup.table,
 					presetId: 'custom',
 					[key]: Math.max(100, value)
 				}
@@ -291,7 +356,7 @@
 	}
 
 	function addPlacement(payload: DragPayload, x: number, y: number) {
-		syncFromEditor();
+		const currentSetup = syncFromEditor();
 		const placement: SetupPlacement =
 			payload.kind === 'deck'
 				? {
@@ -315,18 +380,23 @@
 						y,
 						rotation: 0,
 						label: payload.label
-					};
-		applySetup({
-			...setup,
-			placements: [...setup.placements, placement]
-		});
+				};
+		const nextSetup = {
+			...currentSetup,
+			placements: [...currentSetup.placements, placement]
+		};
+		insertSetupElement(
+			nextSetup,
+			placement.id,
+			placementToSvgElementJson(placement, svgAssetsForSetup(nextSetup))
+		);
 		selectedPlacementId = placement.id;
 		selectedSlotId = null;
 		editorPanel = 'component';
 	}
 
 	function quickPlace(payload: DragPayload) {
-		const offset = setup.placements.length * 36;
+		const offset = svgToTableSetup(currentEditorSvg(), setup).placements.length * 36;
 		addPlacement(payload, 160 + offset, 160 + offset);
 	}
 
@@ -336,44 +406,58 @@
 	}
 
 	function addSlot() {
-		syncFromEditor();
+		const currentSetup = syncFromEditor();
 		const slot: SetupSlot = {
 			id: crypto.randomUUID(),
-			label: `Slot ${setup.slots.length + 1}`,
-			x: Math.round(setup.table.width / 2 - 120),
-			y: Math.round(setup.table.height / 2 - 160),
+			label: `Slot ${currentSetup.slots.length + 1}`,
+			x: Math.round(currentSetup.table.width / 2 - 120),
+			y: Math.round(currentSetup.table.height / 2 - 160),
 			width: 240,
 			height: 320,
 			acceptedDeckNames: [],
 			acceptedCardIds: []
 		};
-		applySetup({
-			...setup,
-			slots: [...setup.slots, slot]
-		});
+		const nextSetup = {
+			...currentSetup,
+			slots: [...currentSetup.slots, slot]
+		};
+		insertSetupElement(nextSetup, slot.id, slotToSvgElementJson(slot));
 		selectedSlotId = slot.id;
 		selectedPlacementId = null;
 		editorPanel = 'component';
 	}
 
 	function updateSlot(slotId: string, patch: Partial<SetupSlot>) {
-		applySetup({
-			...setup,
-			slots: setup.slots.map((slot) => (slot.id === slotId ? { ...slot, ...patch } : slot))
-		});
+		const currentSetup = syncFromEditor();
+		const nextSetup = {
+			...currentSetup,
+			slots: currentSetup.slots.map((slot) => (slot.id === slotId ? { ...slot, ...patch } : slot))
+		};
+		const nextSlot = nextSetup.slots.find((slot) => slot.id === slotId);
+		if (!nextSlot) return;
+		updateSetupElement(nextSetup, slotId, slotToSvgElementJson(nextSlot));
 	}
 
 	function updatePlacement(placementId: string, patch: Partial<SetupPlacement>) {
-		applySetup({
-			...setup,
-			placements: setup.placements.map((placement) =>
+		const currentSetup = syncFromEditor();
+		const nextSetup = {
+			...currentSetup,
+			placements: currentSetup.placements.map((placement) =>
 				placement.id === placementId ? ({ ...placement, ...patch } as SetupPlacement) : placement
 			)
-		});
+		};
+		const nextPlacement = nextSetup.placements.find((placement) => placement.id === placementId);
+		if (!nextPlacement) return;
+		updateSetupElement(
+			nextSetup,
+			placementId,
+			placementToSvgElementJson(nextPlacement, svgAssetsForSetup(nextSetup))
+		);
 	}
 
 	function togglePlacementCardValue(placementId: string, cardId: string, checked: boolean) {
-		const placement = setup.placements.find((candidate) => candidate.id === placementId);
+		const currentSetup = syncFromEditor();
+		const placement = currentSetup.placements.find((candidate) => candidate.id === placementId);
 		if (!placement || placement.type !== 'deck') return;
 		const values = checked
 			? [...placement.cardIds, cardId]
@@ -382,9 +466,9 @@
 		const deckCardIds = cards
 			.filter((card) => card.deckName === placement.deckName && selectedCardIds.has(card.id))
 			.map((card) => card.id);
-		applySetup({
-			...setup,
-			placements: setup.placements.map((candidate) =>
+		const nextSetup = {
+			...currentSetup,
+			placements: currentSetup.placements.map((candidate) =>
 				candidate.id === placementId && candidate.type === 'deck'
 					? {
 							...candidate,
@@ -392,7 +476,14 @@
 						}
 					: candidate
 			)
-		});
+		};
+		const nextPlacement = nextSetup.placements.find((candidate) => candidate.id === placementId);
+		if (!nextPlacement) return;
+		updateSetupElement(
+			nextSetup,
+			placementId,
+			placementToSvgElementJson(nextPlacement, svgAssetsForSetup(nextSetup))
+		);
 	}
 
 	function toggleSlotValue(
@@ -414,25 +505,36 @@
 	}
 
 	function removeSlot(slotId: string) {
-		applySetup({
-			...setup,
-			slots: setup.slots.filter((slot) => slot.id !== slotId)
-		});
-		if (selectedSlotId === slotId) selectedSlotId = setup.slots[0]?.id ?? null;
+		const currentSetup = syncFromEditor();
+		const nextSetup = {
+			...currentSetup,
+			slots: currentSetup.slots.filter((slot) => slot.id !== slotId)
+		};
+		removeSetupElement(nextSetup, slotId);
+		if (selectedSlotId === slotId) {
+			selectedSlotId = currentSetup.slots.find((slot) => slot.id !== slotId)?.id ?? null;
+		}
 	}
 
 	function removePlacement(placementId: string) {
-		applySetup({
-			...setup,
-			placements: setup.placements.filter((placement) => placement.id !== placementId)
-		});
+		const currentSetup = syncFromEditor();
+		const nextSetup = {
+			...currentSetup,
+			placements: currentSetup.placements.filter((placement) => placement.id !== placementId)
+		};
+		removeSetupElement(nextSetup, placementId);
 		if (selectedPlacementId === placementId) selectedPlacementId = null;
 	}
 
 	function handleEditorChange(event: CustomEvent<ChangeEvent>) {
 		if (event.detail.source !== 'user') return;
 		editorSvg = event.detail.svg;
-		setup = svgToTableSetup(editorSvg, setup);
+		if (selectedPlacementId && !editorApi?.getElementById(selectedPlacementId)) {
+			selectedPlacementId = null;
+		}
+		if (selectedSlotId && !editorApi?.getElementById(selectedSlotId)) {
+			selectedSlotId = null;
+		}
 		scheduleAutosave();
 	}
 
@@ -442,21 +544,27 @@
 		if (!setupElement) return null;
 		return {
 			id: setupElement.getAttribute('id'),
-			kind: setupElement.getAttribute('data-digitable-kind')
+			kind: setupElement.getAttribute('data-digitable-kind'),
+			selectedElement: element,
+			setupElement
 		};
 	}
 
 	function handleEditorSelection(event: CustomEvent<SelectionChangeEvent>) {
 		const selected = setupElementFromSelection(event);
 		if (!selected?.id) return;
+		const selectedId = selected.id;
+		if (selected.selectedElement !== selected.setupElement) {
+			requestAnimationFrame(() => editorApi?.selectElementById(selectedId));
+		}
 		if (selected.kind === 'slot') {
-			selectedSlotId = selected.id;
+			selectedSlotId = selectedId;
 			selectedPlacementId = null;
 			editorPanel = 'component';
 			return;
 		}
 		if (selected.kind === 'placement') {
-			selectedPlacementId = selected.id;
+			selectedPlacementId = selectedId;
 			selectedSlotId = null;
 			editorPanel = 'component';
 		}
@@ -478,10 +586,11 @@
 		isSaving = true;
 		saveError = '';
 		status = 'Autosaving';
-		const syncedSetup = svgToTableSetup(editorSvg, setup);
-		const syncedSvg = normalizeTableSvg(editorSvg, syncedSetup, svgAssetsForSetup(syncedSetup));
+		const currentSvg = currentEditorSvg();
+		const syncedSetup = svgToTableSetup(currentSvg, setup);
+		const syncedSvg = normalizeTableSvg(currentSvg, syncedSetup, svgAssetsForSetup(syncedSetup));
 		setup = syncedSetup;
-		editorSvg = syncedSvg;
+		editorSvg = currentSvg;
 		const setupDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
 		if (setupDir.error) {
 			saveError = setupDir.error.message;
@@ -521,19 +630,27 @@
 		aria-label="Table SVG editor"
 		class="min-h-0 flex-1 overflow-hidden rounded-md border bg-emerald-950/10"
 	>
-		{#key editorKey}
+		{#if isLoading}
+			<div class="text-muted-foreground flex h-full items-center justify-center text-sm">
+				Loading table setup
+			</div>
+		{:else}
 			<ReferenceEditor
 				value={editorSvg}
+				bind:api={editorApi}
 				{config}
 				bind:activePanel={editorPanel}
 				assetBasePath="/svgedit/images/"
 				initialZoom="fit"
+				centerOnExternalValueChange={false}
+				syncExternalValueUpdates={true}
+				selectedElementId={selectedSetupElementId}
 				toolbarActions={setupToolbarAction}
 				componentPanel={setupComponentPanel}
 				on:change={handleEditorChange}
 				on:selectionchange={handleEditorSelection}
 			/>
-		{/key}
+		{/if}
 	</div>
 </main>
 
@@ -596,14 +713,6 @@
 					<h2 class="font-semibold">Slot</h2>
 					<Badge variant="secondary">rules</Badge>
 				</div>
-				<label class="grid gap-1 font-medium">
-					Label
-					<Input
-						aria-label="Slot label"
-						value={selectedSlot.label}
-						oninput={(event) => updateSlot(selectedSlot.id, { label: event.currentTarget.value })}
-					/>
-				</label>
 				<div class="space-y-2">
 					<h3 class="font-medium">Allowed decks</h3>
 					{#each decks as deck (deck.name)}
@@ -753,6 +862,8 @@
 							{/each}
 						</div>
 					</div>
+				{:else}
+					<p class="text-muted-foreground rounded-md border p-3 text-sm">No decks found.</p>
 				{/each}
 			</div>
 		</Dialog.Content>
