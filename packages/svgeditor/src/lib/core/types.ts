@@ -15,6 +15,8 @@ export type SvgCanvasConfig = {
 	[key: string]: unknown;
 };
 
+export type ChangeSvgEmission = boolean | 'non-setup';
+
 export type SvgCanvasBBox = {
 	x: number;
 	y: number;
@@ -224,6 +226,11 @@ export type SvgEditorApi = {
 		data: SvgElementJsonNode,
 		opts?: { select?: boolean; historyLabel?: string }
 	): boolean;
+	updateElementAttributes(
+		id: string,
+		attributes: Record<string, string | null>,
+		opts?: { select?: boolean; historyLabel?: string }
+	): boolean;
 	removeElementById(id: string, opts?: { historyLabel?: string }): boolean;
 	insertImage(
 		href: string,
@@ -252,7 +259,7 @@ export type ReadyEvent = {
 };
 
 export type ChangeEvent = {
-	svg: string;
+	svg?: string;
 	source: 'user' | 'external';
 };
 

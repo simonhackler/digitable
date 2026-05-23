@@ -1,6 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { seedProjectFiles, useBrowserStorage } from './helpers/opfs';
-import { pixiClick, pixiDragTo, pixiPoint, pixiState, waitForPixi } from './helpers/pixi';
+import { seedProjectFiles, useBrowserStorage, writeOpfsText } from './helpers/opfs';
+import {
+	pixiClick,
+	pixiDragTo,
+	pixiPoint,
+	pixiSlotPoint,
+	pixiState,
+	waitForPixi
+} from './helpers/pixi';
 
 const playtestAppOrigin = process.env.PLAYTEST_APP_ORIGIN ?? '';
 
@@ -30,6 +37,162 @@ async function seedPixiProject(page: Page, projectSlug: string) {
 async function openPixiSmokeTest(page: Page) {
 	await openPixiProject(page, 'pixi-play-smoke');
 }
+
+async function writeWesternTableSetup(
+	page: Page,
+	input: {
+		deckCardIds: string[];
+		cardPlacements?: { id: string; label: string; cardId: string; x: number; y: number }[];
+		acceptedCardIds?: string[];
+		slotContents?: { type: 'card'; deckName: string; cardId: string }[];
+	}
+) {
+	await writeOpfsText(
+		page,
+		'/western-cards/setup/table.json',
+		`${JSON.stringify(
+			{
+				version: 1,
+				table: { presetId: 'custom', width: 1000, height: 700 },
+				placements: [
+					{
+						id: 'setup-deck',
+						type: 'deck',
+						deckName: 'western',
+						cardIds: input.deckCardIds.map((id) => `western:${id}`),
+						x: 155,
+						y: 155,
+						rotation: 0,
+						label: 'western'
+					},
+					...(input.cardPlacements ?? []).map((placement) => ({
+						id: placement.id,
+						type: 'card',
+						deckName: 'western',
+						cardId: placement.cardId,
+						x: placement.x,
+						y: placement.y,
+						rotation: 0,
+						label: placement.label
+					}))
+				],
+				slots: [
+					{
+						id: 'setup-slot',
+						label: 'Slot',
+						x: 500,
+						y: 220,
+						width: 236,
+						height: 150,
+						acceptedDeckNames: [],
+						acceptedCardIds: input.acceptedCardIds ?? [],
+						layout: {
+							mode: 'horizontal-flex',
+							visibleCount: 2,
+							gap: 16,
+							cardSize: 'content-card',
+							maxItems: 4
+						},
+						contents: input.slotContents ?? []
+					}
+				]
+			},
+			null,
+			2
+		)}\n`
+	);
+}
+
+test('local play initializes visible items from table setup', async ({ page }) => {
+	test.setTimeout(60_000);
+	const deckCardIds = [
+		'71412f2b-80a5-48af-aa7d-68a525a1c872',
+		'c6da04fb-1955-43e1-adbc-7f4fda4b83cf'
+	];
+	const slotCardId = '5f408ad5-6799-4258-b4bd-c7c8a570c97b';
+	const tableCardId = '69ebca03-541e-4649-a256-1c7c28aaf86b';
+
+	await seedPixiProject(page, 'western-cards');
+	await writeWesternTableSetup(page, {
+		deckCardIds: [...deckCardIds, slotCardId, tableCardId],
+		cardPlacements: [
+			{
+				id: 'setup-table-card',
+				label: 'Peek',
+				cardId: `western:${tableCardId}`,
+				x: 360,
+				y: 155
+			}
+		],
+		slotContents: [{ type: 'card', deckName: 'western', cardId: `western:${slotCardId}` }]
+	});
+
+	await page.goto('/app/games/western-cards/play?e2e=1');
+	await waitForPixi(page);
+
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				return {
+					visibleStackIds: state.visibleStackIds,
+					visibleBoardCardIds: state.visibleBoardCardIds.toSorted(),
+					handCardCount: state.handCardIds.length
+				};
+			},
+			{ timeout: 20_000 }
+		)
+		.toEqual({
+			visibleStackIds: ['setup-deck'],
+			visibleBoardCardIds: [slotCardId, tableCardId].toSorted(),
+			handCardCount: 0
+		});
+});
+
+test('local setup slot accepts matching hand cards', async ({ page }) => {
+	test.setTimeout(60_000);
+	const drawCardId = 'c6da04fb-1955-43e1-adbc-7f4fda4b83cf';
+	await seedPixiProject(page, 'western-cards');
+	await writeWesternTableSetup(page, {
+		deckCardIds: ['71412f2b-80a5-48af-aa7d-68a525a1c872', drawCardId],
+		acceptedCardIds: [`western:${drawCardId}`]
+	});
+
+	await page.goto('/app/games/western-cards/play?e2e=1');
+	await waitForPixi(page);
+	await expect
+		.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
+		.toContain('setup-deck');
+	await pixiClick(page, 'setup-deck');
+	await page.keyboard.press('d');
+
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(drawCardId);
+	await pixiDragTo(page, drawCardId, await pixiSlotPoint(page, 'setup-slot'));
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toEqual([]);
+	await expect.poll(async () => (await pixiState(page)).visibleBoardCardIds).toContain(drawCardId);
+});
+
+test('local setup slot rejects nonmatching hand cards', async ({ page }) => {
+	test.setTimeout(60_000);
+	const rejectedCardId = 'c6da04fb-1955-43e1-adbc-7f4fda4b83cf';
+	await seedPixiProject(page, 'western-cards');
+	await writeWesternTableSetup(page, {
+		deckCardIds: ['71412f2b-80a5-48af-aa7d-68a525a1c872', rejectedCardId],
+		acceptedCardIds: ['western:71412f2b-80a5-48af-aa7d-68a525a1c872']
+	});
+
+	await page.goto('/app/games/western-cards/play?e2e=1');
+	await waitForPixi(page);
+	await expect
+		.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
+		.toContain('setup-deck');
+	await pixiClick(page, 'setup-deck');
+	await page.keyboard.press('d');
+
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(rejectedCardId);
+	await pixiDragTo(page, rejectedCardId, await pixiSlotPoint(page, 'setup-slot'));
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(rejectedCardId);
+});
 
 async function canvasPoint(page: Page, point: { x: number; y: number }) {
 	const box = await page.locator('canvas').boundingBox();

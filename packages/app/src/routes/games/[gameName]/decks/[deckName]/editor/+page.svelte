@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onNavigate } from '$app/navigation';
-	import { ReferenceEditor } from '@svg-table/svgeditor';
+	import { ReferenceEditor, type ChangeEvent } from '@svg-table/svgeditor';
 	import type { createEditorController } from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
@@ -403,9 +403,9 @@
 		return flushPendingSaves();
 	});
 
-	const handleChange = (event: CustomEvent<{ svg: string; source: 'user' | 'external' }>) => {
+	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		const { svg: value, source } = event.detail;
-		if (source !== 'user') return;
+		if (source !== 'user' || !value) return;
 		const normalizedValue = normalizeEditorSvgImages(value);
 		if (side === 'front') {
 			front = normalizedValue;

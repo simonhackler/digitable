@@ -249,6 +249,19 @@ class EditorController {
 		return changed;
 	};
 
+	updateElementAttributes = (
+		id: string,
+		attributes: Record<string, string | null>,
+		opts?: { select?: boolean; historyLabel?: string }
+	) => {
+		const changed = this.api?.updateElementAttributes(id, attributes, opts) ?? false;
+		if (changed) {
+			this.refreshElementTree();
+			this.refreshHistory();
+		}
+		return changed;
+	};
+
 	removeElementById = (id: string, opts?: { historyLabel?: string }) => {
 		const changed = this.api?.removeElementById(id, opts) ?? false;
 		if (changed) {

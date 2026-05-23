@@ -24,6 +24,7 @@ export interface InitComponentDependencies {
 	boardContainer: Container;
 	boardGameItems: Map<string, BoardGameItemNew>;
 	isDragging: () => boolean;
+	configureItem?: (item: BoardGameItemNew) => void;
 }
 
 function firstTexture(container: Container): Texture | null {
@@ -198,6 +199,7 @@ export async function initComponent(
 	boardGameItems.set(component.id, boardGameItem);
 
 	boardGameItem.scale.set(0.5);
+	deps.configureItem?.(boardGameItem);
 	boardGameItem.eventMode = 'static';
 	boardGameItem.cursor = 'pointer';
 	boardGameItem.on('pointerover', () => {

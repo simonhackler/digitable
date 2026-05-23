@@ -18,6 +18,7 @@ type PixiBridgeWindow = Window & {
 	__PIXI_E2E__?: {
 		state: () => PixiPlayState;
 		clickPoint: (id: string) => { x: number; y: number } | null;
+		slotPoint: (id: string) => { x: number; y: number } | null;
 	};
 };
 
@@ -32,12 +33,40 @@ export async function pixiPoint(page: Page, id: string) {
 	return point;
 }
 
+export async function pixiSlotPoint(page: Page, id: string) {
+	const point = await page.evaluate(
+		(slotId) => (window as PixiBridgeWindow).__PIXI_E2E__!.slotPoint(slotId),
+		id
+	);
+	if (!point) {
+		throw new Error(`No Pixi slot point found for "${id}"`);
+	}
+	return point;
+}
+
 export async function waitForPixi(page: Page) {
 	await page.waitForFunction(() => Boolean((window as PixiBridgeWindow).__PIXI_E2E__));
 }
 
 export async function pixiState(page: Page): Promise<PixiPlayState> {
-	return page.evaluate(() => (window as PixiBridgeWindow).__PIXI_E2E__!.state());
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		try {
+			await waitForPixi(page);
+			return await page.evaluate(() => (window as PixiBridgeWindow).__PIXI_E2E__!.state());
+		} catch (error) {
+			lastError = error;
+			const message = error instanceof Error ? error.message : String(error);
+			if (
+				!message.includes('Execution context was destroyed') &&
+				!message.includes('__PIXI_E2E__')
+			) {
+				throw error;
+			}
+			await page.waitForTimeout(100);
+		}
+	}
+	throw lastError;
 }
 
 export async function pixiClick(page: Page, id: string) {

@@ -4,6 +4,7 @@
 		Application,
 		Container,
 		type FederatedPointerEvent,
+		Graphics,
 		Point,
 		Rectangle,
 		type Renderer
@@ -14,10 +15,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { env } from '$env/dynamic/public';
 	import { loadAndProcessCards } from './pixi-card-loader';
-	import {
-		type BoardGameRoomState,
-		type InitGamePayload
-	} from 'boardgame-server/src/rooms/schema/MyRoomState';
+	import { type BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItemNew } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
@@ -36,6 +34,32 @@
 	import { createBoardChrome } from './board-chrome';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
+	import {
+		parseTableSetup,
+		SETUP_JSON_PATH,
+		SETUP_SVG_PATH,
+		type TableSetup
+	} from '../../routes/games/[gameName]/setup/table-setup';
+	import {
+		buildDefaultInitPayload,
+		buildSetupInitPayload,
+		buildSetupPlayPlan,
+		SETUP_PLAY_CARD_HEIGHT,
+		SETUP_PLAY_CARD_WIDTH,
+		setupReferencedDeckNames,
+		type LoadedDeck
+	} from './setup-play';
+	import { createSetupTableLayer } from './setup-table-layer';
+	import {
+		clampSetupItemPosition,
+		findSetupSlotAtPoint,
+		initialSetupSlotState,
+		setupItemMetadataById,
+		setupSlotAcceptsItem,
+		setupSlotCapacity,
+		setupSlotCellPosition,
+		type SetupItemMetadata
+	} from './setup-slot-rules';
 	import PlaytestNotes from './PlaytestNotes.svelte';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import MousePointer2Icon from '@lucide/svelte/icons/mouse-pointer-2';
@@ -73,6 +97,11 @@
 	const client = new Client(gameServerUrl);
 	let playE2EBridge: ReturnType<typeof installPlayE2EBridge> | null = null;
 	const privatePlaytestReconnectTokenPrefix = 'svg-table:playtest-reconnect-token:';
+
+	type LocalTableSetup = {
+		setup: TableSetup;
+		customTableSvg: string | null;
+	};
 
 	function isE2EMode() {
 		return e2e;
@@ -132,10 +161,18 @@
 
 	let boardContainer: Container;
 	let handContainer: HandContainer;
-	let tableChrome: Container;
+	let tableChrome: Container | null = null;
 	let strokeLayer: StrokeLayer;
+	let setupDropPreviewLayer: Graphics | null = null;
 
 	let viewport: Viewport;
+	let setupItemMetadata: Map<string, SetupItemMetadata> = new SvelteMap();
+	let setupSlotOccupants: Map<string, string[]> = new SvelteMap();
+	let setupItemSlotIds: Map<string, string> = new SvelteMap();
+	const setupItemIntrinsicBounds = new SvelteMap<
+		string,
+		{ x: number; y: number; width: number; height: number }
+	>();
 
 	let hoverItem: BoardGameItemNew | null = null;
 	let selectionManager = new SelectionManager();
@@ -197,10 +234,296 @@
 		startGlobalY: number;
 		clickThreshold: number;
 		dragType: 'marquee' | 'selection' | 'handToBoard' | 'strokeDraft';
-		isFromHand?: boolean;
+		startPositions?: Map<string, { x: number; y: number }>;
 	} | null;
 
 	let drag: DragState = null;
+
+	function setupForPlay(): TableSetup | null {
+		return localTableSetup?.setup ?? null;
+	}
+
+	function setupItemPosition(position: { x: number; y: number }) {
+		const setup = setupForPlay();
+		return setup ? clampSetupItemPosition(setup, position) : position;
+	}
+
+	function setupItemCenter(item: BoardGameItemNew) {
+		const bounds = setupItemContentBounds(item);
+		if (bounds) {
+			return {
+				x: bounds.x + bounds.width / 2,
+				y: bounds.y + bounds.height / 2
+			};
+		}
+		return {
+			x: item.x + SETUP_PLAY_CARD_WIDTH / 2,
+			y: item.y + SETUP_PLAY_CARD_HEIGHT / 2
+		};
+	}
+
+	function metadataForSetupItem(item: BoardGameItemNew): SetupItemMetadata {
+		const metadata = setupItemMetadata.get(item.id);
+		if (metadata) return metadata;
+		return {
+			id: item.id,
+			type: item.clientStack ? 'stack' : 'card',
+			componentIds: item.clientStack ? [...item.clientStack.clientStackState.componentIds] : [item.id]
+		};
+	}
+
+	function fitSetupItemToSlotSize(item: BoardGameItemNew) {
+		if (!setupForPlay()) return;
+		item.disableLayoutTransform();
+		let rect = setupItemIntrinsicBounds.get(item.id);
+		if (!rect) {
+			const bounds = item.getLocalBounds();
+			const localRect = 'rectangle' in bounds ? bounds.rectangle : bounds;
+			if (localRect.width <= 0 || localRect.height <= 0) return;
+			rect = {
+				x: localRect.x,
+				y: localRect.y,
+				width: localRect.width,
+				height: localRect.height
+			};
+			setupItemIntrinsicBounds.set(item.id, rect);
+		}
+
+		item.pivot.set(rect.x, rect.y);
+		item.scale.set(SETUP_PLAY_CARD_WIDTH / rect.width, SETUP_PLAY_CARD_HEIGHT / rect.height);
+	}
+
+	function setupItemContentBounds(item: BoardGameItemNew) {
+		const parent = item.parent;
+		if (!parent) return null;
+		app.render();
+
+		// The item itself can contain transient UI chrome like the selection border.
+		// Slot placement must be based only on the card/deck content.
+		const bounds = item.itemContainer.getBounds();
+		const rect = 'rectangle' in bounds ? bounds.rectangle : bounds;
+		const topLeft = parent.toLocal(new Point(rect.x, rect.y));
+		const bottomRight = parent.toLocal(new Point(rect.x + rect.width, rect.y + rect.height));
+		const width = bottomRight.x - topLeft.x;
+		const height = bottomRight.y - topLeft.y;
+		if (width <= 0 || height <= 0) return null;
+
+		return {
+			x: topLeft.x,
+			y: topLeft.y,
+			width,
+			height
+		};
+	}
+
+	function setSetupItemVisualTopLeft(item: BoardGameItemNew, position: { x: number; y: number }) {
+		const parent = item.parent;
+		if (!parent) {
+			item.position.set(position.x, position.y);
+			return;
+		}
+
+		item.position.set(position.x, position.y);
+		const bounds = setupItemContentBounds(item);
+		if (!bounds) return;
+
+		item.position.set(item.x + position.x - bounds.x, item.y + position.y - bounds.y);
+	}
+
+	function setupDropPreviewRect(item: BoardGameItemNew, slotId: string) {
+		const slot = setupSlotById(slotId);
+		if (!slot) return null;
+		if (slot.layout?.mode !== 'horizontal-flex') {
+			return { x: slot.x, y: slot.y, width: slot.width, height: slot.height };
+		}
+
+		const occupants = setupSlotOccupants.get(slot.id) ?? [];
+		const existingIndex = occupants.indexOf(item.id);
+		const index = existingIndex >= 0 ? existingIndex : occupants.length;
+		return {
+			...setupSlotCellPosition(slot, index),
+			width: SETUP_PLAY_CARD_WIDTH,
+			height: SETUP_PLAY_CARD_HEIGHT
+		};
+	}
+
+	function drawSetupDropPreview(item: BoardGameItemNew, point: { x: number; y: number }) {
+		const setup = setupForPlay();
+		if (!setup || !setupDropPreviewLayer) return;
+
+		setupDropPreviewLayer.clear();
+		const slot = findSetupSlotAtPoint(setup, point);
+		if (!slot) return;
+
+		const accepted = canPlaceItemInSetupSlot(item, slot.id);
+		const rect = accepted
+			? setupDropPreviewRect(item, slot.id)
+			: { x: slot.x, y: slot.y, width: slot.width, height: slot.height };
+		if (!rect) return;
+
+		setupDropPreviewLayer
+			.roundRect(rect.x, rect.y, rect.width, rect.height, 8)
+			.fill({ color: accepted ? 0x22c55e : 0xef4444, alpha: 0.16 })
+			.stroke({ color: accepted ? 0x16a34a : 0xdc2626, width: 4, alpha: 0.88 });
+	}
+
+	function clearSetupDropPreview() {
+		setupDropPreviewLayer?.clear();
+	}
+
+	function syncSetupBoardPosition(item: BoardGameItemNew) {
+		if (!item.clientPosition) return;
+		item.clientPosition.moveTo(item.x, item.y);
+		item.clientPosition.moveEnd(item.x, item.y);
+	}
+
+	function returnSetupCardToHand(item: BoardGameItemNew) {
+		if (!handContainer.hasItem(item)) {
+			item.parent?.removeChild(item);
+			handContainer.addItem(item);
+		} else {
+			item.x = 0;
+			item.y = 0;
+		}
+	}
+
+	function removeItemFromSetupSlot(itemId: string): string | null {
+		const slotId = setupItemSlotIds.get(itemId);
+		if (!slotId) return null;
+
+		const occupants = setupSlotOccupants.get(slotId);
+		if (occupants) {
+			setupSlotOccupants.set(
+				slotId,
+				occupants.filter((occupantId) => occupantId !== itemId)
+			);
+		}
+		setupItemSlotIds.delete(itemId);
+		return slotId;
+	}
+
+	function setupSlotById(slotId: string) {
+		return setupForPlay()?.slots.find((slot) => slot.id === slotId) ?? null;
+	}
+
+	function reflowSetupSlot(
+		slotId: string,
+		playedFromHandItemId: string | null = null,
+		syncPositions = true
+	) {
+		const setup = setupForPlay();
+		const slot = setupSlotById(slotId);
+		if (!setup || !slot || slot.layout?.mode !== 'horizontal-flex') return;
+
+		const occupants = setupSlotOccupants.get(slotId) ?? [];
+		for (const [index, itemId] of occupants.entries()) {
+			const item = boardGameItems.get(itemId);
+			if (!item || handContainer.hasItem(item)) continue;
+			const nextPosition = clampSetupItemPosition(setup, setupSlotCellPosition(slot, index));
+			setSetupItemVisualTopLeft(item, nextPosition);
+			if (!syncPositions) {
+				continue;
+			}
+			if (playedFromHandItemId === itemId) {
+				handlePlayCard(item);
+			} else {
+				syncSetupBoardPosition(item);
+			}
+		}
+		strokeLayer?.refreshAll();
+	}
+
+	function canPlaceItemInSetupSlot(item: BoardGameItemNew, slotId: string): boolean {
+		const slot = setupSlotById(slotId);
+		if (!slot) return false;
+		if (!setupSlotAcceptsItem(slot, metadataForSetupItem(item))) return false;
+
+		const occupants = setupSlotOccupants.get(slot.id) ?? [];
+		return occupants.includes(item.id) || occupants.length < setupSlotCapacity(slot);
+	}
+
+	function placeItemInSetupSlot(item: BoardGameItemNew, slotId: string, fromHand: boolean): boolean {
+		const setup = setupForPlay();
+		const slot = setupSlotById(slotId);
+		if (!setup || !slot || !canPlaceItemInSetupSlot(item, slot.id)) return false;
+
+		const previousSlotId = setupItemSlotIds.get(item.id);
+		if (previousSlotId && previousSlotId !== slot.id) {
+			removeItemFromSetupSlot(item.id);
+			reflowSetupSlot(previousSlotId);
+		}
+
+		const occupants = setupSlotOccupants.get(slot.id) ?? [];
+		if (!occupants.includes(item.id)) {
+			occupants.push(item.id);
+			setupSlotOccupants.set(slot.id, occupants);
+		}
+		setupItemSlotIds.set(item.id, slot.id);
+
+		if (slot.layout?.mode === 'horizontal-flex') {
+			reflowSetupSlot(slot.id, fromHand ? item.id : null);
+		} else {
+			const currentBounds = setupItemContentBounds(item);
+			const nextPosition = clampSetupItemPosition(setup, {
+				x: currentBounds?.x ?? item.x,
+				y: currentBounds?.y ?? item.y
+			});
+			setSetupItemVisualTopLeft(item, nextPosition);
+			if (fromHand) {
+				handlePlayCard(item);
+			} else {
+				syncSetupBoardPosition(item);
+			}
+		}
+		return true;
+	}
+
+	function restoreSetupItemPosition(
+		item: BoardGameItemNew,
+		originalPosition: { x: number; y: number } | undefined
+	) {
+		if (!originalPosition) return;
+		item.position.set(originalPosition.x, originalPosition.y);
+		syncSetupBoardPosition(item);
+	}
+
+	function commitSetupDrop(
+		item: BoardGameItemNew,
+		fromHand: boolean,
+		originalPosition: { x: number; y: number } | undefined,
+		dropPoint?: { x: number; y: number }
+	) {
+		const setup = setupForPlay();
+		if (!setup) return false;
+
+		const currentBounds = setupItemContentBounds(item);
+		const clampedPosition = clampSetupItemPosition(setup, {
+			x: currentBounds?.x ?? item.x,
+			y: currentBounds?.y ?? item.y
+		});
+		setSetupItemVisualTopLeft(item, clampedPosition);
+		const slot = findSetupSlotAtPoint(setup, dropPoint ?? setupItemCenter(item));
+
+		if (slot) {
+			if (placeItemInSetupSlot(item, slot.id, fromHand)) return true;
+			if (fromHand) {
+				returnSetupCardToHand(item);
+			} else {
+				restoreSetupItemPosition(item, originalPosition);
+			}
+			return false;
+		}
+
+		const previousSlotId = removeItemFromSetupSlot(item.id);
+		if (previousSlotId) reflowSetupSlot(previousSlotId);
+		if (fromHand) {
+			handlePlayCard(item);
+		} else {
+			syncSetupBoardPosition(item);
+		}
+		strokeLayer?.refreshAll();
+		return true;
+	}
 
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
@@ -237,6 +560,7 @@
 	}
 
 	function tryStackSelection(): boolean {
+		if (setupForPlay()) return false;
 		if (selectionManager.size !== 1) return false;
 		const iterator = selectionManager.values();
 		const item = iterator.next().value as BoardGameItemNew | undefined;
@@ -261,17 +585,6 @@
 		return true;
 	}
 
-	// Can init stacks, or singular components with ids and containers
-	// So one map of components and one map of stacks with stacks having maps of components
-	// I will need a better init system probably.
-	function parsePayload(parsedSvgs: ParsedSvg[][]): InitGamePayload {
-		const res = parsedSvgs.map((x) => {
-			return { componentIds: x.map((y) => y.id) };
-		});
-		const payload: InitGamePayload = { stacks: res };
-		return payload;
-	}
-
 	async function hasPlayableDeckFiles(systemDir: FsDir, deckName: string) {
 		const deckDir = await systemDir.openDir(deckName);
 		if (deckDir.error) return false;
@@ -285,10 +598,40 @@
 		return fileNames.has('front.svg') && fileNames.has('back.svg') && fileNames.has('data.csv');
 	}
 
-	async function initApp() {
+	async function loadLocalTableSetup(): Promise<LocalTableSetup | null> {
+		if (roomConnection.kind !== 'localPlay') return null;
+
+		const setupFile = await fileSystem.readText(joinFsPath(projectName, SETUP_JSON_PATH));
+		if (setupFile.error) {
+			if (setupFile.error.name !== 'NotFoundError') {
+				console.warn('Failed to load table setup for play mode.', setupFile.error);
+			}
+			return null;
+		}
+
+		let setupJson: unknown;
+		try {
+			setupJson = JSON.parse(setupFile.data);
+		} catch (error) {
+			console.warn('Failed to parse table setup for play mode.', error);
+			return null;
+		}
+
+		const svgFile = await fileSystem.readText(joinFsPath(projectName, SETUP_SVG_PATH));
+		if (svgFile.error && svgFile.error.name !== 'NotFoundError') {
+			console.warn('Failed to load table SVG for play mode.', svgFile.error);
+		}
+
+		return {
+			setup: parseTableSetup(setupJson),
+			customTableSvg: svgFile.error ? null : svgFile.data
+		};
+	}
+
+	async function initApp(localTableSetup: LocalTableSetup | null) {
 		const app = new Application();
 		await app.init({
-			background: '#eba92e',
+			background: localTableSetup ? '#111827' : '#eba92e',
 			resizeTo: window,
 			antialias: true,
 			resolution: window.devicePixelRatio || 1,
@@ -301,21 +644,73 @@
 		return app;
 	}
 
-	function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
-		const boardChrome = createBoardChrome(app);
-		tableChrome = boardChrome.container;
-		app.stage.addChild(tableChrome);
-		boardChrome.draw();
-		app.renderer.on('resize', () => {
-			boardChrome.draw();
-		});
+	function setupFitScale(app: Application<Renderer>, setup: TableSetup) {
+		const usableWidth = Math.max(320, app.screen.width - 96);
+		const usableHeight = Math.max(240, app.screen.height - 260);
+		return Math.max(
+			0.2,
+			Math.min(1, usableWidth / setup.table.width, usableHeight / setup.table.height)
+		);
+	}
 
-		viewport = createViewport(app);
+	function configureSetupViewport(app: Application<Renderer>, setup: TableSetup) {
+		viewport.resize(app.screen.width, app.screen.height, setup.table.width, setup.table.height);
+		viewport.clamp({
+			left: 0,
+			right: setup.table.width,
+			top: 0,
+			bottom: setup.table.height,
+			direction: 'all',
+			underflow: 'center'
+		});
+		viewport.setZoom(setupFitScale(app, setup), true);
+		viewport.moveCenter(setup.table.width / 2, setup.table.height / 2);
+	}
+
+	async function initEditor(
+		app: Application<Renderer>,
+		previewer: PreviewHelper,
+		localTableSetup: LocalTableSetup | null
+	) {
+		if (!localTableSetup) {
+			const boardChrome = createBoardChrome(app);
+			tableChrome = boardChrome.container;
+			app.stage.addChild(tableChrome);
+			boardChrome.draw();
+			app.renderer.on('resize', () => {
+				boardChrome.draw();
+			});
+		}
+
+		viewport = createViewport(
+			app,
+			localTableSetup
+				? {
+						worldWidth: localTableSetup.setup.table.width,
+						worldHeight: localTableSetup.setup.table.height,
+						minScale: 0.2
+					}
+				: {}
+		);
 		app.stage.eventMode = 'static';
 		app.stage.hitArea = app.screen;
 
+		if (localTableSetup) {
+			viewport.addChild(await createSetupTableLayer(localTableSetup));
+			configureSetupViewport(app, localTableSetup.setup);
+			app.renderer.on('resize', () => {
+				configureSetupViewport(app, localTableSetup.setup);
+			});
+		}
+
 		boardContainer = new Container();
 		viewport.addChild(boardContainer);
+		if (localTableSetup) {
+			setupDropPreviewLayer = new Graphics();
+			setupDropPreviewLayer.eventMode = 'none';
+			setupDropPreviewLayer.interactiveChildren = false;
+			viewport.addChild(setupDropPreviewLayer);
+		}
 
 		const screenContainer = new Container({
 			layout: {
@@ -362,6 +757,7 @@
 					});
 				}
 				drag = null;
+				clearSetupDropPreview();
 				return;
 			}
 
@@ -369,6 +765,7 @@
 
 			if (e.button === 2) {
 				drag = null;
+				clearSetupDropPreview();
 				return;
 			}
 
@@ -388,32 +785,57 @@
 					}
 				}
 			} else if (drag.dragType == 'selection') {
-				for (const c of selectionManager.values()) {
-					if (c.clientPosition) {
-						c.clientPosition.moveEnd(c.x, c.y);
+				if (setupForPlay()) {
+					for (const c of selectionManager.values()) {
+						commitSetupDrop(c, false, drag.startPositions?.get(c.id));
 						c.cursor = 'pointer';
 					}
-				}
-				if (tryStackSelection()) {
-					selectionManager.clear();
+				} else {
+					for (const c of selectionManager.values()) {
+						if (c.clientPosition) {
+							c.clientPosition.moveEnd(c.x, c.y);
+							c.cursor = 'pointer';
+						}
+					}
+					if (tryStackSelection()) {
+						selectionManager.clear();
+					}
 				}
 			} else if (drag.dragType == 'handToBoard') {
-				const stacked = tryStackSelection();
-				for (const c of selectionManager.values()) {
-					if (handContainer.hasItem(c)) {
-						c.x = 0;
-						c.y = 0;
-					} else if (!stacked) {
-						handlePlayCard(c);
+				if (setupForPlay()) {
+					const dropWorld = viewport.toWorld(e.global);
+					for (const c of selectionManager.values()) {
+						if (handContainer.hasItem(c)) {
+							c.x = 0;
+							c.y = 0;
+						} else {
+							commitSetupDrop(c, true, drag.startPositions?.get(c.id), {
+								x: dropWorld.x,
+								y: dropWorld.y
+							});
+						}
+						c.cursor = 'pointer';
 					}
-					c.cursor = 'pointer';
+					strokeLayer?.refreshAll();
+				} else {
+					const stacked = tryStackSelection();
+					for (const c of selectionManager.values()) {
+						if (handContainer.hasItem(c)) {
+							c.x = 0;
+							c.y = 0;
+						} else if (!stacked) {
+							handlePlayCard(c);
+						}
+						c.cursor = 'pointer';
+					}
+					if (stacked) {
+						selectionManager.clear();
+					}
+					strokeLayer?.refreshAll();
 				}
-				if (stacked) {
-					selectionManager.clear();
-				}
-				strokeLayer?.refreshAll();
 			}
 			drag = null;
+			clearSetupDropPreview();
 		}
 
 		app.stage.addChild(marquee);
@@ -448,7 +870,8 @@
 				for (const boardItem of selectionManager.values()) {
 					if (boardItem.clientPosition) {
 						const newPos = boardItem.position.add(delta);
-						boardItem.clientPosition.moveTo(newPos.x, newPos.y);
+						const nextPos = setupItemPosition({ x: newPos.x, y: newPos.y });
+						boardItem.clientPosition.moveTo(nextPos.x, nextPos.y);
 					}
 				}
 			} else if (drag.dragType == 'handToBoard') {
@@ -481,6 +904,7 @@
 								boardItem.rotation = 0;
 								boardItem.pivot.set(0, 0);
 								boardItem.alpha = 1.0;
+								fitSetupItemToSlotSize(boardItem);
 								const worldPos = viewport.toWorld(e.global);
 
 								drag.startGlobalX = e.globalX;
@@ -488,9 +912,14 @@
 
 								const offset = e.global.subtract(new Point(wrapperBounds.minX, wrapperBounds.minY));
 
-								boardItem.position = worldPos
+								const nextPosition = worldPos
 									.subtract(offset)
 									.subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2));
+								const clampedPosition = setupItemPosition({
+									x: nextPosition.x,
+									y: nextPosition.y
+								});
+								boardItem.position.set(clampedPosition.x, clampedPosition.y);
 							}
 						}
 					} else {
@@ -498,8 +927,19 @@
 						const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
 						const delta = worldPos.subtract(startWorldPos);
 						const newPos = boardItem.position.add(delta);
-						boardItem.position = newPos;
+						const nextPos = setupItemPosition({ x: newPos.x, y: newPos.y });
+						boardItem.position.set(nextPos.x, nextPos.y);
 					}
+				}
+			}
+			if (setupForPlay()) {
+				const previewItem = selectionManager.values().next().value as BoardGameItemNew | undefined;
+				if (previewItem && !handContainer.hasItem(previewItem)) {
+					const previewPoint =
+						drag.dragType === 'handToBoard' ? viewport.toWorld(e.global) : setupItemCenter(previewItem);
+					drawSetupDropPreview(previewItem, { x: previewPoint.x, y: previewPoint.y });
+				} else {
+					clearSetupDropPreview();
 				}
 			}
 			drag.startGlobalX = e.globalX;
@@ -570,7 +1010,10 @@
 				startGlobalX: e.globalX,
 				startGlobalY: e.globalY,
 				clickThreshold: 10,
-				dragType: dragType
+				dragType: dragType,
+				startPositions: new Map(
+					[...selectionManager.values()].map((item) => [item.id, { x: item.x, y: item.y }])
+				)
 			};
 			if (e.shiftKey) {
 				drag.dragType = 'marquee';
@@ -584,9 +1027,16 @@
 		return true;
 	}
 
-	async function createRoom(_init: boolean) {
+	async function createRoom(_init: boolean, localTableSetup: LocalTableSetup | null) {
 		if (isE2EMode() && !playE2EBridge) {
-			playE2EBridge = installPlayE2EBridge(app, boardGameItems, handContainer, strokeLayer);
+			playE2EBridge = installPlayE2EBridge(
+				app,
+				boardGameItems,
+				handContainer,
+				strokeLayer,
+				viewport,
+				localTableSetup?.setup ?? null
+			);
 		}
 		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, 'system'));
 		if (error) {
@@ -599,6 +1049,7 @@
 		const deckEntries = entries.data
 			.filter((entry) => entry.kind === 'directory')
 			.sort((a, b) => a.name.localeCompare(b.name));
+		const setupDeckNames = localTableSetup ? setupReferencedDeckNames(localTableSetup.setup) : null;
 		const playableDeckEntries = (
 			await Promise.all(
 				deckEntries.map(async (entry) => ({
@@ -607,12 +1058,24 @@
 				}))
 			)
 		)
-			.filter(({ playable }) => playable)
+			.filter(
+				({ entry, playable }) => playable && (!setupDeckNames || setupDeckNames.has(entry.name))
+			)
 			.map(({ entry }) => entry);
-		const loadedDecks = await Promise.all(
-			playableDeckEntries.map((entry) => loadAndProcessCards(projectName, entry.name, fileSystem))
+		const loadedDecks: LoadedDeck[] = await Promise.all(
+			playableDeckEntries.map(async (entry) => ({
+				deckName: entry.name,
+				cards: await loadAndProcessCards(projectName, entry.name, fileSystem)
+			}))
 		);
-		const allComponentsParsed = loadedDecks.flat();
+		const allComponentsParsed = loadedDecks.flatMap((deck) => deck.cards);
+		const setupPlayPlan = localTableSetup
+			? buildSetupPlayPlan(localTableSetup.setup, loadedDecks)
+			: null;
+		setupItemMetadata = new SvelteMap(setupItemMetadataById(setupPlayPlan));
+		const setupSlotState = initialSetupSlotState(setupPlayPlan);
+		setupSlotOccupants = new SvelteMap(setupSlotState.slotOccupants);
+		setupItemSlotIds = new SvelteMap(setupSlotState.itemSlotIds);
 		const privatePlaytest = roomConnection.kind === 'privatePlaytest' ? roomConnection : null;
 		const roomType = privatePlaytest ? 'private_room' : 'my_room';
 		const roomOptions = privatePlaytest
@@ -640,12 +1103,36 @@
 		let s = getStateCallbacks(room);
 		strokeLayer.connect(room, s);
 
+		function refreshSetupItemPlacement(componentId: string) {
+			const boardItem = boardGameItems.get(componentId);
+			if (!boardItem) return;
+			if (boardItem.isInHand) return;
+
+			fitSetupItemToSlotSize(boardItem);
+			const slotId = setupItemSlotIds.get(componentId);
+			if (slotId) {
+				reflowSetupSlot(slotId, null, false);
+			}
+		}
+
+		function scheduleSetupItemPlacementRefresh(componentId: string, remainingFrames = 1) {
+			if (drag) return;
+			requestAnimationFrame(() => {
+				if (drag) return;
+				refreshSetupItemPlacement(componentId);
+				if (remainingFrames > 1) {
+					scheduleSetupItemPlacementRefresh(componentId, remainingFrames - 1);
+				}
+			});
+		}
+
 		s(room.state).components.onAdd((component, _index) => {
 			initComponent(
 				{
 					boardContainer,
 					boardGameItems,
-					isDragging: () => drag !== null
+					isDragging: () => drag !== null,
+					configureItem: fitSetupItemToSlotSize
 				},
 				allComponentsParsed,
 				component,
@@ -653,25 +1140,42 @@
 				s,
 				room
 			);
+			if (localTableSetup) {
+				boardGameItems
+					.get(component.id)
+					?.clientPosition?.onPositionChanged.subscribe(() =>
+						scheduleSetupItemPlacementRefresh(component.id, 2)
+					);
+			}
+			refreshSetupItemPlacement(component.id);
+			scheduleSetupItemPlacementRefresh(component.id, 4);
 			strokeLayer.refreshAll();
 		});
 		s(room.state).components.onRemove((component, _key) => {
 			const boardItem = boardGameItems.get(component.id);
 			if (!boardItem) return;
+			const previousSlotId = removeItemFromSetupSlot(component.id);
 			boardContainer.removeChild(boardItem);
 			boardItem.destroy({ children: true });
 			boardGameItems.delete(component.id);
+			setupItemIntrinsicBounds.delete(component.id);
+			if (previousSlotId) reflowSetupSlot(previousSlotId);
 			strokeLayer.refreshAll();
 		});
-		sendCmd(room, 'init', parsePayload(loadedDecks));
+		sendCmd(
+			room,
+			'init',
+			setupPlayPlan ? buildSetupInitPayload(setupPlayPlan) : buildDefaultInitPayload(loadedDecks)
+		);
 		return room;
 	}
 
-	const app = await initApp();
+	const localTableSetup = await loadLocalTableSetup();
+	const app = await initApp(localTableSetup);
 	// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
 	const previewer = new PreviewHelper(app);
-	const init = initEditor(app, previewer);
-	const room = await createRoom(init);
+	const init = await initEditor(app, previewer, localTableSetup);
+	const room = await createRoom(init, localTableSetup);
 
 	function attachApp(app: Application): Attachment {
 		return (element) => {
@@ -711,6 +1215,9 @@
 			newItem.visible = true;
 			newItem.renderable = true;
 			item = newItem;
+		} else {
+			const previousSlotId = removeItemFromSetupSlot(item.id);
+			if (previousSlotId) reflowSetupSlot(previousSlotId);
 		}
 		boardContainer.removeChild(item);
 		handContainer.addItem(item);

@@ -1,5 +1,5 @@
 import { LayoutContainer } from '@pixi/layout/components';
-import { Application, Container, Graphics, Texture, TilingSprite, type Renderer } from 'pixi.js';
+import { Application, Container, Graphics, type Renderer } from 'pixi.js';
 import { BoardGameItemNew } from '$lib/pixi/item';
 
 export class HandContainer {
@@ -10,10 +10,7 @@ export class HandContainer {
 	private handTrayBody: Graphics | null = null;
 	private handTrayInner: Graphics | null = null;
 	private handTrayTopLine: Graphics | null = null;
-	private handTrayGrain: TilingSprite | null = null;
-	private handTrayMask: Graphics | null = null;
 	private cardsContainer: LayoutContainer;
-	private noiseTex: Texture | null = null;
 	boardGameItems: Set<BoardGameItemNew>;
 
 	constructor(app: Application<Renderer>) {
@@ -51,6 +48,7 @@ export class HandContainer {
 	// I have to find a better system for the sizing of the items
 	addItem(item: BoardGameItemNew) {
 		item.isInHand = true;
+		item.resetLayoutTransform();
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);
@@ -61,7 +59,7 @@ export class HandContainer {
 		const wrapper = new LayoutContainer({
 			layout: {
 				height: '100%',
-				aspectRatio: item.width / item.height,
+				aspectRatio: item.baseAspectRatio,
 				objectFit: 'contain',
 				objectPosition: 'center'
 			}
@@ -103,33 +101,11 @@ export class HandContainer {
 		this.cardsContainer.removeChildren();
 	}
 
-	private makeNoiseTexture(size: number): Texture {
-		const canvas = document.createElement('canvas');
-		canvas.width = size;
-		canvas.height = size;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) {
-			return Texture.WHITE;
-		}
-		const img = ctx.createImageData(size, size);
-		for (let i = 0; i < img.data.length; i += 4) {
-			const v = (Math.random() * 255) | 0;
-			img.data[i] = v;
-			img.data[i + 1] = v;
-			img.data[i + 2] = v;
-			img.data[i + 3] = 255;
-		}
-		ctx.putImageData(img, 0, 0);
-		return Texture.from(canvas);
-	}
-
 	private drawHandTrayChrome() {
 		const sw = this.app.screen.width;
 		const sh = this.app.screen.height;
 
 		this.handTrayChrome.removeChildren();
-
-		if (!this.noiseTex) this.noiseTex = this.makeNoiseTexture(128);
 
 		const trayW = Math.max(420, Math.min(980, sw * 0.74));
 		const trayH = Math.max(120, Math.min(190, sh * 0.18));
@@ -185,24 +161,6 @@ export class HandContainer {
 			.roundRect(x + 12, y + 2, trayW - 24, 2, 2)
 			.fill({ color: 0xffdfaa, alpha: 0.35 });
 		this.handTrayChrome.addChild(this.handTrayTopLine);
-
-		this.handTrayGrain = new TilingSprite({
-			texture: this.noiseTex,
-			width: trayW,
-			height: trayH
-		});
-		this.handTrayGrain.position.set(x, y);
-		this.handTrayGrain.alpha = 0.06;
-		this.handTrayGrain.tileScale.set(1.2);
-
-		this.handTrayMask = new Graphics();
-		this.handTrayMask.roundRect(x, y, trayW, trayH, r).fill(0xffffff);
-		this.handTrayMask.visible = false;
-
-		this.handTrayGrain.mask = this.handTrayMask;
-
-		this.handTrayChrome.addChild(this.handTrayGrain);
-		this.handTrayChrome.addChild(this.handTrayMask);
 
 		const lipShadow = new Graphics();
 		lipShadow.rect(x + 8, y - 6, trayW - 16, 8).fill({ color: 0x000000, alpha: 0.1 });

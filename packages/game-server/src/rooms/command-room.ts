@@ -73,6 +73,46 @@ function getValidComponent(
     return component;
 }
 
+function createCardState(
+    state: BoardGameRoomState,
+    cardId: string,
+    x: number,
+    y: number,
+    visible: boolean
+) {
+    const cardComponent = new Component(cardId, '', 'card');
+    const cardPosition = new Positionable(x, y, visible);
+    const cardFlip = new Flippable(false);
+    const _card = new Item(cardComponent, cardPosition, cardFlip);
+
+    state.positions.set(cardId, cardPosition);
+    state.flippable.set(cardId, cardFlip);
+    state.components.set(cardId, cardComponent);
+}
+
+function createStackState(
+    state: BoardGameRoomState,
+    stackId: string,
+    componentIds: string[],
+    x: number,
+    y: number
+) {
+    const deckComponent = new Component(stackId, '', 'stack');
+    const deckPosition = new Positionable(x, y, true);
+    const deckFlip = new Flippable(false);
+    const deckStack = new Stack(componentIds);
+    const _deck = new Deck(deckComponent, deckPosition, deckFlip, deckStack);
+
+    state.positions.set(stackId, deckPosition);
+    state.flippable.set(stackId, deckFlip);
+    state.components.set(stackId, deckComponent);
+    state.stacks.set(stackId, deckStack);
+}
+
+function isFiniteCoordinate(value: unknown) {
+    return typeof value === 'number' && Number.isFinite(value);
+}
+
 export class OnJoinCommand extends Command<
     CommandRoom,
     {
@@ -112,44 +152,62 @@ export class InitCommand extends Command<
     } & InitGamePayload
 > {
     execute(payload: this['payload']) {
-        for (const stack of payload.stacks) {
+        if (payload.setupItems) {
+            for (const item of payload.setupItems) {
+                if (item.type === 'card') {
+                    createCardState(this.state, item.componentIds[0], item.x, item.y, true);
+                    continue;
+                }
+
+                for (const cardId of item.componentIds) {
+                    createCardState(this.state, cardId, item.x, item.y, false);
+                }
+                createStackState(this.state, item.id, item.componentIds, item.x, item.y);
+            }
+            return;
+        }
+
+        for (const stack of payload.stacks ?? []) {
             for (let i = 0; i < stack.componentIds.length; i++) {
                 const cardId = stack.componentIds[i];
-                const cardComponent = new Component(cardId, '', 'card');
-                const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, false);
-                const cardFlip = new Flippable(false);
-                const _card = new Item(cardComponent, cardPosition, cardFlip);
-
-                this.state.positions.set(cardId, cardPosition);
-                this.state.flippable.set(cardId, cardFlip);
-                this.state.components.set(cardId, cardComponent);
+                createCardState(this.state, cardId, 10 + i * 220, 50 + i * 320, false);
             }
 
             if (stack.componentIds.length === 1) {
                 this.state.positions.get(stack.componentIds[0]).visible = true;
             } else if (stack.componentIds.length > 1) {
-                const deckId = randomUUID();
-                const deckComponent = new Component(deckId, '', 'stack');
-                // TODO positions
-                const deckPosition = new Positionable(400, 400, true);
-                const deckFlip = new Flippable(false);
-                const deckStack = new Stack(stack.componentIds);
-                const _deck = new Deck(deckComponent, deckPosition, deckFlip, deckStack);
-
-                this.state.positions.set(deckId, deckPosition);
-                this.state.flippable.set(deckId, deckFlip);
-                this.state.components.set(deckId, deckComponent);
-                this.state.stacks.set(deckId, deckStack);
+                createStackState(this.state, randomUUID(), stack.componentIds, 400, 400);
             }
 
         }
     }
 
-    validate(_payload: this['payload']) {
+    validate(payload: this['payload']) {
         if (this.state.components.size !== 0) {
             console.warn('Game already initialized');
             return false;
         }
+        if (payload.setupItems !== undefined) {
+            if (!Array.isArray(payload.setupItems)) return false;
+            const componentIds = new Set<string>();
+            const stackIds = new Set<string>();
+            for (const item of payload.setupItems) {
+                if (item.type !== 'card' && item.type !== 'stack') return false;
+                if (typeof item.id !== 'string' || item.id.trim() === '') return false;
+                if (stackIds.has(item.id)) return false;
+                stackIds.add(item.id);
+                if (!isFiniteCoordinate(item.x) || !isFiniteCoordinate(item.y)) return false;
+                if (!Array.isArray(item.componentIds) || item.componentIds.length === 0) return false;
+                if (item.type === 'card' && item.componentIds.length !== 1) return false;
+                for (const componentId of item.componentIds) {
+                    if (typeof componentId !== 'string' || componentId.trim() === '') return false;
+                    if (componentIds.has(componentId)) return false;
+                    componentIds.add(componentId);
+                }
+            }
+            return true;
+        }
+        if (payload.stacks !== undefined && !Array.isArray(payload.stacks)) return false;
         return true;
     }
 }

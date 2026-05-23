@@ -11,12 +11,15 @@ type SvgEditorWindow = Window & {
 		api?: {
 			_unsafe?: {
 				rawCanvas: () => {
+					getSelectedElements?: () => Element[];
 					moveSelectedElements?: (dx: number, dy: number, undoable?: boolean) => void;
+					selectOnly?: (elements: Element[], showGrips?: boolean) => void;
 				} | null;
 			};
 		} | null;
 	};
 	__setupEditorControllerBefore?: unknown;
+	__rememberedSetupElement?: Element | null;
 };
 
 async function expectSelectedOverlayAligned(
@@ -111,6 +114,50 @@ async function expectSelectedOverlayAligned(
 		.toBe('aligned');
 }
 
+async function expectSetupElementPresentOnce(
+	page: Page,
+	expectedKind: 'placement' | 'slot',
+	expectedId: string
+) {
+	await expect
+		.poll(() =>
+			page.evaluate(
+				({ id, kind }) => {
+					const global = window as SvgEditorWindow;
+					const svg = global.__svgEditorApi?.getSvg() ?? '';
+					const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+					const matchingCount = Array.from(
+						doc.querySelectorAll(`[data-digitable-kind="${kind}"]`)
+					).filter((element) => element.getAttribute('id') === id).length;
+					return {
+						exists: Boolean(global.__svgEditorApi?.getElementById?.(id)),
+						matchingCount
+					};
+				},
+				{ id: expectedId, kind: expectedKind }
+			)
+		)
+		.toEqual({ exists: true, matchingCount: 1 });
+}
+
+async function rememberSetupElement(page: Page, expectedId: string) {
+	await page.evaluate((id) => {
+		const global = window as SvgEditorWindow;
+		global.__rememberedSetupElement = global.__svgEditorApi?.getElementById?.(id) ?? null;
+	}, expectedId);
+}
+
+async function expectRememberedSetupElement(page: Page, expectedId: string) {
+	await expect
+		.poll(() =>
+			page.evaluate((id) => {
+				const global = window as SvgEditorWindow;
+				return global.__svgEditorApi?.getElementById?.(id) === global.__rememberedSetupElement;
+			}, expectedId)
+		)
+		.toBe(true);
+}
+
 test('table setup editor saves json and svg', async ({ page }) => {
 	const pointerEventSanitizeWarnings: string[] = [];
 	page.on('console', (message) => {
@@ -199,7 +246,81 @@ test('table setup editor saves json and svg', async ({ page }) => {
 	});
 	expect(slotId).toBeTruthy();
 	await expectSelectedOverlayAligned(page, 'slot', slotId);
-	await page.getByRole('checkbox').first().click();
+	await page.evaluate((slotId) => {
+		const global = window as SvgEditorWindow;
+		const slot = global.__svgEditorApi!.getElementById!(slotId)!;
+		const slotText = slot.querySelector('text')!;
+		global.__svgEditorController!.api!._unsafe!.rawCanvas()!.selectOnly!([slotText], true);
+	}, slotId);
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const selected =
+					(window as SvgEditorWindow).__svgEditorController!.api!._unsafe!.rawCanvas()!.getSelectedElements?.() ??
+					[];
+				return {
+					id: selected[0]?.getAttribute('id'),
+					kind: selected[0]?.getAttribute('data-digitable-kind'),
+					tag: selected[0]?.tagName
+				};
+			})
+		)
+		.toEqual({ id: slotId, kind: 'slot', tag: 'g' });
+	const slotTextPoint = await page.evaluate((slotId) => {
+		const global = window as SvgEditorWindow;
+		const slot = global.__svgEditorApi!.getElementById!(slotId)!;
+		const text = slot.querySelector('text') as SVGGraphicsElement;
+		const rect = text.getBoundingClientRect();
+		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+	}, slotId);
+	await page.mouse.dblclick(slotTextPoint.x, slotTextPoint.y);
+	await page.keyboard.type('Edited');
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const svg = (window as SvgEditorWindow).__svgEditorApi!.getSvg();
+				return svg.includes('Edited');
+			})
+		)
+		.toBe(false);
+	await expect
+		.poll(() =>
+			page.evaluate((slotId) => {
+				const global = window as SvgEditorWindow;
+				const slot = global.__svgEditorApi!.getElementById!(slotId)!;
+				return {
+					selected:
+						global.__svgEditorController!.api!._unsafe!.rawCanvas()!.getSelectedElements?.()[0]?.getAttribute(
+							'id'
+						),
+					text: slot.querySelector('text')?.textContent
+				};
+			}, slotId)
+		)
+		.toEqual({ selected: slotId, text: expect.stringMatching(/^Slot \d+$/) });
+	const allowedDeckCheckbox = page.getByRole('checkbox').first();
+	await rememberSetupElement(page, slotId);
+	for (let index = 0; index < 7; index += 1) {
+		await allowedDeckCheckbox.click();
+		await expectRememberedSetupElement(page, slotId);
+		await expectSetupElementPresentOnce(page, 'slot', slotId);
+	}
+	await expectSelectedOverlayAligned(page, 'slot', slotId);
+	await page.getByLabel('Slot layout').selectOption('horizontal-flex');
+	await page.getByLabel('Visible cards').fill('2');
+	await page.getByLabel('Slot spacing').fill('12');
+	await page.getByLabel('Max items').fill('5');
+	await page.getByRole('button', { name: 'Add content' }).click();
+	await page.getByRole('dialog').getByRole('button', { name: /^western deck$/ }).click();
+	await page.getByRole('button', { name: 'Add content' }).click();
+	await page
+		.getByRole('dialog')
+		.locator('.rounded-md', { has: page.getByRole('button', { name: /^western deck$/ }) })
+		.getByRole('button')
+		.nth(1)
+		.click();
+	await expect(page.getByText('2/2')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Add content' })).toBeDisabled();
 
 	await expect(page.getByRole('status')).toContainText('Autosaved');
 
@@ -229,16 +350,40 @@ test('table setup editor saves json and svg', async ({ page }) => {
 	expect(configuredSlot).toEqual(
 		expect.objectContaining({
 			label: expect.stringMatching(/^Slot \d+$/),
-			acceptedDeckNames: expect.arrayContaining([expect.any(String)])
+			acceptedDeckNames: expect.arrayContaining([expect.any(String)]),
+			width: 232,
+			height: 150,
+			layout: expect.objectContaining({
+				mode: 'horizontal-flex',
+				visibleCount: 2,
+				gap: 12,
+				maxItems: 5
+			}),
+			contents: [
+				{ type: 'deck', deckName: 'western' },
+				expect.objectContaining({ type: 'card', deckName: 'western' })
+			]
 		})
 	);
 
-	const svg = await readOpfsText(page, '/western-cards/setup/table.svg');
+	let svg = '';
+	await expect
+		.poll(async () => {
+			try {
+				svg = await readOpfsText(page, '/western-cards/setup/table.svg');
+				return svg.includes('viewBox="0 0 1200 700"') && svg.includes('Draw deck');
+			} catch {
+				return false;
+			}
+		})
+		.toBe(true);
 	expect(svg).toContain('viewBox="0 0 1200 700"');
 	expect(svg).not.toContain('#166534');
 	expect(svg).not.toContain('#bbf7d0');
 	expect(svg).toContain(configuredSlot.label);
 	expect(svg).toContain('Draw deck');
+	expect(svg).toContain('data-slot-layout-mode="horizontal-flex"');
+	expect(svg).toContain('data-slot-contents');
 	expect(svg).toContain('<image');
 	expect(svg).toContain('data:image/svg+xml');
 	expect(svg).toContain('data-deck-stack="true"');
@@ -249,7 +394,8 @@ test('table setup editor saves json and svg', async ({ page }) => {
 
 	await page.reload();
 	await expect(page.getByRole('status')).toContainText('Loaded');
-	await expect(page.getByText(configuredSlot.label).first()).toBeVisible();
+	await expect(page.getByLabel('Slot layout')).toHaveValue('horizontal-flex');
+	await expect(page.getByText('2/2')).toBeVisible();
 	expect(pointerEventSanitizeWarnings).toEqual([]);
 });
 

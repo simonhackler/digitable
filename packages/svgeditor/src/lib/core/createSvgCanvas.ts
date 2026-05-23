@@ -2,6 +2,7 @@ import type {
 	EditorError,
 	EditorMode,
 	ElementTreeNode,
+	ChangeSvgEmission,
 	SvgCanvasConfig,
 	SvgCanvasRawApi,
 	SvgEditorApi,
@@ -45,7 +46,8 @@ type CreateSvgCanvasArgs = {
 	value: string;
 	config?: SvgCanvasConfig;
 	centerOnLoad?: boolean;
-	onChange?: (svg: string) => void;
+	emitChangeSvg?: ChangeSvgEmission;
+	onChange?: (svg?: string) => void;
 	onSelectionChange?: (payload: { selectedElements: Element[]; multiselect: boolean }) => void;
 	onModeChange?: (mode: EditorMode) => void;
 	onError?: (err: EditorError) => void;
@@ -212,6 +214,7 @@ export const createSvgCanvas = ({
 	value,
 	config,
 	centerOnLoad = true,
+	emitChangeSvg = true,
 	onChange,
 	onSelectionChange,
 	onModeChange,
@@ -811,9 +814,22 @@ export const createSvgCanvas = ({
 		}
 	};
 
-	const changeHandler = () => {
+	const changedElementsFromArgs = (args: unknown[]) =>
+		args
+			.flatMap((arg) => (Array.isArray(arg) ? arg : [arg]))
+			.filter((item): item is Element => item instanceof Element);
+
+	const shouldEmitChangeSvg = (args: unknown[]) => {
+		if (emitChangeSvg === false) return false;
+		if (emitChangeSvg !== 'non-setup') return true;
+		const changedElements = changedElementsFromArgs(args);
+		if (changedElements.length === 0) return true;
+		return !changedElements.every((element) => setupSelectionRoot(element));
+	};
+
+	const changeHandler = (...args: unknown[]) => {
 		correctSelectedSetupSelectors();
-		onChange?.(canvas.getSvgString());
+		onChange?.(shouldEmitChangeSvg(args) ? canvas.getSvgString() : undefined);
 	};
 
 	const enableMultilineTextElements = () => {
@@ -926,6 +942,7 @@ export const createSvgCanvas = ({
 
 	type SelectorManagerLike = {
 		requestSelector?: (elem: Element) => SelectorLike | null;
+		selectorParentGroup?: Element | null;
 		selectorGrips?: Record<string, Element | null>;
 		selectorGripsGroup?: Element | null;
 		rotateGripConnector?: Element | null;
@@ -933,10 +950,20 @@ export const createSvgCanvas = ({
 	};
 
 	const setupSelectionRoot = (element: Element | null | undefined) =>
-		element?.hasAttribute?.(DIGITABLE_KIND_ATTR) ? element : null;
+		element?.closest?.(`[${DIGITABLE_KIND_ATTR}]`) ?? null;
+
+	const selectableElement = (element: Element) => setupSelectionRoot(element) ?? element;
 
 	const canResizeSelectedSetupElement = (element: Element) =>
 		element.closest?.(`[${RESIZABLE_ATTR}="false"]`) === null;
+
+	const selectedSetupRoot = () => {
+		for (const element of canvas.getSelectedElements?.() ?? []) {
+			const root = setupSelectionRoot(element);
+			if (root) return root;
+		}
+		return null;
+	};
 
 	const getGraphicsRectInSelectorSpace = (element: Element, selectorElement: Element) => {
 		if (!(element instanceof SVGGraphicsElement)) return null;
@@ -1026,14 +1053,76 @@ export const createSvgCanvas = ({
 		}
 	};
 
-	const selectElement = (element: Element) => {
-		if (canvas.selectOnly) {
-			canvas.selectOnly([element], true);
-		} else if (canvas.addToSelection) {
-			canvas.addToSelection([element], true);
+	let normalizingSetupSelection = false;
+
+	const normalizeSetupSelection = () => {
+		if (normalizingSetupSelection) return canvas.getSelectedElements?.() ?? [];
+		const selected = canvas.getSelectedElements?.() ?? [];
+		const normalized: Element[] = [];
+		let changed = false;
+		for (const element of selected) {
+			const root = setupSelectionRoot(element);
+			const next = root ?? element;
+			if (next !== element) changed = true;
+			if (!normalized.includes(next)) normalized.push(next);
 		}
-		correctSetupSelector(element);
+		if (!changed) return selected;
+		normalizingSetupSelection = true;
+		try {
+			if (canvas.selectOnly) {
+				canvas.selectOnly(normalized, true);
+			} else {
+				canvas.clearSelection?.(true);
+				canvas.addToSelection?.(normalized, true);
+			}
+		} finally {
+			normalizingSetupSelection = false;
+		}
+		return normalized;
+	};
+
+	const selectElement = (element: Element) => {
+		const target = selectableElement(element);
+		if (canvas.selectOnly) {
+			canvas.selectOnly([target], true);
+		} else if (canvas.addToSelection) {
+			canvas.addToSelection([target], true);
+		}
+		correctSetupSelector(target);
 		selectionHandler();
+	};
+
+	const cancelSetupTextEdit = (element: Element | null | undefined) => {
+		const root = setupSelectionRoot(element);
+		if (!root) return false;
+		canvas.setMode('select');
+		selectElement(root);
+		return true;
+	};
+
+	const setupRootForEditorEvent = (event: Event) => {
+		const target = event.target;
+		if (!(target instanceof Element)) return null;
+		const targetRoot = setupSelectionRoot(target);
+		if (targetRoot) return targetRoot;
+
+		const selectorParent = (canvas.selectorManager as SelectorManagerLike | undefined)
+			?.selectorParentGroup;
+		if (selectorParent?.contains(target)) {
+			return selectedSetupRoot();
+		}
+
+		return null;
+	};
+
+	const preventSetupTextEdit = (event: MouseEvent) => {
+		const root = setupRootForEditorEvent(event);
+		if (!root) return;
+		event.preventDefault();
+		event.stopPropagation();
+		event.stopImmediatePropagation();
+		canvas.setMode('select');
+		selectElement(root);
 	};
 
 	const emitElementChanged = (element?: Element | null) => {
@@ -1182,8 +1271,8 @@ export const createSvgCanvas = ({
 	};
 
 	const selectionHandler = () => {
+		const selected = normalizeSetupSelection();
 		correctSelectedSetupSelectors();
-		const selected = canvas.getSelectedElements?.() ?? [];
 		onSelectionChange?.({
 			selectedElements: selected,
 			multiselect: selected.length > 1
@@ -1275,6 +1364,7 @@ export const createSvgCanvas = ({
 	const forwardTextInput = (event: Event) => {
 		const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
 		if (!target) return;
+		if (cancelSetupTextEdit(getActiveTextElement())) return;
 		if (target === multilineTextInput) {
 			syncSelectedMultilineAlignment();
 		}
@@ -1286,6 +1376,7 @@ export const createSvgCanvas = ({
 	};
 	const forwardMultilineCursor = (event?: Event) => {
 		const target = event?.currentTarget as HTMLTextAreaElement | null;
+		if (cancelSetupTextEdit(getActiveTextElement())) return;
 		if (event?.type === 'keyup' || event?.type === 'input') {
 			syncSelectedMultilineText(target?.value);
 		}
@@ -1295,6 +1386,7 @@ export const createSvgCanvas = ({
 		if (event.key !== 'Enter' || event.altKey || event.ctrlKey || event.metaKey) return;
 
 		event.preventDefault();
+		if (cancelSetupTextEdit(getActiveTextElement())) return;
 
 		const input = event.currentTarget as HTMLTextAreaElement | null;
 		if (!input) return;
@@ -1327,6 +1419,7 @@ export const createSvgCanvas = ({
 	multilineTextInput.addEventListener('click', forwardMultilineCursor);
 	multilineTextInput.addEventListener('mouseup', forwardMultilineCursor);
 	multilineTextInput.addEventListener('select', forwardMultilineCursor);
+	(canvasContainer ?? container).addEventListener('dblclick', preventSetupTextEdit, true);
 
 	if (rulerElements.x || rulerElements.y) {
 		container.addEventListener('scroll', syncRulerScroll);
@@ -1402,6 +1495,7 @@ export const createSvgCanvas = ({
 			return canvas.getSvgString();
 		},
 		setMode(mode) {
+			if (mode === 'text' && cancelSetupTextEdit(canvas.getSelectedElements?.()?.[0])) return;
 			const nextMode = mode === 'text' && canvas.useMultilineText ? 'textmultiline' : mode;
 			canvas.setMode(nextMode);
 
@@ -1609,19 +1703,23 @@ export const createSvgCanvas = ({
 			const existing = resolveElementById(id);
 			if (!existing) return false;
 			const before = existing.cloneNode(true) as Element;
-			const updated = addSvgElementFromJson({
+			const generatedId = `${id}__svgedit_update_${Date.now().toString(36)}`;
+			const generated = addSvgElementFromJson({
 				...data,
 				attr: {
 					...(data.attr ?? {}),
-					id
+					id: generatedId
 				}
 			});
-			if (!updated) return false;
-			const after = updated.cloneNode(true) as Element;
-			let current: Element | null = updated;
+			if (!generated) return false;
+			const after = generated.cloneNode(true) as Element;
+			after.setAttribute('id', id);
+			generated.parentNode?.removeChild(generated);
 			const shouldSelect = opts?.select ?? true;
+			let current: Element | null =
+				replaceElementWithSnapshot(id, after, existing, shouldSelect) ?? existing;
 			const command = {
-				text: opts?.historyLabel ?? `Update ${updated.tagName}`,
+				text: opts?.historyLabel ?? `Update ${current.tagName}`,
 				apply(handler?: HistoryHandler) {
 					handler?.handleHistoryEvent?.('before_apply', this);
 					current = replaceElementWithSnapshot(id, after, current, shouldSelect) ?? current;
@@ -1643,8 +1741,46 @@ export const createSvgCanvas = ({
 				}
 			};
 			addCommandToHistory(command);
-			if (shouldSelect) selectElement(updated);
-			emitElementChanged(updated);
+			return true;
+		},
+		updateElementAttributes(id, attributes, opts) {
+			const element = resolveElementById(id);
+			if (!element) return false;
+			const attributeNames = Object.keys(attributes);
+			const before = readAttributeSnapshot(element, attributeNames);
+			applyAttributeSnapshot(element, attributes);
+			const after = readAttributeSnapshot(element, attributeNames);
+			if (JSON.stringify(before) === JSON.stringify(after)) return true;
+			const shouldSelect = opts?.select ?? true;
+			const command = {
+				text: opts?.historyLabel ?? `Update ${element.tagName} attributes`,
+				apply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_apply', this);
+					applyAttributeSnapshot(element, after);
+					if (shouldSelect) selectElement(element);
+					emitElementChanged(element);
+					handler?.handleHistoryEvent?.('after_apply', this);
+				},
+				unapply(handler?: HistoryHandler) {
+					handler?.handleHistoryEvent?.('before_unapply', this);
+					applyAttributeSnapshot(element, before);
+					if (shouldSelect) selectElement(element);
+					emitElementChanged(element);
+					handler?.handleHistoryEvent?.('after_unapply', this);
+				},
+				elements() {
+					return [element];
+				},
+				getText() {
+					return this.text;
+				},
+				type() {
+					return 'UpdateAttributesCommand';
+				}
+			};
+			addCommandToHistory(command);
+			if (shouldSelect) selectElement(element);
+			emitElementChanged(element);
 			return true;
 		},
 		removeElementById(id, opts) {
@@ -1737,7 +1873,7 @@ export const createSvgCanvas = ({
 		selectElementById(id, opts) {
 			const element = resolveElementById(id);
 			if (!element) return;
-			const selection = [element];
+			const selection = [selectableElement(element)];
 			if (opts?.add) {
 				if (canvas.addToSelection) {
 					canvas.addToSelection(selection, true);
@@ -1871,6 +2007,7 @@ export const createSvgCanvas = ({
 			const trimmed = name.trim();
 			if (!trimmed) return;
 			if (element.tagName.toLowerCase() === 'text') {
+				if (cancelSetupTextEdit(element)) return;
 				canvas.selectOnly?.([element], true);
 				canvas.setTextContent?.(trimmed);
 				canvas.call?.('changed', [element]);
@@ -1892,6 +2029,7 @@ export const createSvgCanvas = ({
 			multilineTextInput.removeEventListener('click', forwardMultilineCursor);
 			multilineTextInput.removeEventListener('mouseup', forwardMultilineCursor);
 			multilineTextInput.removeEventListener('select', forwardMultilineCursor);
+			(canvasContainer ?? container).removeEventListener('dblclick', preventSetupTextEdit, true);
 			if (rulerElements.x || rulerElements.y) {
 				container.removeEventListener('scroll', syncRulerScroll);
 			}

@@ -20,18 +20,25 @@
 	import { parseCsvFile } from '../csv-helper';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import {
+		createHorizontalFlexSlotLayout,
 		createDefaultTableSetup,
 		normalizeTableSvg,
+		normalizeSetupSlot,
 		parseTableSetup,
 		placementToSvgElementJson,
 		serializeTableSetup,
 		setupToSvg,
 		slotToSvgElementJson,
+		snapPlacementToGrid,
+		svgElementToTableSetup,
+		svgHasCustomTableContent,
 		svgToTableSetup,
 		SETUP_JSON_PATH,
 		SETUP_SVG_PATH,
 		tablePresets,
 		type SetupPlacement,
+		type SetupSlotContent,
+		type SetupSlotLayout,
 		type SetupSvgElementJson,
 		type SetupSlot,
 		type TablePresetId,
@@ -60,6 +67,21 @@
 
 	const setupJsonPath = $derived(joinFsPath(projectName, SETUP_JSON_PATH));
 	const setupSvgPath = $derived(joinFsPath(projectName, SETUP_SVG_PATH));
+	const SLOT_LABEL_ATTR = 'data-label';
+	const SLOT_ACCEPTED_DECKS_ATTR = 'data-accepted-deck-names';
+	const SLOT_ACCEPTED_CARDS_ATTR = 'data-accepted-card-ids';
+
+	function sortedUniqueStrings(values: string[]) {
+		return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+	}
+
+	function slotRuleAttributes(slot: SetupSlot): Record<string, string> {
+		return {
+			[SLOT_LABEL_ATTR]: slot.label,
+			[SLOT_ACCEPTED_DECKS_ATTR]: JSON.stringify(sortedUniqueStrings(slot.acceptedDeckNames)),
+			[SLOT_ACCEPTED_CARDS_ATTR]: JSON.stringify(sortedUniqueStrings(slot.acceptedCardIds))
+		};
+	}
 
 	async function loadSetup(): Promise<TableSetup> {
 		const read = await fileSystem.readText(setupJsonPath);
@@ -159,13 +181,18 @@
 		return decks;
 	}
 
-	async function loadEditorSetup(): Promise<{ setup: TableSetup; svg: string | null }> {
+	async function loadEditorSetup(): Promise<{
+		setup: TableSetup;
+		svg: string | null;
+		hasCustomSvg: boolean;
+	}> {
 		const jsonSetup = await loadSetup();
 		const svgRead = await fileSystem.readText(setupSvgPath);
-		if (svgRead.error) return { setup: jsonSetup, svg: null };
+		if (svgRead.error) return { setup: jsonSetup, svg: null, hasCustomSvg: false };
 		return {
 			setup: svgToTableSetup(svgRead.data, jsonSetup),
-			svg: svgRead.data
+			svg: svgRead.data,
+			hasCustomSvg: svgHasCustomTableContent(svgRead.data)
 		};
 	}
 
@@ -180,13 +207,34 @@
 	let isSaving = $state(false);
 	let isLoading = $state(true);
 	let addComponentOpen = $state(false);
+	let addSlotContentOpen = $state(false);
 	let editorSvg = $state(setupToSvg(fallbackSetup));
+	let tableSvgBase = $state<string | null>(null);
 	let editorApi = $state<SvgEditorApi | null>(null);
 	let editorPanel = $state('component');
 	let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+	let autosaveIdleHandle: number | null = null;
 	let saveGeneration = 0;
+	let saveInFlight = false;
+	let pendingSaveGeneration: number | null = null;
+	let svgExportInFlight = false;
+	let pendingSvgExport:
+		| { setup: TableSetup; baseSvg: string | null; generation: number }
+		| null = null;
+
+	type WindowWithIdleCallback = Window & {
+		requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+		cancelIdleCallback?: (handle: number) => void;
+	};
+
+	const AUTOSAVE_DELAY_MS = 800;
+	const AUTOSAVE_IDLE_TIMEOUT_MS = 2000;
 
 	const selectedSlot = $derived(setup.slots.find((slot) => slot.id === selectedSlotId) ?? null);
+	const selectedSlotLayout = $derived<SetupSlotLayout>(
+		selectedSlot?.layout?.mode === 'horizontal-flex' ? selectedSlot.layout : { mode: 'free' }
+	);
+	const selectedSlotContents = $derived(selectedSlot?.contents ?? []);
 	const selectedPlacement = $derived(
 		setup.placements.find((placement) => placement.id === selectedPlacementId) ?? null
 	);
@@ -226,6 +274,7 @@
 							svgAssetsForSetup(loadedSetup.setup, loadedDecks)
 						)
 					: setupToSvg(loadedSetup.setup, svgAssetsForSetup(loadedSetup.setup, loadedDecks));
+				tableSvgBase = loadedSetup.hasCustomSvg ? loadedSetup.svg : null;
 				isLoading = false;
 				status = 'Loaded';
 			})
@@ -237,17 +286,41 @@
 	});
 
 	onDestroy(() => {
-		if (autosaveTimer) clearTimeout(autosaveTimer);
+		cancelQueuedAutosave();
 	});
+
+	function cancelQueuedAutosave() {
+		if (autosaveTimer) {
+			clearTimeout(autosaveTimer);
+			autosaveTimer = null;
+		}
+		if (autosaveIdleHandle !== null && typeof window !== 'undefined') {
+			const browser = window as WindowWithIdleCallback;
+			if (browser.cancelIdleCallback) {
+				browser.cancelIdleCallback(autosaveIdleHandle);
+			} else {
+				clearTimeout(autosaveIdleHandle);
+			}
+			autosaveIdleHandle = null;
+		}
+	}
 
 	function currentEditorSvg() {
 		return editorApi?.getSvg() ?? editorSvg;
 	}
 
+	function currentEditorSvgElement() {
+		return editorApi?._unsafe?.rawCanvas()?.getSvgContent?.() ?? null;
+	}
+
+	function currentEditorSetup() {
+		const svgRoot = currentEditorSvgElement();
+		if (svgRoot) return svgElementToTableSetup(svgRoot, setup);
+		return svgToTableSetup(editorSvg, setup);
+	}
+
 	function syncFromEditor() {
-		const svg = currentEditorSvg();
-		editorSvg = svg;
-		const syncedSetup = svgToTableSetup(svg, setup);
+		const syncedSetup = currentEditorSetup();
 		setup = syncedSetup;
 		return syncedSetup;
 	}
@@ -264,11 +337,22 @@
 
 	function svgAssetsForSetup(targetSetup: TableSetup, sourceDecks = decks) {
 		const placementCardSvgs = new SvelteMap<string, string>();
+		const cardSvgs = new SvelteMap<string, string>();
+		const deckTopCardIds = new SvelteMap<string, string>();
+		const cardLabels = new SvelteMap<string, string>();
+		for (const deck of sourceDecks) {
+			const firstCard = deck.cards[0];
+			if (firstCard) deckTopCardIds.set(deck.name, firstCard.id);
+			for (const card of deck.cards) {
+				cardLabels.set(card.id, card.label);
+				if (card.frontSvg) cardSvgs.set(card.id, card.frontSvg);
+			}
+		}
 		for (const placement of targetSetup.placements) {
 			const cardSvg = placementCardSvg(placement, sourceDecks);
 			if (cardSvg) placementCardSvgs.set(placement.id, cardSvg);
 		}
-		return { placementCardSvgs };
+		return { placementCardSvgs, cardSvgs, deckTopCardIds, cardLabels };
 	}
 
 	function renderSetupSvg(nextSetup: TableSetup, baseSvg: string | null) {
@@ -357,7 +441,7 @@
 
 	function addPlacement(payload: DragPayload, x: number, y: number) {
 		const currentSetup = syncFromEditor();
-		const placement: SetupPlacement =
+		const placement = snapPlacementToGrid(
 			payload.kind === 'deck'
 				? {
 						id: crypto.randomUUID(),
@@ -380,7 +464,8 @@
 						y,
 						rotation: 0,
 						label: payload.label
-				};
+					}
+		);
 		const nextSetup = {
 			...currentSetup,
 			placements: [...currentSetup.placements, placement]
@@ -396,7 +481,7 @@
 	}
 
 	function quickPlace(payload: DragPayload) {
-		const offset = svgToTableSetup(currentEditorSvg(), setup).placements.length * 36;
+		const offset = currentEditorSetup().placements.length * 36;
 		addPlacement(payload, 160 + offset, 160 + offset);
 	}
 
@@ -415,13 +500,15 @@
 			width: 240,
 			height: 320,
 			acceptedDeckNames: [],
-			acceptedCardIds: []
+			acceptedCardIds: [],
+			layout: { mode: 'free' },
+			contents: []
 		};
 		const nextSetup = {
 			...currentSetup,
 			slots: [...currentSetup.slots, slot]
 		};
-		insertSetupElement(nextSetup, slot.id, slotToSvgElementJson(slot));
+		insertSetupElement(nextSetup, slot.id, slotToSvgElementJson(slot, svgAssetsForSetup(nextSetup)));
 		selectedSlotId = slot.id;
 		selectedPlacementId = null;
 		editorPanel = 'component';
@@ -431,11 +518,103 @@
 		const currentSetup = syncFromEditor();
 		const nextSetup = {
 			...currentSetup,
-			slots: currentSetup.slots.map((slot) => (slot.id === slotId ? { ...slot, ...patch } : slot))
+			slots: currentSetup.slots.map((slot) =>
+				slot.id === slotId ? normalizeSetupSlot({ ...slot, ...patch }) : slot
+			)
 		};
 		const nextSlot = nextSetup.slots.find((slot) => slot.id === slotId);
 		if (!nextSlot) return;
-		updateSetupElement(nextSetup, slotId, slotToSvgElementJson(nextSlot));
+		updateSetupElement(nextSetup, slotId, slotToSvgElementJson(nextSlot, svgAssetsForSetup(nextSetup)));
+	}
+
+	function updateSlotRules(slotId: string, patch: Partial<SetupSlot>) {
+		const slot = setup.slots.find((candidate) => candidate.id === slotId);
+		if (!slot) return;
+		const nextSlot = normalizeSetupSlot({ ...slot, ...patch });
+		const nextSetup = {
+			...setup,
+			slots: setup.slots.map((candidate) => (candidate.id === slotId ? nextSlot : candidate))
+		};
+		setup = nextSetup;
+		if (
+			!editorApi?.updateElementAttributes(slotId, slotRuleAttributes(nextSlot), {
+				select: true,
+				historyLabel: 'Update slot rules'
+			})
+		) {
+			updateSlot(slotId, patch);
+			return;
+		}
+		scheduleAutosave();
+	}
+
+	function slotContentKey(content: SetupSlotContent) {
+		return content.type === 'deck' ? `deck:${content.deckName}` : `card:${content.cardId}`;
+	}
+
+	function slotContentLabel(content: SetupSlotContent) {
+		if (content.type === 'deck') return content.deckName;
+		return cards.find((card) => card.id === content.cardId)?.label ?? content.cardId;
+	}
+
+	function slotHasContent(slot: SetupSlot, content: SetupSlotContent) {
+		const key = slotContentKey(content);
+		return (slot.contents ?? []).some((candidate) => slotContentKey(candidate) === key);
+	}
+
+	function slotCanAddContent(slot: SetupSlot) {
+		const layout = slot.layout?.mode === 'horizontal-flex' ? slot.layout : null;
+		if (!layout) return false;
+		return (slot.contents ?? []).length < layout.visibleCount;
+	}
+
+	function setSlotLayoutMode(slotId: string, mode: SetupSlotLayout['mode']) {
+		const current = setup.slots.find((candidate) => candidate.id === slotId);
+		if (!current) return;
+		if (mode === 'horizontal-flex') {
+			const layout =
+				current.layout?.mode === 'horizontal-flex'
+					? current.layout
+					: createHorizontalFlexSlotLayout();
+			updateSlot(slotId, {
+				layout,
+				contents: (current.contents ?? []).slice(0, layout.visibleCount)
+			});
+			return;
+		}
+		updateSlot(slotId, { layout: { mode: 'free' }, contents: [] });
+	}
+
+	function updateHorizontalSlotLayout(
+		slotId: string,
+		patch: Partial<Extract<SetupSlotLayout, { mode: 'horizontal-flex' }>>
+	) {
+		const current = setup.slots.find((candidate) => candidate.id === slotId);
+		if (!current) return;
+		const currentLayout =
+			current.layout?.mode === 'horizontal-flex'
+				? current.layout
+				: createHorizontalFlexSlotLayout();
+		const layout = createHorizontalFlexSlotLayout({ ...currentLayout, ...patch });
+		updateSlot(slotId, {
+			layout,
+			contents: (current.contents ?? []).slice(0, layout.visibleCount)
+		});
+	}
+
+	function addSlotContent(slotId: string, content: SetupSlotContent) {
+		const current = setup.slots.find((candidate) => candidate.id === slotId);
+		if (!current || !slotCanAddContent(current) || slotHasContent(current, content)) return;
+		updateSlot(slotId, { contents: [...(current.contents ?? []), content] });
+		addSlotContentOpen = false;
+	}
+
+	function removeSlotContent(slotId: string, index: number) {
+		const current = setup.slots.find((candidate) => candidate.id === slotId);
+		if (!current) return;
+		updateSlot(slotId, {
+			contents: (current.contents ?? []).filter((_, candidateIndex) => candidateIndex !== index)
+		});
 	}
 
 	function updatePlacement(placementId: string, patch: Partial<SetupPlacement>) {
@@ -443,7 +622,9 @@
 		const nextSetup = {
 			...currentSetup,
 			placements: currentSetup.placements.map((placement) =>
-				placement.id === placementId ? ({ ...placement, ...patch } as SetupPlacement) : placement
+				placement.id === placementId
+					? snapPlacementToGrid({ ...placement, ...patch } as SetupPlacement)
+					: placement
 			)
 		};
 		const nextPlacement = nextSetup.placements.find((placement) => placement.id === placementId);
@@ -451,7 +632,7 @@
 		updateSetupElement(
 			nextSetup,
 			placementId,
-			placementToSvgElementJson(nextPlacement, svgAssetsForSetup(nextSetup))
+			placementToSvgElementJson(snapPlacementToGrid(nextPlacement), svgAssetsForSetup(nextSetup))
 		);
 	}
 
@@ -470,10 +651,10 @@
 			...currentSetup,
 			placements: currentSetup.placements.map((candidate) =>
 				candidate.id === placementId && candidate.type === 'deck'
-					? {
+					? snapPlacementToGrid({
 							...candidate,
 							cardIds: deckCardIds
-						}
+						})
 					: candidate
 			)
 		};
@@ -482,7 +663,7 @@
 		updateSetupElement(
 			nextSetup,
 			placementId,
-			placementToSvgElementJson(nextPlacement, svgAssetsForSetup(nextSetup))
+			placementToSvgElementJson(snapPlacementToGrid(nextPlacement), svgAssetsForSetup(nextSetup))
 		);
 	}
 
@@ -497,11 +678,12 @@
 		const values = checked
 			? [...slot[key], value]
 			: slot[key].filter((candidate) => candidate !== value);
-		updateSlot(slotId, {
-			[key]: values
-				.filter((candidate, index) => values.indexOf(candidate) === index)
-				.sort((a, b) => a.localeCompare(b))
-		});
+		const nextValues = sortedUniqueStrings(values);
+		if (key === 'acceptedDeckNames') {
+			updateSlotRules(slotId, { acceptedDeckNames: nextValues });
+			return;
+		}
+		updateSlotRules(slotId, { acceptedCardIds: nextValues });
 	}
 
 	function removeSlot(slotId: string) {
@@ -528,7 +710,10 @@
 
 	function handleEditorChange(event: CustomEvent<ChangeEvent>) {
 		if (event.detail.source !== 'user') return;
-		editorSvg = event.detail.svg;
+		if (event.detail.svg) {
+			editorSvg = event.detail.svg;
+			tableSvgBase = event.detail.svg;
+		}
 		if (selectedPlacementId && !editorApi?.getElementById(selectedPlacementId)) {
 			selectedPlacementId = null;
 		}
@@ -574,48 +759,157 @@
 		if (isLoading) return;
 		saveGeneration += 1;
 		status = 'Unsaved changes';
-		if (autosaveTimer) clearTimeout(autosaveTimer);
+		queueAutosave(saveGeneration);
+	}
+
+	function queueAutosave(generation: number) {
+		cancelQueuedAutosave();
 		autosaveTimer = setTimeout(() => {
 			autosaveTimer = null;
-			void saveSetup(saveGeneration);
-		}, 400);
+			if (typeof window === 'undefined') {
+				void saveSetup(generation);
+				return;
+			}
+			const browser = window as WindowWithIdleCallback;
+			if (browser.requestIdleCallback) {
+				autosaveIdleHandle = browser.requestIdleCallback(
+					() => {
+						autosaveIdleHandle = null;
+						void saveSetup(generation);
+					},
+					{ timeout: AUTOSAVE_IDLE_TIMEOUT_MS }
+				);
+				return;
+			}
+			autosaveIdleHandle = window.setTimeout(() => {
+				autosaveIdleHandle = null;
+				void saveSetup(generation);
+			}, 0);
+		}, AUTOSAVE_DELAY_MS);
+	}
+
+	function svgExportAssets(targetSetup: TableSetup) {
+		const assets = svgAssetsForSetup(targetSetup);
+		return {
+			placementCardSvgs: Array.from(assets.placementCardSvgs.entries()),
+			cardSvgs: Array.from(assets.cardSvgs.entries()),
+			deckTopCardIds: Array.from(assets.deckTopCardIds.entries()),
+			cardLabels: Array.from(assets.cardLabels.entries())
+		};
+	}
+
+	function exportTableSvgInWorker(targetSetup: TableSetup, baseSvg: string | null) {
+		if (typeof Worker === 'undefined') {
+			return Promise.resolve(
+				baseSvg
+					? normalizeTableSvg(baseSvg, targetSetup, svgAssetsForSetup(targetSetup))
+					: setupToSvg(targetSetup, svgAssetsForSetup(targetSetup))
+			);
+		}
+		return new Promise<string>((resolve, reject) => {
+			const worker = new Worker(new URL('./table-setup-export.worker.ts', import.meta.url), {
+				type: 'module'
+			});
+			worker.onmessage = (event: MessageEvent<{ svg: string }>) => {
+				const { svg } = event.data;
+				worker.terminate();
+				resolve(svg);
+			};
+			worker.onerror = (event) => {
+				worker.terminate();
+				reject(new Error(event.message || 'Failed to export table SVG'));
+			};
+			worker.postMessage({
+				generation: saveGeneration,
+				setup: targetSetup,
+				baseSvg,
+				...svgExportAssets(targetSetup)
+			});
+		});
+	}
+
+	async function saveTableSvg(
+		targetSetup: TableSetup,
+		baseSvg: string | null,
+		generation: number
+	) {
+		if (svgExportInFlight) {
+			pendingSvgExport = { setup: targetSetup, baseSvg, generation };
+			return;
+		}
+		svgExportInFlight = true;
+		try {
+			const setupDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
+			if (setupDir.error) return;
+			let svg: string;
+			try {
+				svg = await exportTableSvgInWorker(targetSetup, baseSvg);
+			} catch {
+				svg = setupToSvg(targetSetup, svgAssetsForSetup(targetSetup));
+			}
+			const svgWrite = await setupDir.data.write('table.svg', svg);
+			if (svgWrite.error && generation === saveGeneration) {
+				saveError = svgWrite.error.message;
+				status = 'Autosave failed';
+			}
+		} catch (error) {
+			if (generation === saveGeneration) {
+				saveError = error instanceof Error ? error.message : 'Failed to export table SVG';
+				status = 'Autosave failed';
+			}
+		} finally {
+			svgExportInFlight = false;
+			const pending = pendingSvgExport;
+			pendingSvgExport = null;
+			if (pending) {
+				void saveTableSvg(pending.setup, pending.baseSvg, pending.generation);
+			}
+		}
 	}
 
 	async function saveSetup(generation = saveGeneration) {
 		if (isLoading) return;
+		if (saveInFlight) {
+			pendingSaveGeneration = generation;
+			return;
+		}
+		saveInFlight = true;
 		isSaving = true;
 		saveError = '';
 		status = 'Autosaving';
-		const currentSvg = currentEditorSvg();
-		const syncedSetup = svgToTableSetup(currentSvg, setup);
-		const syncedSvg = normalizeTableSvg(currentSvg, syncedSetup, svgAssetsForSetup(syncedSetup));
-		setup = syncedSetup;
-		editorSvg = currentSvg;
-		const setupDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
-		if (setupDir.error) {
-			saveError = setupDir.error.message;
-			status = 'Autosave failed';
+		try {
+			const syncedSetup = syncFromEditor();
+			const baseSvg = tableSvgBase;
+			setup = syncedSetup;
+			const setupDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
+			if (setupDir.error) {
+				saveError = setupDir.error.message;
+				status = 'Autosave failed';
+				return;
+			}
+			const jsonWrite = await setupDir.data.write('table.json', serializeTableSetup(syncedSetup));
+			if (jsonWrite.error) {
+				saveError = jsonWrite.error.message;
+				status = 'Autosave failed';
+				return;
+			}
+			void saveTableSvg(syncedSetup, baseSvg, generation);
+			if (generation === saveGeneration) {
+				status = 'Autosaved';
+			}
+		} finally {
 			isSaving = false;
-			return;
+			saveInFlight = false;
+			const queuedGeneration = pendingSaveGeneration;
+			pendingSaveGeneration = null;
+			if (
+				(queuedGeneration !== null || generation !== saveGeneration) &&
+				!autosaveTimer &&
+				autosaveIdleHandle === null
+			) {
+				queueAutosave(saveGeneration);
+			}
 		}
-		const jsonWrite = await setupDir.data.write('table.json', serializeTableSetup(syncedSetup));
-		if (jsonWrite.error) {
-			saveError = jsonWrite.error.message;
-			status = 'Autosave failed';
-			isSaving = false;
-			return;
-		}
-		const svgWrite = await setupDir.data.write('table.svg', syncedSvg);
-		if (svgWrite.error) {
-			saveError = svgWrite.error.message;
-			status = 'Autosave failed';
-			isSaving = false;
-			return;
-		}
-		if (generation === saveGeneration) {
-			status = 'Autosaved';
-		}
-		isSaving = false;
 	}
 </script>
 
@@ -644,6 +938,7 @@
 				initialZoom="fit"
 				centerOnExternalValueChange={false}
 				syncExternalValueUpdates={true}
+				emitChangeSvg="non-setup"
 				selectedElementId={selectedSetupElementId}
 				toolbarActions={setupToolbarAction}
 				componentPanel={setupComponentPanel}
@@ -713,6 +1008,167 @@
 					<h2 class="font-semibold">Slot</h2>
 					<Badge variant="secondary">rules</Badge>
 				</div>
+				<label class="grid gap-1 font-medium">
+					Layout
+					<select
+						aria-label="Slot layout"
+						class="border-input bg-background h-9 rounded-md border px-3"
+						value={selectedSlotLayout.mode}
+						onchange={(event) =>
+							setSlotLayoutMode(
+								selectedSlot.id,
+								(event.currentTarget as HTMLSelectElement).value as SetupSlotLayout['mode']
+							)}
+					>
+						<option value="free">Free</option>
+						<option value="horizontal-flex">Horizontal flex</option>
+					</select>
+				</label>
+				{#if selectedSlotLayout.mode === 'horizontal-flex'}
+					<div class="grid grid-cols-3 gap-2">
+						<label class="grid gap-1 font-medium">
+							Visible
+							<Input
+								aria-label="Visible cards"
+								type="number"
+								min="1"
+								value={selectedSlotLayout.visibleCount}
+								oninput={(event) =>
+									updateHorizontalSlotLayout(selectedSlot.id, {
+										visibleCount: Number(event.currentTarget.value)
+									})}
+							/>
+						</label>
+						<label class="grid gap-1 font-medium">
+							Spacing
+							<Input
+								aria-label="Slot spacing"
+								type="number"
+								min="0"
+								value={selectedSlotLayout.gap}
+								oninput={(event) =>
+									updateHorizontalSlotLayout(selectedSlot.id, {
+										gap: Number(event.currentTarget.value)
+									})}
+							/>
+						</label>
+						<label class="grid gap-1 font-medium">
+							Max
+							<Input
+								aria-label="Max items"
+								type="number"
+								min={selectedSlotLayout.visibleCount + 1}
+								value={selectedSlotLayout.maxItems}
+								oninput={(event) =>
+									updateHorizontalSlotLayout(selectedSlot.id, {
+										maxItems: Number(event.currentTarget.value)
+									})}
+							/>
+						</label>
+					</div>
+					<div class="space-y-2">
+						<div class="flex items-center justify-between gap-2">
+							<h3 class="font-medium">Initial contents</h3>
+							<Badge variant="secondary"
+								>{selectedSlotContents.length}/{selectedSlotLayout.visibleCount}</Badge
+							>
+						</div>
+						<div class="space-y-1">
+							{#each selectedSlotContents as content, index (slotContentKey(content))}
+								<div class="flex items-center gap-2 rounded-md border px-2 py-1">
+									<Badge variant="outline">{content.type}</Badge>
+									<span class="min-w-0 flex-1 truncate">{slotContentLabel(content)}</span>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										class="size-8"
+										aria-label={`Remove ${slotContentLabel(content)}`}
+										onclick={() => removeSlotContent(selectedSlot.id, index)}
+									>
+										<Trash2 class="size-4" />
+									</Button>
+								</div>
+							{:else}
+								<p class="text-muted-foreground rounded-md border px-2 py-2 text-xs">
+									No initial contents.
+								</p>
+							{/each}
+						</div>
+						<Dialog.Root bind:open={addSlotContentOpen}>
+							<Dialog.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										type="button"
+										variant="outline"
+										class="w-full"
+										disabled={!slotCanAddContent(selectedSlot)}
+									>
+										<Plus class="size-4" />
+										Add content
+									</Button>
+								{/snippet}
+							</Dialog.Trigger>
+							<Dialog.Content class="max-h-[80vh] overflow-hidden sm:max-w-xl">
+								<Dialog.Header>
+									<Dialog.Title>Add content</Dialog.Title>
+									<Dialog.Description>Select a deck or card for the visible flex cells.</Dialog.Description>
+								</Dialog.Header>
+								<div class="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+									{#each decks as deck (deck.name)}
+										<div class="rounded-md border p-2">
+											<Button
+												type="button"
+												variant="ghost"
+												class="flex w-full justify-between"
+												disabled={!slotCanAddContent(selectedSlot) ||
+													slotHasContent(selectedSlot, {
+														type: 'deck',
+														deckName: deck.name
+													})}
+												onclick={() =>
+													addSlotContent(selectedSlot.id, {
+														type: 'deck',
+														deckName: deck.name
+													})}
+											>
+												<span>{deck.name}</span>
+												<span class="text-muted-foreground text-xs">deck</span>
+											</Button>
+											<div class="mt-2 max-h-40 space-y-1 overflow-y-auto">
+												{#each deck.cards as card (card.id)}
+													<Button
+														type="button"
+														variant="ghost"
+														class="text-muted-foreground flex h-8 w-full justify-between px-2 text-xs"
+														disabled={!slotCanAddContent(selectedSlot) ||
+															slotHasContent(selectedSlot, {
+																type: 'card',
+																deckName: deck.name,
+																cardId: card.id
+															})}
+														onclick={() =>
+															addSlotContent(selectedSlot.id, {
+																type: 'card',
+																deckName: deck.name,
+																cardId: card.id
+															})}
+													>
+														<span class="truncate">{card.label}</span>
+														<span>{card.rowId}</span>
+													</Button>
+												{/each}
+											</div>
+										</div>
+									{:else}
+										<p class="text-muted-foreground rounded-md border p-3 text-sm">No decks found.</p>
+									{/each}
+								</div>
+							</Dialog.Content>
+						</Dialog.Root>
+					</div>
+				{/if}
 				<div class="space-y-2">
 					<h3 class="font-medium">Allowed decks</h3>
 					{#each decks as deck (deck.name)}

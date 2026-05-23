@@ -4,6 +4,7 @@
 	import { PressedKeys } from 'runed';
 	import type {
 		ChangeEvent,
+		ChangeSvgEmission,
 		ReadyEvent,
 		SelectionChangeEvent,
 		SvgCanvasConfig,
@@ -25,6 +26,7 @@
 		centerOnLoad?: boolean;
 		centerOnExternalValueChange?: boolean;
 		syncExternalValueUpdates?: boolean;
+		emitChangeSvg?: ChangeSvgEmission;
 		selectedElementId?: string | null;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
@@ -51,6 +53,7 @@
 		centerOnLoad = true,
 		centerOnExternalValueChange = centerOnLoad,
 		syncExternalValueUpdates = false,
+		emitChangeSvg = true,
 		selectedElementId = undefined,
 		initialZoom,
 		assetBasePath,
@@ -409,6 +412,7 @@
 								{centerOnLoad}
 								{centerOnExternalValueChange}
 								{syncExternalValueUpdates}
+								{emitChangeSvg}
 								{initialZoom}
 								{assetBasePath}
 								on:ready={handleReady}

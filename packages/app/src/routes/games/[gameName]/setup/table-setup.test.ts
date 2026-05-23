@@ -5,6 +5,8 @@ import {
 	parseTableSetup,
 	serializeTableSetup,
 	setupToSvg,
+	snapPlacementToGrid,
+	slotToSvgElementJson,
 	svgToTableSetup,
 	type TableSetup
 } from './table-setup';
@@ -116,14 +118,168 @@ describe('table setup', () => {
 		expect(svg).toContain('data-deck-stack="true"');
 		expect(svg).toContain('data-svgedit-resizable="false"');
 		expect(svg).toContain('data-locked="true"');
+		expect(svg).toContain('style="pointer-events:none;user-select:none"');
 		expect(svg).not.toContain('pointer-events="none"');
 		const deckGroup = groupById(svg, 'deck-1');
 		const slotGroup = groupById(svg, 'slot-1');
 		const slotRect = slotGroup.getElementsByTagName('rect')[0]!;
-		expect(deckGroup.getAttribute('transform')).toBe('translate(145 165) rotate(15 55 75)');
+		expect(deckGroup.getAttribute('transform')).toBe('translate(140 160) rotate(15 55 75)');
 		expect(slotGroup.getAttribute('transform')).toBe('translate(100 100)');
 		expect(slotRect.getAttribute('x')).toBe('0');
 		expect(slotRect.getAttribute('y')).toBe('0');
+	});
+
+	it('uses saved slot geometry for live svg editor slot updates', () => {
+		const slot = slotToSvgElementJson({
+			id: 'slot-1',
+			label: 'Market',
+			x: 50,
+			y: 60,
+			width: 200,
+			height: 300,
+			acceptedDeckNames: ['western'],
+			acceptedCardIds: []
+		});
+
+		expect(slot.attr?.transform).toBe('translate(50 60)');
+		expect(slot.children?.[0]).toEqual(
+			expect.objectContaining({
+				element: 'rect',
+				attr: expect.objectContaining({ x: 0, y: 0, width: 200, height: 300 })
+			})
+		);
+		expect(slot.children?.[1]).toEqual(
+			expect.objectContaining({
+				element: 'text',
+				attr: expect.objectContaining({ x: 16, y: 32 })
+			})
+		);
+	});
+
+	it('normalizes horizontal flex slots to visible card-sized cells', () => {
+		const setup = parseTableSetup({
+			table: { presetId: 'custom', width: 800, height: 600 },
+			placements: [],
+			slots: [
+				{
+					id: 'slot-1',
+					label: 'Market',
+					x: 50,
+					y: 60,
+					width: 999,
+					height: 999,
+					acceptedDeckNames: [],
+					acceptedCardIds: [],
+					layout: {
+						mode: 'horizontal-flex',
+						visibleCount: 3,
+						gap: 12,
+						cardSize: 'content-card',
+						maxItems: 3
+					},
+					contents: [
+						{ type: 'deck', deckName: 'western' },
+						{ type: 'card', deckName: 'western', cardId: 'western:1' },
+						{ type: 'card', deckName: 'western', cardId: 'western:2' },
+						{ type: 'card', deckName: 'western', cardId: 'western:3' }
+					]
+				}
+			]
+		});
+
+		expect(setup.slots[0]).toEqual(
+			expect.objectContaining({
+				width: 354,
+				height: 150,
+				layout: expect.objectContaining({
+					mode: 'horizontal-flex',
+					visibleCount: 3,
+					gap: 12,
+					maxItems: 4
+				}),
+				contents: [
+					{ type: 'deck', deckName: 'western' },
+					{ type: 'card', deckName: 'western', cardId: 'western:1' },
+					{ type: 'card', deckName: 'western', cardId: 'western:2' }
+				]
+			})
+		);
+	});
+
+	it('renders horizontal flex slot contents as locked card-sized visuals', () => {
+		const setup: TableSetup = {
+			version: 1,
+			table: { presetId: 'custom', width: 800, height: 600 },
+			placements: [],
+			slots: [
+				{
+					id: 'slot-1',
+					label: 'Market',
+					x: 50,
+					y: 60,
+					width: 0,
+					height: 0,
+					acceptedDeckNames: [],
+					acceptedCardIds: [],
+					layout: {
+						mode: 'horizontal-flex',
+						visibleCount: 2,
+						gap: 20,
+						cardSize: 'content-card',
+						maxItems: 5
+					},
+					contents: [
+						{ type: 'deck', deckName: 'western' },
+						{ type: 'card', deckName: 'western', cardId: 'western:1' }
+					]
+				}
+			]
+		};
+
+		const svg = setupToSvg(setup, {
+			cardSvgs: new Map([
+				['western:1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Ace</text></svg>']
+			]),
+			deckTopCardIds: new Map([['western', 'western:1']])
+		});
+		const group = groupById(svg, 'slot-1');
+		const rects = Array.from(group.getElementsByTagName('rect'));
+
+		expect(group.getAttribute('data-svgedit-resizable')).toBe('false');
+		expect(group.getAttribute('data-slot-layout-mode')).toBe('horizontal-flex');
+		expect(group.getAttribute('data-slot-contents')).toContain('western:1');
+		expect(rects[0]?.getAttribute('width')).toBe('240');
+		expect(rects[0]?.getAttribute('height')).toBe('150');
+		expect(svg).toContain('<image');
+		expect(svg).toContain('data-deck-stack="true"');
+		expect(svg).toContain('data-locked="true"');
+
+		const parsed = svgToTableSetup(svg, setup);
+		expect(parsed.slots[0]).toEqual(
+			expect.objectContaining({
+				width: 240,
+				height: 150,
+				contents: setup.slots[0].contents
+			})
+		);
+	});
+
+	it('snaps placement visual top-left corners to the table grid', () => {
+		const placement = snapPlacementToGrid({
+			id: 'deck-1',
+			type: 'deck',
+			deckName: 'western',
+			cardIds: ['western:1'],
+			x: 160,
+			y: 160,
+			rotation: 0,
+			label: 'Western'
+		});
+
+		expect(placement).toEqual(expect.objectContaining({ x: 155, y: 155 }));
+		expect(setupToSvg({ ...createDefaultTableSetup(), placements: [placement] })).toContain(
+			'transform="translate(100 80) rotate(0 55 75)"'
+		);
 	});
 
 	it('roundtrips generated slot and placement coordinates through svg markup', () => {
@@ -158,7 +314,7 @@ describe('table setup', () => {
 
 		const parsed = svgToTableSetup(setupToSvg(setup), setup);
 
-		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 200, y: 240 }));
+		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 195, y: 235 }));
 		expect(parsed.slots[0]).toEqual(expect.objectContaining({ x: 100, y: 110 }));
 	});
 
@@ -192,7 +348,7 @@ describe('table setup', () => {
 		);
 	});
 
-	it('keeps legacy centered placement coordinates compatible when parsing saved svgs', () => {
+	it('snaps legacy centered placement coordinates when parsing saved svgs', () => {
 		const setup: TableSetup = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
@@ -209,7 +365,7 @@ describe('table setup', () => {
 
 		const parsed = svgToTableSetup(svg, setup);
 
-		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 200, y: 240, rotation: 15 }));
+		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 195, y: 235, rotation: 15 }));
 	});
 
 	it('renders placement card art as a locked image when card svg is available', () => {

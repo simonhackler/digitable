@@ -1,8 +1,11 @@
 import type { Application } from 'pixi.js';
+import type { Viewport } from 'pixi-viewport';
 import type { BoardGameItemNew } from '$lib/pixi/item';
 import type { HandContainer } from './HandContainer';
 import type { StrokeLayer } from './strokes';
 import type { StrokeFace } from 'boardgame-server/src/rooms/schema/stroke-schema';
+import type { TableSetup } from '../../routes/games/[gameName]/setup/table-setup';
+import { SETUP_PLAY_CARD_HEIGHT, SETUP_PLAY_CARD_WIDTH } from './setup-play';
 
 export interface PlayE2EState {
 	visibleStackIds: string[];
@@ -31,6 +34,7 @@ interface PlayE2EBridge {
 	state: () => PlayE2EState;
 	bounds: (id: string) => BoundsSnapshot | null;
 	clickPoint: (id: string) => { x: number; y: number } | null;
+	slotPoint: (id: string) => { x: number; y: number } | null;
 }
 
 declare global {
@@ -63,11 +67,32 @@ function toBoundsSnapshot(app: Application, item: BoardGameItemNew): BoundsSnaps
 	};
 }
 
+function toCanvasPoint(
+	app: Application,
+	viewport: Viewport | null,
+	worldX: number,
+	worldY: number
+): { x: number; y: number } | null {
+	if (!viewport) return null;
+	app.render();
+
+	const screen = viewport.toScreen(worldX, worldY);
+	const canvasRect = app.canvas.getBoundingClientRect();
+	const scaleX = canvasRect.width / app.screen.width;
+	const scaleY = canvasRect.height / app.screen.height;
+	return {
+		x: screen.x * scaleX,
+		y: screen.y * scaleY
+	};
+}
+
 export function installPlayE2EBridge(
 	app: Application,
 	boardGameItems: Map<string, BoardGameItemNew>,
 	handContainer: HandContainer,
-	strokeLayer: StrokeLayer
+	strokeLayer: StrokeLayer,
+	viewport: Viewport | null = null,
+	setup: TableSetup | null = null
 ) {
 	const bridge: PlayE2EBridge = {
 		state() {
@@ -111,6 +136,20 @@ export function installPlayE2EBridge(
 				x: bounds.centerX,
 				y: bounds.centerY
 			};
+		},
+		slotPoint(id) {
+			if (!setup) return null;
+			const slot = setup.slots.find((candidate) => candidate.id === id);
+			if (!slot) return null;
+			if (slot.layout?.mode === 'horizontal-flex') {
+				return toCanvasPoint(
+					app,
+					viewport,
+					slot.x + SETUP_PLAY_CARD_WIDTH / 2,
+					slot.y + SETUP_PLAY_CARD_HEIGHT / 2
+				);
+			}
+			return toCanvasPoint(app, viewport, slot.x + slot.width / 2, slot.y + slot.height / 2);
 		}
 	};
 

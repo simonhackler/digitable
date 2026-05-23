@@ -5,6 +5,7 @@
 	import { normalizeSvg } from '../core/normalizeSvg';
 	import type {
 		ChangeEvent,
+		ChangeSvgEmission,
 		EditorError,
 		ErrorEvent,
 		ModeChangeEvent,
@@ -22,6 +23,7 @@
 		centerOnLoad?: boolean;
 		centerOnExternalValueChange?: boolean;
 		syncExternalValueUpdates?: boolean;
+		emitChangeSvg?: ChangeSvgEmission;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
 		class?: string;
@@ -36,6 +38,7 @@
 		centerOnLoad = true,
 		centerOnExternalValueChange = centerOnLoad,
 		syncExternalValueUpdates = false,
+		emitChangeSvg = true,
 		initialZoom,
 		assetBasePath,
 		class: className = '',
@@ -129,6 +132,7 @@
 				value: normalizedInitial,
 				config: resolvedConfig,
 				centerOnLoad,
+				emitChangeSvg,
 				rulers: {
 					frame: rulerFrame,
 					x: rulerX,
@@ -137,6 +141,11 @@
 				},
 				onChange: (svg) => {
 					if (suppressChange) return;
+					if (!emitChangeSvg) {
+						dispatch('change', { source: 'user' });
+						return;
+					}
+					if (!svg) return;
 					lastUserValue = normalizeSvg(svg, resolvedConfig);
 					dispatch('change', { svg, source: 'user' });
 				},

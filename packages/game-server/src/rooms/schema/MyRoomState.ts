@@ -1,8 +1,21 @@
 import { ArraySchema, MapSchema, Schema, SetSchema, type } from '@colyseus/schema';
 import { Stroke } from './stroke-schema';
 
+export interface InitStackPayload {
+	componentIds: string[];
+}
+
+export interface InitSetupItemPayload {
+	id: string;
+	type: 'card' | 'stack';
+	componentIds: string[];
+	x: number;
+	y: number;
+}
+
 export interface InitGamePayload {
-	stacks: { componentIds: string[] }[];
+	stacks?: InitStackPayload[];
+	setupItems?: InitSetupItemPayload[];
 }
 
 // Should support different types of positions. For example a position might have differen

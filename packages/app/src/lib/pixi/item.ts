@@ -9,6 +9,7 @@ import type {
 export class BoardGameItemNew extends Container {
 	public readonly id: string;
 	public readonly itemContainer: Container;
+	public readonly baseAspectRatio: number;
 	private readonly baseLayoutStyle: LayoutStyles;
 	public readonly clientPosition: ClientPosition | null;
 	public readonly clientFlippable: ClientFlippable | null;
@@ -30,6 +31,7 @@ export class BoardGameItemNew extends Container {
 		});
 		this.id = id;
 		this.layout = true;
+		this.baseAspectRatio = aspectRatio;
 		this.baseLayoutStyle = {
 			aspectRatio
 		};
@@ -55,11 +57,16 @@ export class BoardGameItemNew extends Container {
 	}
 
 	resetLayoutTransform() {
+		this.layout = this.baseLayoutStyle;
 		const layout = this.layout;
 		if (!layout) return;
 		layout.setStyle(this.baseLayoutStyle);
 		layout.forceUpdate();
 		layout.invalidateRoot(this);
+	}
+
+	disableLayoutTransform() {
+		this.layout = null;
 	}
 }
 
