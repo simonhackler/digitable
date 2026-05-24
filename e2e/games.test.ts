@@ -1,5 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { opfsEntryExists, readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
+import {
+	opfsEntryExists,
+	readOpfsText,
+	saveOpfsStoragePreference,
+	seedProjects,
+	writeOpfsText
+} from './helpers/opfs';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -94,6 +100,61 @@ test('created game appears in the games overview and can create a deck', async (
 
 	await page.goto('/app/games');
 	await expect(page.getByRole('main').getByText(secondFolderName)).toBeVisible();
+});
+
+test('migrates legacy projects and stores the workspace digitable version', async ({ page }) => {
+	await page.goto('/app/games');
+	await page.setContent('<!doctype html><html><body><h1>Workspace seed</h1></body></html>');
+	await writeOpfsText(
+		page,
+		'/.digitable.json',
+		JSON.stringify({
+			schemaVersion: 1,
+			lastOpenedAppVersion: 'test-version',
+			updatedAt: '2026-05-16T12:00:00.000Z'
+		})
+	);
+	await writeOpfsText(
+		page,
+		'/legacy-game/game.json',
+		JSON.stringify({
+			name: 'Legacy Game',
+			minPlayers: 1,
+			maxPlayers: 4,
+			description: 'A legacy project that needs the layout migration.',
+			tags: ['E2E']
+		})
+	);
+	await writeOpfsText(
+		page,
+		'/legacy-game/system/cards/front.svg',
+		'<svg xmlns="http://www.w3.org/2000/svg"><image href="../../files/card.png"/><image href="/files/card.png"/></svg>'
+	);
+	await writeOpfsText(
+		page,
+		'/legacy-game/system/cards/data.csv',
+		'image\nfiles/card.png\n../../files/card.png\n/files/card.png\n'
+	);
+	await writeOpfsText(page, '/legacy-game/files/card.png', 'image-bytes');
+	await saveOpfsStoragePreference(page);
+
+	await page.goto('/app/games');
+	await expect(page.getByRole('heading', { name: 'Migrate Projects' })).toBeVisible();
+	await page.getByRole('button', { name: 'Migrate projects' }).click();
+
+	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+	await expect(page.getByRole('main').getByText('legacy-game')).toBeVisible();
+	await expect(await opfsEntryExists(page, '/legacy-game/components/cards/front.svg')).toBe(true);
+	await expect(await opfsEntryExists(page, '/legacy-game/assets/card.png')).toBe(true);
+	await expect(await readOpfsText(page, '/legacy-game/components/cards/front.svg')).toContain(
+		'../../assets/card.png'
+	);
+	await expect(await readOpfsText(page, '/legacy-game/components/cards/data.csv')).toContain(
+		'assets/card.png'
+	);
+	await expect(JSON.parse(await readOpfsText(page, '/.digitable.json'))).toMatchObject({
+		digitableVersion: '0.0.1'
+	});
 });
 
 test('create new deck and delete it', async ({ page }) => {

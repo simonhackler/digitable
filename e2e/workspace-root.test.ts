@@ -28,8 +28,7 @@ async function saveOpfsRootAsDirectoryPreference(page: Page, options: SavedRootO
 					JSON.stringify({
 						name: 'Western Cards',
 						description: 'Seeded workspace root validation project.',
-						tags: ['E2E'],
-						digitableVersion: 'test-version'
+						tags: ['E2E']
 					})
 				);
 				await gameWritable.close();
@@ -49,6 +48,7 @@ async function saveOpfsRootAsDirectoryPreference(page: Page, options: SavedRootO
 					JSON.stringify({
 						schemaVersion: 1,
 						lastOpenedAppVersion: 'test-version',
+						digitableVersion: '0.0.1',
 						updatedAt: '2026-05-16T12:00:00.000Z'
 					})
 				);
@@ -113,6 +113,7 @@ test('restores a saved projects root with a valid workspace marker', async ({ pa
 	await expect(page.getByRole('main').getByText('western-cards')).toBeVisible();
 	await expect(readRootMarker(page)).resolves.toMatchObject({
 		schemaVersion: 1,
+		digitableVersion: '0.0.1',
 		lastOpenedAppVersion: 'dev'
 	});
 });
@@ -130,6 +131,7 @@ test('rejects a saved projects root without a workspace marker', async ({ page }
 	await expect(page.getByText(`Create ${markerName} in that folder with this JSON:`)).toBeVisible();
 	await expect(page.getByText('"schemaVersion": 1')).toBeVisible();
 	await expect(page.getByText('"lastOpenedAppVersion": "dev"')).toBeVisible();
+	await expect(page.getByText('"digitableVersion": "0.0.1"')).toBeVisible();
 	await page.getByRole('button', { name: 'Copy JSON' }).click();
 	await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible();
 	await expect(page.evaluate(() => navigator.clipboard.readText())).resolves.toContain(

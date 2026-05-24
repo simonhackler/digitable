@@ -1,4 +1,3 @@
-import packageJson from '../../../package.json';
 import {
 	FsError,
 	joinFsPath,
@@ -6,8 +5,8 @@ import {
 	type FsEntry,
 	type FsResult
 } from '$lib/components/file-browser/adapters/adapter';
+import { DIGITABLE_VERSION } from './digitable-version';
 
-export const PROJECT_VERSION = packageJson.version;
 export const COMPONENTS_DIR = 'components';
 export const ASSETS_DIR = 'assets';
 export const OLD_COMPONENTS_DIR = 'system';
@@ -19,12 +18,11 @@ export type ProjectMetadata = {
 	maxPlayers: number;
 	description: string;
 	tags: string[];
-	digitableVersion?: string;
 };
 
-export type ProjectMigrationState = {
-	needsMigration: boolean;
-	reason: string;
+type ProjectMigration = {
+	targetVersion: string;
+	migrate: (fileSystem: FsDir, projectName: string) => Promise<FsResult<void>>;
 };
 
 const svgReferenceRewrites = [
@@ -55,17 +53,6 @@ function rewriteText(value: string, rewrites: readonly (readonly [RegExp, string
 		(next, [pattern, replacement]) => next.replace(pattern, replacement),
 		value
 	);
-}
-
-async function readProjectMetadata(projectDir: FsDir) {
-	const text = await projectDir.readText('game.json');
-	if (text.error) return text;
-
-	try {
-		return { data: JSON.parse(text.data) as ProjectMetadata, error: null };
-	} catch (error) {
-		return failed('readText', joinFsPath(projectDir.name, 'game.json'), String(error));
-	}
 }
 
 async function rewriteFiles(
@@ -100,33 +87,7 @@ async function rewriteFiles(
 	return { data: undefined, error: null };
 }
 
-export async function projectMigrationState(
-	fileSystem: FsDir,
-	projectName: string
-): Promise<ProjectMigrationState> {
-	const projectDir = await fileSystem.openDir(projectName);
-	if (projectDir.error) return { needsMigration: false, reason: '' };
-
-	const entries = await projectDir.data.list();
-	if (entries.error) return { needsMigration: false, reason: '' };
-
-	if (hasEntry(entries.data, OLD_COMPONENTS_DIR)) {
-		return { needsMigration: true, reason: 'Project uses the old system folder.' };
-	}
-
-	if (hasEntry(entries.data, OLD_ASSETS_DIR)) {
-		return { needsMigration: true, reason: 'Project uses the old files folder.' };
-	}
-
-	const metadata = await readProjectMetadata(projectDir.data);
-	if (!metadata.error && !metadata.data.digitableVersion) {
-		return { needsMigration: true, reason: 'Project is missing Digitable version metadata.' };
-	}
-
-	return { needsMigration: false, reason: '' };
-}
-
-export async function migrateProjectLayout(
+async function migrateLegacyProjectLayout(
 	fileSystem: FsDir,
 	projectName: string
 ): Promise<FsResult<void>> {
@@ -173,14 +134,40 @@ export async function migrateProjectLayout(
 	);
 	if (csvRewritten.error && csvRewritten.error.name !== 'NotFoundError') return csvRewritten;
 
-	const metadata = await readProjectMetadata(projectDir.data);
-	if (metadata.error) return metadata;
+	return { data: undefined, error: null };
+}
 
-	const written = await projectDir.data.write(
-		'game.json',
-		JSON.stringify({ ...metadata.data, digitableVersion: PROJECT_VERSION }, null, 2)
+const projectMigrations: ProjectMigration[] = [
+	{
+		targetVersion: '0.0.1',
+		migrate: migrateLegacyProjectLayout
+	}
+];
+
+export function projectMigrationsForVersion(digitableVersion?: string) {
+	const currentVersionIndex = projectMigrations.findIndex(
+		(migration) => migration.targetVersion === DIGITABLE_VERSION
 	);
-	if (written.error) return written;
+	if (currentVersionIndex === -1) return [];
+	if (!digitableVersion) return projectMigrations.slice(0, currentVersionIndex + 1);
+
+	const workspaceVersionIndex = projectMigrations.findIndex(
+		(migration) => migration.targetVersion === digitableVersion
+	);
+	if (workspaceVersionIndex === -1) return [];
+
+	return projectMigrations.slice(workspaceVersionIndex + 1, currentVersionIndex + 1);
+}
+
+export async function migrateProjectLayout(
+	fileSystem: FsDir,
+	projectName: string,
+	digitableVersion?: string
+): Promise<FsResult<void>> {
+	for (const migration of projectMigrationsForVersion(digitableVersion)) {
+		const migrated = await migration.migrate(fileSystem, projectName);
+		if (migrated.error) return migrated;
+	}
 
 	return { data: undefined, error: null };
 }

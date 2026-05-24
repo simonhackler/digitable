@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { env } from '$env/dynamic/public';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import AppSidebar from './app-sidebar.svelte';
 	import PickFolder from '../../lib/components/pick-folder.svelte';
@@ -11,9 +12,13 @@
 	import {
 		listProjectComponents,
 		migrateProjectLayout,
-		projectMigrationState,
-		PROJECT_VERSION
+		projectMigrationsForVersion
 	} from '$lib/workspace/project-layout';
+	import {
+		readProjectsRootMarker,
+		writeProjectsRootMarker
+	} from '$lib/workspace/projects-root';
+	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
@@ -25,6 +30,8 @@
 	let migrationError = $state('');
 	let isMigrating = $state(false);
 	let isInspectingProjects = $state(false);
+	let migrationDigitableVersion = $state<string | undefined>();
+	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 
 	async function getGames(fileSystem: Readonly<FsDir>) {
 		const root = await fileSystem.list();
@@ -69,7 +76,7 @@
 		return games;
 	}
 
-	async function getProjectsToMigrate(fileSystem: FsDir) {
+	async function getProjectNames(fileSystem: FsDir) {
 		const root = await fileSystem.list();
 		if (root.error) return [];
 
@@ -85,8 +92,7 @@
 			if (projectEntries.error) continue;
 			if (!projectEntries.data.some((file) => file.name === 'game.json')) continue;
 
-			const migration = await projectMigrationState(fileSystem, entry.name);
-			if (migration.needsMigration) projects.push(entry.name);
+			projects.push(entry.name);
 		}
 
 		return projects;
@@ -96,7 +102,15 @@
 		isInspectingProjects = true;
 		fileSystemState.adapter = adapter;
 		await generateAgentFiles(adapter);
-		const migrations = await getProjectsToMigrate(adapter);
+		const marker = await readProjectsRootMarker(adapter);
+		migrationDigitableVersion = marker.error ? undefined : marker.data.digitableVersion;
+		const pendingMigrations = projectMigrationsForVersion(migrationDigitableVersion);
+		const migrations = pendingMigrations.length
+			? await getProjectNames(adapter)
+			: [];
+		if (!migrations.length && pendingMigrations.length) {
+			await writeProjectsRootMarker(adapter, { appVersion });
+		}
 		projectsToMigrate = migrations;
 		gamesState.existingGames = migrations.length ? null : await getGames(adapter);
 		isInspectingProjects = false;
@@ -108,12 +122,23 @@
 		isMigrating = true;
 		migrationError = '';
 		for (const projectName of projectsToMigrate) {
-			const migrated = await migrateProjectLayout(fileSystem, projectName);
+			const migrated = await migrateProjectLayout(
+				fileSystem,
+				projectName,
+				migrationDigitableVersion
+			);
 			if (migrated.error) {
 				migrationError = `${projectName}: ${migrated.error.message}`;
 				isMigrating = false;
 				return;
 			}
+		}
+
+		const marked = await writeProjectsRootMarker(fileSystem, { appVersion });
+		if (marked.error) {
+			migrationError = marked.error.message;
+			isMigrating = false;
+			return;
 		}
 
 		projectsToMigrate = [];
@@ -143,8 +168,8 @@
 						<h1 class="text-xl font-semibold">Migrate Projects</h1>
 						<p class="text-muted-foreground text-sm">
 							Digitable will migrate {projectsToMigrate.length}
-							{projectsToMigrate.length === 1 ? 'project' : 'projects'} to components and assets, then
-							save version {PROJECT_VERSION} in game.json.
+							{projectsToMigrate.length === 1 ? 'project' : 'projects'} to the latest project
+							layout, then save version {DIGITABLE_VERSION} in .digitable.json.
 						</p>
 					</div>
 					<div class="text-muted-foreground max-h-32 overflow-auto rounded-md border p-2 text-sm">
