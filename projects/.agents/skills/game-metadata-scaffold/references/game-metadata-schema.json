@@ -29,6 +29,9 @@
       "items": {
         "type": "string"
       }
+    },
+    "digitableVersion": {
+      "type": "string"
     }
   },
   "required": [
