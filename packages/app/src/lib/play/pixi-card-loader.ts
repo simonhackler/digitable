@@ -60,6 +60,14 @@ function stripImagesFromSvg(svg: SVGSVGElement): SVGSVGElement {
 	return svgClone;
 }
 
+function hasRenderableSvgContent(svg: SVGSVGElement) {
+	const ignoredElements = new Set(['defs', 'desc', 'metadata', 'title']);
+	for (const child of svg.children) {
+		if (!ignoredElements.has(child.localName)) return true;
+	}
+	return false;
+}
+
 function getTextureCacheKey(svg: SVGSVGElement) {
 	const rootId = svg.getAttribute('id');
 	svg.removeAttribute('id');
@@ -119,6 +127,18 @@ export async function createHybridContainer(
 	}
 
 	const imageTexture = await svgToTexture(addWhiteBackground(imagesOnlySvg), textureCache);
+	if (!hasRenderableSvgContent(strippedSvg)) {
+		return new Sprite({
+			texture: imageTexture,
+			layout: {
+				objectFit: 'contain',
+				objectPosition: 'center',
+				width: '100%',
+				aspectRatio: imageTexture.width / imageTexture.height
+			}
+		});
+	}
+
 	const imageBackground = new Sprite(imageTexture);
 	const container = new LayoutContainer({
 		layout: {

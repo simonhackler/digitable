@@ -4,6 +4,18 @@ export interface PixiPlayState {
 	visibleStackIds: string[];
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
+	cardFaces: Record<
+		string,
+		{
+			isFaceUp: boolean;
+			frontVisible: boolean;
+			frontRenderable: boolean;
+			backVisible: boolean;
+			backRenderable: boolean;
+			backWidth: number;
+			backHeight: number;
+		}
+	>;
 	strokes: {
 		id: string;
 		componentId: string;
@@ -14,13 +26,46 @@ export interface PixiPlayState {
 	}[];
 }
 
+type PixiBounds = {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	centerX: number;
+	centerY: number;
+};
+
 type PixiBridgeWindow = Window & {
 	__PIXI_E2E__?: {
 		state: () => PixiPlayState;
+		bounds: (id: string) => PixiBounds | null;
+		contentBounds: (id: string) => PixiBounds | null;
 		clickPoint: (id: string) => { x: number; y: number } | null;
 		slotPoint: (id: string) => { x: number; y: number } | null;
 	};
 };
+
+export async function pixiBounds(page: Page, id: string) {
+	const bounds = await page.evaluate(
+		(targetId) => (window as PixiBridgeWindow).__PIXI_E2E__!.bounds(targetId),
+		id
+	);
+	if (!bounds) {
+		throw new Error(`No Pixi bounds found for "${id}"`);
+	}
+	return bounds;
+}
+
+export async function pixiContentBounds(page: Page, id: string) {
+	const bounds = await page.evaluate(
+		(targetId) => (window as PixiBridgeWindow).__PIXI_E2E__!.contentBounds(targetId),
+		id
+	);
+	if (!bounds) {
+		throw new Error(`No Pixi content bounds found for "${id}"`);
+	}
+	return bounds;
+}
 
 export async function pixiPoint(page: Page, id: string) {
 	const point = await page.evaluate(
@@ -80,7 +125,12 @@ export async function pixiClick(page: Page, id: string) {
 	});
 }
 
-export async function pixiDragTo(page: Page, id: string, target: { x: number; y: number }) {
+export async function pixiDragTo(
+	page: Page,
+	id: string,
+	target: { x: number; y: number },
+	options: { key?: string } = {}
+) {
 	const point = await pixiPoint(page, id);
 	const canvas = page.locator('canvas');
 	await expect(canvas).toBeVisible();
@@ -91,7 +141,9 @@ export async function pixiDragTo(page: Page, id: string, target: { x: number; y:
 	}
 
 	await page.mouse.move(box.x + point.x, box.y + point.y);
+	if (options.key) await page.keyboard.down(options.key);
 	await page.mouse.down();
 	await page.mouse.move(box.x + target.x, box.y + target.y, { steps: 12 });
 	await page.mouse.up();
+	if (options.key) await page.keyboard.up(options.key);
 }

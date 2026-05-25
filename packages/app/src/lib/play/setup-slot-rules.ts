@@ -83,7 +83,7 @@ export function setupSlotAcceptsItem(slot: SetupSlot, item: SetupItemMetadata): 
 
 export function setupSlotCapacity(slot: SetupSlot): number {
 	if (slot.layout?.mode !== 'horizontal-flex') return Number.POSITIVE_INFINITY;
-	return slot.layout.maxItems;
+	return slot.layout.visibleCount;
 }
 
 export function setupSlotCellPosition(slot: SetupSlot, index: number): { x: number; y: number } {

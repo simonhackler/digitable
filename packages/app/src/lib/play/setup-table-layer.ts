@@ -4,7 +4,6 @@ import {
 	type SetupSlot,
 	type TableSetup
 } from '../../routes/games/[gameName]/setup/table-setup';
-import { SETUP_PLAY_CARD_HEIGHT, SETUP_PLAY_CARD_WIDTH } from './setup-play';
 
 const GENERATED_SETUP_SELECTOR = '[data-digitable-kind]';
 
@@ -46,22 +45,10 @@ function drawFreeSlot(graphics: Graphics, slot: SetupSlot) {
 }
 
 function drawHorizontalFlexSlot(graphics: Graphics, slot: SetupSlot) {
-	const layout = slot.layout?.mode === 'horizontal-flex' ? slot.layout : null;
-	const visibleCount = layout?.visibleCount ?? 1;
-	const gap = layout?.gap ?? 0;
-
-	for (let index = 0; index < visibleCount; index += 1) {
-		graphics
-			.roundRect(
-				slot.x + index * (SETUP_PLAY_CARD_WIDTH + gap),
-				slot.y,
-				SETUP_PLAY_CARD_WIDTH,
-				SETUP_PLAY_CARD_HEIGHT,
-				6
-			)
-			.fill({ color: 0x16a34a, alpha: 0.08 })
-			.stroke({ color: 0x16a34a, width: 2, alpha: 0.6 });
-	}
+	graphics
+		.roundRect(slot.x, slot.y, slot.width, slot.height, 8)
+		.fill({ color: 0x16a34a, alpha: 0.08 })
+		.stroke({ color: 0x16a34a, width: 2, alpha: 0.6 });
 }
 
 function drawSlots(slots: SetupSlot[]) {

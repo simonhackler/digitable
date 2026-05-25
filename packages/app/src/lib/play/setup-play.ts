@@ -9,6 +9,7 @@ import type { ParsedSvg } from './initComponent';
 
 export const SETUP_PLAY_CARD_WIDTH = 110;
 export const SETUP_PLAY_CARD_HEIGHT = 150;
+export const SETUP_TABLE_NODE_ID = 'setup-table';
 
 export type LoadedDeck = {
 	deckName: string;
@@ -274,12 +275,58 @@ export function buildSetupPlayPlan(
 
 export function buildSetupInitPayload(plan: SetupPlayPlan): InitGamePayload {
 	return {
+		layoutNodes: [
+			{
+				id: SETUP_TABLE_NODE_ID,
+				kind: 'table' as const,
+				x: 0,
+				y: 0,
+				width: plan.setup.table.width,
+				height: plan.setup.table.height,
+				visible: true,
+				locked: true,
+				layout: {
+					mode: 'free'
+				}
+			},
+			...plan.setup.slots.map((slot) => ({
+				id: slot.id,
+				kind: 'slot' as const,
+				parentId: SETUP_TABLE_NODE_ID,
+				x: slot.x,
+				y: slot.y,
+				width: slot.width,
+				height: slot.height,
+				visible: true,
+				locked: true,
+				layout: {
+					mode: slot.layout?.mode ?? 'free',
+					maxChildren: slot.layout?.mode === 'horizontal-flex' ? slot.layout.visibleCount : 0,
+					acceptedDeckNames: slot.acceptedDeckNames,
+					acceptedCardIds: slot.acceptedCardIds
+				}
+			})),
+			...plan.items.map((item) => ({
+				id: item.id,
+				kind: item.type === 'stack' ? ('stack' as const) : ('component' as const),
+				parentId: item.slotId ?? SETUP_TABLE_NODE_ID,
+				componentId: item.id,
+				x: item.x,
+				y: item.y,
+				width: SETUP_PLAY_CARD_WIDTH,
+				height: SETUP_PLAY_CARD_HEIGHT,
+				visible: true,
+				locked: false
+			}))
+		],
 		setupItems: plan.items.map((item) => ({
 			id: item.id,
 			type: item.type,
 			componentIds: item.componentIds,
 			x: item.x,
-			y: item.y
+			y: item.y,
+			parentId: item.slotId ?? SETUP_TABLE_NODE_ID,
+			componentName: item.deckName ?? ''
 		}))
 	};
 }

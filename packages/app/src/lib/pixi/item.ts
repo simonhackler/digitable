@@ -76,17 +76,44 @@ export class CardContainer extends Container {
 	public readonly backSprite: Container;
 
 	constructor(frontSprite: Container, backSprite: Container) {
+		const aspectRatio = frontSprite.width / frontSprite.height;
 		super({
 			layout: {
-				aspectRatio: frontSprite.width / frontSprite.height
+				width: frontSprite.width,
+				height: frontSprite.height,
+				aspectRatio
 			}
 		});
 		this.layout = true;
 		this.frontSprite = frontSprite;
 		this.backSprite = backSprite;
+		this.stackFace(frontSprite, aspectRatio);
+		this.stackFace(backSprite, aspectRatio);
 		this.addChild(frontSprite);
 		this.addChild(backSprite);
 
-		backSprite.visible = false;
+		this.showFace(true);
+	}
+
+	private stackFace(face: Container, aspectRatio: number) {
+		face.position.set(0, 0);
+		face.layout = {
+			...(face.layout?.style ?? {}),
+			position: 'absolute',
+			left: 0,
+			top: 0,
+			width: '100%',
+			height: '100%',
+			aspectRatio,
+			objectFit: 'contain',
+			objectPosition: 'center'
+		};
+	}
+
+	showFace(isFaceUp: boolean) {
+		this.frontSprite.visible = true;
+		this.backSprite.visible = true;
+		this.frontSprite.renderable = isFaceUp;
+		this.backSprite.renderable = !isFaceUp;
 	}
 }

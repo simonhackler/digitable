@@ -1,7 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedProjectFiles, useBrowserStorage, writeOpfsText } from './helpers/opfs';
 import {
+	pixiBounds,
 	pixiClick,
+	pixiContentBounds,
 	pixiDragTo,
 	pixiPoint,
 	pixiSlotPoint,
@@ -38,6 +40,85 @@ async function openPixiSmokeTest(page: Page) {
 	await openPixiProject(page, 'pixi-play-smoke');
 }
 
+async function playSurfaceMetrics(page: Page) {
+	return page.evaluate(() => {
+		const canvas = document.querySelector('canvas');
+		const parent = canvas?.parentElement;
+		if (!canvas || !parent) return null;
+		const canvasRect = canvas.getBoundingClientRect();
+		const parentRect = parent.getBoundingClientRect();
+		const doc = document.documentElement;
+		return {
+			canvasHeight: canvasRect.height,
+			canvasWidth: canvasRect.width,
+			documentHeight: doc.scrollHeight,
+			documentWidth: doc.scrollWidth,
+			parentHeight: parentRect.height,
+			parentWidth: parentRect.width,
+			viewportHeight: window.innerHeight,
+			viewportWidth: window.innerWidth
+		};
+	});
+}
+
+async function expectPlaySurfaceFitsViewport(page: Page) {
+	await expect
+		.poll(async () => {
+			const metrics = await playSurfaceMetrics(page);
+			if (!metrics) return null;
+			return {
+				canvasMatchesParent:
+					Math.abs(metrics.canvasWidth - metrics.parentWidth) <= 1 &&
+					Math.abs(metrics.canvasHeight - metrics.parentHeight) <= 1,
+				hasHorizontalOverflow: metrics.documentWidth > metrics.viewportWidth + 1,
+				hasVerticalOverflow: metrics.documentHeight > metrics.viewportHeight + 1
+			};
+		})
+		.toEqual({
+			canvasMatchesParent: true,
+			hasHorizontalOverflow: false,
+			hasVerticalOverflow: false
+		});
+}
+
+async function pixiAspectRatio(page: Page, id: string) {
+	const bounds = await pixiBounds(page, id);
+	return bounds.width / bounds.height;
+}
+
+function escapeSvgAttribute(value: string) {
+	return value
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;');
+}
+
+function placementSvg(input: {
+	id: string;
+	type: 'deck' | 'card';
+	deckName: string;
+	label: string;
+	x: number;
+	y: number;
+	cardIds?: string[];
+	cardId?: string;
+}) {
+	const visualX = input.x - 55;
+	const visualY = input.y - 75;
+	const cardAttr =
+		input.type === 'card' ? ` data-card-id="${escapeSvgAttribute(input.cardId ?? '')}"` : '';
+	const deckAttr =
+		input.type === 'deck'
+			? ` data-card-ids="${escapeSvgAttribute(JSON.stringify(input.cardIds ?? []))}"`
+			: '';
+	return [
+		`  <g id="${escapeSvgAttribute(input.id)}" data-digitable-kind="placement" data-digitable-type="${input.type}" data-deck-name="${escapeSvgAttribute(input.deckName)}"${cardAttr}${deckAttr} data-label="${escapeSvgAttribute(input.label)}" data-svgedit-resizable="false" transform="translate(${visualX} ${visualY}) rotate(0 55 75)">`,
+		'    <rect x="0" y="0" width="110" height="150" rx="10"/>',
+		'  </g>'
+	].join('\n');
+}
+
 async function writeWesternTableSetup(
 	page: Page,
 	input: {
@@ -47,59 +128,42 @@ async function writeWesternTableSetup(
 		slotContents?: { type: 'card'; deckName: string; cardId: string }[];
 	}
 ) {
+	const deckCardIds = input.deckCardIds.map((id) => `western:${id}`);
+	const placements = [
+		placementSvg({
+			id: 'setup-deck',
+			type: 'deck',
+			deckName: 'western',
+			cardIds: deckCardIds,
+			x: 155,
+			y: 155,
+			label: 'western'
+		}),
+		...(input.cardPlacements ?? []).map((placement) =>
+			placementSvg({
+				id: placement.id,
+				type: 'card',
+				deckName: 'western',
+				cardId: placement.cardId,
+				x: placement.x,
+				y: placement.y,
+				label: placement.label
+			})
+		)
+	].join('\n');
+	const slotContents = escapeSvgAttribute(JSON.stringify(input.slotContents ?? []));
+	const acceptedCardIds = escapeSvgAttribute(JSON.stringify(input.acceptedCardIds ?? []));
 	await writeOpfsText(
 		page,
-		'/western-cards/setup/table.json',
-		`${JSON.stringify(
-			{
-				version: 1,
-				table: { presetId: 'custom', width: 1000, height: 700 },
-				placements: [
-					{
-						id: 'setup-deck',
-						type: 'deck',
-						deckName: 'western',
-						cardIds: input.deckCardIds.map((id) => `western:${id}`),
-						x: 155,
-						y: 155,
-						rotation: 0,
-						label: 'western'
-					},
-					...(input.cardPlacements ?? []).map((placement) => ({
-						id: placement.id,
-						type: 'card',
-						deckName: 'western',
-						cardId: placement.cardId,
-						x: placement.x,
-						y: placement.y,
-						rotation: 0,
-						label: placement.label
-					}))
-				],
-				slots: [
-					{
-						id: 'setup-slot',
-						label: 'Slot',
-						x: 500,
-						y: 220,
-						width: 236,
-						height: 150,
-						acceptedDeckNames: [],
-						acceptedCardIds: input.acceptedCardIds ?? [],
-						layout: {
-							mode: 'horizontal-flex',
-							visibleCount: 2,
-							gap: 16,
-							cardSize: 'content-card',
-							maxItems: 4
-						},
-						contents: input.slotContents ?? []
-					}
-				]
-			},
-			null,
-			2
-		)}\n`
+		'/western-cards/setup/table.svg',
+		[
+			'<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="custom">',
+			placements,
+			`  <g id="setup-slot" data-digitable-kind="slot" data-label="Slot" data-accepted-deck-names="[]" data-accepted-card-ids="${acceptedCardIds}" data-slot-layout-mode="horizontal-flex" data-slot-visible-count="2" data-slot-gap="16" data-slot-card-size="content-card" data-slot-contents="${slotContents}" data-svgedit-resizable="false" transform="translate(500 220)">`,
+			'    <rect x="0" y="0" width="236" height="150" rx="12"/>',
+			'  </g>',
+			'</svg>'
+		].join('\n')
 	);
 }
 
@@ -149,6 +213,107 @@ test('local play initializes visible items from table setup', async ({ page }) =
 		});
 });
 
+test('local play surface is fixed to the viewport and resizes with its container', async ({
+	page
+}) => {
+	test.setTimeout(60_000);
+	await openPixiProject(page, 'western-cards');
+	await expect(page.locator('canvas')).toBeVisible({ timeout: 20_000 });
+	await expectPlaySurfaceFitsViewport(page);
+
+	const before = await playSurfaceMetrics(page);
+	expect(before).not.toBeNull();
+	await page.evaluate(() => {
+		const playSurface = document.querySelector('canvas')?.parentElement;
+		if (playSurface) playSurface.style.width = 'calc(100% - 120px)';
+	});
+
+	await expect
+		.poll(async () => {
+			const after = await playSurfaceMetrics(page);
+			if (!before || !after) return false;
+			return Math.abs(after.canvasWidth - before.canvasWidth) > 20;
+		})
+		.toBe(true);
+	await expectPlaySurfaceFitsViewport(page);
+});
+
+test('local play keeps card back renderable after flipping', async ({ page }) => {
+	test.setTimeout(60_000);
+	const tableCardId = '85e1518e-0fad-4fb8-b2c0-67a872cd7d92';
+
+	await seedPixiProject(page, 'western-cards');
+	await writeWesternTableSetup(page, {
+		deckCardIds: ['71412f2b-80a5-48af-aa7d-68a525a1c872'],
+		cardPlacements: [
+			{
+				id: 'setup-table-card',
+				label: 'Switch',
+				cardId: `western:${tableCardId}`,
+				x: 360,
+				y: 155
+			}
+		]
+	});
+
+	await page.goto('/app/games/western-cards/play?e2e=1');
+	await waitForPixi(page);
+	await expect
+		.poll(async () => (await pixiState(page)).visibleBoardCardIds, { timeout: 20_000 })
+		.toContain(tableCardId);
+	await expect.poll(async () => pixiAspectRatio(page, tableCardId)).toBeCloseTo(110 / 150, 1);
+
+	await expect
+		.poll(async () => {
+			const face = (await pixiState(page)).cardFaces[tableCardId];
+			return face
+				? {
+						isFaceUp: face.isFaceUp,
+						frontVisible: face.frontVisible,
+						frontRenderable: face.frontRenderable,
+						backVisible: face.backVisible,
+						backRenderable: face.backRenderable,
+						hasBackBounds: face.backWidth > 0 && face.backHeight > 0
+					}
+				: null;
+		})
+		.toEqual({
+			isFaceUp: true,
+			frontVisible: true,
+			frontRenderable: true,
+			backVisible: true,
+			backRenderable: false,
+			hasBackBounds: true
+		});
+
+	await pixiClick(page, tableCardId);
+	await page.keyboard.press('F');
+	await expect.poll(async () => pixiAspectRatio(page, tableCardId)).toBeCloseTo(110 / 150, 1);
+
+	await expect
+		.poll(async () => {
+			const face = (await pixiState(page)).cardFaces[tableCardId];
+			return face
+				? {
+						isFaceUp: face.isFaceUp,
+						frontVisible: face.frontVisible,
+						frontRenderable: face.frontRenderable,
+						backVisible: face.backVisible,
+						backRenderable: face.backRenderable,
+						hasBackBounds: face.backWidth > 0 && face.backHeight > 0
+					}
+				: null;
+		})
+		.toEqual({
+			isFaceUp: false,
+			frontVisible: true,
+			frontRenderable: false,
+			backVisible: true,
+			backRenderable: true,
+			hasBackBounds: true
+		});
+});
+
 test('local setup slot accepts matching hand cards', async ({ page }) => {
 	test.setTimeout(60_000);
 	const drawCardId = 'c6da04fb-1955-43e1-adbc-7f4fda4b83cf';
@@ -172,6 +337,35 @@ test('local setup slot accepts matching hand cards', async ({ page }) => {
 	await expect.poll(async () => (await pixiState(page)).visibleBoardCardIds).toContain(drawCardId);
 });
 
+test('local setup can stack a hand card back onto its deck', async ({ page }) => {
+	test.setTimeout(60_000);
+	const drawCardId = '5f408ad5-6799-4258-b4bd-c7c8a570c97b';
+	await seedPixiProject(page, 'western-cards');
+	await writeWesternTableSetup(page, {
+		deckCardIds: [
+			'71412f2b-80a5-48af-aa7d-68a525a1c872',
+			'c6da04fb-1955-43e1-adbc-7f4fda4b83cf',
+			drawCardId
+		]
+	});
+
+	await page.goto('/app/games/western-cards/play?e2e=1');
+	await waitForPixi(page);
+	await expect
+		.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
+		.toContain('setup-deck');
+	await pixiClick(page, 'setup-deck');
+	await page.keyboard.press('d');
+
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(drawCardId);
+	await pixiDragTo(page, drawCardId, await pixiPoint(page, 'setup-deck'));
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toEqual([]);
+	await expect.poll(async () => (await pixiState(page)).visibleBoardCardIds).toContain(drawCardId);
+	await pixiDragTo(page, drawCardId, await pixiPoint(page, 'setup-deck'), { key: 'Shift' });
+	await expect.poll(async () => (await pixiState(page)).visibleStackIds).toContain('setup-deck');
+	await expect.poll(async () => (await pixiState(page)).visibleBoardCardIds).not.toContain(drawCardId);
+});
+
 test('local setup slot rejects nonmatching hand cards', async ({ page }) => {
 	test.setTimeout(60_000);
 	const rejectedCardId = 'c6da04fb-1955-43e1-adbc-7f4fda4b83cf';
@@ -192,6 +386,44 @@ test('local setup slot rejects nonmatching hand cards', async ({ page }) => {
 	await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(rejectedCardId);
 	await pixiDragTo(page, rejectedCardId, await pixiSlotPoint(page, 'setup-slot'));
 	await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(rejectedCardId);
+});
+
+test('local setup hand drag keeps the played card under the cursor', async ({ page }) => {
+	test.setTimeout(60_000);
+	const drawCardId = 'c6da04fb-1955-43e1-adbc-7f4fda4b83cf';
+	await seedPixiProject(page, 'western-cards');
+	await writeWesternTableSetup(page, {
+		deckCardIds: ['71412f2b-80a5-48af-aa7d-68a525a1c872', drawCardId],
+		acceptedCardIds: [`western:${drawCardId}`]
+	});
+
+	await page.goto('/app/games/western-cards/play?e2e=1');
+	await waitForPixi(page);
+	await expect
+		.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
+		.toContain('setup-deck');
+	await pixiClick(page, 'setup-deck');
+	await page.keyboard.press('d');
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(drawCardId);
+
+	const startPoint = await pixiPoint(page, drawCardId);
+	const targetPoint = await pixiSlotPoint(page, 'setup-slot');
+	const canvasBox = await page.locator('canvas').boundingBox();
+	if (!canvasBox) throw new Error('Canvas is not visible');
+
+	await page.mouse.move(canvasBox.x + startPoint.x, canvasBox.y + startPoint.y);
+	await page.mouse.down();
+	await page.mouse.move(canvasBox.x + targetPoint.x, canvasBox.y + targetPoint.y, { steps: 12 });
+	await page.mouse.move(canvasBox.x + targetPoint.x, canvasBox.y + targetPoint.y);
+
+	await expect.poll(async () => (await pixiState(page)).handCardIds).toEqual([]);
+	const draggedContentBounds = await pixiContentBounds(page, drawCardId);
+	expect(targetPoint.x).toBeGreaterThanOrEqual(draggedContentBounds.x);
+	expect(targetPoint.x).toBeLessThanOrEqual(draggedContentBounds.x + draggedContentBounds.width);
+	expect(targetPoint.y).toBeGreaterThanOrEqual(draggedContentBounds.y);
+	expect(targetPoint.y).toBeLessThanOrEqual(draggedContentBounds.y + draggedContentBounds.height);
+
+	await page.mouse.up();
 });
 
 async function canvasPoint(page: Page, point: { x: number; y: number }) {

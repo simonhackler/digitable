@@ -158,7 +158,7 @@ async function expectRememberedSetupElement(page: Page, expectedId: string) {
 		.toBe(true);
 }
 
-test('table setup editor saves json and svg', async ({ page }) => {
+test('table setup editor saves semantic svg', async ({ page }) => {
 	const pointerEventSanitizeWarnings: string[] = [];
 	page.on('console', (message) => {
 		const text = message.text();
@@ -179,6 +179,14 @@ test('table setup editor saves json and svg', async ({ page }) => {
 		global.__setupEditorControllerBefore = global.__svgEditorController;
 	});
 	await page.getByRole('button', { name: 'Add component' }).click();
+	const existingPlacementIds = await page.evaluate(() => {
+		const global = window as SvgEditorWindow;
+		const svg = global.__svgEditorApi?.getSvg() ?? '';
+		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+		return Array.from(doc.querySelectorAll('[data-digitable-kind="placement"]')).map(
+			(element) => element.getAttribute('id') ?? ''
+		);
+	});
 	await page.getByRole('button', { name: /^western deck$/ }).click();
 	await expect
 		.poll(() =>
@@ -189,12 +197,23 @@ test('table setup editor saves json and svg', async ({ page }) => {
 		)
 		.toBe(true);
 	const placementId = await page
-		.waitForFunction(() => {
+		.waitForFunction((knownIds) => {
 			const global = window as SvgEditorWindow;
 			const svg = global.__svgEditorApi?.getSvg() ?? '';
 			const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-			return doc.querySelector('[data-digitable-kind="placement"]')?.getAttribute('id') ?? '';
-		})
+			const selectedRoot =
+				global.__svgEditorController?.api?._unsafe
+					?.rawCanvas()
+					?.getSelectedElements?.()[0]
+					?.closest?.('[data-digitable-kind="placement"]')
+					?.getAttribute('id') ?? '';
+			if (selectedRoot && !knownIds.includes(selectedRoot)) return selectedRoot;
+			return (
+				Array.from(doc.querySelectorAll('[data-digitable-kind="placement"]'))
+					.map((element) => element.getAttribute('id') ?? '')
+					.find((id) => id && !knownIds.includes(id)) ?? ''
+			);
+		}, existingPlacementIds)
 		.then((handle) => handle.jsonValue());
 	expect(placementId).toBeTruthy();
 	await expectSelectedOverlayAligned(page, 'placement', placementId);
@@ -228,6 +247,14 @@ test('table setup editor saves json and svg', async ({ page }) => {
 		)
 		.toBe('none');
 
+	const existingSlotIds = await page.evaluate(() => {
+		const global = window as SvgEditorWindow;
+		const svg = global.__svgEditorApi?.getSvg() ?? '';
+		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+		return Array.from(doc.querySelectorAll('[data-digitable-kind="slot"]')).map(
+			(element) => element.getAttribute('id') ?? ''
+		);
+	});
 	await page.getByRole('button', { name: 'Add slot' }).click();
 	await expect
 		.poll(() =>
@@ -238,12 +265,23 @@ test('table setup editor saves json and svg', async ({ page }) => {
 		)
 		.toBe(true);
 	await expect(page.getByLabel('Slot label')).toHaveCount(0);
-	const slotId = await page.evaluate(() => {
+	const slotId = await page.evaluate((knownIds) => {
 		const global = window as SvgEditorWindow;
 		const svg = global.__svgEditorApi!.getSvg();
 		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-		return doc.querySelector('[data-digitable-kind="slot"]')?.getAttribute('id');
-	});
+		const selectedRoot =
+			global.__svgEditorController?.api?._unsafe
+				?.rawCanvas()
+				?.getSelectedElements?.()[0]
+				?.closest?.('[data-digitable-kind="slot"]')
+				?.getAttribute('id') ?? '';
+		if (selectedRoot && !knownIds.includes(selectedRoot)) return selectedRoot;
+		return (
+			Array.from(doc.querySelectorAll('[data-digitable-kind="slot"]'))
+				.map((element) => element.getAttribute('id') ?? '')
+				.find((id) => id && !knownIds.includes(id)) ?? ''
+		);
+	}, existingSlotIds);
 	expect(slotId).toBeTruthy();
 	await expectSelectedOverlayAligned(page, 'slot', slotId);
 	await page.evaluate((slotId) => {
@@ -307,9 +345,8 @@ test('table setup editor saves json and svg', async ({ page }) => {
 	}
 	await expectSelectedOverlayAligned(page, 'slot', slotId);
 	await page.getByLabel('Slot layout').selectOption('horizontal-flex');
-	await page.getByLabel('Visible cards').fill('2');
+	await page.getByLabel('Slot item count').fill('2');
 	await page.getByLabel('Slot spacing').fill('12');
-	await page.getByLabel('Max items').fill('5');
 	await page.getByRole('button', { name: 'Add content' }).click();
 	await page.getByRole('dialog').getByRole('button', { name: /^western deck$/ }).click();
 	await page.getByRole('button', { name: 'Add content' }).click();
@@ -324,48 +361,6 @@ test('table setup editor saves json and svg', async ({ page }) => {
 
 	await expect(page.getByRole('status')).toContainText('Autosaved');
 
-	const json = JSON.parse(await readOpfsText(page, '/western-cards/setup/table.json'));
-	expect(json.table).toEqual({
-		presetId: 'two-player',
-		width: 1200,
-		height: 700
-	});
-	const drawDeck = json.placements.find(
-		(placement: { label?: string }) => placement.label === 'Draw deck'
-	);
-	expect(drawDeck).toEqual(
-		expect.objectContaining({
-			type: 'deck',
-			deckName: 'western',
-			label: 'Draw deck',
-			rotation: 0,
-			cardIds: expect.arrayContaining([expect.any(String)]),
-			x: expect.any(Number),
-			y: expect.any(Number)
-		})
-	);
-	const configuredSlot = json.slots.find(
-		(slot: { acceptedDeckNames?: string[] }) => (slot.acceptedDeckNames ?? []).length > 0
-	);
-	expect(configuredSlot).toEqual(
-		expect.objectContaining({
-			label: expect.stringMatching(/^Slot \d+$/),
-			acceptedDeckNames: expect.arrayContaining([expect.any(String)]),
-			width: 232,
-			height: 150,
-			layout: expect.objectContaining({
-				mode: 'horizontal-flex',
-				visibleCount: 2,
-				gap: 12,
-				maxItems: 5
-			}),
-			contents: [
-				{ type: 'deck', deckName: 'western' },
-				expect.objectContaining({ type: 'card', deckName: 'western' })
-			]
-		})
-	);
-
 	let svg = '';
 	await expect
 		.poll(async () => {
@@ -377,10 +372,75 @@ test('table setup editor saves json and svg', async ({ page }) => {
 			}
 		})
 		.toBe(true);
+	const savedSetup = await page.evaluate(
+		({ svg, placementId, slotId }) => {
+			const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+			const root = doc.documentElement;
+			const placement = root.querySelector(`#${CSS.escape(placementId)}`);
+			const slot = root.querySelector(`#${CSS.escape(slotId)}`);
+			const slotRect = slot?.querySelector('rect');
+			return {
+				table: {
+					presetId: root.getAttribute('data-preset-id'),
+					viewBox: root.getAttribute('viewBox')
+				},
+				placement: {
+					type: placement?.getAttribute('data-digitable-type'),
+					deckName: placement?.getAttribute('data-deck-name'),
+					label: placement?.getAttribute('data-label'),
+					cardIds: JSON.parse(placement?.getAttribute('data-card-ids') ?? '[]') as string[]
+				},
+				slot: {
+					label: slot?.getAttribute('data-label'),
+					acceptedDeckNames: JSON.parse(
+						slot?.getAttribute('data-accepted-deck-names') ?? '[]'
+					) as string[],
+					width: Number(slotRect?.getAttribute('width')),
+					height: Number(slotRect?.getAttribute('height')),
+					layoutMode: slot?.getAttribute('data-slot-layout-mode'),
+					visibleCount: Number(slot?.getAttribute('data-slot-visible-count')),
+					gap: Number(slot?.getAttribute('data-slot-gap')),
+					contents: JSON.parse(slot?.getAttribute('data-slot-contents') ?? '[]') as Array<{
+						type: string;
+						deckName: string;
+						cardId?: string;
+					}>
+				}
+			};
+		},
+		{ svg, placementId, slotId }
+	);
+	expect(savedSetup.table).toEqual({
+		presetId: 'two-player',
+		viewBox: '0 0 1200 700'
+	});
+	expect(savedSetup.placement).toEqual(
+		expect.objectContaining({
+			type: 'deck',
+			deckName: 'western',
+			label: 'Draw deck',
+			cardIds: expect.arrayContaining([expect.any(String)])
+		})
+	);
+	expect(savedSetup.slot).toEqual(
+		expect.objectContaining({
+			label: expect.stringMatching(/^Slot \d+$/),
+			acceptedDeckNames: expect.arrayContaining([expect.any(String)]),
+			width: 232,
+			height: 150,
+			layoutMode: 'horizontal-flex',
+			visibleCount: 2,
+			gap: 12,
+			contents: [
+				{ type: 'deck', deckName: 'western' },
+				expect.objectContaining({ type: 'card', deckName: 'western' })
+			]
+		})
+	);
 	expect(svg).toContain('viewBox="0 0 1200 700"');
 	expect(svg).not.toContain('#166534');
 	expect(svg).not.toContain('#bbf7d0');
-	expect(svg).toContain(configuredSlot.label);
+	expect(svg).toContain(savedSetup.slot.label ?? '');
 	expect(svg).toContain('Draw deck');
 	expect(svg).toContain('data-slot-layout-mode="horizontal-flex"');
 	expect(svg).toContain('data-slot-contents');
@@ -394,6 +454,13 @@ test('table setup editor saves json and svg', async ({ page }) => {
 
 	await page.reload();
 	await expect(page.getByRole('status')).toContainText('Loaded');
+	await page.waitForFunction(
+		(id) => Boolean((window as SvgEditorWindow).__svgEditorApi?.getElementById?.(id)),
+		slotId
+	);
+	await page.evaluate((id) => {
+		(window as SvgEditorWindow).__svgEditorController?.selectTreeElement(id);
+	}, slotId);
 	await expect(page.getByLabel('Slot layout')).toHaveValue('horizontal-flex');
 	await expect(page.getByText('2/2')).toBeVisible();
 	expect(pointerEventSanitizeWarnings).toEqual([]);
@@ -412,4 +479,47 @@ test('table setup add component survives a deck preview render failure', async (
 
 	await page.getByRole('button', { name: 'Add component' }).click();
 	await expect(page.getByRole('button', { name: /^western deck$/ })).toBeVisible();
+});
+
+test('table setup autosave keeps slot rotation from the svg editor', async ({ page }) => {
+	await seedProjects(page);
+	await writeOpfsText(
+		page,
+		'/western-cards/setup/table.svg',
+		[
+			'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="custom">',
+			'  <g id="rotated-slot" data-digitable-kind="slot" data-label="Rotated slot" data-accepted-deck-names="[]" data-accepted-card-ids="[]" data-slot-layout-mode="free" transform="matrix(0.866025 0.5 -0.5 0.866025 189.737 85.096)">',
+			'    <rect x="0" y="0" width="220" height="300" rx="14" fill="#dbeafe" fill-opacity="0.32" stroke="#2563eb" stroke-width="4" stroke-dasharray="14 10"/>',
+			'    <text x="16" y="32" fill="#1e3a8a" font-family="system-ui, sans-serif" font-size="28" font-weight="700" data-svgedit-resizable="false" data-locked="true" style="pointer-events:none;user-select:none">Rotated slot</text>',
+			'  </g>',
+			'</svg>'
+		].join('\n')
+	);
+
+	await page.goto('/app/games/western-cards/setup?e2e');
+	await expect(page.getByRole('status')).toContainText('Loaded');
+	await page.waitForFunction(() =>
+		Boolean((window as SvgEditorWindow).__svgEditorApi?.getElementById?.('rotated-slot'))
+	);
+	await page.evaluate(() => {
+		(window as SvgEditorWindow).__svgEditorController?.selectTreeElement('rotated-slot');
+	});
+	await page.getByRole('checkbox').first().click();
+	await expect(page.getByRole('status')).toContainText('Autosaved');
+
+	const svg = await readOpfsText(page, '/western-cards/setup/table.svg');
+	const slot = await page.evaluate((svg) => {
+		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+		const slot = doc.querySelector('#rotated-slot');
+		return {
+			transform: slot?.getAttribute('transform'),
+			acceptedDeckNames: JSON.parse(slot?.getAttribute('data-accepted-deck-names') ?? '[]')
+		};
+	}, svg);
+	expect(slot).toEqual(
+		expect.objectContaining({
+			transform: 'translate(100 120) rotate(30 110 150)',
+			acceptedDeckNames: expect.arrayContaining([expect.any(String)])
+		})
+	);
 });

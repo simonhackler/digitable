@@ -24,16 +24,12 @@
 		createDefaultTableSetup,
 		normalizeTableSvg,
 		normalizeSetupSlot,
-		parseTableSetup,
 		placementToSvgElementJson,
-		serializeTableSetup,
 		setupToSvg,
 		slotToSvgElementJson,
 		snapPlacementToGrid,
 		svgElementToTableSetup,
-		svgHasCustomTableContent,
 		svgToTableSetup,
-		SETUP_JSON_PATH,
 		SETUP_SVG_PATH,
 		tablePresets,
 		type SetupPlacement,
@@ -65,7 +61,6 @@
 	const fileSystem = getFileSystemContext();
 	const projectName = $derived(requireParam('gameName'));
 
-	const setupJsonPath = $derived(joinFsPath(projectName, SETUP_JSON_PATH));
 	const setupSvgPath = $derived(joinFsPath(projectName, SETUP_SVG_PATH));
 	const SLOT_LABEL_ATTR = 'data-label';
 	const SLOT_ACCEPTED_DECKS_ATTR = 'data-accepted-deck-names';
@@ -81,16 +76,6 @@
 			[SLOT_ACCEPTED_DECKS_ATTR]: JSON.stringify(sortedUniqueStrings(slot.acceptedDeckNames)),
 			[SLOT_ACCEPTED_CARDS_ATTR]: JSON.stringify(sortedUniqueStrings(slot.acceptedCardIds))
 		};
-	}
-
-	async function loadSetup(): Promise<TableSetup> {
-		const read = await fileSystem.readText(setupJsonPath);
-		if (read.error) return createDefaultTableSetup();
-		try {
-			return parseTableSetup(JSON.parse(read.data));
-		} catch {
-			return createDefaultTableSetup();
-		}
 	}
 
 	function serializeSvg(svg: SVGSVGElement): string {
@@ -183,16 +168,17 @@
 
 	async function loadEditorSetup(): Promise<{
 		setup: TableSetup;
-		svg: string | null;
-		hasCustomSvg: boolean;
+		svg: string;
 	}> {
-		const jsonSetup = await loadSetup();
 		const svgRead = await fileSystem.readText(setupSvgPath);
-		if (svgRead.error) return { setup: jsonSetup, svg: null, hasCustomSvg: false };
+		if (svgRead.error) {
+			const setup = createDefaultTableSetup();
+			return { setup, svg: setupToSvg(setup) };
+		}
+		const setup = svgToTableSetup(svgRead.data, createDefaultTableSetup());
 		return {
-			setup: svgToTableSetup(svgRead.data, jsonSetup),
-			svg: svgRead.data,
-			hasCustomSvg: svgHasCustomTableContent(svgRead.data)
+			setup,
+			svg: svgRead.data
 		};
 	}
 
@@ -209,7 +195,6 @@
 	let addComponentOpen = $state(false);
 	let addSlotContentOpen = $state(false);
 	let editorSvg = $state(setupToSvg(fallbackSetup));
-	let tableSvgBase = $state<string | null>(null);
 	let editorApi = $state<SvgEditorApi | null>(null);
 	let editorPanel = $state('component');
 	let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -267,14 +252,11 @@
 				decks = loadedDecks;
 				selectedSlotId = loadedSetup.setup.slots[0]?.id ?? null;
 				selectedPlacementId = null;
-				editorSvg = loadedSetup.svg
-					? normalizeTableSvg(
-							loadedSetup.svg,
-							loadedSetup.setup,
-							svgAssetsForSetup(loadedSetup.setup, loadedDecks)
-						)
-					: setupToSvg(loadedSetup.setup, svgAssetsForSetup(loadedSetup.setup, loadedDecks));
-				tableSvgBase = loadedSetup.hasCustomSvg ? loadedSetup.svg : null;
+				editorSvg = normalizeTableSvg(
+					loadedSetup.svg,
+					loadedSetup.setup,
+					svgAssetsForSetup(loadedSetup.setup, loadedDecks)
+				);
 				isLoading = false;
 				status = 'Loaded';
 			})
@@ -497,6 +479,7 @@
 			label: `Slot ${currentSetup.slots.length + 1}`,
 			x: Math.round(currentSetup.table.width / 2 - 120),
 			y: Math.round(currentSetup.table.height / 2 - 160),
+			rotation: 0,
 			width: 240,
 			height: 320,
 			acceptedDeckNames: [],
@@ -710,10 +693,10 @@
 
 	function handleEditorChange(event: CustomEvent<ChangeEvent>) {
 		if (event.detail.source !== 'user') return;
-		if (event.detail.svg) {
+		if (event.detail.svg !== undefined) {
 			editorSvg = event.detail.svg;
-			tableSvgBase = event.detail.svg;
 		}
+		setup = currentEditorSetup();
 		if (selectedPlacementId && !editorApi?.getElementById(selectedPlacementId)) {
 			selectedPlacementId = null;
 		}
@@ -832,15 +815,21 @@
 		targetSetup: TableSetup,
 		baseSvg: string | null,
 		generation: number
-	) {
+	): Promise<boolean> {
 		if (svgExportInFlight) {
 			pendingSvgExport = { setup: targetSetup, baseSvg, generation };
-			return;
+			return false;
 		}
 		svgExportInFlight = true;
 		try {
 			const setupDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
-			if (setupDir.error) return;
+			if (setupDir.error) {
+				if (generation === saveGeneration) {
+					saveError = setupDir.error.message;
+					status = 'Autosave failed';
+				}
+				return false;
+			}
 			let svg: string;
 			try {
 				svg = await exportTableSvgInWorker(targetSetup, baseSvg);
@@ -851,12 +840,15 @@
 			if (svgWrite.error && generation === saveGeneration) {
 				saveError = svgWrite.error.message;
 				status = 'Autosave failed';
+				return false;
 			}
+			return !svgWrite.error;
 		} catch (error) {
 			if (generation === saveGeneration) {
 				saveError = error instanceof Error ? error.message : 'Failed to export table SVG';
 				status = 'Autosave failed';
 			}
+			return false;
 		} finally {
 			svgExportInFlight = false;
 			const pending = pendingSvgExport;
@@ -879,22 +871,10 @@
 		status = 'Autosaving';
 		try {
 			const syncedSetup = syncFromEditor();
-			const baseSvg = tableSvgBase;
+			const baseSvg = currentEditorSvg();
 			setup = syncedSetup;
-			const setupDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
-			if (setupDir.error) {
-				saveError = setupDir.error.message;
-				status = 'Autosave failed';
-				return;
-			}
-			const jsonWrite = await setupDir.data.write('table.json', serializeTableSetup(syncedSetup));
-			if (jsonWrite.error) {
-				saveError = jsonWrite.error.message;
-				status = 'Autosave failed';
-				return;
-			}
-			void saveTableSvg(syncedSetup, baseSvg, generation);
-			if (generation === saveGeneration) {
+			const saved = await saveTableSvg(syncedSetup, baseSvg, generation);
+			if (saved && generation === saveGeneration) {
 				status = 'Autosaved';
 			}
 		} finally {
@@ -1025,11 +1005,11 @@
 					</select>
 				</label>
 				{#if selectedSlotLayout.mode === 'horizontal-flex'}
-					<div class="grid grid-cols-3 gap-2">
+					<div class="grid grid-cols-2 gap-2">
 						<label class="grid gap-1 font-medium">
-							Visible
+							Items
 							<Input
-								aria-label="Visible cards"
+								aria-label="Slot item count"
 								type="number"
 								min="1"
 								value={selectedSlotLayout.visibleCount}
@@ -1049,19 +1029,6 @@
 								oninput={(event) =>
 									updateHorizontalSlotLayout(selectedSlot.id, {
 										gap: Number(event.currentTarget.value)
-									})}
-							/>
-						</label>
-						<label class="grid gap-1 font-medium">
-							Max
-							<Input
-								aria-label="Max items"
-								type="number"
-								min={selectedSlotLayout.visibleCount + 1}
-								value={selectedSlotLayout.maxItems}
-								oninput={(event) =>
-									updateHorizontalSlotLayout(selectedSlot.id, {
-										maxItems: Number(event.currentTarget.value)
 									})}
 							/>
 						</label>
@@ -1113,7 +1080,7 @@
 							<Dialog.Content class="max-h-[80vh] overflow-hidden sm:max-w-xl">
 								<Dialog.Header>
 									<Dialog.Title>Add content</Dialog.Title>
-									<Dialog.Description>Select a deck or card for the visible flex cells.</Dialog.Description>
+									<Dialog.Description>Select a deck or card for the flex cells.</Dialog.Description>
 								</Dialog.Header>
 								<div class="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
 									{#each decks as deck (deck.name)}

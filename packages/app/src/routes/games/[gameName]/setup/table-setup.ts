@@ -36,7 +36,6 @@ export type SetupSlotLayout =
 			visibleCount: number;
 			gap: number;
 			cardSize: 'content-card' | 'deck-card';
-			maxItems: number;
 	  };
 
 export type SetupSlotContent =
@@ -48,6 +47,7 @@ export type SetupSlot = {
 	label: string;
 	x: number;
 	y: number;
+	rotation?: number;
 	width: number;
 	height: number;
 	acceptedDeckNames: string[];
@@ -84,7 +84,6 @@ export type SetupSvgJson =
 
 export type SetupSvgElementJson = Exclude<SetupSvgJson, string>;
 
-export const SETUP_JSON_PATH = 'setup/table.json';
 export const SETUP_SVG_PATH = 'setup/table.svg';
 const TABLE_ATTR = 'data-digitable-table';
 const KIND_ATTR = 'data-digitable-kind';
@@ -101,7 +100,6 @@ const SLOT_LAYOUT_MODE_ATTR = 'data-slot-layout-mode';
 const SLOT_VISIBLE_COUNT_ATTR = 'data-slot-visible-count';
 const SLOT_GAP_ATTR = 'data-slot-gap';
 const SLOT_CARD_SIZE_ATTR = 'data-slot-card-size';
-const SLOT_MAX_ITEMS_ATTR = 'data-slot-max-items';
 const SLOT_CONTENTS_ATTR = 'data-slot-contents';
 const DECK_STACK_ATTR = 'data-deck-stack';
 const LOCKED_ATTRS = `${RESIZABLE_ATTR}="false" data-locked="true"`;
@@ -109,7 +107,6 @@ const CARD_WIDTH = 110;
 const CARD_HEIGHT = 150;
 const DEFAULT_FLEX_VISIBLE_COUNT = 4;
 const DEFAULT_FLEX_GAP = 16;
-const DEFAULT_FLEX_MAX_ITEMS = 10;
 const TABLE_GRID_STEP = 20;
 const NON_RENDERED_TAGS = new Set(['defs', 'style', 'metadata', 'title', 'desc']);
 const LEGACY_TABLE_BACKGROUND_FILL = '#166534';
@@ -212,16 +209,11 @@ export function createHorizontalFlexSlotLayout(
 		positiveInteger(input.visibleCount, DEFAULT_FLEX_VISIBLE_COUNT)
 	);
 	const gap = Math.round(nonNegativeNumber(input.gap, DEFAULT_FLEX_GAP));
-	const maxItems = Math.max(
-		visibleCount + 1,
-		positiveInteger(input.maxItems, DEFAULT_FLEX_MAX_ITEMS)
-	);
 	return {
 		mode: 'horizontal-flex',
 		visibleCount,
 		gap,
-		cardSize: input.cardSize === 'deck-card' ? 'deck-card' : 'content-card',
-		maxItems
+		cardSize: input.cardSize === 'deck-card' ? 'deck-card' : 'content-card'
 	};
 }
 
@@ -232,8 +224,7 @@ function setupSlotLayout(value: unknown): SetupSlotLayout {
 	return createHorizontalFlexSlotLayout({
 		visibleCount: finiteNumber(input.visibleCount, DEFAULT_FLEX_VISIBLE_COUNT),
 		gap: finiteNumber(input.gap, DEFAULT_FLEX_GAP),
-		cardSize: input.cardSize === 'deck-card' ? 'deck-card' : 'content-card',
-		maxItems: finiteNumber(input.maxItems, DEFAULT_FLEX_MAX_ITEMS)
+		cardSize: input.cardSize === 'deck-card' ? 'deck-card' : 'content-card'
 	});
 }
 
@@ -248,10 +239,12 @@ function horizontalFlexSlotSize(
 
 export function normalizeSetupSlot(slot: SetupSlot): SetupSlot {
 	const layout = setupSlotLayout(slot.layout);
+	const rotation = finiteNumber(slot.rotation, 0);
 	if (layout.mode === 'horizontal-flex') {
 		const size = horizontalFlexSlotSize(layout);
 		return {
 			...slot,
+			rotation,
 			width: size.width,
 			height: size.height,
 			layout,
@@ -260,6 +253,7 @@ export function normalizeSetupSlot(slot: SetupSlot): SetupSlot {
 	}
 	return {
 		...slot,
+		rotation,
 		layout,
 		contents: []
 	};
@@ -281,91 +275,6 @@ export function snapPlacementToGrid<T extends SetupPlacement>(item: T): T {
 	const nextY = snapToGrid(item.y - CARD_HEIGHT / 2) + CARD_HEIGHT / 2;
 	if (nextX === item.x && nextY === item.y) return item;
 	return { ...item, x: nextX, y: nextY };
-}
-
-function placement(value: unknown): SetupPlacement | null {
-	if (!value || typeof value !== 'object') return null;
-	const input = value as Record<string, unknown>;
-	const id = typeof input.id === 'string' ? input.id : '';
-	const deckName = typeof input.deckName === 'string' ? input.deckName : '';
-	const label = typeof input.label === 'string' ? input.label : deckName;
-	const type = input.type;
-	if (!id || !deckName) return null;
-	const base = {
-		id,
-		deckName,
-		x: finiteNumber(input.x, 0),
-		y: finiteNumber(input.y, 0),
-		rotation: finiteNumber(input.rotation, 0),
-		label
-	};
-	if (type === 'deck') {
-		return snapPlacementToGrid({
-			...base,
-			type,
-			cardIds: stringArray(input.cardIds)
-		});
-	}
-	if (type === 'card') {
-		const cardId = typeof input.cardId === 'string' ? input.cardId : '';
-		if (!cardId) return null;
-		return snapPlacementToGrid({
-			...base,
-			type,
-			cardId
-		});
-	}
-	return null;
-}
-
-function slot(value: unknown): SetupSlot | null {
-	if (!value || typeof value !== 'object') return null;
-	const input = value as Record<string, unknown>;
-	const id = typeof input.id === 'string' ? input.id : '';
-	const label = typeof input.label === 'string' ? input.label : 'Slot';
-	if (!id) return null;
-	return normalizeSetupSlot({
-		id,
-		label,
-		x: finiteNumber(input.x, 0),
-		y: finiteNumber(input.y, 0),
-		width: positiveNumber(input.width, 160),
-		height: positiveNumber(input.height, 220),
-		acceptedDeckNames: stringArray(input.acceptedDeckNames),
-		acceptedCardIds: stringArray(input.acceptedCardIds),
-		layout: setupSlotLayout(input.layout),
-		contents: setupSlotContents(input.contents)
-	});
-}
-
-export function parseTableSetup(value: unknown): TableSetup {
-	if (!value || typeof value !== 'object') return createDefaultTableSetup();
-	const input = value as Record<string, unknown>;
-	const table = input.table && typeof input.table === 'object' ? input.table : {};
-	const tableInput = table as Record<string, unknown>;
-	const fallback = createDefaultTableSetup();
-	const parsedPresetId = presetId(tableInput.presetId);
-	const preset = tablePresets.find((candidate) => candidate.id === parsedPresetId) ?? defaultPreset;
-	return {
-		version: 1,
-		table: {
-			presetId: parsedPresetId,
-			width: positiveNumber(tableInput.width, preset.width),
-			height: positiveNumber(tableInput.height, preset.height)
-		},
-		placements: Array.isArray(input.placements)
-			? input.placements.flatMap((item) => {
-					const parsed = placement(item);
-					return parsed ? [parsed] : [];
-				})
-			: fallback.placements,
-		slots: Array.isArray(input.slots)
-			? input.slots.flatMap((item) => {
-					const parsed = slot(item);
-					return parsed ? [parsed] : [];
-				})
-			: fallback.slots
-	};
 }
 
 function escapeXml(value: string): string {
@@ -410,8 +319,7 @@ function slotLayoutFromElement(element: Element): SetupSlotLayout {
 	return createHorizontalFlexSlotLayout({
 		visibleCount: parseNumberAttribute(element, SLOT_VISIBLE_COUNT_ATTR, DEFAULT_FLEX_VISIBLE_COUNT),
 		gap: parseNumberAttribute(element, SLOT_GAP_ATTR, DEFAULT_FLEX_GAP),
-		cardSize: element.getAttribute(SLOT_CARD_SIZE_ATTR) === 'deck-card' ? 'deck-card' : 'content-card',
-		maxItems: parseNumberAttribute(element, SLOT_MAX_ITEMS_ATTR, DEFAULT_FLEX_MAX_ITEMS)
+		cardSize: element.getAttribute(SLOT_CARD_SIZE_ATTR) === 'deck-card' ? 'deck-card' : 'content-card'
 	});
 }
 
@@ -419,6 +327,12 @@ function normalizeEditorDimension(value: number, fallback: number): number {
 	if (!Number.isFinite(value) || value <= 0) return fallback;
 	if (fallback > 0 && Math.abs(value / fallback - 10) < 0.001) return fallback;
 	return value;
+}
+
+function roundedSvgNumber(value: number): number {
+	if (!Number.isFinite(value)) return value;
+	const rounded = Math.round(value * 1000) / 1000;
+	return Object.is(rounded, -0) ? 0 : rounded;
 }
 
 function transformParts(value: string | null) {
@@ -437,7 +351,15 @@ function transformParts(value: string | null) {
 			rotation:
 				Number.isFinite(a) && Number.isFinite(b)
 					? Math.round(Math.atan2(b, a) * (180 / Math.PI))
-					: 0
+					: 0,
+			matrix: {
+				a: Number.isFinite(a) ? a : 1,
+				b: Number.isFinite(b) ? b : 0,
+				c: Number.isFinite(c) ? c : 0,
+				d: Number.isFinite(d) ? d : 1,
+				e: Number.isFinite(e) ? e : 0,
+				f: Number.isFinite(f) ? f : 0
+			}
 		};
 	}
 	const translate = value.match(/translate\(([^)]+)\)/);
@@ -454,6 +376,20 @@ function transformParts(value: string | null) {
 		rotation: Number.isFinite(rotation) ? rotation : 0,
 		scaleX,
 		scaleY
+	};
+}
+
+function transformTranslationForRotationOrigin(
+	transform: ReturnType<typeof transformParts>,
+	origin: { x: number; y: number }
+) {
+	if (!transform.matrix || (Math.abs(transform.matrix.b) < 0.000001 && Math.abs(transform.matrix.c) < 0.000001)) {
+		return { x: transform.x, y: transform.y };
+	}
+	const { a, b, c, d, e, f } = transform.matrix;
+	return {
+		x: roundedSvgNumber(e - (origin.x - a * origin.x - c * origin.y)),
+		y: roundedSvgNumber(f - (origin.y - b * origin.x - d * origin.y))
 	};
 }
 
@@ -557,11 +493,19 @@ function svgRootToTableSetup(root: Element, fallback: TableSetup): TableSetup {
 		if (!deckName) return [];
 		const origin = visualBoundsOrigin(group);
 		const topLeftGeometry = origin.hasGraphics && origin.x >= 0 && origin.y >= 0;
+		const groupTranslation = transformTranslationForRotationOrigin(transform, {
+			x: CARD_WIDTH / 2,
+			y: CARD_HEIGHT / 2
+		});
 		const base = {
 			id,
 			deckName,
-			x: topLeftGeometry ? transform.x + origin.x * transform.scaleX + CARD_WIDTH / 2 : transform.x,
-			y: topLeftGeometry ? transform.y + origin.y * transform.scaleY + CARD_HEIGHT / 2 : transform.y,
+			x: topLeftGeometry
+				? groupTranslation.x + origin.x * transform.scaleX + CARD_WIDTH / 2
+				: groupTranslation.x,
+			y: topLeftGeometry
+				? groupTranslation.y + origin.y * transform.scaleY + CARD_HEIGHT / 2
+				: groupTranslation.y,
 			rotation: transform.rotation,
 			label: textLabel(group, deckName)
 		};
@@ -582,14 +526,19 @@ function svgRootToTableSetup(root: Element, fallback: TableSetup): TableSetup {
 		const rectY = parseNumberAttribute(rect, 'y', 0);
 		const rectWidth = positiveNumber(parseNumberAttribute(rect, 'width', 240), 240);
 		const rectHeight = positiveNumber(parseNumberAttribute(rect, 'height', 320), 320);
+		const groupTranslation = transformTranslationForRotationOrigin(transform, {
+			x: rectX + rectWidth / 2,
+			y: rectY + rectHeight / 2
+		});
 		return [
 			normalizeSetupSlot({
 				id,
 				label: textLabel(group, 'Slot'),
-				x: transform.x + rectX * transform.scaleX,
-				y: transform.y + rectY * transform.scaleY,
-				width: positiveNumber(rectWidth * transform.scaleX, 240),
-				height: positiveNumber(rectHeight * transform.scaleY, 320),
+				x: roundedSvgNumber(groupTranslation.x + rectX * transform.scaleX),
+				y: roundedSvgNumber(groupTranslation.y + rectY * transform.scaleY),
+				rotation: transform.rotation,
+				width: positiveNumber(roundedSvgNumber(rectWidth * transform.scaleX), 240),
+				height: positiveNumber(roundedSvgNumber(rectHeight * transform.scaleY), 320),
 				acceptedDeckNames: sortedStrings(
 					parseJsonStringArray(group.getAttribute(ACCEPTED_DECKS_ATTR))
 				),
@@ -656,31 +605,6 @@ export function normalizeTableSvgWithAssets(
 	syncGeneratedElements(doc, root, setup, assets);
 
 	return new XMLSerializer().serializeToString(root);
-}
-
-export function serializeTableSetup(setup: TableSetup): string {
-	const normalized: TableSetup = {
-		version: 1,
-		table: {
-			presetId: setup.table.presetId,
-			width: setup.table.width,
-			height: setup.table.height
-		},
-		placements: setup.placements.map((item) =>
-			item.type === 'deck'
-				? { ...snapPlacementToGrid(item), cardIds: sortedStrings(item.cardIds) }
-				: { ...snapPlacementToGrid(item) }
-		),
-		slots: setup.slots.map((item) => {
-			const slot = normalizeSetupSlot(item);
-			return {
-				...slot,
-				acceptedDeckNames: sortedStrings(slot.acceptedDeckNames),
-				acceptedCardIds: sortedStrings(slot.acceptedCardIds)
-			};
-		})
-	};
-	return `${JSON.stringify(normalized, null, 2)}\n`;
 }
 
 type SvgAssetMap = ReadonlyMap<string, string> | Record<string, string> | undefined;
@@ -899,17 +823,22 @@ function slotAttributes(item: SetupSlot): Record<string, string | number> {
 		[ACCEPTED_DECKS_ATTR]: JSON.stringify(sortedStrings(slot.acceptedDeckNames)),
 		[ACCEPTED_CARDS_ATTR]: JSON.stringify(sortedStrings(slot.acceptedCardIds)),
 		[SLOT_LAYOUT_MODE_ATTR]: slot.layout?.mode ?? 'free',
-		transform: `translate(${slot.x} ${slot.y})`
+		transform: slotTransform(slot)
 	};
 	if (slot.layout?.mode === 'horizontal-flex') {
 		attributes[RESIZABLE_ATTR] = 'false';
 		attributes[SLOT_VISIBLE_COUNT_ATTR] = slot.layout.visibleCount;
 		attributes[SLOT_GAP_ATTR] = slot.layout.gap;
 		attributes[SLOT_CARD_SIZE_ATTR] = slot.layout.cardSize;
-		attributes[SLOT_MAX_ITEMS_ATTR] = slot.layout.maxItems;
 		attributes[SLOT_CONTENTS_ATTR] = JSON.stringify(slot.contents ?? []);
 	}
 	return attributes;
+}
+
+function slotTransform(slot: SetupSlot): string {
+	const rotation = finiteNumber(slot.rotation, 0);
+	const rotate = rotation ? ` rotate(${rotation} ${slot.width / 2} ${slot.height / 2})` : '';
+	return `translate(${slot.x} ${slot.y})${rotate}`;
 }
 
 function fallbackSlotContentElementsJson(
@@ -1134,10 +1063,9 @@ function slotAttributesMarkup(item: SetupSlot): string {
 		base.push(`${SLOT_VISIBLE_COUNT_ATTR}="${slot.layout.visibleCount}"`);
 		base.push(`${SLOT_GAP_ATTR}="${slot.layout.gap}"`);
 		base.push(`${SLOT_CARD_SIZE_ATTR}="${slot.layout.cardSize}"`);
-		base.push(`${SLOT_MAX_ITEMS_ATTR}="${slot.layout.maxItems}"`);
 		base.push(`${SLOT_CONTENTS_ATTR}="${escapeXml(JSON.stringify(slot.contents ?? []))}"`);
 	}
-	base.push(`transform="translate(${slot.x} ${slot.y})"`);
+	base.push(`transform="${slotTransform(slot)}"`);
 	return base.join(' ');
 }
 

@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	createDefaultTableSetup,
 	normalizeTableSvg,
-	parseTableSetup,
-	serializeTableSetup,
+	normalizeSetupSlot,
 	setupToSvg,
 	snapPlacementToGrid,
 	slotToSvgElementJson,
@@ -31,53 +30,6 @@ function hasDeckStack(group: Element) {
 }
 
 describe('table setup', () => {
-	it('parses invalid setup data into a default setup', () => {
-		expect(parseTableSetup(null)).toEqual(createDefaultTableSetup());
-		expect(parseTableSetup({ table: { width: -1, height: 0 } }).table).toEqual({
-			presetId: 'four-player',
-			width: 1400,
-			height: 900
-		});
-	});
-
-	it('serializes slot rules deterministically', () => {
-		const setup: TableSetup = {
-			version: 1,
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [
-				{
-					id: 'placement-1',
-					type: 'card',
-					deckName: 'western',
-					cardId: 'western:card-1',
-					x: 100,
-					y: 120,
-					rotation: 0,
-					label: 'Ace'
-				}
-			],
-			slots: [
-				{
-					id: 'slot-1',
-					label: 'Market',
-					x: 50,
-					y: 60,
-					width: 200,
-					height: 300,
-					acceptedDeckNames: ['z', 'a'],
-					acceptedCardIds: ['western:2', 'western:1']
-				}
-			]
-		};
-
-		expect(serializeTableSetup(setup)).toContain(
-			'"acceptedDeckNames": [\n        "a",\n        "z"'
-		);
-		expect(serializeTableSetup(setup)).toContain(
-			'"acceptedCardIds": [\n        "western:1",\n        "western:2"'
-		);
-	});
-
 	it('renders table setup as deterministic svg', () => {
 		const setup: TableSetup = {
 			version: 1,
@@ -157,45 +109,37 @@ describe('table setup', () => {
 	});
 
 	it('normalizes horizontal flex slots to visible card-sized cells', () => {
-		const setup = parseTableSetup({
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [],
-			slots: [
-				{
-					id: 'slot-1',
-					label: 'Market',
-					x: 50,
-					y: 60,
-					width: 999,
-					height: 999,
-					acceptedDeckNames: [],
-					acceptedCardIds: [],
-					layout: {
-						mode: 'horizontal-flex',
-						visibleCount: 3,
-						gap: 12,
-						cardSize: 'content-card',
-						maxItems: 3
-					},
-					contents: [
-						{ type: 'deck', deckName: 'western' },
-						{ type: 'card', deckName: 'western', cardId: 'western:1' },
-						{ type: 'card', deckName: 'western', cardId: 'western:2' },
-						{ type: 'card', deckName: 'western', cardId: 'western:3' }
-					]
-				}
+		const slot = normalizeSetupSlot({
+			id: 'slot-1',
+			label: 'Market',
+			x: 50,
+			y: 60,
+			width: 999,
+			height: 999,
+			acceptedDeckNames: [],
+			acceptedCardIds: [],
+			layout: {
+				mode: 'horizontal-flex',
+				visibleCount: 3,
+				gap: 12,
+				cardSize: 'content-card'
+			},
+			contents: [
+				{ type: 'deck', deckName: 'western' },
+				{ type: 'card', deckName: 'western', cardId: 'western:1' },
+				{ type: 'card', deckName: 'western', cardId: 'western:2' },
+				{ type: 'card', deckName: 'western', cardId: 'western:3' }
 			]
 		});
 
-		expect(setup.slots[0]).toEqual(
+		expect(slot).toEqual(
 			expect.objectContaining({
 				width: 354,
 				height: 150,
 				layout: expect.objectContaining({
 					mode: 'horizontal-flex',
 					visibleCount: 3,
-					gap: 12,
-					maxItems: 4
+					gap: 12
 				}),
 				contents: [
 					{ type: 'deck', deckName: 'western' },
@@ -225,8 +169,7 @@ describe('table setup', () => {
 						mode: 'horizontal-flex',
 						visibleCount: 2,
 						gap: 20,
-						cardSize: 'content-card',
-						maxItems: 5
+						cardSize: 'content-card'
 					},
 					contents: [
 						{ type: 'deck', deckName: 'western' },

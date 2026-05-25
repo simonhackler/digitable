@@ -1,6 +1,6 @@
 import {
 	type BoardGameRoomState,
-	Positionable,
+	LayoutNode,
 	type Component,
 	Flippable,
 	Stack
@@ -46,12 +46,18 @@ export interface SharedClientValues {
 // I am still not sure. I can't rely on the backend state only.
 export class ClientPosition {
 	sharedValues: SharedClientValues;
-	clientPositionState: Positionable;
-	onPositionChanged: Event<Positionable> = new Event();
+	clientPositionState: LayoutNode;
+	onPositionChanged: Event<LayoutNode> = new Event();
 
-	constructor(sharedValues: SharedClientValues, position: Positionable) {
+	constructor(sharedValues: SharedClientValues, position: LayoutNode) {
 		this.sharedValues = sharedValues;
-		this.clientPositionState = new Positionable(position.x, position.y, position.visible);
+		this.clientPositionState = new LayoutNode(
+			position.id,
+			position.kind,
+			position.x,
+			position.y,
+			position.visible
+		);
 
 		sharedValues.s(position).onChange(() => {
 			console.log('position changed', position.x, position.y);
@@ -65,7 +71,7 @@ export class ClientPosition {
 	// Or I will need a frontend command or something like that?
 	// I somehow want to tightly couple server and frontend commands
 	// How will the commands then have to look like?
-	moveTo(x: number, y: number) {
+	moveTo(x: number, y: number, targetNodeId?: string) {
 		if (
 			this.sharedValues.component.owner !== this.sharedValues.sessionId &&
 			this.sharedValues.component.owner !== ''
@@ -85,12 +91,13 @@ export class ClientPosition {
 			payload: {
 				componentId: this.sharedValues.component.id,
 				x,
-				y
+				y,
+				targetNodeId
 			}
 		});
 	}
 
-	moveEnd(x: number, y: number) {
+	moveEnd(x: number, y: number, targetNodeId?: string) {
 		this.clientPositionState.x = x;
 		this.clientPositionState.y = y;
 		this.onPositionChanged.emit(this.clientPositionState);
@@ -99,7 +106,8 @@ export class ClientPosition {
 			payload: {
 				cardId: this.sharedValues.component.id,
 				x,
-				y
+				y,
+				targetNodeId
 			}
 		});
 	}

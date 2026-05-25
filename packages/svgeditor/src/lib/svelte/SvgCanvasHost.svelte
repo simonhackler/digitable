@@ -145,7 +145,10 @@
 						dispatch('change', { source: 'user' });
 						return;
 					}
-					if (!svg) return;
+					if (svg === undefined) {
+						dispatch('change', { source: 'user' });
+						return;
+					}
 					lastUserValue = normalizeSvg(svg, resolvedConfig);
 					dispatch('change', { svg, source: 'user' });
 				},

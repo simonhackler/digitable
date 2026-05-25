@@ -12,8 +12,8 @@ export function createViewport(app: Application, options: CreateViewportOptions 
 	const worldWidth = options.worldWidth ?? 6000;
 	const worldHeight = options.worldHeight ?? 3500;
 	const viewport = new Viewport({
-		screenWidth: window.innerWidth,
-		screenHeight: window.innerHeight,
+		screenWidth: app.screen.width,
+		screenHeight: app.screen.height,
 		worldWidth,
 		worldHeight,
 		events: app.renderer.events,

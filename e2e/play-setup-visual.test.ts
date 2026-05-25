@@ -7,8 +7,6 @@ import { pixiState, waitForPixi } from './helpers/pixi';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const westernSetupFixtureDir = join(here, 'fixtures/western-cards-setup');
-const emptyWesternTableSvg =
-	'<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" data-digitable-table="true" data-preset-id="four-player"></svg>';
 
 async function seedWesternSetupVisualProject(page: Page) {
 	await page.setViewportSize({ width: 1200, height: 800 });
@@ -16,13 +14,8 @@ async function seedWesternSetupVisualProject(page: Page) {
 	await seedProjectFiles(page, 'western-cards');
 	await writeOpfsText(
 		page,
-		'/western-cards/setup/table.json',
-		await readFile(join(westernSetupFixtureDir, 'table.json'), 'utf8')
-	);
-	await writeOpfsText(
-		page,
 		'/western-cards/setup/table.svg',
-		emptyWesternTableSvg
+		await readFile(join(westernSetupFixtureDir, 'table.svg'), 'utf8')
 	);
 	await useBrowserStorage(page);
 }

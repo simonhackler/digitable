@@ -6,9 +6,7 @@ Improve the Play table so it supports real playtesting workflows: cards and page
 
 ## Quick Fixes
 
-- Render single-card sources as loose cards instead of one-card stacks.
 - Remove hover darkening from pages/maps.
-- Record the "couldn't select some cards" issue as deferred until there is a reliable repro. When investigated, focus on Pixi hit areas, hidden/renderable state, stack wrappers, and local z-order.
 
 ## Larger Features
 
@@ -17,8 +15,6 @@ Improve the Play table so it supports real playtesting workflows: cards and page
 - Pages are locked writable sheets: they accept pen strokes, never stack, never draw to hand, and are movable only in setup mode.
 - Keep the existing draw-to-hand command.
 - Add a new draw-to-cursor/table command that draws the top card from a stack under the pointer, keeps it on the table, and does not auto-flip unless the command explicitly asks for that.
-- Require a modifier key drop for stacking. Normal overlapping drops move the card only.
-- Add setup mode before play. First version should let the creator arrange pages/cards/grid and then enter play mode, where setup-only objects are locked.
 - Add a question-mark help menu with current actions and hotkeys.
 - Add pen thickness presets. Keep color and opacity fixed for the first pass.
 - Render objects using real SVG/page dimensions and a shared physical table scale so cards and maps compare correctly.

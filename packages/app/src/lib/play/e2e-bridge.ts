@@ -1,6 +1,6 @@
 import type { Application } from 'pixi.js';
 import type { Viewport } from 'pixi-viewport';
-import type { BoardGameItemNew } from '$lib/pixi/item';
+import { CardContainer, type BoardGameItemNew } from '$lib/pixi/item';
 import type { HandContainer } from './HandContainer';
 import type { StrokeLayer } from './strokes';
 import type { StrokeFace } from 'boardgame-server/src/rooms/schema/stroke-schema';
@@ -11,6 +11,18 @@ export interface PlayE2EState {
 	visibleStackIds: string[];
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
+	cardFaces: Record<
+		string,
+		{
+			isFaceUp: boolean;
+			frontVisible: boolean;
+			frontRenderable: boolean;
+			backVisible: boolean;
+			backRenderable: boolean;
+			backWidth: number;
+			backHeight: number;
+		}
+	>;
 	strokes: {
 		id: string;
 		componentId: string;
@@ -33,6 +45,7 @@ interface BoundsSnapshot {
 interface PlayE2EBridge {
 	state: () => PlayE2EState;
 	bounds: (id: string) => BoundsSnapshot | null;
+	contentBounds: (id: string) => BoundsSnapshot | null;
 	clickPoint: (id: string) => { x: number; y: number } | null;
 	slotPoint: (id: string) => { x: number; y: number } | null;
 }
@@ -43,7 +56,7 @@ declare global {
 	}
 }
 
-function toBoundsSnapshot(app: Application, item: BoardGameItemNew): BoundsSnapshot {
+function toBoundsSnapshot(app: Application, item: BoardGameItemNew | CardContainer): BoundsSnapshot {
 	app.render();
 
 	const pixiBounds = item.getBounds();
@@ -86,21 +99,45 @@ function toCanvasPoint(
 	};
 }
 
+function cardFaceSnapshot(item: BoardGameItemNew) {
+	if (!(item.itemContainer instanceof CardContainer)) return null;
+
+	const backBounds = item.itemContainer.backSprite.getLocalBounds();
+	const backRect = 'rectangle' in backBounds ? backBounds.rectangle : backBounds;
+
+	return {
+		isFaceUp: item.clientFlippable?.clientFlippableState.isFaceUp ?? true,
+		frontVisible: item.itemContainer.frontSprite.visible,
+		frontRenderable: item.itemContainer.frontSprite.renderable,
+		backVisible: item.itemContainer.backSprite.visible,
+		backRenderable: item.itemContainer.backSprite.renderable,
+		backWidth: backRect.width,
+		backHeight: backRect.height
+	};
+}
+
 export function installPlayE2EBridge(
 	app: Application,
 	boardGameItems: Map<string, BoardGameItemNew>,
 	handContainer: HandContainer,
 	strokeLayer: StrokeLayer,
 	viewport: Viewport | null = null,
-	setup: TableSetup | null = null
+	setup: TableSetup | null = null,
+	setupWorldOffset: () => { x: number; y: number } = () => ({ x: 0, y: 0 })
 ) {
 	const bridge: PlayE2EBridge = {
 		state() {
 			const visibleStackIds: string[] = [];
 			const visibleBoardCardIds: string[] = [];
 			const handCardIds: string[] = [];
+			const cardFaces: PlayE2EState['cardFaces'] = {};
 
 			for (const [id, item] of boardGameItems.entries()) {
+				const faceSnapshot = cardFaceSnapshot(item);
+				if (faceSnapshot) {
+					cardFaces[id] = faceSnapshot;
+				}
+
 				if (handContainer.hasItem(item)) {
 					handCardIds.push(id);
 					continue;
@@ -121,6 +158,7 @@ export function installPlayE2EBridge(
 				visibleStackIds,
 				visibleBoardCardIds,
 				handCardIds,
+				cardFaces,
 				strokes: strokeLayer.strokeSnapshots()
 			};
 		},
@@ -128,6 +166,12 @@ export function installPlayE2EBridge(
 			const item = boardGameItems.get(id);
 			if (!item || !item.visible || !item.renderable) return null;
 			return toBoundsSnapshot(app, item);
+		},
+		contentBounds(id) {
+			const item = boardGameItems.get(id);
+			if (!item || !item.visible || !item.renderable) return null;
+			if (!(item.itemContainer instanceof CardContainer)) return toBoundsSnapshot(app, item);
+			return toBoundsSnapshot(app, item.itemContainer);
 		},
 		clickPoint(id) {
 			const bounds = bridge.bounds(id);
@@ -141,15 +185,21 @@ export function installPlayE2EBridge(
 			if (!setup) return null;
 			const slot = setup.slots.find((candidate) => candidate.id === id);
 			if (!slot) return null;
+			const offset = setupWorldOffset();
 			if (slot.layout?.mode === 'horizontal-flex') {
 				return toCanvasPoint(
 					app,
 					viewport,
-					slot.x + SETUP_PLAY_CARD_WIDTH / 2,
-					slot.y + SETUP_PLAY_CARD_HEIGHT / 2
+					offset.x + slot.x + SETUP_PLAY_CARD_WIDTH / 2,
+					offset.y + slot.y + SETUP_PLAY_CARD_HEIGHT / 2
 				);
 			}
-			return toCanvasPoint(app, viewport, slot.x + slot.width / 2, slot.y + slot.height / 2);
+			return toCanvasPoint(
+				app,
+				viewport,
+				offset.x + slot.x + slot.width / 2,
+				offset.y + slot.y + slot.height / 2
+			);
 		}
 	};
 

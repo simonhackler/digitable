@@ -27,37 +27,42 @@ export interface InitComponentDependencies {
 	configureItem?: (item: BoardGameItemNew) => void;
 }
 
-function firstTexture(container: Container): Texture | null {
+function collectSpriteTextures(container: Container): Texture[] {
+	const textures: Texture[] = [];
 	if (container instanceof Sprite) {
-		return container.texture;
+		textures.push(container.texture);
 	}
 
 	for (const child of container.children) {
-		const texture = firstTexture(child as Container);
-		if (texture) return texture;
+		textures.push(...collectSpriteTextures(child as Container));
 	}
 
-	return null;
+	return textures;
 }
 
-async function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
+function createStackFace(textures: Texture[]) {
+	assert(textures.length > 0, 'Stack card texture not found');
+
+	const face = new Container();
+	for (const texture of textures) {
+		const sprite = new Sprite(texture);
+		sprite.scale.set(1.0);
+		face.addChild(sprite);
+	}
+	return face;
+}
+
+function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
 	const cardContainer = topItem.itemContainer as CardContainer;
 	const face = !isFaceUp ? cardContainer.backSprite : cardContainer.frontSprite;
-	const tex = firstTexture(face);
-	assert(tex, 'Stack card texture not found');
+	const textures = collectSpriteTextures(face);
 
-	const topSprite = new Sprite(tex);
-	topSprite.setSize(topItem.getSize());
-	topSprite.scale.set(1.0);
+	const topSprite = createStackFace(textures);
 
-	const secondSprite = new Sprite(tex);
-	topSprite.setSize(topItem.getSize());
-	topSprite.scale.set(1.0);
+	const secondSprite = createStackFace(textures);
 	secondSprite.position.set(-15, 15);
 
-	const thirdSprite = new Sprite(tex);
-	thirdSprite.setSize(topItem.getSize());
-	thirdSprite.scale.set(1.0);
+	const thirdSprite = createStackFace(textures);
 	thirdSprite.position.set(-30, 30);
 	return [topSprite, secondSprite, thirdSprite];
 }
@@ -105,15 +110,17 @@ export async function initComponent(
 			item.renderable = false;
 		}
 		function rebuild(frontendFlip: ClientFlippable | null) {
-			stackContainer.removeChildren();
+			for (const child of stackContainer.removeChildren()) {
+				child.destroy({ children: true });
+			}
+
 			const isFaceUp = frontendFlip !== null ? frontendFlip.clientFlippableState.isFaceUp : true;
 			const index = isFaceUp ? 0 : stacks.length - 1;
 			const item = stacks[index];
-			buildStack(isFaceUp, item).then((stackSprites) => {
-				for (const sprite of stackSprites) {
-					stackContainer.addChild(sprite);
-				}
-			});
+			const stackSprites = buildStack(isFaceUp, item);
+			for (const sprite of stackSprites) {
+				stackContainer.addChild(sprite);
+			}
 		}
 
 		const flippable = state.flippable.get(component.id);
@@ -178,14 +185,9 @@ export async function initComponent(
 		const flippable = state.flippable.get(component.id);
 		if (flippable) {
 			frontendFlip = new ClientFlippable(sharedClientValues, flippable);
+			cardContainer.showFace(frontendFlip.clientFlippableState.isFaceUp);
 			frontendFlip.onFlipped.subscribe((flippable) => {
-				if (flippable.isFaceUp) {
-					card.front.visible = true;
-					card.back.visible = false;
-				} else {
-					card.front.visible = false;
-					card.back.visible = true;
-				}
+				cardContainer.showFace(flippable.isFaceUp);
 			});
 		}
 

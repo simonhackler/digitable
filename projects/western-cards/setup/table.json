@@ -9,8 +9,8 @@
     {
       "id": "5b5bf734-861d-4e33-8c7a-a04c7e9b5492",
       "deckName": "western",
-      "x": 395,
-      "y": 215,
+      "x": 1255,
+      "y": 115,
       "rotation": 0,
       "label": "western",
       "type": "deck",
@@ -47,8 +47,8 @@
     {
       "id": "c1bee92f-fe98-4142-bccc-abe45d4e1251",
       "deckName": "western",
-      "x": 795,
-      "y": 235,
+      "x": 1275,
+      "y": 495,
       "rotation": 0,
       "label": "2",
       "type": "card",
@@ -57,10 +57,46 @@
   ],
   "slots": [
     {
-      "id": "4175838d-2b1d-4d6e-8602-00d7c0a9d6b8",
-      "label": "Slot 1",
-      "x": 480,
-      "y": 650,
+      "id": "c2bdd932-3478-4a7f-8c37-40c07f059460",
+      "label": "Slot 2",
+      "x": -9,
+      "y": 328.998,
+      "rotation": 90,
+      "width": 488,
+      "height": 150,
+      "acceptedDeckNames": [
+        "western"
+      ],
+      "acceptedCardIds": [],
+      "layout": {
+        "mode": "horizontal-flex",
+        "visibleCount": 4,
+        "gap": 16,
+        "cardSize": "content-card"
+      },
+      "contents": []
+    },
+    {
+      "id": "45bf1718-d4c9-4f8b-9296-965bbb3378af",
+      "label": "Slot 3",
+      "x": 670.928,
+      "y": 120,
+      "rotation": 0,
+      "width": 240,
+      "height": 320,
+      "acceptedDeckNames": [],
+      "acceptedCardIds": [],
+      "layout": {
+        "mode": "free"
+      },
+      "contents": []
+    },
+    {
+      "id": "ab5c85b0-eab0-4132-a52d-e8a355481739",
+      "label": "Slot 3",
+      "x": 1400,
+      "y": 216.196,
+      "rotation": 90,
       "width": 488,
       "height": 150,
       "acceptedDeckNames": [],
@@ -69,30 +105,7 @@
         "mode": "horizontal-flex",
         "visibleCount": 4,
         "gap": 16,
-        "cardSize": "content-card",
-        "maxItems": 10
-      },
-      "contents": [
-        {
-          "type": "card",
-          "deckName": "western",
-          "cardId": "western:71412f2b-80a5-48af-aa7d-68a525a1c872"
-        }
-      ]
-    },
-    {
-      "id": "c2bdd932-3478-4a7f-8c37-40c07f059460",
-      "label": "Slot 2",
-      "x": 1060,
-      "y": 150,
-      "width": 240,
-      "height": 320,
-      "acceptedDeckNames": [
-        "western"
-      ],
-      "acceptedCardIds": [],
-      "layout": {
-        "mode": "free"
+        "cardSize": "content-card"
       },
       "contents": []
     }
