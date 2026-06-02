@@ -6,7 +6,6 @@ Clarify deck creation, fix the spreadsheet context menu bug, introduce a version
 
 ## Quick Fixes
 
-- Add clearer orientation preview/copy in the create deck dialog so portrait cards are not mistaken for flipped dimensions. Add svg preview there
 - Fix the spreadsheet bug where the first right-click does not open the context menu. Add regression coverage for first right-click on the spreadsheet. (Write the test first and make sure it fails)
 
 ## Larger Features

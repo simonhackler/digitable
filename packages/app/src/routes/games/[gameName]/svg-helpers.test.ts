@@ -407,7 +407,7 @@ describe('svg-helpers', () => {
 		const svg = patchSvgRoot(
 			loadSvgTemplate(
 				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
-					<image id="background" href="../../files/template_blank.png" />
+					<image id="background" href="../../assets/template_blank.png" />
 				</svg>`
 			)
 		);
@@ -431,7 +431,7 @@ describe('svg-helpers', () => {
 				`<svg xmlns="http://www.w3.org/2000/svg"
 					xmlns:xlink="http://www.w3.org/1999/xlink"
 					viewBox="0 0 63 88">
-					<image id="dice_image" xlink:href="../../files/dice_6.png" />
+					<image id="dice_image" xlink:href="../../assets/dice_6.png" />
 				</svg>`
 			)
 		);
@@ -453,7 +453,7 @@ describe('svg-helpers', () => {
 		const svg = patchSvgRoot(
 			loadSvgTemplate(
 				`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88">
-					<image id="background" href="../../files/template_blank.png" />
+					<image id="background" href="../../assets/template_blank.png" />
 				</svg>`
 			)
 		);
