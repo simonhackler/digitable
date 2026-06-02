@@ -1,5 +1,6 @@
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import { asset } from '$app/paths';
+import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 
 export type PremadeDeckPresetId = 'french-playing-cards' | 'number-color' | 'french-tarot';
 
@@ -113,7 +114,7 @@ export async function createPremadeDeck({
 }: CreatePremadeDeckInput) {
 	const preset = getPremadeDeckPreset(presetId);
 	const cards = createCardAssets(preset);
-	const assetDir = await fileSystem.ensureDir(joinFsPath('files', 'premade-decks', preset.id));
+	const assetDir = await fileSystem.ensureDir(joinFsPath(ASSETS_DIR, 'premade-decks', preset.id));
 	if (assetDir.error) return assetDir;
 
 	const back = createBackAsset(preset);
@@ -147,7 +148,7 @@ export async function createPremadeDeck({
 		if (written.error) return written;
 	}
 
-	const deckDir = await fileSystem.ensureDir(joinFsPath('system', deckName));
+	const deckDir = await fileSystem.ensureDir(joinFsPath(COMPONENTS_DIR, deckName));
 	if (deckDir.error) return deckDir;
 
 	const frontSvg = createWrapperSvg(

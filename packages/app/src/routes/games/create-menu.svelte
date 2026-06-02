@@ -18,6 +18,7 @@
 	import { goto } from '$app/navigation';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { BookOpenText } from '@lucide/svelte';
+	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 
 	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
 
@@ -40,7 +41,7 @@
 		projectName: string,
 		component: ComponentFileStructure
 	) {
-		const fullFolderPath = joinFsPath('system', component.name);
+		const fullFolderPath = joinFsPath(COMPONENTS_DIR, component.name);
 		console.log('deleting for', fullFolderPath);
 		const removed = await fileSystem.remove(fullFolderPath, { recursive: true });
 		if (removed.error) {

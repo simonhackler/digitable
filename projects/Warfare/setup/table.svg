@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="1400" height="900" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="four-player" viewBox="0 0 1400 900" role="img">
+ <g class="layer">
+  <title>Layer 1</title>
+  <rect fill="#166534" height="100%" id="svg_1" rx="32" width="100%"/>
+  <rect fill="none" height="852" id="svg_2" rx="24" stroke="#bbf7d0" stroke-opacity="0.8" stroke-width="6" width="1352" x="24" y="24"/>
+  <g id="ad5cb508-f1b2-4e90-8b14-520a4c84d631" data-digitable-kind="slot" data-label="Slot 1" data-accepted-deck-names="[]" data-accepted-card-ids="[]">
+    <rect x="860" y="56.25" width="240" height="320" rx="14" fill="#dbeafe" fill-opacity="0.32" stroke="#2563eb" stroke-width="4" stroke-dasharray="14 10"/>
+    <text x="876" y="88.25" fill="#1e3a8a" font-family="system-ui, sans-serif" font-size="28" font-weight="700" data-svgedit-resizable="false" data-locked="true" pointer-events="none">Slot 1</text>
+  </g>
+ </g>
+</svg>

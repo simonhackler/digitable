@@ -1,11 +1,12 @@
 {
-  "name": "Warfare",
-  "minPlayers": 1,
-  "maxPlayers": 4,
-  "description": "test",
-  "tags": [
-    "Horror",
-    "Educational",
-    "Medieval"
-  ]
+	"name": "Warfare",
+	"minPlayers": 1,
+	"maxPlayers": 4,
+	"description": "test",
+	"tags": [
+		"Horror",
+		"Educational",
+		"Medieval"
+	],
+	"digitableVersion": "0.0.1"
 }
