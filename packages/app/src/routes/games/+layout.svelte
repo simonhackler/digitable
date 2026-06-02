@@ -14,10 +14,7 @@
 		migrateProjectLayout,
 		projectMigrationsForVersion
 	} from '$lib/workspace/project-layout';
-	import {
-		readProjectsRootMarker,
-		writeProjectsRootMarker
-	} from '$lib/workspace/projects-root';
+	import { readProjectsRootMarker, writeProjectsRootMarker } from '$lib/workspace/projects-root';
 	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
@@ -105,9 +102,7 @@
 		const marker = await readProjectsRootMarker(adapter);
 		migrationDigitableVersion = marker.error ? undefined : marker.data.digitableVersion;
 		const pendingMigrations = projectMigrationsForVersion(migrationDigitableVersion);
-		const migrations = pendingMigrations.length
-			? await getProjectNames(adapter)
-			: [];
+		const migrations = pendingMigrations.length ? await getProjectNames(adapter) : [];
 		if (!migrations.length && pendingMigrations.length) {
 			await writeProjectsRootMarker(adapter, { appVersion });
 		}
@@ -168,8 +163,8 @@
 						<h1 class="text-xl font-semibold">Migrate Projects</h1>
 						<p class="text-muted-foreground text-sm">
 							Digitable will migrate {projectsToMigrate.length}
-							{projectsToMigrate.length === 1 ? 'project' : 'projects'} to the latest project
-							layout, then save version {DIGITABLE_VERSION} in .digitable.json.
+							{projectsToMigrate.length === 1 ? 'project' : 'projects'} to the latest project layout,
+							then save version {DIGITABLE_VERSION} in .digitable.json.
 						</p>
 					</div>
 					<div class="text-muted-foreground max-h-32 overflow-auto rounded-md border p-2 text-sm">
