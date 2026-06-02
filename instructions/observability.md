@@ -36,7 +36,7 @@ import { trace } from '@opentelemetry/api';
 trace.getActiveSpan()?.setAttribute('game.name', gameName);
 ```
 
-Do not import browser Traceway packages from server files. Server telemetry is configured once in `packages/app/src/instrumentation.server.ts`.
+Do not import browser Traceway packages from server files. Server telemetry is configured once per SvelteKit package in `packages/app/src/instrumentation.server.ts` and `packages/studio/src/instrumentation.server.ts`.
 
 ### Client
 
@@ -60,7 +60,7 @@ captureExceptionWithAttributes(error, {
 });
 ```
 
-The root layout already initializes the browser SDK and syncs known user attributes. Do not call `setupTraceway` outside `packages/app/src/routes/+layout.svelte`.
+The app and studio root layouts initialize the browser SDK and sync known user attributes. Do not call `setupTraceway` outside `packages/app/src/routes/+layout.svelte` or `packages/studio/src/routes/+layout.svelte`.
 
 ### Local Testing
 
@@ -76,6 +76,12 @@ The app runs at:
 http://127.0.0.1:5180/app
 ```
 
+The studio site usually runs at:
+
+```text
+http://127.0.0.1:5174
+```
+
 Use these routes to generate test telemetry:
 
 ```text
@@ -84,4 +90,4 @@ http://127.0.0.1:5180/app/api/traceway-test
 http://127.0.0.1:5180/app/api/traceway-error
 ```
 
-If logs or metrics do not appear, confirm the app process was started with `TRACEWAY_PROJECT_TOKEN`, `TRACEWAY_URL`, `PUBLIC_TRACEWAY_CONNECTION`, and `PUBLIC_APP_VERSION`.
+If logs or metrics do not appear, confirm the app or studio process was started with `TRACEWAY_PROJECT_TOKEN`, `TRACEWAY_URL`, `PUBLIC_TRACEWAY_CONNECTION`, and `PUBLIC_APP_VERSION`.
