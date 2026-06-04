@@ -105,6 +105,7 @@
 
 	const canUndo = $derived(controller.isReady && controller.undoCount > 0);
 	const canRedo = $derived(controller.isReady && controller.redoCount > 0);
+	const canDuplicate = $derived(controller.isReady && controller.selectedIds.length > 0);
 	const undoTooltip = $derived.by(() =>
 		controller.nextUndoLabel ? `Undo ${controller.nextUndoLabel} (Ctrl/Cmd+Z)` : 'Undo (Ctrl/Cmd+Z)'
 	);
@@ -195,6 +196,17 @@
 					onclick={() => controller.selectAll()}
 				>
 					Select all
+				</Button>
+				<Button
+					size="sm"
+					variant="ghost"
+					class="rounded-lg px-3 text-xs font-semibold tracking-wide uppercase"
+					disabled={!canDuplicate}
+					title="Duplicate selection (Ctrl/Cmd+D)"
+					onclick={() => controller.duplicateSelection()}
+				>
+					<Copy class="size-4" />
+					Duplicate
 				</Button>
 				<Button
 					size="sm"

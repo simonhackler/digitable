@@ -52,6 +52,7 @@ export class HandContainer {
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);
+		item.setDisplayedRotation(0);
 		item.x = 0;
 		item.y = 0;
 		item.alpha = 1.0;

@@ -1,10 +1,6 @@
 import type { SetupSlot, TableSetup } from '../../routes/games/[gameName]/setup/table-setup';
-import {
-	SETUP_PLAY_CARD_HEIGHT,
-	SETUP_PLAY_CARD_WIDTH,
-	type SetupPlayItem,
-	type SetupPlayPlan
-} from './setup-play';
+import { rotatePoint, setupSlotCellCount } from './setup-geometry';
+import type { SetupPlayItem, SetupPlayPlan } from './setup-play';
 
 export type SetupItemMetadata = Pick<
 	SetupPlayItem,
@@ -13,6 +9,7 @@ export type SetupItemMetadata = Pick<
 
 export type SetupSlotState = {
 	slotOccupants: Map<string, string[]>;
+	gridCellOccupants: Map<string, Map<number, string>>;
 	itemSlotIds: Map<string, string>;
 };
 
@@ -44,22 +41,36 @@ export function setupItemMetadataById(plan: SetupPlayPlan | null): Map<string, S
 
 export function initialSetupSlotState(plan: SetupPlayPlan | null): SetupSlotState {
 	const slotOccupants = new Map<string, string[]>();
+	const gridCellOccupants = new Map<string, Map<number, string>>();
 	const itemSlotIds = new Map<string, string>();
-	if (!plan) return { slotOccupants, itemSlotIds };
+	if (!plan) return { slotOccupants, gridCellOccupants, itemSlotIds };
+
+	const slotsById = new Map(plan.setup.slots.map((slot) => [slot.id, slot]));
 
 	for (const slot of plan.setup.slots) {
 		slotOccupants.set(slot.id, []);
+		if (slot.layout?.mode === 'grid') gridCellOccupants.set(slot.id, new Map());
 	}
 
 	for (const item of plan.items) {
 		if (!item.slotId) continue;
+		const slot = slotsById.get(item.slotId);
+		if (slot?.layout?.mode === 'grid') {
+			const cellIndex =
+				item.slotCellIndex !== undefined && item.slotCellIndex >= 0
+					? Math.min(item.slotCellIndex, setupSlotCellCount(slot) - 1)
+					: 0;
+			gridCellOccupants.get(item.slotId)?.set(cellIndex, item.id);
+			itemSlotIds.set(item.id, item.slotId);
+			continue;
+		}
 		const occupants = slotOccupants.get(item.slotId);
 		if (!occupants) continue;
 		occupants.push(item.id);
 		itemSlotIds.set(item.id, item.slotId);
 	}
 
-	return { slotOccupants, itemSlotIds };
+	return { slotOccupants, gridCellOccupants, itemSlotIds };
 }
 
 function acceptedCardMatches(acceptedCardId: string, item: SetupItemMetadata): boolean {
@@ -82,31 +93,31 @@ export function setupSlotAcceptsItem(slot: SetupSlot, item: SetupItemMetadata): 
 }
 
 export function setupSlotCapacity(slot: SetupSlot): number {
-	if (slot.layout?.mode !== 'horizontal-flex') return Number.POSITIVE_INFINITY;
-	return slot.layout.visibleCount;
+	const fixedCapacity = setupSlotCellCount(slot);
+	return fixedCapacity > 0 ? fixedCapacity : Number.POSITIVE_INFINITY;
 }
 
-export function setupSlotCellPosition(slot: SetupSlot, index: number): { x: number; y: number } {
-	if (slot.layout?.mode !== 'horizontal-flex') return { x: slot.x, y: slot.y };
-	return {
-		x: slot.x + index * (SETUP_PLAY_CARD_WIDTH + slot.layout.gap),
-		y: slot.y
-	};
+export function setupSlotIsFixedLayout(slot: SetupSlot): boolean {
+	return slot.layout?.mode === 'horizontal-flex' || slot.layout?.mode === 'grid';
+}
+
+function pointInSlot(slot: SetupSlot, point: { x: number; y: number }): boolean {
+	const rotation = slot.rotation ?? 0;
+	const slotCenter = { x: slot.x + slot.width / 2, y: slot.y + slot.height / 2 };
+	const localPoint = rotatePoint(point, slotCenter, -rotation);
+	return (
+		localPoint.x >= slot.x &&
+		localPoint.x <= slot.x + slot.width &&
+		localPoint.y >= slot.y &&
+		localPoint.y <= slot.y + slot.height
+	);
 }
 
 export function findSetupSlotAtPoint(
 	setup: TableSetup,
 	point: { x: number; y: number }
 ): SetupSlot | null {
-	return (
-		setup.slots.find(
-			(slot) =>
-				point.x >= slot.x &&
-				point.x <= slot.x + slot.width &&
-				point.y >= slot.y &&
-				point.y <= slot.y + slot.height
-		) ?? null
-	);
+	return setup.slots.find((slot) => pointInSlot(slot, point)) ?? null;
 }
 
 export function pointIsInsideSetupTable(
@@ -119,16 +130,4 @@ export function pointIsInsideSetupTable(
 		point.y >= 0 &&
 		point.y <= setup.table.height
 	);
-}
-
-export function clampSetupItemPosition(
-	setup: TableSetup,
-	position: { x: number; y: number }
-): { x: number; y: number } {
-	const maxX = Math.max(0, setup.table.width - SETUP_PLAY_CARD_WIDTH);
-	const maxY = Math.max(0, setup.table.height - SETUP_PLAY_CARD_HEIGHT);
-	return {
-		x: Math.min(Math.max(0, position.x), maxX),
-		y: Math.min(Math.max(0, position.y), maxY)
-	};
 }

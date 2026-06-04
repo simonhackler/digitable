@@ -4,6 +4,8 @@ export interface PixiPlayState {
 	visibleStackIds: string[];
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
+	cameraRotation: number;
+	rotations: Record<string, { state: number; visual: number }>;
 	cardFaces: Record<
 		string,
 		{

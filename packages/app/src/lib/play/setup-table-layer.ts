@@ -4,6 +4,7 @@ import {
 	type SetupSlot,
 	type TableSetup
 } from '../../routes/games/[gameName]/setup/table-setup';
+import { SETUP_PLAY_CARD_HEIGHT, SETUP_PLAY_CARD_WIDTH } from './setup-geometry';
 
 const GENERATED_SETUP_SELECTOR = '[data-digitable-kind]';
 
@@ -39,28 +40,57 @@ function drawTableBounds(setup: TableSetup) {
 
 function drawFreeSlot(graphics: Graphics, slot: SetupSlot) {
 	graphics
-		.roundRect(slot.x, slot.y, slot.width, slot.height, 8)
+		.roundRect(0, 0, slot.width, slot.height, 8)
 		.fill({ color: 0x2563eb, alpha: 0.08 })
 		.stroke({ color: 0x2563eb, width: 2, alpha: 0.65 });
 }
 
 function drawHorizontalFlexSlot(graphics: Graphics, slot: SetupSlot) {
 	graphics
-		.roundRect(slot.x, slot.y, slot.width, slot.height, 8)
+		.roundRect(0, 0, slot.width, slot.height, 8)
 		.fill({ color: 0x16a34a, alpha: 0.08 })
 		.stroke({ color: 0x16a34a, width: 2, alpha: 0.6 });
 }
 
+function drawGridSlot(graphics: Graphics, slot: SetupSlot) {
+	graphics
+		.roundRect(0, 0, slot.width, slot.height, 8)
+		.fill({ color: 0x16a34a, alpha: 0.08 })
+		.stroke({ color: 0x16a34a, width: 2, alpha: 0.6 });
+	if (slot.layout?.mode !== 'grid') return;
+	for (let row = 0; row < slot.layout.rows; row += 1) {
+		for (let column = 0; column < slot.layout.columns; column += 1) {
+			graphics
+				.roundRect(
+					column * (SETUP_PLAY_CARD_WIDTH + slot.layout.gapX),
+					row * (SETUP_PLAY_CARD_HEIGHT + slot.layout.gapY),
+					SETUP_PLAY_CARD_WIDTH,
+					SETUP_PLAY_CARD_HEIGHT,
+					8
+				)
+				.stroke({ color: 0x16a34a, width: 1, alpha: 0.42 });
+		}
+	}
+}
+
 function drawSlots(slots: SetupSlot[]) {
-	const graphics = new Graphics();
+	const layer = new Container();
 	for (const slot of slots) {
+		const graphics = new Graphics();
 		if (slot.layout?.mode === 'horizontal-flex') {
 			drawHorizontalFlexSlot(graphics, slot);
+		} else if (slot.layout?.mode === 'grid') {
+			drawGridSlot(graphics, slot);
 		} else {
 			drawFreeSlot(graphics, slot);
 		}
+		graphics.position.set(slot.x, slot.y);
+		graphics.pivot.set(slot.width / 2, slot.height / 2);
+		graphics.position.set(slot.x + slot.width / 2, slot.y + slot.height / 2);
+		graphics.angle = slot.rotation ?? 0;
+		layer.addChild(graphics);
 	}
-	return graphics;
+	return layer;
 }
 
 export async function createSetupTableLayer(input: {

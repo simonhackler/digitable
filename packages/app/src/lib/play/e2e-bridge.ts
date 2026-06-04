@@ -1,16 +1,18 @@
-import type { Application } from 'pixi.js';
+import type { Application, PointData } from 'pixi.js';
 import type { Viewport } from 'pixi-viewport';
 import { CardContainer, type BoardGameItemNew } from '$lib/pixi/item';
 import type { HandContainer } from './HandContainer';
 import type { StrokeLayer } from './strokes';
 import type { StrokeFace } from 'boardgame-server/src/rooms/schema/stroke-schema';
 import type { TableSetup } from '../../routes/games/[gameName]/setup/table-setup';
-import { SETUP_PLAY_CARD_HEIGHT, SETUP_PLAY_CARD_WIDTH } from './setup-play';
+import { setupSlotCellPose } from './setup-geometry';
 
 export interface PlayE2EState {
 	visibleStackIds: string[];
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
+	cameraRotation: number;
+	rotations: Record<string, { state: number; visual: number }>;
 	cardFaces: Record<
 		string,
 		{
@@ -80,22 +82,15 @@ function toBoundsSnapshot(app: Application, item: BoardGameItemNew | CardContain
 	};
 }
 
-function toCanvasPoint(
-	app: Application,
-	viewport: Viewport | null,
-	worldX: number,
-	worldY: number
-): { x: number; y: number } | null {
-	if (!viewport) return null;
+function toCanvasPoint(app: Application, global: PointData): { x: number; y: number } {
 	app.render();
 
-	const screen = viewport.toScreen(worldX, worldY);
 	const canvasRect = app.canvas.getBoundingClientRect();
 	const scaleX = canvasRect.width / app.screen.width;
 	const scaleY = canvasRect.height / app.screen.height;
 	return {
-		x: screen.x * scaleX,
-		y: screen.y * scaleY
+		x: global.x * scaleX,
+		y: global.y * scaleY
 	};
 }
 
@@ -123,16 +118,23 @@ export function installPlayE2EBridge(
 	strokeLayer: StrokeLayer,
 	viewport: Viewport | null = null,
 	setup: TableSetup | null = null,
-	setupWorldOffset: () => { x: number; y: number } = () => ({ x: 0, y: 0 })
+	tablePointToGlobal: (point: { x: number; y: number }) => PointData | null = (point) =>
+		viewport ? viewport.toScreen(point.x, point.y) : null,
+	cameraRotation: () => number = () => 0
 ) {
 	const bridge: PlayE2EBridge = {
 		state() {
 			const visibleStackIds: string[] = [];
 			const visibleBoardCardIds: string[] = [];
 			const handCardIds: string[] = [];
+			const rotations: PlayE2EState['rotations'] = {};
 			const cardFaces: PlayE2EState['cardFaces'] = {};
 
 			for (const [id, item] of boardGameItems.entries()) {
+				rotations[id] = {
+					state: item.clientPosition?.clientPositionState.rotation ?? 0,
+					visual: item.visualRotationDegrees
+				};
 				const faceSnapshot = cardFaceSnapshot(item);
 				if (faceSnapshot) {
 					cardFaces[id] = faceSnapshot;
@@ -158,6 +160,8 @@ export function installPlayE2EBridge(
 				visibleStackIds,
 				visibleBoardCardIds,
 				handCardIds,
+				cameraRotation: cameraRotation(),
+				rotations,
 				cardFaces,
 				strokes: strokeLayer.strokeSnapshots()
 			};
@@ -185,21 +189,16 @@ export function installPlayE2EBridge(
 			if (!setup) return null;
 			const slot = setup.slots.find((candidate) => candidate.id === id);
 			if (!slot) return null;
-			const offset = setupWorldOffset();
-			if (slot.layout?.mode === 'horizontal-flex') {
-				return toCanvasPoint(
-					app,
-					viewport,
-					offset.x + slot.x + SETUP_PLAY_CARD_WIDTH / 2,
-					offset.y + slot.y + SETUP_PLAY_CARD_HEIGHT / 2
-				);
+			if (slot.layout?.mode === 'horizontal-flex' || slot.layout?.mode === 'grid') {
+				const pose = setupSlotCellPose(slot, 0);
+				const global = tablePointToGlobal({ x: pose.centerX, y: pose.centerY });
+				return global ? toCanvasPoint(app, global) : null;
 			}
-			return toCanvasPoint(
-				app,
-				viewport,
-				offset.x + slot.x + slot.width / 2,
-				offset.y + slot.y + slot.height / 2
-			);
+			const global = tablePointToGlobal({
+				x: slot.x + slot.width / 2,
+				y: slot.y + slot.height / 2
+			});
+			return global ? toCanvasPoint(app, global) : null;
 		}
 	};
 

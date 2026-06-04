@@ -14,6 +14,7 @@ import {
     createPositionNode,
     initializeGameState,
     isFiniteCoordinate,
+    normalizeRotation,
     setNodeParent,
     resolvePlacementParentId,
     targetCanAcceptChild,
@@ -139,11 +140,20 @@ export class MoveCommand extends Command<
         componentId: string;
         x: number;
         y: number;
+        rotation?: number;
         targetNodeId?: string;
     }
 > {
     execute(payload: this['payload']) {
-        applyPlacement(this.state, payload.componentId, payload.x, payload.y, payload.targetNodeId, false);
+        applyPlacement(
+            this.state,
+            payload.componentId,
+            payload.x,
+            payload.y,
+            payload.targetNodeId,
+            false,
+            payload.rotation
+        );
 
         const component = this.state.components.get(payload.componentId);
         component.owner = payload.sessionId;
@@ -153,6 +163,7 @@ export class MoveCommand extends Command<
         const component = getValidComponent(this.state, payload.componentId, payload.sessionId, false);
         if (!component) return false;
         if (!isFiniteCoordinate(payload.x) || !isFiniteCoordinate(payload.y)) return false;
+        if (payload.rotation !== undefined && !isFiniteCoordinate(payload.rotation)) return false;
         const position = this.state.positions.get(component.id);
         if (!position || position.locked) return false;
         if (payload.targetNodeId === undefined) return true;
@@ -168,11 +179,20 @@ export class MoveEndCommand extends Command<
         cardId: string;
         x: number;
         y: number;
+        rotation?: number;
         targetNodeId?: string;
     }
 > {
     execute(payload: this['payload']) {
-        applyPlacement(this.state, payload.cardId, payload.x, payload.y, payload.targetNodeId);
+        applyPlacement(
+            this.state,
+            payload.cardId,
+            payload.x,
+            payload.y,
+            payload.targetNodeId,
+            true,
+            payload.rotation
+        );
         const component = this.state.components.get(payload.cardId);
         component.owner = '';
         console.log(`Card ${payload.cardId} move ended at (${payload.x}, ${payload.y})`);
@@ -181,13 +201,19 @@ export class MoveEndCommand extends Command<
     validate(payload: this['payload']) {
         const card = getValidComponent(this.state, payload.cardId, payload.sessionId, true);
         if (!card) return false;
-        if (card.owner !== payload.sessionId) {
+        const position = this.state.positions.get(payload.cardId);
+        if (!position || position.locked) return false;
+        const pureRotation =
+            card.owner === '' &&
+            payload.rotation !== undefined &&
+            payload.x === position.x &&
+            payload.y === position.y;
+        if (card.owner !== payload.sessionId && !pureRotation) {
             console.warn(`Card ${payload.cardId} moveend ignored; not owned by player.`);
             return false;
         }
         if (!isFiniteCoordinate(payload.x) || !isFiniteCoordinate(payload.y)) return false;
-        const position = this.state.positions.get(payload.cardId);
-        if (!position || position.locked) return false;
+        if (payload.rotation !== undefined && !isFiniteCoordinate(payload.rotation)) return false;
         if (payload.targetNodeId !== undefined && typeof payload.targetNodeId !== 'string') return false;
         const parentId = resolvePlacementParentId(this.state, payload.targetNodeId);
         if (parentId && !targetCanAcceptChild(this.state, payload.cardId, parentId)) return false;
@@ -222,6 +248,7 @@ export class DrawCommand extends Command<
                     if (remainingPosition && stackPosition) {
                         remainingPosition.x = stackPosition.x;
                         remainingPosition.y = stackPosition.y;
+                        remainingPosition.rotation = stackPosition.rotation;
                         remainingPosition.visible = true;
                         setNodeParent(this.state, remainingId, stackParentId);
                     }
@@ -247,6 +274,7 @@ export class DrawCommand extends Command<
         cardComponent.owner = payload.sessionId;
         const drawnCardPosition = this.state.positions.get(cardId);
         if (drawnCardPosition) {
+            drawnCardPosition.rotation = 0;
             drawnCardPosition.visible = false;
         }
         clearNodeParent(this.state, cardId);
@@ -272,6 +300,7 @@ export class PlayCommand extends Command<
         cardId: string;
         x: number;
         y: number;
+        rotation?: number;
         targetNodeId?: string;
     }
 > {
@@ -279,7 +308,15 @@ export class PlayCommand extends Command<
         const player = this.state.players.get(payload.sessionId);
         player.hand.delete(payload.cardId);
 
-        applyPlacement(this.state, payload.cardId, payload.x, payload.y, payload.targetNodeId);
+        applyPlacement(
+            this.state,
+            payload.cardId,
+            payload.x,
+            payload.y,
+            payload.targetNodeId,
+            true,
+            payload.rotation
+        );
         const position = this.state.positions.get(payload.cardId);
         position.visible = true;
 
@@ -302,6 +339,7 @@ export class PlayCommand extends Command<
             return false;
         }
         if (!isFiniteCoordinate(payload.x) || !isFiniteCoordinate(payload.y)) return false;
+        if (payload.rotation !== undefined && !isFiniteCoordinate(payload.rotation)) return false;
         const position = this.state.positions.get(payload.cardId);
         if (!position || position.locked) return false;
         if (payload.targetNodeId !== undefined && typeof payload.targetNodeId !== 'string') return false;
@@ -369,6 +407,7 @@ export class StackCommand extends Command<
             true,
             targetParentId
         );
+        stackPosition.rotation = normalizeRotation(targetPosition?.rotation ?? 0);
         const stackFlippable = new Flippable(sourceFaceUp);
         const stack = new Stack(
             sourceFaceUp ? [payload.sourceId, payload.targetId] : [payload.targetId, payload.sourceId]

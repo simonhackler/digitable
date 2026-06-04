@@ -294,8 +294,9 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 		.poll(() =>
 			page.evaluate(() => {
 				const selected =
-					(window as SvgEditorWindow).__svgEditorController!.api!._unsafe!.rawCanvas()!.getSelectedElements?.() ??
-					[];
+					(window as SvgEditorWindow)
+						.__svgEditorController!.api!._unsafe!.rawCanvas()!
+						.getSelectedElements?.() ?? [];
 				return {
 					id: selected[0]?.getAttribute('id'),
 					kind: selected[0]?.getAttribute('data-digitable-kind'),
@@ -327,10 +328,10 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 				const global = window as SvgEditorWindow;
 				const slot = global.__svgEditorApi!.getElementById!(slotId)!;
 				return {
-					selected:
-						global.__svgEditorController!.api!._unsafe!.rawCanvas()!.getSelectedElements?.()[0]?.getAttribute(
-							'id'
-						),
+					selected: global
+						.__svgEditorController!.api!._unsafe!.rawCanvas()!
+						.getSelectedElements?.()[0]
+						?.getAttribute('id'),
 					text: slot.querySelector('text')?.textContent
 				};
 			}, slotId)
@@ -348,7 +349,10 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	await page.getByLabel('Slot item count').fill('2');
 	await page.getByLabel('Slot spacing').fill('12');
 	await page.getByRole('button', { name: 'Add content' }).click();
-	await page.getByRole('dialog').getByRole('button', { name: /^western deck$/ }).click();
+	await page
+		.getByRole('dialog')
+		.getByRole('button', { name: /^western deck$/ })
+		.click();
 	await page.getByRole('button', { name: 'Add content' }).click();
 	await page
 		.getByRole('dialog')
@@ -466,8 +470,11 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	expect(pointerEventSanitizeWarnings).toEqual([]);
 });
 
-test('table setup add component survives a deck preview render failure', async ({ page }) => {
+test('table setup handles broken deck previews and preserves slot rotation on autosave', async ({
+	page
+}) => {
 	await seedProjects(page);
+
 	await writeOpfsText(
 		page,
 		'/western-cards/system/cool_deck/front.svg',
@@ -479,10 +486,7 @@ test('table setup add component survives a deck preview render failure', async (
 
 	await page.getByRole('button', { name: 'Add component' }).click();
 	await expect(page.getByRole('button', { name: /^western deck$/ })).toBeVisible();
-});
 
-test('table setup autosave keeps slot rotation from the svg editor', async ({ page }) => {
-	await seedProjects(page);
 	await writeOpfsText(
 		page,
 		'/western-cards/setup/table.svg',

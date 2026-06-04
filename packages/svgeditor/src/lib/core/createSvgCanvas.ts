@@ -1551,6 +1551,17 @@ export const createSvgCanvas = ({
 		deleteSelection() {
 			canvas.deleteSelectedElements?.();
 		},
+		duplicateSelection(opts) {
+			if (typeof canvas.cloneSelectedElements !== 'function') return [];
+			const selected = canvas.getSelectedElements?.().filter(Boolean) ?? [];
+			if (selected.length === 0) return [];
+			const dx = Number.isFinite(opts?.dx) ? Number(opts?.dx) : 20;
+			const dy = Number.isFinite(opts?.dy) ? Number(opts?.dy) : 20;
+			canvas.cloneSelectedElements(dx, dy);
+			return (canvas.getSelectedElements?.() ?? [])
+				.map((element) => element?.getAttribute('id') ?? '')
+				.filter((id) => id.length > 0);
+		},
 		zoomIn() {
 			const current = canvas.getZoom() || 1;
 			const next = current * 1.1;

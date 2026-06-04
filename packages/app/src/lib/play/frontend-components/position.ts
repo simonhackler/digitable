@@ -58,11 +58,15 @@ export class ClientPosition {
 			position.y,
 			position.visible
 		);
+		this.clientPositionState.rotation = position.rotation;
+		this.clientPositionState.parentId = position.parentId;
 
 		sharedValues.s(position).onChange(() => {
 			console.log('position changed', position.x, position.y);
 			this.clientPositionState.x = position.x;
 			this.clientPositionState.y = position.y;
+			this.clientPositionState.rotation = position.rotation;
+			this.clientPositionState.parentId = position.parentId;
 			this.clientPositionState.visible = position.visible;
 			this.onPositionChanged.emit(position);
 		});
@@ -71,7 +75,7 @@ export class ClientPosition {
 	// Or I will need a frontend command or something like that?
 	// I somehow want to tightly couple server and frontend commands
 	// How will the commands then have to look like?
-	moveTo(x: number, y: number, targetNodeId?: string) {
+	moveTo(x: number, y: number, targetNodeId?: string, rotation?: number) {
 		if (
 			this.sharedValues.component.owner !== this.sharedValues.sessionId &&
 			this.sharedValues.component.owner !== ''
@@ -83,6 +87,8 @@ export class ClientPosition {
 		}
 		this.clientPositionState.x = x;
 		this.clientPositionState.y = y;
+		const nextRotation = rotation ?? this.clientPositionState.rotation;
+		this.clientPositionState.rotation = nextRotation;
 		this.onPositionChanged.emit(this.clientPositionState);
 		console.log(this.sharedValues.component.owner);
 
@@ -92,14 +98,17 @@ export class ClientPosition {
 				componentId: this.sharedValues.component.id,
 				x,
 				y,
+				rotation: nextRotation,
 				targetNodeId
 			}
 		});
 	}
 
-	moveEnd(x: number, y: number, targetNodeId?: string) {
+	moveEnd(x: number, y: number, targetNodeId?: string, rotation?: number) {
 		this.clientPositionState.x = x;
 		this.clientPositionState.y = y;
+		const nextRotation = rotation ?? this.clientPositionState.rotation;
+		this.clientPositionState.rotation = nextRotation;
 		this.onPositionChanged.emit(this.clientPositionState);
 		this.sharedValues.room.send('cmd', {
 			commandType: 'moveend',
@@ -107,6 +116,7 @@ export class ClientPosition {
 				cardId: this.sharedValues.component.id,
 				x,
 				y,
+				rotation: nextRotation,
 				targetNodeId
 			}
 		});

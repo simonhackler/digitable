@@ -66,7 +66,7 @@ describe('table setup', () => {
 		expect(svg).not.toContain('#bbf7d0');
 		expect(svg).toContain('Western &amp; Co');
 		expect(svg).toContain('Only &lt;aces&gt;');
-		expect(svg).toContain('data-card-ids="[&quot;western:1&quot;,&quot;western:2&quot;]"');
+		expect(svg).toContain('data-card-ids="[&quot;western:2&quot;,&quot;western:1&quot;]"');
 		expect(svg).toContain('data-deck-stack="true"');
 		expect(svg).toContain('data-svgedit-resizable="false"');
 		expect(svg).toContain('data-locked="true"');

@@ -55,6 +55,10 @@ function optionalNumber(value: unknown, fallback: number): number {
     return isFiniteCoordinate(value) ? value : fallback;
 }
 
+export function normalizeRotation(value: number): number {
+    return ((value % 360) + 360) % 360;
+}
+
 function optionalNonNegativeInteger(value: unknown, fallback = 0): number {
     if (!isFiniteCoordinate(value)) return fallback;
     return Math.max(0, Math.floor(value));
@@ -88,7 +92,7 @@ function createLayoutNode(node: InitLayoutNodePayload): LayoutNode {
     layoutNode.componentId = optionalString(node.componentId);
     layoutNode.width = optionalNumber(node.width, 0);
     layoutNode.height = optionalNumber(node.height, 0);
-    layoutNode.rotation = optionalNumber(node.rotation, 0);
+    layoutNode.rotation = normalizeRotation(optionalNumber(node.rotation, 0));
     layoutNode.locked = optionalBoolean(node.locked, false);
     if (node.layout) {
         layoutNode.layout = createLayout(node.layout);
@@ -282,14 +286,23 @@ export function applyPlacement(
     x: number,
     y: number,
     targetNodeId?: string,
-    defaultToTable = true
+    defaultToTable = true,
+    rotation?: number
 ) {
     const position = state.positions.get(componentId);
     if (!position) return;
     position.x = x;
     position.y = y;
+    const parentId =
+        !defaultToTable && targetNodeId === undefined
+            ? position.parentId
+            : defaultToTable
+                ? resolvePlacementParentId(state, targetNodeId)
+                : targetNodeId ?? '';
+    if (rotation !== undefined) {
+        position.rotation = normalizeRotation(rotation);
+    }
     if (!defaultToTable && targetNodeId === undefined) return;
-    const parentId = defaultToTable ? resolvePlacementParentId(state, targetNodeId) : targetNodeId ?? '';
     setNodeParent(state, componentId, parentId);
 }
 

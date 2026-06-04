@@ -6,9 +6,14 @@ import type {
 	TableSetup
 } from '../../routes/games/[gameName]/setup/table-setup';
 import type { ParsedSvg } from './initComponent';
+import {
+	canonicalPositionFromSetupPose,
+	SETUP_PLAY_CARD_HEIGHT,
+	SETUP_PLAY_CARD_WIDTH,
+	setupSlotCellPosition
+} from './setup-geometry';
 
-export const SETUP_PLAY_CARD_WIDTH = 110;
-export const SETUP_PLAY_CARD_HEIGHT = 150;
+export { SETUP_PLAY_CARD_HEIGHT, SETUP_PLAY_CARD_WIDTH };
 export const SETUP_TABLE_NODE_ID = 'setup-table';
 
 export type LoadedDeck = {
@@ -22,20 +27,16 @@ export type SetupPlayItem = {
 	componentIds: string[];
 	x: number;
 	y: number;
+	rotation: number;
 	deckName?: string;
 	slotId?: string;
+	slotCellIndex?: number;
 };
 
 export type SetupPlayPlan = {
 	setup: TableSetup;
 	items: SetupPlayItem[];
 };
-
-export function buildDefaultInitPayload(loadedDecks: LoadedDeck[]): InitGamePayload {
-	return {
-		stacks: loadedDecks.map((deck) => ({ componentIds: deck.cards.map((card) => card.id) }))
-	};
-}
 
 export function setupReferencedDeckNames(setup: TableSetup): Set<string> {
 	const deckNames = new Set<string>();
@@ -71,10 +72,7 @@ function buildDeckLookup(loadedDecks: LoadedDeck[]) {
 }
 
 function boardTopLeft(x: number, y: number) {
-	return {
-		x: x - SETUP_PLAY_CARD_WIDTH / 2,
-		y: y - SETUP_PLAY_CARD_HEIGHT / 2
-	};
+	return canonicalPositionFromSetupPose({ centerX: x, centerY: y, rotation: 0 });
 }
 
 function resolveCardIds(
@@ -136,7 +134,16 @@ function placementToItem(
 			warn
 		);
 		return componentIds.length > 0
-			? [{ id: componentIds[0], type: 'card', componentIds, deckName: placement.deckName, ...topLeft }]
+			? [
+					{
+						id: componentIds[0],
+						type: 'card',
+						componentIds,
+						deckName: placement.deckName,
+						rotation: placement.rotation,
+						...topLeft
+					}
+				]
 			: [];
 	}
 
@@ -154,7 +161,16 @@ function placementToItem(
 		warn
 	);
 	return componentIds.length > 0
-		? [{ id: placement.id, type: 'stack', componentIds, deckName: placement.deckName, ...topLeft }]
+		? [
+				{
+					id: placement.id,
+					type: 'stack',
+					componentIds,
+					deckName: placement.deckName,
+					rotation: placement.rotation,
+					...topLeft
+				}
+			]
 		: [];
 }
 
@@ -167,9 +183,8 @@ function slotContentToItem(
 	usedCardIds: Set<string>,
 	warn: (message: string) => void
 ): SetupPlayItem[] {
-	const gap = slot.layout?.mode === 'horizontal-flex' ? slot.layout.gap : 0;
-	const x = slot.x + index * (SETUP_PLAY_CARD_WIDTH + gap);
-	const y = slot.y;
+	const cellIndex = slot.layout?.mode === 'grid' ? (content.cellIndex ?? index) : index;
+	const { x, y } = setupSlotCellPosition(slot, cellIndex);
 
 	if (content.type === 'card') {
 		const componentIds = resolveCardIds(
@@ -192,8 +207,10 @@ function slotContentToItem(
 						componentIds,
 						x,
 						y,
+						rotation: slot.rotation ?? 0,
 						deckName: content.deckName,
-						slotId: slot.id
+						slotId: slot.id,
+						slotCellIndex: slot.layout?.mode === 'grid' ? cellIndex : undefined
 					}
 				]
 			: [];
@@ -219,8 +236,10 @@ function slotContentToItem(
 					componentIds,
 					x,
 					y,
+					rotation: slot.rotation ?? 0,
 					deckName: content.deckName,
-					slotId: slot.id
+					slotId: slot.id,
+					slotCellIndex: slot.layout?.mode === 'grid' ? cellIndex : undefined
 				}
 			]
 		: [];
@@ -297,11 +316,17 @@ export function buildSetupInitPayload(plan: SetupPlayPlan): InitGamePayload {
 				y: slot.y,
 				width: slot.width,
 				height: slot.height,
+				rotation: slot.rotation ?? 0,
 				visible: true,
 				locked: true,
 				layout: {
 					mode: slot.layout?.mode ?? 'free',
-					maxChildren: slot.layout?.mode === 'horizontal-flex' ? slot.layout.visibleCount : 0,
+					maxChildren:
+						slot.layout?.mode === 'horizontal-flex'
+							? slot.layout.visibleCount
+							: slot.layout?.mode === 'grid'
+								? slot.layout.rows * slot.layout.columns
+								: 0,
 					acceptedDeckNames: slot.acceptedDeckNames,
 					acceptedCardIds: slot.acceptedCardIds
 				}
@@ -315,6 +340,7 @@ export function buildSetupInitPayload(plan: SetupPlayPlan): InitGamePayload {
 				y: item.y,
 				width: SETUP_PLAY_CARD_WIDTH,
 				height: SETUP_PLAY_CARD_HEIGHT,
+				rotation: item.rotation,
 				visible: true,
 				locked: false
 			}))

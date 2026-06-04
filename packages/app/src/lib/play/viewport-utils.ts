@@ -6,7 +6,10 @@ export type CreateViewportOptions = {
 	worldHeight?: number;
 	minScale?: number;
 	maxScale?: number;
+	wheelZoomPercent?: number;
 };
+
+const DEFAULT_WHEEL_ZOOM_PERCENT = 0.04;
 
 export function createViewport(app: Application, options: CreateViewportOptions = {}): Viewport {
 	const worldWidth = options.worldWidth ?? 6000;
@@ -19,7 +22,9 @@ export function createViewport(app: Application, options: CreateViewportOptions 
 		events: app.renderer.events,
 		disableOnContextMenu: true
 	});
-	viewport.pinch().wheel();
+	viewport.pinch().wheel({
+		percent: options.wheelZoomPercent ?? DEFAULT_WHEEL_ZOOM_PERCENT
+	});
 	viewport.drag({
 		mouseButtons: 'right'
 	});

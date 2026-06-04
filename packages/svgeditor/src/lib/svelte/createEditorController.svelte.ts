@@ -153,6 +153,21 @@ class EditorController {
 		this.api?.deleteSelection();
 	};
 
+	duplicateSelection = () => {
+		const ids = this.api?.duplicateSelection() ?? [];
+		if (ids.length === 0) return ids;
+
+		const rawCanvas = this.api?._unsafe?.rawCanvas?.();
+		const selected = rawCanvas?.getSelectedElements?.() ?? [];
+		this.mode = this.api?.getMode() ?? this.mode;
+		this.selection = selected;
+		this.multiselect = selected.length > 1;
+		this.selectedIds = ids;
+		this.refreshElementTree();
+		this.refreshHistory();
+		return ids;
+	};
+
 	selectAll = () => {
 		const rawCanvas = this.api?._unsafe?.rawCanvas?.();
 		if (rawCanvas && typeof rawCanvas.selectAllInCurrentLayer === 'function') {

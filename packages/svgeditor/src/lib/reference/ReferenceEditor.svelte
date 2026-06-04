@@ -256,6 +256,7 @@
 		runIfModShortcut(() => controller.clear(), { requireShift: true })
 	);
 	onModCombo(['a'], () => runIfModShortcut(() => controller.selectAll()));
+	onModCombo(['d'], () => runIfModShortcut(() => controller.duplicateSelection()));
 	onModCombo(['='], () => runIfModShortcut(() => controller.zoomIn()));
 	onModCombo(['+'], () => runIfModShortcut(() => controller.zoomIn(), { allowShift: true }));
 	onModCombo(['-'], () => runIfModShortcut(() => controller.zoomOut()));
@@ -338,7 +339,7 @@
 				event.preventDefault();
 				return;
 			}
-			if ((key === 'a' || key === 'n') && !event.shiftKey) {
+			if ((key === 'a' || key === 'd' || key === 'n') && !event.shiftKey) {
 				event.preventDefault();
 				return;
 			}

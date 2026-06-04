@@ -50,6 +50,7 @@ export type SvgCanvasRawApi = {
 	changeSelectedAttribute?: (attr: string, val: string | number, elems?: Element[]) => void;
 	clear?: () => void;
 	clearSelection?: (noUndo?: boolean) => void;
+	cloneSelectedElements?: (x: number, y: number) => void;
 	contentH?: number;
 	contentW?: number;
 	deleteSelectedElements?: () => void;
@@ -170,6 +171,7 @@ export type SvgEditorApi = {
 
 	clear(): void;
 	deleteSelection(): void;
+	duplicateSelection(opts?: { dx?: number; dy?: number }): string[];
 
 	zoomIn(): void;
 	zoomOut(): void;

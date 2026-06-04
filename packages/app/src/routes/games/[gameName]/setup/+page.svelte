@@ -21,6 +21,7 @@
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import {
 		createHorizontalFlexSlotLayout,
+		createGridSlotLayout,
 		createDefaultTableSetup,
 		normalizeTableSvg,
 		normalizeSetupSlot,
@@ -217,7 +218,7 @@
 
 	const selectedSlot = $derived(setup.slots.find((slot) => slot.id === selectedSlotId) ?? null);
 	const selectedSlotLayout = $derived<SetupSlotLayout>(
-		selectedSlot?.layout?.mode === 'horizontal-flex' ? selectedSlot.layout : { mode: 'free' }
+		selectedSlot?.layout ?? { mode: 'free' }
 	);
 	const selectedSlotContents = $derived(selectedSlot?.contents ?? []);
 	const selectedPlacement = $derived(
@@ -546,9 +547,14 @@
 	}
 
 	function slotCanAddContent(slot: SetupSlot) {
-		const layout = slot.layout?.mode === 'horizontal-flex' ? slot.layout : null;
-		if (!layout) return false;
-		return (slot.contents ?? []).length < layout.visibleCount;
+		const capacity = slotContentCapacity(slot.layout ?? { mode: 'free' });
+		return capacity > 0 && (slot.contents ?? []).length < capacity;
+	}
+
+	function slotContentCapacity(layout: SetupSlotLayout) {
+		if (layout.mode === 'horizontal-flex') return layout.visibleCount;
+		if (layout.mode === 'grid') return layout.rows * layout.columns;
+		return 0;
 	}
 
 	function setSlotLayoutMode(slotId: string, mode: SetupSlotLayout['mode']) {
@@ -562,6 +568,14 @@
 			updateSlot(slotId, {
 				layout,
 				contents: (current.contents ?? []).slice(0, layout.visibleCount)
+			});
+			return;
+		}
+		if (mode === 'grid') {
+			const layout = current.layout?.mode === 'grid' ? current.layout : createGridSlotLayout();
+			updateSlot(slotId, {
+				layout,
+				contents: (current.contents ?? []).slice(0, slotContentCapacity(layout))
 			});
 			return;
 		}
@@ -582,6 +596,21 @@
 		updateSlot(slotId, {
 			layout,
 			contents: (current.contents ?? []).slice(0, layout.visibleCount)
+		});
+	}
+
+	function updateGridSlotLayout(
+		slotId: string,
+		patch: Partial<Extract<SetupSlotLayout, { mode: 'grid' }>>
+	) {
+		const current = setup.slots.find((candidate) => candidate.id === slotId);
+		if (!current) return;
+		const currentLayout =
+			current.layout?.mode === 'grid' ? current.layout : createGridSlotLayout();
+		const layout = createGridSlotLayout({ ...currentLayout, ...patch });
+		updateSlot(slotId, {
+			layout,
+			contents: (current.contents ?? []).slice(0, slotContentCapacity(layout))
 		});
 	}
 
@@ -1002,6 +1031,7 @@
 					>
 						<option value="free">Free</option>
 						<option value="horizontal-flex">Horizontal flex</option>
+						<option value="grid">Grid</option>
 					</select>
 				</label>
 				{#if selectedSlotLayout.mode === 'horizontal-flex'}
@@ -1033,11 +1063,68 @@
 							/>
 						</label>
 					</div>
+				{:else if selectedSlotLayout.mode === 'grid'}
+					<div class="grid grid-cols-2 gap-2">
+						<label class="grid gap-1 font-medium">
+							Rows
+							<Input
+								aria-label="Slot grid rows"
+								type="number"
+								min="1"
+								value={selectedSlotLayout.rows}
+								oninput={(event) =>
+									updateGridSlotLayout(selectedSlot.id, {
+										rows: Number(event.currentTarget.value)
+									})}
+							/>
+						</label>
+						<label class="grid gap-1 font-medium">
+							Columns
+							<Input
+								aria-label="Slot grid columns"
+								type="number"
+								min="1"
+								value={selectedSlotLayout.columns}
+								oninput={(event) =>
+									updateGridSlotLayout(selectedSlot.id, {
+										columns: Number(event.currentTarget.value)
+									})}
+							/>
+						</label>
+						<label class="grid gap-1 font-medium">
+							Column spacing
+							<Input
+								aria-label="Slot grid column spacing"
+								type="number"
+								min="0"
+								value={selectedSlotLayout.gapX}
+								oninput={(event) =>
+									updateGridSlotLayout(selectedSlot.id, {
+										gapX: Number(event.currentTarget.value)
+									})}
+							/>
+						</label>
+						<label class="grid gap-1 font-medium">
+							Row spacing
+							<Input
+								aria-label="Slot grid row spacing"
+								type="number"
+								min="0"
+								value={selectedSlotLayout.gapY}
+								oninput={(event) =>
+									updateGridSlotLayout(selectedSlot.id, {
+										gapY: Number(event.currentTarget.value)
+									})}
+							/>
+						</label>
+					</div>
+				{/if}
+				{#if selectedSlotLayout.mode === 'horizontal-flex' || selectedSlotLayout.mode === 'grid'}
 					<div class="space-y-2">
 						<div class="flex items-center justify-between gap-2">
 							<h3 class="font-medium">Initial contents</h3>
 							<Badge variant="secondary"
-								>{selectedSlotContents.length}/{selectedSlotLayout.visibleCount}</Badge
+								>{selectedSlotContents.length}/{slotContentCapacity(selectedSlotLayout)}</Badge
 							>
 						</div>
 						<div class="space-y-1">
@@ -1080,7 +1167,7 @@
 							<Dialog.Content class="max-h-[80vh] overflow-hidden sm:max-w-xl">
 								<Dialog.Header>
 									<Dialog.Title>Add content</Dialog.Title>
-									<Dialog.Description>Select a deck or card for the flex cells.</Dialog.Description>
+									<Dialog.Description>Select a deck or card for the slot cells.</Dialog.Description>
 								</Dialog.Header>
 								<div class="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
 									{#each decks as deck (deck.name)}

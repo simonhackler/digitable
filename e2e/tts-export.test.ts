@@ -229,8 +229,10 @@ async function attachTtsExportFile(
 	};
 }
 
-test('inlines local image refs before rasterizing TTS sheets', async ({ page }) => {
-	test.setTimeout(60_000);
+test('local TTS export inlines image refs and creates distinct timestamped folders', async ({
+	page
+}) => {
+	test.setTimeout(90_000);
 	const exportErrors: string[] = [];
 	page.on('console', (message) => {
 		if (message.type() === 'error') {
@@ -247,7 +249,9 @@ test('inlines local image refs before rasterizing TTS sheets', async ({ page }) 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
 		timeout: 30_000
 	});
-	const exportFolderName = await latestTtsExportFolder(page, projectName);
+	const firstFolders = await ttsExportFolders(page, projectName);
+	expect(firstFolders).toHaveLength(1);
+	const exportFolderName = firstFolders[0];
 	const exportPath = `${projectName}/tts-export/${exportFolderName}`;
 	await expect(page.getByText(`Saved to ${exportPath}`)).toBeVisible();
 	expect(await opfsFileExists(page, `${exportPath}/local-image-deck_0_70_sheet.png`)).toBe(true);
@@ -265,6 +269,25 @@ test('inlines local image refs before rasterizing TTS sheets', async ({ page }) 
 		);
 	expect(remainingImageHrefs.some((href) => href.includes('/placeholder.svg'))).toBe(false);
 	expect(remainingImageHrefs.some((href) => decodeSvgDataUrl(href).includes('#0f172a'))).toBe(true);
+
+	await page.goto('/app/games');
+	await page.goto(`/app/games/${projectName}/export/tts`);
+	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
+		timeout: 30_000
+	});
+
+	const secondFolders = await ttsExportFolders(page, projectName);
+	expect(secondFolders).toHaveLength(2);
+	expect(new Set(secondFolders).size).toBe(2);
+	expect(await opfsFileExists(page, `${exportPath}/local-image-deck_0_70_sheet.png`)).toBe(true);
+
+	const newestFolder = secondFolders.find((folder) => folder !== exportFolderName);
+	expect(newestFolder).toBeTruthy();
+	const secondExportPath = `${projectName}/tts-export/${newestFolder}`;
+	await expect(page.getByText(`Saved to ${secondExportPath}`)).toBeVisible();
+	expect(await opfsFileExists(page, `${secondExportPath}/local-image-deck_0_70_sheet.png`)).toBe(
+		true
+	);
 
 	expect(exportErrors.filter((message) => message.includes('Error taking image'))).toEqual([]);
 	expect(
@@ -343,45 +366,4 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	expect(
 		exportErrors.filter((message) => message.includes('[takeImage] Broken image src'))
 	).toEqual([]);
-});
-
-test('creates a distinct timestamped folder for each TTS export', async ({ page }) => {
-	test.setTimeout(90_000);
-
-	await page.goto('/app/games');
-	await seedTtsLocalProject(page);
-
-	await useBrowserStorage(page, 1);
-
-	await page.goto(`/app/games/${projectName}/export/tts`);
-	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
-		timeout: 30_000
-	});
-	const firstFolders = await ttsExportFolders(page, projectName);
-	expect(firstFolders).toHaveLength(1);
-	const firstExportPath = `${projectName}/tts-export/${firstFolders[0]}`;
-	expect(await opfsFileExists(page, `${firstExportPath}/local-image-deck_0_70_sheet.png`)).toBe(
-		true
-	);
-
-	await page.goto('/app/games');
-	await page.goto(`/app/games/${projectName}/export/tts`);
-	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
-		timeout: 30_000
-	});
-
-	const secondFolders = await ttsExportFolders(page, projectName);
-	expect(secondFolders).toHaveLength(2);
-	expect(new Set(secondFolders).size).toBe(2);
-	expect(await opfsFileExists(page, `${firstExportPath}/local-image-deck_0_70_sheet.png`)).toBe(
-		true
-	);
-
-	const newestFolder = secondFolders.find((folder) => folder !== firstFolders[0]);
-	expect(newestFolder).toBeTruthy();
-	const secondExportPath = `${projectName}/tts-export/${newestFolder}`;
-	await expect(page.getByText(`Saved to ${secondExportPath}`)).toBeVisible();
-	expect(await opfsFileExists(page, `${secondExportPath}/local-image-deck_0_70_sheet.png`)).toBe(
-		true
-	);
 });
