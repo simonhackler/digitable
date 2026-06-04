@@ -39,7 +39,9 @@ test('sign up creates an account and opens the app', async ({ page }) => {
 
 test('sign in opens the app for an existing account', async ({ page, context }) => {
 	await context.clearCookies();
-	await page.goto('/app/sign-in', { waitUntil: 'networkidle' });
+	await page.goto(`/app/sign-in?next=${encodeURIComponent('/app/games?source=sign-in-next')}`, {
+		waitUntil: 'networkidle'
+	});
 
 	await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 
@@ -47,5 +49,5 @@ test('sign in opens the app for an existing account', async ({ page, context }) 
 	await page.getByLabel('Password').fill(password);
 	await page.getByLabel('Password').press('Enter');
 
-	await expect(page).toHaveURL(/\/app\/games$/, { timeout: 20000 });
+	await expect(page).toHaveURL(/\/app\/games\?source=sign-in-next$/, { timeout: 20000 });
 });

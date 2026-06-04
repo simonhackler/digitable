@@ -145,6 +145,30 @@ async function startPlaytestAndGetInvite(page: Page, projectSlug: string) {
 	return inviteInput.inputValue();
 }
 
+async function openAnonymousPlaytestInvite(page: Page, inviteUrl: string) {
+	await page.goto(`${inviteUrl}?e2e=1`);
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\/join\?next=/);
+	await expect(page.getByRole('heading', { name: 'Join this playtest' })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+		'href',
+		/\/sign-in\?next=%2Fapp%2Fplaytests%2F[0-9a-f-]+%3Fe2e%3D1$/
+	);
+	await expect(page.getByRole('link', { name: 'Continue as anonymous user' })).toHaveAttribute(
+		'href',
+		/\/app\/legal\/accept\?anonymous=playtest&next=%2Fapp%2Fplaytests%2F[0-9a-f-]+%3Fe2e%3D1$/
+	);
+	await page.getByRole('link', { name: 'Continue as anonymous user' }).click();
+	await expect(page).toHaveURL(/\/app\/legal\/accept\?anonymous=playtest&next=/);
+	await expect(
+		page.getByRole('heading', { name: 'Review the current legal documents.' })
+	).toBeVisible();
+	await page.getByRole('checkbox').check();
+	await page.getByRole('button', { name: 'Continue' }).click();
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/, { timeout: 20_000 });
+	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
+	await waitForPixi(page);
+}
+
 test('card strokes are synced to the card and can be deleted', async ({ page }) => {
 	test.setTimeout(60_000);
 	await openPixiSmokeTest(page);
@@ -573,6 +597,34 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	await expect(page.getByRole('main').getByText(/-playtest-[0-9a-f]{8}/)).toHaveCount(0);
 });
 
+test('anonymous playtest invitee accepts legal terms and reopens the invite', async ({
+	page,
+	browser
+}) => {
+	test.setTimeout(120_000);
+	const inviteeContext = await browser.newContext({
+		baseURL: test.info().project.use.baseURL as string | undefined
+	});
+	const inviteePage = await inviteeContext.newPage();
+
+	try {
+		await signUp(page);
+		await page.goto(appPath('/games'));
+		await seedProjectFiles(page, 'pixi-play-smoke');
+		await useBrowserStorage(page);
+		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+
+		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
+
+		await openAnonymousPlaytestInvite(inviteePage, inviteUrl);
+		await inviteePage.goto(`${inviteUrl}?e2e=1`);
+		await expect(inviteePage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+		await waitForPixi(inviteePage);
+	} finally {
+		await inviteeContext.close();
+	}
+});
+
 test('playtest invitees share private room state', async ({ page, browser }) => {
 	test.setTimeout(120_000);
 	const secondContext = await browser.newContext({
@@ -594,11 +646,7 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 		await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
 		await waitForPixi(page);
 
-		await signUp(secondPage);
-		await secondPage.goto(`${inviteUrl}?e2e=1`);
-		await expect(secondPage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-		await expect(secondPage.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
-		await waitForPixi(secondPage);
+		await openAnonymousPlaytestInvite(secondPage, inviteUrl);
 
 		let firstStackId: string | null = null;
 		await expect
@@ -670,10 +718,7 @@ test('playtest invitee notes are imported into the creator game feedback folder'
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
-		await signUp(secondPage);
-		await secondPage.goto(`${inviteUrl}?e2e=1`);
-		await expect(secondPage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-		await waitForPixi(secondPage);
+		await openAnonymousPlaytestInvite(secondPage, inviteUrl);
 
 		await secondPage.getByRole('button', { name: 'Playtest notes' }).click();
 		await secondPage

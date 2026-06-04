@@ -8,15 +8,18 @@ import { loadPlaytestProject } from '$lib/server/playtest-storage';
 import type { PageServerLoad } from './$types';
 
 export const ssr = false;
+const APP_BASE = '/app';
 
-export const load: PageServerLoad = async ({ locals, params }) => {
-	if (!locals.user) {
-		redirect(302, '/app/sign-in');
-	}
-
+export const load: PageServerLoad = async ({ locals, params, url }) => {
 	const playtestId = params.playtestId;
 	if (!playtestId) {
 		error(400, 'Missing playtest id');
+	}
+
+	if (!locals.user) {
+		const next = `${url.pathname}${url.search}`;
+		const joinPath = `${APP_BASE}/playtests/${encodeURIComponent(playtestId)}/join`;
+		redirect(303, `${joinPath}?next=${encodeURIComponent(next)}`);
 	}
 
 	const playtest = await loadPlaytestProject(playtestId);

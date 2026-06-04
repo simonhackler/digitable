@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { base, resolve } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import AuthBackdrop from '$lib/components/AuthBackdrop.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -11,6 +11,11 @@
 	let errorMessage = $derived(data.googleError);
 	let isSubmitting = $state(false);
 	let isGoogleSubmitting = $state(false);
+	const googleErrorCallbackURL = $derived(
+		data.next === '/app/games'
+			? '/sign-in?error=google'
+			: `/sign-in?error=google&next=${encodeURIComponent(data.next)}`
+	);
 
 	async function readErrorMessage(response: Response) {
 		const contentType = response.headers.get('content-type') ?? '';
@@ -38,7 +43,7 @@
 		errorMessage = '';
 		isSubmitting = true;
 
-		const response = await fetch(`${base}/api/auth/sign-in/email`, {
+		const response = await fetch(resolve('/api/auth/sign-in/email'), {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json'
@@ -55,22 +60,22 @@
 			return;
 		}
 
-		window.location.assign('/app/games');
+		window.location.assign(data.next);
 	}
 
 	async function handleGoogleSignIn() {
 		errorMessage = '';
 		isGoogleSubmitting = true;
 
-		const response = await fetch(`${base}/api/auth/sign-in/social`, {
+		const response = await fetch(resolve('/api/auth/sign-in/social'), {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json'
 			},
 			body: JSON.stringify({
 				provider: 'google',
-				callbackURL: '/app/games',
-				errorCallbackURL: '/sign-in?error=google'
+				callbackURL: data.next,
+				errorCallbackURL: googleErrorCallbackURL
 			})
 		});
 

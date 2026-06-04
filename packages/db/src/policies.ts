@@ -99,6 +99,10 @@ export async function getMissingCurrentPolicies(userId: string) {
 		);
 }
 
+export async function getCurrentPolicies() {
+	return db.select().from(policyVersion).where(eq(policyVersion.isCurrent, true));
+}
+
 export async function recordCurrentPolicyAcceptances(input: RecordCurrentPolicyAcceptancesInput) {
 	const missingPolicies = await getMissingCurrentPolicies(input.userId);
 
