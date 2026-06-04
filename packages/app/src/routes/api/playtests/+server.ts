@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { createPrivateRoom } from '@svg-table/db/private-rooms';
 import {
-	savePlaytestProject,
-	validatePlaytestStorageConfig,
-	type IncomingPlaytestFile
-} from '$lib/server/playtest-storage';
+	formatByteLimit,
+	getPlaytestProjectMaxBytes,
+	getPlaytestProjectSize
+} from '$lib/server/playtest-project-size';
+import { savePlaytestProject, type IncomingPlaytestFile } from '$lib/server/playtest-storage';
 
 type CreatePlaytestBody = {
 	projectName?: unknown;
@@ -22,7 +23,9 @@ function validateFile(file: unknown): IncomingPlaytestFile {
 		typeof input.path !== 'string' ||
 		typeof input.contentBase64 !== 'string' ||
 		typeof input.contentType !== 'string' ||
-		typeof input.size !== 'number'
+		typeof input.size !== 'number' ||
+		!Number.isSafeInteger(input.size) ||
+		input.size < 0
 	) {
 		error(400, 'Invalid file entry');
 	}
@@ -40,8 +43,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		error(401, 'Not authenticated');
 	}
 
-	validatePlaytestStorageConfig();
-
 	const body = (await request.json()) as CreatePlaytestBody;
 	if (typeof body.projectName !== 'string' || body.projectName.length === 0) {
 		error(400, 'Missing projectName');
@@ -53,6 +54,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const playtestId = randomUUID();
 	const files = body.files.map(validateFile);
+	const maxProjectBytes = getPlaytestProjectMaxBytes();
+	if (getPlaytestProjectSize(files) >= maxProjectBytes) {
+		error(413, `Playtest project must be smaller than ${formatByteLimit(maxProjectBytes)}`);
+	}
+
 	const room = await createPrivateRoom({
 		ownerUserId: locals.user.id,
 		inviteCode: playtestId

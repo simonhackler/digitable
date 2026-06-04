@@ -507,6 +507,10 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
 	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
 	await waitForPixi(page);
+	await page.goto(`${inviteUrl}?e2e=1`);
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
+	await waitForPixi(page);
 	await expect
 		.poll(() => page.evaluate(() => localStorage.getItem('storage-preference')))
 		.toBe('directory');
