@@ -1,20 +1,20 @@
-import type { SetupSlot, TableSetup } from '../../routes/games/[gameName]/setup/table-setup';
-import { rotatePoint, setupSlotCellCount } from './setup-geometry';
-import type { SetupPlayItem, SetupPlayPlan } from './setup-play';
+import type { TableSlot, Table } from '../../routes/games/[gameName]/setup/table';
+import { rotatePoint, tableSlotCellCount } from './table-geometry';
+import type { TablePlayItem, TablePlayPlan } from './table-play';
 
-export type SetupItemMetadata = Pick<
-	SetupPlayItem,
+export type TableItemMetadata = Pick<
+	TablePlayItem,
 	'id' | 'type' | 'componentIds' | 'deckName'
 >;
 
-export type SetupSlotState = {
+export type TableSlotState = {
 	slotOccupants: Map<string, string[]>;
 	gridCellOccupants: Map<string, Map<number, string>>;
 	itemSlotIds: Map<string, string>;
 };
 
-export function setupItemMetadataById(plan: SetupPlayPlan | null): Map<string, SetupItemMetadata> {
-	const metadata = new Map<string, SetupItemMetadata>();
+export function tableItemMetadataById(plan: TablePlayPlan | null): Map<string, TableItemMetadata> {
+	const metadata = new Map<string, TableItemMetadata>();
 	if (!plan) return metadata;
 
 	for (const item of plan.items) {
@@ -39,15 +39,15 @@ export function setupItemMetadataById(plan: SetupPlayPlan | null): Map<string, S
 	return metadata;
 }
 
-export function initialSetupSlotState(plan: SetupPlayPlan | null): SetupSlotState {
+export function initialTableSlotState(plan: TablePlayPlan | null): TableSlotState {
 	const slotOccupants = new Map<string, string[]>();
 	const gridCellOccupants = new Map<string, Map<number, string>>();
 	const itemSlotIds = new Map<string, string>();
 	if (!plan) return { slotOccupants, gridCellOccupants, itemSlotIds };
 
-	const slotsById = new Map(plan.setup.slots.map((slot) => [slot.id, slot]));
+	const slotsById = new Map(plan.table.slots.map((slot) => [slot.id, slot]));
 
-	for (const slot of plan.setup.slots) {
+	for (const slot of plan.table.slots) {
 		slotOccupants.set(slot.id, []);
 		if (slot.layout?.mode === 'grid') gridCellOccupants.set(slot.id, new Map());
 	}
@@ -58,7 +58,7 @@ export function initialSetupSlotState(plan: SetupPlayPlan | null): SetupSlotStat
 		if (slot?.layout?.mode === 'grid') {
 			const cellIndex =
 				item.slotCellIndex !== undefined && item.slotCellIndex >= 0
-					? Math.min(item.slotCellIndex, setupSlotCellCount(slot) - 1)
+					? Math.min(item.slotCellIndex, tableSlotCellCount(slot) - 1)
 					: 0;
 			gridCellOccupants.get(item.slotId)?.set(cellIndex, item.id);
 			itemSlotIds.set(item.id, item.slotId);
@@ -73,7 +73,7 @@ export function initialSetupSlotState(plan: SetupPlayPlan | null): SetupSlotStat
 	return { slotOccupants, gridCellOccupants, itemSlotIds };
 }
 
-function acceptedCardMatches(acceptedCardId: string, item: SetupItemMetadata): boolean {
+function acceptedCardMatches(acceptedCardId: string, item: TableItemMetadata): boolean {
 	return item.componentIds.some(
 		(componentId) =>
 			acceptedCardId === componentId ||
@@ -81,7 +81,7 @@ function acceptedCardMatches(acceptedCardId: string, item: SetupItemMetadata): b
 	);
 }
 
-export function setupSlotAcceptsItem(slot: SetupSlot, item: SetupItemMetadata): boolean {
+export function tableSlotAcceptsItem(slot: TableSlot, item: TableItemMetadata): boolean {
 	const acceptsAny = slot.acceptedDeckNames.length === 0 && slot.acceptedCardIds.length === 0;
 	if (acceptsAny) return true;
 
@@ -92,16 +92,16 @@ export function setupSlotAcceptsItem(slot: SetupSlot, item: SetupItemMetadata): 
 	return slot.acceptedCardIds.some((acceptedCardId) => acceptedCardMatches(acceptedCardId, item));
 }
 
-export function setupSlotCapacity(slot: SetupSlot): number {
-	const fixedCapacity = setupSlotCellCount(slot);
+export function tableSlotCapacity(slot: TableSlot): number {
+	const fixedCapacity = tableSlotCellCount(slot);
 	return fixedCapacity > 0 ? fixedCapacity : Number.POSITIVE_INFINITY;
 }
 
-export function setupSlotIsFixedLayout(slot: SetupSlot): boolean {
+export function tableSlotIsFixedLayout(slot: TableSlot): boolean {
 	return slot.layout?.mode === 'horizontal-flex' || slot.layout?.mode === 'grid';
 }
 
-function pointInSlot(slot: SetupSlot, point: { x: number; y: number }): boolean {
+function pointInSlot(slot: TableSlot, point: { x: number; y: number }): boolean {
 	const rotation = slot.rotation ?? 0;
 	const slotCenter = { x: slot.x + slot.width / 2, y: slot.y + slot.height / 2 };
 	const localPoint = rotatePoint(point, slotCenter, -rotation);
@@ -113,21 +113,21 @@ function pointInSlot(slot: SetupSlot, point: { x: number; y: number }): boolean 
 	);
 }
 
-export function findSetupSlotAtPoint(
-	setup: TableSetup,
+export function findTableSlotAtPoint(
+	table: Table,
 	point: { x: number; y: number }
-): SetupSlot | null {
-	return setup.slots.find((slot) => pointInSlot(slot, point)) ?? null;
+): TableSlot | null {
+	return table.slots.find((slot) => pointInSlot(slot, point)) ?? null;
 }
 
-export function pointIsInsideSetupTable(
-	setup: TableSetup,
+export function pointIsInsideTable(
+	table: Table,
 	point: { x: number; y: number }
 ): boolean {
 	return (
 		point.x >= 0 &&
-		point.x <= setup.table.width &&
+		point.x <= table.table.width &&
 		point.y >= 0 &&
-		point.y <= setup.table.height
+		point.y <= table.table.height
 	);
 }

@@ -30,7 +30,7 @@ export interface InitLayoutNodePayload {
 	layout?: InitLayoutPayload;
 }
 
-export interface InitSetupItemPayload {
+export interface InitTableItemPayload {
 	id: string;
 	type: 'card' | 'stack';
 	componentIds: string[];
@@ -42,7 +42,7 @@ export interface InitSetupItemPayload {
 
 export interface InitGamePayload {
 	stacks?: InitStackPayload[];
-	setupItems?: InitSetupItemPayload[];
+	tableItems?: InitTableItemPayload[];
 	layoutNodes?: InitLayoutNodePayload[];
 }
 

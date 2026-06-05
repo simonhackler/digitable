@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-	createDefaultTableSetup,
+	createDefaultTable,
 	normalizeTableSvg,
-	normalizeSetupSlot,
-	setupToSvg,
+	normalizeTableSlot,
+	tableToSvg,
 	snapPlacementToGrid,
 	slotToSvgElementJson,
-	svgToTableSetup,
-	type TableSetup
-} from './table-setup';
+	svgToTable,
+	type Table
+} from './table';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 
 globalThis.DOMParser = DOMParser as unknown as typeof globalThis.DOMParser;
@@ -31,7 +31,7 @@ function hasDeckStack(group: Element) {
 
 describe('table setup', () => {
 	it('renders table setup as deterministic svg', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [
@@ -60,7 +60,7 @@ describe('table setup', () => {
 			]
 		};
 
-		const svg = setupToSvg(setup);
+		const svg = tableToSvg(setup);
 		expect(svg).toContain('viewBox="0 0 800 600"');
 		expect(svg).not.toContain('#166534');
 		expect(svg).not.toContain('#bbf7d0');
@@ -109,7 +109,7 @@ describe('table setup', () => {
 	});
 
 	it('normalizes horizontal flex slots to visible card-sized cells', () => {
-		const slot = normalizeSetupSlot({
+		const slot = normalizeTableSlot({
 			id: 'slot-1',
 			label: 'Market',
 			x: 50,
@@ -151,7 +151,7 @@ describe('table setup', () => {
 	});
 
 	it('renders horizontal flex slot contents as locked card-sized visuals', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [],
@@ -179,7 +179,7 @@ describe('table setup', () => {
 			]
 		};
 
-		const svg = setupToSvg(setup, {
+		const svg = tableToSvg(setup, {
 			cardSvgs: new Map([
 				['western:1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Ace</text></svg>']
 			]),
@@ -197,7 +197,7 @@ describe('table setup', () => {
 		expect(svg).toContain('data-deck-stack="true"');
 		expect(svg).toContain('data-locked="true"');
 
-		const parsed = svgToTableSetup(svg, setup);
+		const parsed = svgToTable(svg, setup);
 		expect(parsed.slots[0]).toEqual(
 			expect.objectContaining({
 				width: 240,
@@ -220,13 +220,13 @@ describe('table setup', () => {
 		});
 
 		expect(placement).toEqual(expect.objectContaining({ x: 155, y: 155 }));
-		expect(setupToSvg({ ...createDefaultTableSetup(), placements: [placement] })).toContain(
+		expect(tableToSvg({ ...createDefaultTable(), placements: [placement] })).toContain(
 			'transform="translate(100 80) rotate(0 55 75)"'
 		);
 	});
 
 	it('roundtrips generated slot and placement coordinates through svg markup', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [
@@ -255,14 +255,14 @@ describe('table setup', () => {
 			]
 		};
 
-		const parsed = svgToTableSetup(setupToSvg(setup), setup);
+		const parsed = svgToTable(tableToSvg(setup), setup);
 
 		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 195, y: 235 }));
 		expect(parsed.slots[0]).toEqual(expect.objectContaining({ x: 100, y: 110 }));
 	});
 
 	it('folds svg editor slot scale transforms into saved slot dimensions', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [],
@@ -279,12 +279,12 @@ describe('table setup', () => {
 				}
 			]
 		};
-		const svg = setupToSvg(setup).replace(
+		const svg = tableToSvg(setup).replace(
 			'transform="translate(100 110)"',
 			'transform="matrix(1.5 0 0 2 100 110)"'
 		);
 
-		const parsed = svgToTableSetup(svg, setup);
+		const parsed = svgToTable(svg, setup);
 
 		expect(parsed.slots[0]).toEqual(
 			expect.objectContaining({ x: 100, y: 110, width: 330, height: 600 })
@@ -292,7 +292,7 @@ describe('table setup', () => {
 	});
 
 	it('snaps legacy centered placement coordinates when parsing saved svgs', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [],
@@ -306,13 +306,13 @@ describe('table setup', () => {
 			'</svg>'
 		].join('\n');
 
-		const parsed = svgToTableSetup(svg, setup);
+		const parsed = svgToTable(svg, setup);
 
 		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 195, y: 235, rotation: 15 }));
 	});
 
 	it('renders placement card art as a locked image when card svg is available', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [
@@ -330,7 +330,7 @@ describe('table setup', () => {
 			slots: []
 		};
 
-		const svg = setupToSvg(setup, {
+		const svg = tableToSvg(setup, {
 			placementCardSvgs: new Map([
 				['deck-1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Top card</text></svg>']
 			])
@@ -345,7 +345,7 @@ describe('table setup', () => {
 	});
 
 	it('renders decks as stacks and individual cards as one card face', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [
@@ -373,7 +373,7 @@ describe('table setup', () => {
 			slots: []
 		};
 
-		const svg = setupToSvg(setup, {
+		const svg = tableToSvg(setup, {
 			placementCardSvgs: new Map([
 				['deck-1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Top card</text></svg>'],
 				['card-1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Single card</text></svg>']
@@ -385,7 +385,7 @@ describe('table setup', () => {
 	});
 
 	it('keeps slot labels from metadata if visible slot text is edited', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [],
@@ -402,26 +402,26 @@ describe('table setup', () => {
 				}
 			]
 		};
-		const editedSvg = setupToSvg(setup).replace('>Slot 1</text>', '>Renamed</text>');
+		const editedSvg = tableToSvg(setup).replace('>Slot 1</text>', '>Renamed</text>');
 
-		expect(svgToTableSetup(editedSvg, setup).slots[0]?.label).toBe('Slot 1');
+		expect(svgToTable(editedSvg, setup).slots[0]?.label).toBe('Slot 1');
 	});
 
 	it('normalizes svg editor canvas dimensions back to the setup table', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'two-player', width: 1200, height: 700 },
 			placements: [],
 			slots: []
 		};
-		const svg = setupToSvg(setup).replace('viewBox="0 0 1200 700"', 'viewBox="0 0 12000 7000"');
+		const svg = tableToSvg(setup).replace('viewBox="0 0 1200 700"', 'viewBox="0 0 12000 7000"');
 
-		expect(svgToTableSetup(svg, setup).table).toEqual(setup.table);
+		expect(svgToTable(svg, setup).table).toEqual(setup.table);
 		expect(normalizeTableSvg(svg, setup)).toContain('viewBox="0 0 1200 700"');
 	});
 
 	it('removes the legacy green table background during normalization', () => {
-		const setup: TableSetup = {
+		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
 			placements: [],

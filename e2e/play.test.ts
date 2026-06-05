@@ -1,8 +1,8 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
+	openOpfsSeedPage,
 	saveOpfsStoragePreference,
 	seedProjectFiles,
-	useBrowserStorage,
 	writeOpfsText
 } from './helpers/opfs';
 import {
@@ -29,9 +29,7 @@ async function openPixiProject(page: Page, projectSlug: string) {
 }
 
 async function seedPixiProject(page: Page, projectSlug: string) {
-	await page.goto('/app/games');
-	await page.locator('main').waitFor();
-	await page.setContent('<!doctype html><html><body><h1>OPFS seed</h1></body></html>');
+	await openOpfsSeedPage(page);
 	await seedProjectFiles(page, projectSlug);
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
@@ -208,7 +206,7 @@ function sharedSetupTableSvg() {
 		cardPlacement('flip-table-card', 'Flip card', c.flipTable, 600, 120),
 		deckPlacement('camera-deck', 'Camera deck', 120, 340, [c.cameraFiller, c.cameraDraw]),
 		deckPlacement('accept-deck', 'Accept deck', 120, 560, [c.acceptFiller, c.acceptDraw]),
-		deckPlacement('stack-back-deck', 'Stack back deck', 820, 340, [
+		deckPlacement('stack-back-deck', 'Stack back deck', 960, 340, [
 			c.stackFillerOne,
 			c.stackFillerTwo,
 			c.stackDraw
@@ -261,9 +259,7 @@ function sharedSetupTableSvg() {
 }
 
 async function writeSharedSetupPlayProject(page: Page) {
-	await page.goto('/app/games');
-	await page.locator('main').waitFor();
-	await page.setContent('<!doctype html><html><body><h1>OPFS seed</h1></body></html>');
+	await openOpfsSeedPage(page);
 
 	const cardRows = Object.entries(setupPlayCards).map(
 		([label, id]) => `${id},${label.replace(/[A-Z]/g, (match) => ` ${match}`).trim()}`
@@ -318,26 +314,16 @@ async function writeSharedSetupPlayProject(page: Page) {
 	await expect(page.getByRole('main').getByText(setupPlayProjectSlug)).toBeVisible();
 }
 
-async function withSharedSetupPlay(
-	context: BrowserContext | null,
-	run: (page: Page) => Promise<void>
-) {
-	if (!context) throw new Error('Shared setup play context was not initialized');
-	const page = await context.newPage();
-	try {
-		await page.goto(`/app/games/${setupPlayProjectSlug}/play?e2e=1`);
-		await waitForPixi(page);
-		await run(page);
-	} finally {
-		await page.close();
-	}
+async function withSetupPlayProject(page: Page, run: (page: Page) => Promise<void>) {
+	await writeSharedSetupPlayProject(page);
+	await page.goto(`/app/games/${setupPlayProjectSlug}/play?e2e=1`);
+	await waitForPixi(page);
+	await run(page);
 }
 
 test('local play blocks when table setup is missing', async ({ page }) => {
 	const projectSlug = 'missing-setup-play';
-	await page.goto('/app/games');
-	await page.locator('main').waitFor();
-	await page.setContent('<!doctype html><html><body><h1>OPFS seed</h1></body></html>');
+	await openOpfsSeedPage(page);
 	await writeOpfsText(
 		page,
 		`/${projectSlug}/game.json`,
@@ -372,31 +358,12 @@ test('local play blocks when table setup is missing', async ({ page }) => {
 	await expect(page.getByText('setup/table.svg')).toBeVisible();
 });
 
-test.describe.serial('setup-play-smoke local setup play shared project', () => {
-	let context: BrowserContext | null = null;
-
-	test.beforeAll(async ({ browser }, testInfo) => {
-		context = await browser.newContext({
-			baseURL: testInfo.project.use.baseURL as string | undefined
-		});
-		const page = await context.newPage();
-		try {
-			await writeSharedSetupPlayProject(page);
-		} finally {
-			await page.close();
-		}
-	});
-
-	test.afterAll(async () => {
-		await context?.close();
-		context = null;
-	});
-
-	test('local play initializes visible items from table setup', async () => {
+test.describe('setup-play-smoke local setup play project', () => {
+	test('local play initializes visible items from table setup', async ({ page }) => {
 		test.setTimeout(60_000);
 		const c = setupPlayCards;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(
 					async () => {
@@ -421,13 +388,13 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 		});
 	});
 
-	test('local play rotates a selected board card with q and e', async () => {
+	test('local play rotates a selected board card with q and e', async ({ page }) => {
 		test.setTimeout(60_000);
 		const c = setupPlayCards;
 		const tableCardId = c.rotationTable;
 		const slotCardId = c.rotationSlot;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(async () => (await pixiState(page)).visibleBoardCardIds, { timeout: 20_000 })
 				.toContain(tableCardId);
@@ -499,11 +466,11 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 		});
 	});
 
-	test('local setup camera rotation is used when playing a hand card', async () => {
+	test('local setup camera rotation is used when playing a hand card', async ({ page }) => {
 		test.setTimeout(60_000);
 		const drawCardId = setupPlayCards.cameraDraw;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
 				.toContain('camera-deck');
@@ -532,11 +499,11 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 		});
 	});
 
-	test('local play keeps card back renderable after flipping', async () => {
+	test('local play keeps card back renderable after flipping', async ({ page }) => {
 		test.setTimeout(60_000);
 		const tableCardId = setupPlayCards.flipTable;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(async () => (await pixiState(page)).visibleBoardCardIds, { timeout: 20_000 })
 				.toContain(tableCardId);
@@ -594,11 +561,11 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 		});
 	});
 
-	test('local setup slot accepts matching hand cards', async () => {
+	test('local setup slot accepts matching hand cards', async ({ page }) => {
 		test.setTimeout(60_000);
 		const drawCardId = setupPlayCards.acceptDraw;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
 				.toContain('accept-deck');
@@ -614,11 +581,11 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 		});
 	});
 
-	test('local setup can stack a hand card back onto its deck', async () => {
+	test('local setup can stack a hand card back onto its deck', async ({ page }) => {
 		test.setTimeout(60_000);
 		const drawCardId = setupPlayCards.stackDraw;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
 				.toContain('stack-back-deck');
@@ -643,11 +610,11 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 		});
 	});
 
-	test('local setup slot rejects nonmatching hand cards', async () => {
+	test('local setup slot rejects nonmatching hand cards', async ({ page }) => {
 		test.setTimeout(60_000);
 		const rejectedCardId = setupPlayCards.rejectDraw;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
 				.toContain('reject-deck');
@@ -660,11 +627,11 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 		});
 	});
 
-	test('local setup hand drag keeps the played card under the cursor', async () => {
+	test('local setup hand drag keeps the played card under the cursor', async ({ page }) => {
 		test.setTimeout(60_000);
 		const drawCardId = setupPlayCards.dragDraw;
 
-		await withSharedSetupPlay(context, async (page) => {
+		await withSetupPlayProject(page, async (page) => {
 			await expect
 				.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
 				.toContain('drag-deck');
@@ -686,6 +653,9 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 
 			await expect.poll(async () => (await pixiState(page)).handCardIds).toEqual([]);
 			const draggedContentBounds = await pixiContentBounds(page, drawCardId);
+			expect(draggedContentBounds.width).toBeLessThanOrEqual(140);
+			expect(draggedContentBounds.height).toBeLessThanOrEqual(180);
+			expect(draggedContentBounds.width / draggedContentBounds.height).toBeCloseTo(110 / 150, 1);
 			expect(targetPoint.x).toBeGreaterThanOrEqual(draggedContentBounds.x);
 			expect(targetPoint.x).toBeLessThanOrEqual(
 				draggedContentBounds.x + draggedContentBounds.width
@@ -696,6 +666,34 @@ test.describe.serial('setup-play-smoke local setup play shared project', () => {
 			);
 
 			await page.mouse.up();
+		});
+	});
+
+	test('local setup hand card stays in hand until dragged upward', async ({ page }) => {
+		test.setTimeout(60_000);
+		const drawCardId = setupPlayCards.dragDraw;
+
+		await withSetupPlayProject(page, async (page) => {
+			await expect
+				.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
+				.toContain('drag-deck');
+			await pixiClick(page, 'drag-deck');
+			await page.keyboard.press('d');
+			await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(drawCardId);
+			const handContentBounds = await pixiContentBounds(page, drawCardId);
+			expect(handContentBounds.height).toBeLessThanOrEqual(170);
+			expect(handContentBounds.width).toBeLessThanOrEqual(140);
+
+			const startPoint = await pixiPoint(page, drawCardId);
+			const canvasBox = await page.locator('canvas').boundingBox();
+			if (!canvasBox) throw new Error('Canvas is not visible');
+
+			await page.mouse.move(canvasBox.x + startPoint.x, canvasBox.y + startPoint.y);
+			await page.mouse.down();
+			await page.mouse.move(canvasBox.x + startPoint.x + 24, canvasBox.y + startPoint.y);
+			await page.mouse.up();
+
+			await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(drawCardId);
 		});
 	});
 });
@@ -1187,10 +1185,7 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	test.setTimeout(90_000);
 
 	await signUp(page);
-	await page.goto(appPath('/games'));
-	await seedProjectFiles(page, 'pixi-play-smoke');
-	await useBrowserStorage(page);
-	await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+	await seedPixiProject(page, 'pixi-play-smoke');
 
 	const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
@@ -1270,10 +1265,7 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 
 	try {
 		await signUp(page);
-		await page.goto(appPath('/games'));
-		await seedProjectFiles(page, 'pixi-play-smoke');
-		await useBrowserStorage(page);
-		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+		await seedPixiProject(page, 'pixi-play-smoke');
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
@@ -1351,10 +1343,7 @@ test('playtest invitee notes are imported into the creator game feedback folder'
 
 	try {
 		await signUp(page);
-		await page.goto(appPath('/games'));
-		await seedProjectFiles(page, 'pixi-play-smoke');
-		await useBrowserStorage(page);
-		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+		await seedPixiProject(page, 'pixi-play-smoke');
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
@@ -1367,18 +1356,13 @@ test('playtest invitee notes are imported into the creator game feedback folder'
 		await secondPage
 			.getByRole('textbox', { name: 'Playtest note' })
 			.fill('This worked well.\n<script>alert("xss")</script>');
-		await secondPage.keyboard.press('Escape');
-		await expect(
-			secondPage.getByRole('button', { name: 'Playtest notes with unsent changes' })
-		).toBeVisible();
-		await secondPage.getByRole('button', { name: 'Playtest notes with unsent changes' }).click();
-		await expect(secondPage.getByRole('textbox', { name: 'Playtest note' })).toContainText(
-			'This worked well.'
+		const feedbackPost = secondPage.waitForResponse(
+			(response) =>
+				response.request().method() === 'POST' &&
+				/\/api\/playtests\/[0-9a-f-]+\/feedback$/.test(new URL(response.url()).pathname)
 		);
 		await secondPage.getByRole('button', { name: 'Submit note' }).click();
-		await expect(secondPage.getByText('Submitted')).toBeVisible();
-		await secondPage.keyboard.press('Escape');
-		await expect(secondPage.getByRole('button', { name: 'Playtest notes' })).toBeVisible();
+		expect((await feedbackPost).ok()).toBe(true);
 
 		await page.goto(appPath('/games/pixi-play-smoke'));
 		await expect

@@ -225,9 +225,13 @@ export async function saveOpfsStoragePreference(page: Page) {
 	});
 }
 
-export async function openSeededProjects(page: Page, options?: { projectNames?: string[] }) {
-	await page.goto('/app/games');
+export async function openOpfsSeedPage(page: Page) {
+	await page.goto('/placeholder.svg');
 	await page.setContent('<!doctype html><html><body><h1>OPFS seed</h1></body></html>');
+}
+
+export async function openSeededProjects(page: Page, options?: { projectNames?: string[] }) {
+	await openOpfsSeedPage(page);
 	for (const projectName of options?.projectNames ?? DEFAULT_PROJECT_NAMES) {
 		await seedProjectFiles(page, projectName, { includeFileAssets: false });
 	}

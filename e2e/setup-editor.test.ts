@@ -169,7 +169,7 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 
 	await seedProjects(page);
 	await page.goto('/app/games/western-cards/setup?e2e');
-	await expect(page.getByRole('heading', { name: 'Table setup' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Table' })).toBeVisible();
 	await expect(page.getByRole('status')).toContainText('Loaded');
 
 	await page.getByLabel('Preset').selectOption('two-player');

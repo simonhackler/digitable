@@ -7,7 +7,7 @@ export type TablePreset = {
 	height: number;
 };
 
-export type SetupPlacement =
+export type TablePlacement =
 	| {
 			id: string;
 			type: 'deck';
@@ -29,7 +29,7 @@ export type SetupPlacement =
 			label: string;
 	  };
 
-export type SetupSlotLayout =
+export type TableSlotLayout =
 	| { mode: 'free' }
 	| {
 			mode: 'horizontal-flex';
@@ -46,11 +46,11 @@ export type SetupSlotLayout =
 			cardSize: 'content-card' | 'deck-card';
 	  };
 
-export type SetupSlotContent =
+export type TableSlotContent =
 	| { type: 'deck'; deckName: string; cellIndex?: number }
 	| { type: 'card'; deckName: string; cardId: string; cellIndex?: number };
 
-export type SetupSlot = {
+export type TableSlot = {
 	id: string;
 	label: string;
 	x: number;
@@ -60,39 +60,39 @@ export type SetupSlot = {
 	height: number;
 	acceptedDeckNames: string[];
 	acceptedCardIds: string[];
-	layout?: SetupSlotLayout;
-	contents?: SetupSlotContent[];
+	layout?: TableSlotLayout;
+	contents?: TableSlotContent[];
 };
 
-export type TableSetup = {
+export type Table = {
 	version: 1;
 	table: {
 		presetId: TablePresetId;
 		width: number;
 		height: number;
 	};
-	placements: SetupPlacement[];
-	slots: SetupSlot[];
+	placements: TablePlacement[];
+	slots: TableSlot[];
 };
 
-export type TableSetupSvgAssets = {
+export type TableSvgAssets = {
 	placementCardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	cardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	deckTopCardIds?: ReadonlyMap<string, string> | Record<string, string>;
 	cardLabels?: ReadonlyMap<string, string> | Record<string, string>;
 };
 
-export type SetupSvgJson =
+export type TableSvgJson =
 	| string
 	| {
 			element: string;
 			attr?: Record<string, string | number>;
-			children?: SetupSvgJson[];
+			children?: TableSvgJson[];
 	  };
 
-export type SetupSvgElementJson = Exclude<SetupSvgJson, string>;
+export type TableSvgElementJson = Exclude<TableSvgJson, string>;
 
-export const SETUP_SVG_PATH = 'setup/table.svg';
+export const TABLE_SVG_PATH = 'setup/table.svg';
 const TABLE_ATTR = 'data-digitable-table';
 const KIND_ATTR = 'data-digitable-kind';
 const TYPE_ATTR = 'data-digitable-type';
@@ -140,7 +140,7 @@ export const tablePresets: TablePreset[] = [
 
 export const defaultPreset = tablePresets[1];
 
-export function createDefaultTableSetup(): TableSetup {
+export function createDefaultTable(): Table {
 	return {
 		version: 1,
 		table: {
@@ -179,7 +179,7 @@ function stringArray(value: unknown): string[] {
 	return value.filter((item): item is string => typeof item === 'string');
 }
 
-function setupSlotContent(value: unknown): SetupSlotContent | null {
+function tableSlotContent(value: unknown): TableSlotContent | null {
 	if (!value || typeof value !== 'object') return null;
 	const input = value as Record<string, unknown>;
 	const deckName = typeof input.deckName === 'string' ? input.deckName : '';
@@ -196,19 +196,19 @@ function setupSlotContent(value: unknown): SetupSlotContent | null {
 	return null;
 }
 
-function setupSlotContents(value: unknown): SetupSlotContent[] {
+function tableSlotContents(value: unknown): TableSlotContent[] {
 	if (!Array.isArray(value)) return [];
 	return value.flatMap((item) => {
-		const parsed = setupSlotContent(item);
+		const parsed = tableSlotContent(item);
 		return parsed ? [parsed] : [];
 	});
 }
 
-function slotContentKey(content: SetupSlotContent): string {
+function slotContentKey(content: TableSlotContent): string {
 	return content.type === 'deck' ? `deck:${content.deckName}` : `card:${content.cardId}`;
 }
 
-function uniqueSlotContents(contents: SetupSlotContent[]): SetupSlotContent[] {
+function uniqueSlotContents(contents: TableSlotContent[]): TableSlotContent[] {
 	const seen = new Set<string>();
 	return contents.filter((content) => {
 		const key = slotContentKey(content);
@@ -219,8 +219,8 @@ function uniqueSlotContents(contents: SetupSlotContent[]): SetupSlotContent[] {
 }
 
 export function createHorizontalFlexSlotLayout(
-	input: Partial<Extract<SetupSlotLayout, { mode: 'horizontal-flex' }>> = {}
-): Extract<SetupSlotLayout, { mode: 'horizontal-flex' }> {
+	input: Partial<Extract<TableSlotLayout, { mode: 'horizontal-flex' }>> = {}
+): Extract<TableSlotLayout, { mode: 'horizontal-flex' }> {
 	const visibleCount = Math.max(
 		1,
 		positiveInteger(input.visibleCount, DEFAULT_FLEX_VISIBLE_COUNT)
@@ -235,8 +235,8 @@ export function createHorizontalFlexSlotLayout(
 }
 
 export function createGridSlotLayout(
-	input: Partial<Extract<SetupSlotLayout, { mode: 'grid' }>> = {}
-): Extract<SetupSlotLayout, { mode: 'grid' }> {
+	input: Partial<Extract<TableSlotLayout, { mode: 'grid' }>> = {}
+): Extract<TableSlotLayout, { mode: 'grid' }> {
 	return {
 		mode: 'grid',
 		rows: Math.max(1, positiveInteger(input.rows, DEFAULT_GRID_ROWS)),
@@ -247,7 +247,7 @@ export function createGridSlotLayout(
 	};
 }
 
-function setupSlotLayout(value: unknown): SetupSlotLayout {
+function tableSlotLayout(value: unknown): TableSlotLayout {
 	if (!value || typeof value !== 'object') return { mode: 'free' };
 	const input = value as Record<string, unknown>;
 	if (input.mode === 'grid') {
@@ -268,7 +268,7 @@ function setupSlotLayout(value: unknown): SetupSlotLayout {
 }
 
 function horizontalFlexSlotSize(
-	layout: Extract<SetupSlotLayout, { mode: 'horizontal-flex' }>
+	layout: Extract<TableSlotLayout, { mode: 'horizontal-flex' }>
 ): { width: number; height: number } {
 	return {
 		width: layout.visibleCount * CARD_WIDTH + Math.max(0, layout.visibleCount - 1) * layout.gap,
@@ -276,7 +276,7 @@ function horizontalFlexSlotSize(
 	};
 }
 
-function gridSlotSize(layout: Extract<SetupSlotLayout, { mode: 'grid' }>): {
+function gridSlotSize(layout: Extract<TableSlotLayout, { mode: 'grid' }>): {
 	width: number;
 	height: number;
 } {
@@ -286,13 +286,13 @@ function gridSlotSize(layout: Extract<SetupSlotLayout, { mode: 'grid' }>): {
 	};
 }
 
-function slotLayoutCapacity(layout: SetupSlotLayout): number {
+function slotLayoutCapacity(layout: TableSlotLayout): number {
 	if (layout.mode === 'horizontal-flex') return layout.visibleCount;
 	if (layout.mode === 'grid') return layout.rows * layout.columns;
 	return 0;
 }
 
-function contentsForFixedLayout(contents: SetupSlotContent[], layout: SetupSlotLayout) {
+function contentsForFixedLayout(contents: TableSlotContent[], layout: TableSlotLayout) {
 	const capacity = slotLayoutCapacity(layout);
 	if (capacity <= 0) return [];
 	if (layout.mode !== 'grid') return uniqueSlotContents(contents).slice(0, capacity);
@@ -318,8 +318,8 @@ function contentsForFixedLayout(contents: SetupSlotContent[], layout: SetupSlotL
 	});
 }
 
-export function normalizeSetupSlot(slot: SetupSlot): SetupSlot {
-	const layout = setupSlotLayout(slot.layout);
+export function normalizeTableSlot(slot: TableSlot): TableSlot {
+	const layout = tableSlotLayout(slot.layout);
 	const rotation = finiteNumber(slot.rotation, 0);
 	if (layout.mode === 'horizontal-flex') {
 		const size = horizontalFlexSlotSize(layout);
@@ -362,7 +362,7 @@ function snapToGrid(value: number, step = TABLE_GRID_STEP): number {
 	return Math.round(value / step) * step;
 }
 
-export function snapPlacementToGrid<T extends SetupPlacement>(item: T): T {
+export function snapPlacementToGrid<T extends TablePlacement>(item: T): T {
 	const nextX = snapToGrid(item.x - CARD_WIDTH / 2) + CARD_WIDTH / 2;
 	const nextY = snapToGrid(item.y - CARD_HEIGHT / 2) + CARD_HEIGHT / 2;
 	if (nextX === item.x && nextY === item.y) return item;
@@ -390,10 +390,10 @@ function parseJsonStringArray(value: string | null): string[] {
 	}
 }
 
-function parseJsonSlotContents(value: string | null): SetupSlotContent[] {
+function parseJsonSlotContents(value: string | null): TableSlotContent[] {
 	if (!value) return [];
 	try {
-		return setupSlotContents(JSON.parse(value));
+		return tableSlotContents(JSON.parse(value));
 	} catch {
 		return [];
 	}
@@ -406,7 +406,7 @@ function parseNumberAttribute(element: Element | null, name: string, fallback: n
 	return value;
 }
 
-function slotLayoutFromElement(element: Element): SetupSlotLayout {
+function slotLayoutFromElement(element: Element): TableSlotLayout {
 	const mode = element.getAttribute(SLOT_LAYOUT_MODE_ATTR);
 	if (mode === 'grid') {
 		return createGridSlotLayout({
@@ -566,7 +566,7 @@ export function svgHasCustomTableContent(svg: string): boolean {
 	return hasCustomTableContentElement(root, root);
 }
 
-function svgRootToTableSetup(root: Element, fallback: TableSetup): TableSetup {
+function svgRootToTable(root: Element, fallback: Table): Table {
 	if (!root || root.tagName.toLowerCase() !== 'svg') return fallback;
 
 	const parsedPresetId = presetId(root.getAttribute(PRESET_ATTR));
@@ -586,7 +586,7 @@ function svgRootToTableSetup(root: Element, fallback: TableSetup): TableSetup {
 	const width = normalizeEditorDimension(rawWidth, fallback.table.width);
 	const height = normalizeEditorDimension(rawHeight, fallback.table.height);
 
-	const placements = elementsByKind(root, 'placement').flatMap((group): SetupPlacement[] => {
+	const placements = elementsByKind(root, 'placement').flatMap((group): TablePlacement[] => {
 		const id = group.getAttribute('id') ?? crypto.randomUUID();
 		const type = group.getAttribute(TYPE_ATTR);
 		const deckName = group.getAttribute(DECK_ATTR) ?? '';
@@ -620,7 +620,7 @@ function svgRootToTableSetup(root: Element, fallback: TableSetup): TableSetup {
 		return [];
 	});
 
-	const slots = elementsByKind(root, 'slot').flatMap((group): SetupSlot[] => {
+	const slots = elementsByKind(root, 'slot').flatMap((group): TableSlot[] => {
 		const rect = firstElementByTag(group, 'rect');
 		const id = group.getAttribute('id') ?? crypto.randomUUID();
 		const transform = transformParts(group.getAttribute('transform'));
@@ -633,7 +633,7 @@ function svgRootToTableSetup(root: Element, fallback: TableSetup): TableSetup {
 			y: rectY + rectHeight / 2
 		});
 		return [
-			normalizeSetupSlot({
+			normalizeTableSlot({
 				id,
 				label: textLabel(group, 'Slot'),
 				x: roundedSvgNumber(groupTranslation.x + rectX * transform.scaleX),
@@ -665,46 +665,46 @@ function svgRootToTableSetup(root: Element, fallback: TableSetup): TableSetup {
 	};
 }
 
-export function svgElementToTableSetup(
+export function svgElementToTable(
 	root: Element | null | undefined,
-	fallback = createDefaultTableSetup()
-): TableSetup {
+	fallback = createDefaultTable()
+): Table {
 	if (!root) return fallback;
-	return svgRootToTableSetup(root, fallback);
+	return svgRootToTable(root, fallback);
 }
 
-export function svgToTableSetup(svg: string, fallback = createDefaultTableSetup()): TableSetup {
+export function svgToTable(svg: string, fallback = createDefaultTable()): Table {
 	const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-	return svgElementToTableSetup(doc.documentElement, fallback);
+	return svgElementToTable(doc.documentElement, fallback);
 }
 
 export function normalizeTableSvg(
 	svg: string,
-	setup: TableSetup,
-	assets: TableSetupSvgAssets = {}
+	table: Table,
+	assets: TableSvgAssets = {}
 ): string {
-	return normalizeTableSvgWithAssets(svg, setup, assets);
+	return normalizeTableSvgWithAssets(svg, table, assets);
 }
 
 export function normalizeTableSvgWithAssets(
 	svg: string,
-	setup: TableSetup,
-	assets: TableSetupSvgAssets = {}
+	table: Table,
+	assets: TableSvgAssets = {}
 ): string {
 	const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
 	const root = doc.documentElement;
-	if (!root || root.tagName.toLowerCase() !== 'svg') return setupToSvg(setup, assets);
+	if (!root || root.tagName.toLowerCase() !== 'svg') return tableToSvg(table, assets);
 
-	root.setAttribute('width', String(setup.table.width));
-	root.setAttribute('height', String(setup.table.height));
-	root.setAttribute('viewBox', `0 0 ${setup.table.width} ${setup.table.height}`);
+	root.setAttribute('width', String(table.table.width));
+	root.setAttribute('height', String(table.table.height));
+	root.setAttribute('viewBox', `0 0 ${table.table.width} ${table.table.height}`);
 	root.setAttribute('role', 'img');
 	root.setAttribute('aria-label', 'Digitable table setup');
 	root.setAttribute(TABLE_ATTR, 'true');
-	root.setAttribute(PRESET_ATTR, setup.table.presetId);
+	root.setAttribute(PRESET_ATTR, table.table.presetId);
 
 	removeLegacyTableBackground(root);
-	syncGeneratedElements(doc, root, setup, assets);
+	syncGeneratedElements(doc, root, table, assets);
 
 	return new XMLSerializer().serializeToString(root);
 }
@@ -721,17 +721,17 @@ function svgAssetValue(source: SvgAssetMap, key: string): string | null {
 	return source[key] ?? null;
 }
 
-function placementCardSvg(assets: TableSetupSvgAssets, placementId: string): string | null {
+function placementCardSvg(assets: TableSvgAssets, placementId: string): string | null {
 	return svgAssetValue(assets.placementCardSvgs, placementId);
 }
 
-function slotContentCardSvg(assets: TableSetupSvgAssets, content: SetupSlotContent): string | null {
+function slotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): string | null {
 	if (content.type === 'card') return svgAssetValue(assets.cardSvgs, content.cardId);
 	const topCardId = svgAssetValue(assets.deckTopCardIds, content.deckName);
 	return topCardId ? svgAssetValue(assets.cardSvgs, topCardId) : null;
 }
 
-function slotContentLabel(assets: TableSetupSvgAssets, content: SetupSlotContent): string {
+function slotContentLabel(assets: TableSvgAssets, content: TableSlotContent): string {
 	if (content.type === 'deck') return content.deckName;
 	return svgAssetValue(assets.cardLabels, content.cardId) ?? content.cardId;
 }
@@ -740,7 +740,7 @@ function cardImageHref(cardSvg: string): string {
 	return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`;
 }
 
-function cardImageElementJson(cardSvg: string, x = 0, y = 0): SetupSvgElementJson {
+function cardImageElementJson(cardSvg: string, x = 0, y = 0): TableSvgElementJson {
 	return {
 		element: 'image',
 		attr: {
@@ -760,7 +760,7 @@ function cardImageMarkup(cardSvg: string, x = 0, y = 0): string {
 	return `<image x="${x}" y="${y}" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" preserveAspectRatio="xMidYMid meet" href="${escapeXml(href)}" ${LOCKED_ATTRS}/>`;
 }
 
-function deckStackElementsJson(x = 0, y = 0): SetupSvgElementJson[] {
+function deckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
 	return [
 		{
 			element: 'rect',
@@ -805,7 +805,7 @@ function deckStackMarkup(): string[] {
 	];
 }
 
-function boundedDeckStackElementsJson(x = 0, y = 0): SetupSvgElementJson[] {
+function boundedDeckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
 	return [
 		{
 			element: 'rect',
@@ -851,7 +851,7 @@ function boundedDeckStackMarkup(x = 0, y = 0): string[] {
 }
 
 function fallbackPlacementElementsJson(
-	item: SetupPlacement,
+	item: TablePlacement,
 	label: string,
 	kind: string,
 	x = 0,
@@ -905,7 +905,7 @@ function fallbackPlacementElementsJson(
 	];
 }
 
-function fallbackPlacementMarkup(item: SetupPlacement, label: string, kind: string): string[] {
+function fallbackPlacementMarkup(item: TablePlacement, label: string, kind: string): string[] {
 	const fill = item.type === 'deck' ? '#fef3c7' : '#f0fdf4';
 	const stroke = item.type === 'deck' ? '#b45309' : '#15803d';
 	return [
@@ -916,8 +916,8 @@ function fallbackPlacementMarkup(item: SetupPlacement, label: string, kind: stri
 	];
 }
 
-function slotAttributes(item: SetupSlot): Record<string, string | number> {
-	const slot = normalizeSetupSlot(item);
+function slotAttributes(item: TableSlot): Record<string, string | number> {
+	const slot = normalizeTableSlot(item);
 	const attributes: Record<string, string | number> = {
 		id: slot.id,
 		[KIND_ATTR]: 'slot',
@@ -946,18 +946,18 @@ function slotAttributes(item: SetupSlot): Record<string, string | number> {
 	return attributes;
 }
 
-function slotTransform(slot: SetupSlot): string {
+function slotTransform(slot: TableSlot): string {
 	const rotation = finiteNumber(slot.rotation, 0);
 	const rotate = rotation ? ` rotate(${rotation} ${slot.width / 2} ${slot.height / 2})` : '';
 	return `translate(${slot.x} ${slot.y})${rotate}`;
 }
 
 function fallbackSlotContentElementsJson(
-	content: SetupSlotContent,
+	content: TableSlotContent,
 	label: string,
 	x: number,
 	y: number
-): SetupSvgElementJson[] {
+): TableSvgElementJson[] {
 	const fill = content.type === 'deck' ? '#fef3c7' : '#f0fdf4';
 	const stroke = content.type === 'deck' ? '#b45309' : '#15803d';
 	return [
@@ -1007,11 +1007,11 @@ function fallbackSlotContentElementsJson(
 }
 
 function slotContentElementsJson(
-	content: SetupSlotContent,
-	assets: TableSetupSvgAssets,
+	content: TableSlotContent,
+	assets: TableSvgAssets,
 	x: number,
 	y: number
-): SetupSvgElementJson[] {
+): TableSvgElementJson[] {
 	const cardSvg = slotContentCardSvg(assets, content);
 	if (!cardSvg) return fallbackSlotContentElementsJson(content, slotContentLabel(assets, content), x, y);
 	return [
@@ -1020,7 +1020,7 @@ function slotContentElementsJson(
 	];
 }
 
-function fixedSlotCellPosition(slot: SetupSlot, index: number) {
+function fixedSlotCellPosition(slot: TableSlot, index: number) {
 	const layout = slot.layout;
 	if (layout?.mode === 'grid') {
 		const column = index % layout.columns;
@@ -1036,8 +1036,8 @@ function fixedSlotCellPosition(slot: SetupSlot, index: number) {
 	return { x: 0, y: 0 };
 }
 
-function fixedSlotChildrenJson(item: SetupSlot, assets: TableSetupSvgAssets): SetupSvgElementJson[] {
-	const slot = normalizeSetupSlot(item);
+function fixedSlotChildrenJson(item: TableSlot, assets: TableSvgAssets): TableSvgElementJson[] {
+	const slot = normalizeTableSlot(item);
 	const layout = slot.layout;
 	if (layout?.mode !== 'horizontal-flex' && layout?.mode !== 'grid') return [];
 	const capacity = slotLayoutCapacity(layout);
@@ -1085,10 +1085,10 @@ function fixedSlotChildrenJson(item: SetupSlot, assets: TableSetupSvgAssets): Se
 }
 
 export function slotToSvgElementJson(
-	item: SetupSlot,
-	assets: TableSetupSvgAssets = {}
-): SetupSvgElementJson {
-	const slot = normalizeSetupSlot(item);
+	item: TableSlot,
+	assets: TableSvgAssets = {}
+): TableSvgElementJson {
+	const slot = normalizeTableSlot(item);
 	if (slot.layout?.mode === 'horizontal-flex' || slot.layout?.mode === 'grid') {
 		return {
 			element: 'g',
@@ -1133,9 +1133,9 @@ export function slotToSvgElementJson(
 }
 
 export function placementToSvgElementJson(
-	item: SetupPlacement,
-	assets: TableSetupSvgAssets = {}
-): SetupSvgElementJson {
+	item: TablePlacement,
+	assets: TableSvgAssets = {}
+): TableSvgElementJson {
 	const placement = snapPlacementToGrid(item);
 	const kind = item.type;
 	const cardSvg = placementCardSvg(assets, placement.id);
@@ -1172,8 +1172,8 @@ export function placementToSvgElementJson(
 	};
 }
 
-function slotAttributesMarkup(item: SetupSlot): string {
-	const slot = normalizeSetupSlot(item);
+function slotAttributesMarkup(item: TableSlot): string {
+	const slot = normalizeTableSlot(item);
 	const label = escapeXml(slot.label);
 	const base = [
 		`id="${escapeXml(slot.id)}"`,
@@ -1204,7 +1204,7 @@ function slotAttributesMarkup(item: SetupSlot): string {
 }
 
 function fallbackSlotContentMarkup(
-	content: SetupSlotContent,
+	content: TableSlotContent,
 	label: string,
 	x: number,
 	y: number
@@ -1220,8 +1220,8 @@ function fallbackSlotContentMarkup(
 }
 
 function slotContentMarkup(
-	content: SetupSlotContent,
-	assets: TableSetupSvgAssets,
+	content: TableSlotContent,
+	assets: TableSvgAssets,
 	x: number,
 	y: number
 ): string[] {
@@ -1233,8 +1233,8 @@ function slotContentMarkup(
 	];
 }
 
-function slotMarkup(item: SetupSlot, assets: TableSetupSvgAssets): string {
-	const slot = normalizeSetupSlot(item);
+function slotMarkup(item: TableSlot, assets: TableSvgAssets): string {
+	const slot = normalizeTableSlot(item);
 	const label = escapeXml(slot.label);
 	const layout = slot.layout;
 	if (layout?.mode === 'horizontal-flex' || layout?.mode === 'grid') {
@@ -1264,7 +1264,7 @@ function slotMarkup(item: SetupSlot, assets: TableSetupSvgAssets): string {
 	].join('\n');
 }
 
-function placementMarkup(item: SetupPlacement, assets: TableSetupSvgAssets): string {
+function placementMarkup(item: TablePlacement, assets: TableSvgAssets): string {
 	const placement = snapPlacementToGrid(item);
 	const label = escapeXml(placement.label);
 	const kind = escapeXml(placement.type);
@@ -1320,11 +1320,11 @@ function replaceOrAppendGenerated(
 function syncGeneratedElements(
 	doc: Document,
 	root: Element,
-	setup: TableSetup,
-	assets: TableSetupSvgAssets
+	table: Table,
+	assets: TableSvgAssets
 ) {
-	const slotIds = new Set(setup.slots.map((slot) => slot.id));
-	const placementIds = new Set(setup.placements.map((placement) => placement.id));
+	const slotIds = new Set(table.slots.map((slot) => slot.id));
+	const placementIds = new Set(table.placements.map((placement) => placement.id));
 	const existingSlots = elementsByKind(root, 'slot');
 	const existingPlacements = elementsByKind(root, 'placement');
 	const generatedParent =
@@ -1338,7 +1338,7 @@ function syncGeneratedElements(
 		const id = element.getAttribute('id');
 		if (!id || !placementIds.has(id)) element.parentNode?.removeChild(element);
 	}
-	for (const slot of setup.slots) {
+	for (const slot of table.slots) {
 		replaceOrAppendGenerated(
 			doc,
 			generatedParent,
@@ -1347,7 +1347,7 @@ function syncGeneratedElements(
 			slotMarkup(slot, assets)
 		);
 	}
-	for (const placement of setup.placements) {
+	for (const placement of table.placements) {
 		replaceOrAppendGenerated(
 			doc,
 			generatedParent,
@@ -1359,14 +1359,14 @@ function syncGeneratedElements(
 	}
 }
 
-export function setupToSvg(setup: TableSetup, assets: TableSetupSvgAssets = {}): string {
-	const width = setup.table.width;
-	const height = setup.table.height;
-	const slotsMarkup = setup.slots.map((item) => slotMarkup(item, assets)).join('\n');
-	const placementsMarkup = setup.placements.map((item) => placementMarkup(item, assets)).join('\n');
+export function tableToSvg(table: Table, assets: TableSvgAssets = {}): string {
+	const width = table.table.width;
+	const height = table.table.height;
+	const slotsMarkup = table.slots.map((item) => slotMarkup(item, assets)).join('\n');
+	const placementsMarkup = table.placements.map((item) => placementMarkup(item, assets)).join('\n');
 
 	return [
-		`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Digitable table setup" ${TABLE_ATTR}="true" ${PRESET_ATTR}="${escapeXml(setup.table.presetId)}">`,
+		`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Digitable table setup" ${TABLE_ATTR}="true" ${PRESET_ATTR}="${escapeXml(table.table.presetId)}">`,
 		slotsMarkup,
 		placementsMarkup,
 		'</svg>',

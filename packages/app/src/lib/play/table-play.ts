@@ -1,27 +1,27 @@
 import type { InitGamePayload } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import type {
-	SetupPlacement,
-	SetupSlot,
-	SetupSlotContent,
-	TableSetup
-} from '../../routes/games/[gameName]/setup/table-setup';
+	TablePlacement,
+	TableSlot,
+	TableSlotContent,
+	Table
+} from '../../routes/games/[gameName]/setup/table';
 import type { ParsedSvg } from './initComponent';
 import {
-	canonicalPositionFromSetupPose,
-	SETUP_PLAY_CARD_HEIGHT,
-	SETUP_PLAY_CARD_WIDTH,
-	setupSlotCellPosition
-} from './setup-geometry';
+	canonicalPositionFromTablePose,
+	TABLE_CARD_HEIGHT,
+	TABLE_CARD_WIDTH,
+	tableSlotCellPosition
+} from './table-geometry';
 
-export { SETUP_PLAY_CARD_HEIGHT, SETUP_PLAY_CARD_WIDTH };
-export const SETUP_TABLE_NODE_ID = 'setup-table';
+export { TABLE_CARD_HEIGHT, TABLE_CARD_WIDTH };
+export const TABLE_NODE_ID = 'table';
 
 export type LoadedDeck = {
 	deckName: string;
 	cards: ParsedSvg[];
 };
 
-export type SetupPlayItem = {
+export type TablePlayItem = {
 	id: string;
 	type: 'card' | 'stack';
 	componentIds: string[];
@@ -33,18 +33,18 @@ export type SetupPlayItem = {
 	slotCellIndex?: number;
 };
 
-export type SetupPlayPlan = {
-	setup: TableSetup;
-	items: SetupPlayItem[];
+export type TablePlayPlan = {
+	table: Table;
+	items: TablePlayItem[];
 };
 
-export function setupReferencedDeckNames(setup: TableSetup): Set<string> {
+export function tableReferencedDeckNames(table: Table): Set<string> {
 	const deckNames = new Set<string>();
 
-	for (const placement of setup.placements) {
+	for (const placement of table.placements) {
 		deckNames.add(placement.deckName);
 	}
-	for (const slot of setup.slots) {
+	for (const slot of table.slots) {
 		for (const content of slot.contents ?? []) {
 			deckNames.add(content.deckName);
 		}
@@ -53,9 +53,9 @@ export function setupReferencedDeckNames(setup: TableSetup): Set<string> {
 	return deckNames;
 }
 
-function runtimeCardId(deckName: string, setupCardId: string): string {
+function runtimeCardId(deckName: string, tableCardId: string): string {
 	const prefix = `${deckName}:`;
-	return setupCardId.startsWith(prefix) ? setupCardId.slice(prefix.length) : setupCardId;
+	return tableCardId.startsWith(prefix) ? tableCardId.slice(prefix.length) : tableCardId;
 }
 
 function buildDeckLookup(loadedDecks: LoadedDeck[]) {
@@ -72,7 +72,7 @@ function buildDeckLookup(loadedDecks: LoadedDeck[]) {
 }
 
 function boardTopLeft(x: number, y: number) {
-	return canonicalPositionFromSetupPose({ centerX: x, centerY: y, rotation: 0 });
+	return canonicalPositionFromTablePose({ centerX: x, centerY: y, rotation: 0 });
 }
 
 function resolveCardIds(
@@ -93,15 +93,15 @@ function resolveCardIds(
 	const knownDeckCards = input.knownCards.get(input.deckName) ?? new Set<string>();
 	const resolved: string[] = [];
 
-	for (const setupCardId of sourceIds) {
-		const cardId = runtimeCardId(input.deckName, setupCardId);
+	for (const tableCardId of sourceIds) {
+		const cardId = runtimeCardId(input.deckName, tableCardId);
 		if (!knownDeckCards.has(cardId)) {
-			warn(`Skipping unknown setup card "${setupCardId}" in ${input.context}.`);
+			warn(`Skipping unknown table card "${tableCardId}" in ${input.context}.`);
 			continue;
 		}
 		if (input.usedCardIds.has(cardId)) {
 			if (input.silentDuplicateCardIds?.has(cardId)) continue;
-			warn(`Skipping duplicate setup card "${setupCardId}" in ${input.context}.`);
+			warn(`Skipping duplicate table card "${tableCardId}" in ${input.context}.`);
 			continue;
 		}
 		input.usedCardIds.add(cardId);
@@ -112,13 +112,13 @@ function resolveCardIds(
 }
 
 function placementToItem(
-	placement: SetupPlacement,
+	placement: TablePlacement,
 	deckCards: Map<string, string[]>,
 	knownCards: Map<string, Set<string>>,
 	usedCardIds: Set<string>,
 	warn: (message: string) => void,
 	silentDuplicateCardIds?: Set<string>
-): SetupPlayItem[] {
+): TablePlayItem[] {
 	const topLeft = boardTopLeft(placement.x, placement.y);
 	if (placement.type === 'card') {
 		const componentIds = resolveCardIds(
@@ -175,16 +175,16 @@ function placementToItem(
 }
 
 function slotContentToItem(
-	slot: SetupSlot,
-	content: SetupSlotContent,
+	slot: TableSlot,
+	content: TableSlotContent,
 	index: number,
 	deckCards: Map<string, string[]>,
 	knownCards: Map<string, Set<string>>,
 	usedCardIds: Set<string>,
 	warn: (message: string) => void
-): SetupPlayItem[] {
+): TablePlayItem[] {
 	const cellIndex = slot.layout?.mode === 'grid' ? (content.cellIndex ?? index) : index;
-	const { x, y } = setupSlotCellPosition(slot, cellIndex);
+	const { x, y } = tableSlotCellPosition(slot, cellIndex);
 
 	if (content.type === 'card') {
 		const componentIds = resolveCardIds(
@@ -245,16 +245,16 @@ function slotContentToItem(
 		: [];
 }
 
-export function buildSetupPlayPlan(
-	setup: TableSetup,
+export function buildTablePlayPlan(
+	table: Table,
 	loadedDecks: LoadedDeck[],
 	warn: (message: string) => void = (message) => console.warn(message)
-): SetupPlayPlan {
+): TablePlayPlan {
 	const { deckCards, knownCards } = buildDeckLookup(loadedDecks);
 	const usedCardIds = new Set<string>();
-	const placementItemsById = new Map<string, SetupPlayItem[]>();
+	const placementItemsById = new Map<string, TablePlayItem[]>();
 
-	for (const placement of setup.placements) {
+	for (const placement of table.placements) {
 		if (placement.type !== 'card') continue;
 		placementItemsById.set(
 			placement.id,
@@ -262,12 +262,12 @@ export function buildSetupPlayPlan(
 		);
 	}
 
-	const slotItems = setup.slots.flatMap((slot) =>
+	const slotItems = table.slots.flatMap((slot) =>
 		(slot.contents ?? []).flatMap((content, index) =>
 			slotContentToItem(slot, content, index, deckCards, knownCards, usedCardIds, warn)
 		)
 	);
-	for (const placement of setup.placements) {
+	for (const placement of table.placements) {
 		if (placement.type !== 'deck') continue;
 		placementItemsById.set(
 			placement.id,
@@ -282,36 +282,36 @@ export function buildSetupPlayPlan(
 		);
 	}
 
-	const placementItems = setup.placements.flatMap(
+	const placementItems = table.placements.flatMap(
 		(placement) => placementItemsById.get(placement.id) ?? []
 	);
 
 	return {
-		setup,
+		table,
 		items: [...placementItems, ...slotItems]
 	};
 }
 
-export function buildSetupInitPayload(plan: SetupPlayPlan): InitGamePayload {
+export function buildTableInitPayload(plan: TablePlayPlan): InitGamePayload {
 	return {
 		layoutNodes: [
 			{
-				id: SETUP_TABLE_NODE_ID,
+				id: TABLE_NODE_ID,
 				kind: 'table' as const,
 				x: 0,
 				y: 0,
-				width: plan.setup.table.width,
-				height: plan.setup.table.height,
+				width: plan.table.table.width,
+				height: plan.table.table.height,
 				visible: true,
 				locked: true,
 				layout: {
 					mode: 'free'
 				}
 			},
-			...plan.setup.slots.map((slot) => ({
+			...plan.table.slots.map((slot) => ({
 				id: slot.id,
 				kind: 'slot' as const,
-				parentId: SETUP_TABLE_NODE_ID,
+				parentId: TABLE_NODE_ID,
 				x: slot.x,
 				y: slot.y,
 				width: slot.width,
@@ -334,24 +334,24 @@ export function buildSetupInitPayload(plan: SetupPlayPlan): InitGamePayload {
 			...plan.items.map((item) => ({
 				id: item.id,
 				kind: item.type === 'stack' ? ('stack' as const) : ('component' as const),
-				parentId: item.slotId ?? SETUP_TABLE_NODE_ID,
+				parentId: item.slotId ?? TABLE_NODE_ID,
 				componentId: item.id,
 				x: item.x,
 				y: item.y,
-				width: SETUP_PLAY_CARD_WIDTH,
-				height: SETUP_PLAY_CARD_HEIGHT,
+				width: TABLE_CARD_WIDTH,
+				height: TABLE_CARD_HEIGHT,
 				rotation: item.rotation,
 				visible: true,
 				locked: false
 			}))
 		],
-		setupItems: plan.items.map((item) => ({
+		tableItems: plan.items.map((item) => ({
 			id: item.id,
 			type: item.type,
 			componentIds: item.componentIds,
 			x: item.x,
 			y: item.y,
-			parentId: item.slotId ?? SETUP_TABLE_NODE_ID,
+			parentId: item.slotId ?? TABLE_NODE_ID,
 			componentName: item.deckName ?? ''
 		}))
 	};

@@ -10,7 +10,7 @@ import {
     type InitLayoutNodePayload,
     type InitLayoutPayload,
     type InitGamePayload,
-    type InitSetupItemPayload,
+    type InitTableItemPayload,
     type LayoutMode,
     type LayoutNodeKind
 } from './schema/MyRoomState';
@@ -185,8 +185,8 @@ export function initializeGameState(
         state.positions.set(node.id, createLayoutNode(node));
     }
 
-    if (payload.setupItems) {
-        for (const item of payload.setupItems) {
+    if (payload.tableItems) {
+        for (const item of payload.tableItems) {
             const parentId = item.parentId ?? state.positions.get(item.id)?.parentId ?? '';
             const componentName = item.componentName ?? '';
             if (item.type === 'card') {
@@ -342,17 +342,17 @@ function validateInitLayoutNodes(layoutNodes: unknown): layoutNodes is InitLayou
     return true;
 }
 
-function validateInitSetupItems(
-    setupItems: unknown,
+function validateInitTableItems(
+    tableItems: unknown,
     layoutNodes: InitLayoutNodePayload[] | undefined
-): setupItems is InitSetupItemPayload[] | undefined {
-    if (setupItems === undefined) return true;
-    if (!Array.isArray(setupItems)) return false;
+): tableItems is InitTableItemPayload[] | undefined {
+    if (tableItems === undefined) return true;
+    if (!Array.isArray(tableItems)) return false;
 
     const componentIds = new Set<string>();
     const stackIds = new Set<string>();
     const layoutNodeIds = new Set((layoutNodes ?? []).map((node) => node.id));
-    for (const item of setupItems) {
+    for (const item of tableItems) {
         if (!isRecord(item)) return false;
         if (item.type !== 'card' && item.type !== 'stack') return false;
         if (typeof item.id !== 'string' || item.id.trim() === '') return false;
@@ -379,7 +379,7 @@ export function validateGameInitializationPayload(payload: unknown): payload is 
     if (!isRecord(payload)) return false;
     const layoutNodes = payload.layoutNodes;
     if (!validateInitLayoutNodes(layoutNodes)) return false;
-    if (!validateInitSetupItems(payload.setupItems, layoutNodes)) return false;
+    if (!validateInitTableItems(payload.tableItems, layoutNodes)) return false;
     if (payload.stacks !== undefined && !Array.isArray(payload.stacks)) return false;
     return true;
 }

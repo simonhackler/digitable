@@ -1,13 +1,13 @@
 import {
 	normalizeTableSvg,
-	setupToSvg,
-	type TableSetup,
-	type TableSetupSvgAssets
-} from './table-setup';
+	tableToSvg,
+	type Table,
+	type TableSvgAssets
+} from './table';
 
 type ExportRequest = {
 	generation: number;
-	setup: TableSetup;
+	table: Table;
 	baseSvg: string | null;
 	placementCardSvgs: Array<[string, string]>;
 	cardSvgs: Array<[string, string]>;
@@ -26,9 +26,9 @@ const worker = self as unknown as {
 };
 
 worker.onmessage = (event: MessageEvent<ExportRequest>) => {
-	const { generation, setup, baseSvg, placementCardSvgs, cardSvgs, deckTopCardIds, cardLabels } =
+	const { generation, table, baseSvg, placementCardSvgs, cardSvgs, deckTopCardIds, cardLabels } =
 		event.data;
-	const assets: TableSetupSvgAssets = {
+	const assets: TableSvgAssets = {
 		placementCardSvgs: Object.fromEntries(placementCardSvgs),
 		cardSvgs: Object.fromEntries(cardSvgs),
 		deckTopCardIds: Object.fromEntries(deckTopCardIds),
@@ -36,9 +36,9 @@ worker.onmessage = (event: MessageEvent<ExportRequest>) => {
 	};
 	let svg: string;
 	try {
-		svg = baseSvg ? normalizeTableSvg(baseSvg, setup, assets) : setupToSvg(setup, assets);
+		svg = baseSvg ? normalizeTableSvg(baseSvg, table, assets) : tableToSvg(table, assets);
 	} catch {
-		svg = setupToSvg(setup, assets);
+		svg = tableToSvg(table, assets);
 	}
 	worker.postMessage({ generation, svg } satisfies ExportResponse);
 };
