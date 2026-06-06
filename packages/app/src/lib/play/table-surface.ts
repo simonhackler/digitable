@@ -12,11 +12,10 @@ import {
 	type Table
 } from '../../routes/games/[gameName]/setup/table';
 import {
-	clampTableItemPose,
-	TABLE_CARD_HEIGHT,
-	TABLE_CARD_WIDTH,
+	clampTableItemPose as clampTableItemPoseBySize,
 	tableSlotCellRect,
-	type TableItemPose
+	type TableItemPose,
+	type TableItemSize
 } from './table-geometry';
 
 export type LocalTable = {
@@ -33,15 +32,13 @@ const TableLoadError = defineErrors({
 		path
 	}),
 	TableSvgReadFailed: ({ path, cause }: { path: string; cause: unknown }) => ({
-		message:
-			'Could not load setup/table.svg. Open the table editor and save the table again.',
+		message: 'Could not load setup/table.svg. Open the table editor and save the table again.',
 		path,
 		cause,
 		details: extractErrorMessage(cause)
 	}),
 	TableSvgParseFailed: ({ path, cause }: { path: string; cause: unknown }) => ({
-		message:
-			'Could not parse setup/table.svg. Open the table editor and save the table again.',
+		message: 'Could not parse setup/table.svg. Open the table editor and save the table again.',
 		path,
 		cause,
 		details: extractErrorMessage(cause)
@@ -100,7 +97,9 @@ export function normalizeRotation(value: number) {
 }
 
 export function tableItemRotation(item: BoardGameItemNew) {
-	return normalizeRotation(item.clientPosition?.clientPositionState.rotation ?? item.visualRotationDegrees);
+	return normalizeRotation(
+		item.clientPosition?.clientPositionState.rotation ?? item.visualRotationDegrees
+	);
 }
 
 export function setTableItemRotation(item: BoardGameItemNew, rotation: number) {
@@ -114,12 +113,24 @@ export function setTableItemRotation(item: BoardGameItemNew, rotation: number) {
 export function configureTableItem(item: BoardGameItemNew) {
 	if (!item.isInHand) {
 		const rect = item.contentLocalBounds();
-		item.disableLayoutTransform();
 		if (rect.width <= 0 || rect.height <= 0) return;
+		item.resetLayoutTransform({
+			width: rect.width,
+			height: rect.height,
+			aspectRatio: rect.width / rect.height
+		});
 		item.pivot.set(rect.x, rect.y);
-		item.scale.set(TABLE_CARD_WIDTH / rect.width, TABLE_CARD_HEIGHT / rect.height);
+		item.scale.set(1);
 	}
 	item.setDisplayedRotation(tableItemRotation(item));
+}
+
+function tableItemSize(item: BoardGameItemNew): TableItemSize {
+	const rect = item.contentLocalBounds();
+	return {
+		width: rect.width * item.scale.x,
+		height: rect.height * item.scale.y
+	};
 }
 
 function tableItemCenterOffset(item: BoardGameItemNew) {
@@ -142,6 +153,14 @@ export function tableItemPose(item: BoardGameItemNew): TableItemPose {
 export function tableItemCenter(item: BoardGameItemNew) {
 	const pose = tableItemPose(item);
 	return { x: pose.centerX, y: pose.centerY };
+}
+
+export function clampTableItemPose(
+	table: Table,
+	item: BoardGameItemNew,
+	pose: TableItemPose
+): TableItemPose {
+	return clampTableItemPoseBySize(table, pose, tableItemSize(item));
 }
 
 export function tableItemVisualBoundsGlobal(app: Application<Renderer>, item: BoardGameItemNew) {
@@ -203,7 +222,7 @@ export function setTableItemVisualPointUnderPointer({
 	const pointerTable = boardContainer.toLocal(pointer);
 	const rotation = tableItemRotation(item);
 	const visualSize = tableItemAabbSize(item, rotation);
-	const pose = clampTableItemPose(table, {
+	const pose = clampTableItemPose(table, item, {
 		centerX: pointerTable.x - visualSize.width * (ratio.x - 0.5),
 		centerY: pointerTable.y - visualSize.height * (ratio.y - 0.5),
 		rotation

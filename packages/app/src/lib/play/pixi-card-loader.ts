@@ -15,6 +15,14 @@ function parseSvgLength(value: string | null) {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+function svgLogicalSize(svg: SVGSVGElement) {
+	const viewBox = svg.viewBox.baseVal;
+	return {
+		width: viewBox.width > 0 ? viewBox.width : (parseSvgLength(svg.getAttribute('width')) ?? 1),
+		height: viewBox.height > 0 ? viewBox.height : (parseSvgLength(svg.getAttribute('height')) ?? 1)
+	};
+}
+
 function addWhiteBackground(svg: SVGSVGElement): SVGSVGElement {
 	const viewBox = svg.viewBox.baseVal;
 	const x = viewBox.width > 0 ? viewBox.x : 0;
@@ -113,6 +121,7 @@ export async function createHybridContainer(
 		textureCache
 	);
 	const svgSprite = new Sprite({
+		label: 'svgOnly',
 		texture: svgTexture,
 		layout: {
 			objectFit: 'contain',
@@ -140,13 +149,16 @@ export async function createHybridContainer(
 	}
 
 	const imageBackground = new Sprite(imageTexture);
+	imageBackground.label = 'Background';
 	const container = new LayoutContainer({
 		layout: {
 			aspectRatio: svgTexture.width / svgTexture.height,
 			objectFit: 'contain',
-			objectPosition: 'center'
+			objectPosition: 'center',
+			width: '100%'
 		},
-		background: imageBackground
+		background: imageBackground,
+		label: 'FaceContainer'
 	});
 	container.addChild(svgSprite);
 
@@ -213,7 +225,14 @@ export async function loadAndProcessCards(
 				createHybridContainer(card.front, textureCache),
 				createHybridContainer(card.back, textureCache)
 			]);
-			return { id: card.id, front: frontContainer, back: backContainer };
+			const size = svgLogicalSize(card.front);
+			return {
+				id: card.id,
+				width: size.width,
+				height: size.height,
+				front: frontContainer,
+				back: backContainer
+			};
 		} catch (error) {
 			console.error('failed card', card.id, error);
 			throw error;

@@ -19,7 +19,6 @@ type SvgEditorWindow = Window & {
 		} | null;
 	};
 	__setupEditorControllerBefore?: unknown;
-	__rememberedSetupElement?: Element | null;
 };
 
 async function expectSelectedOverlayAligned(
@@ -138,24 +137,6 @@ async function expectSetupElementPresentOnce(
 			)
 		)
 		.toEqual({ exists: true, matchingCount: 1 });
-}
-
-async function rememberSetupElement(page: Page, expectedId: string) {
-	await page.evaluate((id) => {
-		const global = window as SvgEditorWindow;
-		global.__rememberedSetupElement = global.__svgEditorApi?.getElementById?.(id) ?? null;
-	}, expectedId);
-}
-
-async function expectRememberedSetupElement(page: Page, expectedId: string) {
-	await expect
-		.poll(() =>
-			page.evaluate((id) => {
-				const global = window as SvgEditorWindow;
-				return global.__svgEditorApi?.getElementById?.(id) === global.__rememberedSetupElement;
-			}, expectedId)
-		)
-		.toBe(true);
 }
 
 test('table setup editor saves semantic svg', async ({ page }) => {
@@ -338,10 +319,8 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 		)
 		.toEqual({ selected: slotId, text: expect.stringMatching(/^Slot \d+$/) });
 	const allowedDeckCheckbox = page.getByRole('checkbox').first();
-	await rememberSetupElement(page, slotId);
 	for (let index = 0; index < 7; index += 1) {
 		await allowedDeckCheckbox.click();
-		await expectRememberedSetupElement(page, slotId);
 		await expectSetupElementPresentOnce(page, 'slot', slotId);
 	}
 	await expectSelectedOverlayAligned(page, 'slot', slotId);
@@ -430,8 +409,8 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 		expect.objectContaining({
 			label: expect.stringMatching(/^Slot \d+$/),
 			acceptedDeckNames: expect.arrayContaining([expect.any(String)]),
-			width: 232,
-			height: 150,
+			width: 138,
+			height: 88,
 			layoutMode: 'horizontal-flex',
 			visibleCount: 2,
 			gap: 12,

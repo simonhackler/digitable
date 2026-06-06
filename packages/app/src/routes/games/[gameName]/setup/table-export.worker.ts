@@ -12,6 +12,7 @@ type ExportRequest = {
 	placementCardSvgs: Array<[string, string]>;
 	cardSvgs: Array<[string, string]>;
 	deckTopCardIds: Array<[string, string]>;
+	deckCardIds: Array<[string, string[]]>;
 	cardLabels: Array<[string, string]>;
 };
 
@@ -26,12 +27,21 @@ const worker = self as unknown as {
 };
 
 worker.onmessage = (event: MessageEvent<ExportRequest>) => {
-	const { generation, table, baseSvg, placementCardSvgs, cardSvgs, deckTopCardIds, cardLabels } =
-		event.data;
+	const {
+		generation,
+		table,
+		baseSvg,
+		placementCardSvgs,
+		cardSvgs,
+		deckTopCardIds,
+		deckCardIds,
+		cardLabels
+	} = event.data;
 	const assets: TableSvgAssets = {
 		placementCardSvgs: Object.fromEntries(placementCardSvgs),
 		cardSvgs: Object.fromEntries(cardSvgs),
 		deckTopCardIds: Object.fromEntries(deckTopCardIds),
+		deckCardIds: Object.fromEntries(deckCardIds),
 		cardLabels: Object.fromEntries(cardLabels)
 	};
 	let svg: string;

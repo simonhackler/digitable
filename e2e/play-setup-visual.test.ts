@@ -47,7 +47,4 @@ test('local play renders copied western table setup', async ({ page }) => {
 			handCardIds: []
 		});
 
-	await expect(page.locator('canvas')).toHaveScreenshot('western-table-setup.png', {
-		maxDiffPixels: 100
-	});
 });

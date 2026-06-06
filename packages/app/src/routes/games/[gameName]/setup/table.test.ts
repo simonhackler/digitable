@@ -3,6 +3,7 @@ import {
 	createDefaultTable,
 	normalizeTableSvg,
 	normalizeTableSlot,
+	resolveTableSlotSize,
 	tableToSvg,
 	snapPlacementToGrid,
 	slotToSvgElementJson,
@@ -108,16 +109,16 @@ describe('table setup', () => {
 		);
 	});
 
-	it('normalizes horizontal flex slots to visible card-sized cells', () => {
-		const slot = normalizeTableSlot({
+	it('sizes horizontal flex slots to the biggest accepted card', () => {
+		const slot = resolveTableSlotSize({
 			id: 'slot-1',
 			label: 'Market',
 			x: 50,
 			y: 60,
 			width: 999,
 			height: 999,
-			acceptedDeckNames: [],
-			acceptedCardIds: [],
+			acceptedDeckNames: ['western'],
+			acceptedCardIds: ['western:oversized'],
 			layout: {
 				mode: 'horizontal-flex',
 				visibleCount: 3,
@@ -130,12 +131,18 @@ describe('table setup', () => {
 				{ type: 'card', deckName: 'western', cardId: 'western:2' },
 				{ type: 'card', deckName: 'western', cardId: 'western:3' }
 			]
+		}, {
+			cardSvgs: new Map([
+				['western:1', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88"/>'],
+				['western:oversized', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 120"/>']
+			]),
+			deckCardIds: new Map([['western', ['western:1']]])
 		});
 
 		expect(slot).toEqual(
 			expect.objectContaining({
-				width: 354,
-				height: 150,
+				width: 264,
+				height: 120,
 				layout: expect.objectContaining({
 					mode: 'horizontal-flex',
 					visibleCount: 3,

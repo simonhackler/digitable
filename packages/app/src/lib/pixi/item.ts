@@ -13,6 +13,8 @@ export type VisualRect = {
 	height: number;
 };
 
+export type VisualSize = Pick<VisualRect, 'width' | 'height'>;
+
 function rectFromBounds(bounds: ReturnType<Container['getLocalBounds']>): VisualRect {
 	const rect = 'rectangle' in bounds ? bounds.rectangle : bounds;
 	return {
@@ -20,6 +22,19 @@ function rectFromBounds(bounds: ReturnType<Container['getLocalBounds']>): Visual
 		y: rect.y,
 		width: rect.width,
 		height: rect.height
+	};
+}
+
+function positiveDimension(value: number) {
+	return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function rectFromSize(size: VisualSize): VisualRect {
+	return {
+		x: 0,
+		y: 0,
+		width: positiveDimension(size.width),
+		height: positiveDimension(size.height)
 	};
 }
 
@@ -40,10 +55,13 @@ export class BoardGameItemNew extends Container {
 		id: string,
 		clientPosition: ClientPosition | null = null,
 		clientFlippable: ClientFlippable | null = null,
-		clientStack: ClientStack | null = null
+		clientStack: ClientStack | null = null,
+		contentSize?: VisualSize
 	) {
-		const aspectRatio = itemContainer.width / itemContainer.height;
-		const contentRect = rectFromBounds(itemContainer.getLocalBounds());
+		const contentRect = contentSize
+			? rectFromSize(contentSize)
+			: rectFromBounds(itemContainer.getLocalBounds());
+		const aspectRatio = contentRect.width / contentRect.height;
 		super({
 			layout: {
 				aspectRatio
@@ -173,11 +191,11 @@ export class BoardGameItemNew extends Container {
 		};
 	}
 
-	resetLayoutTransform() {
-		this.layout = this.baseLayoutStyle;
+	resetLayoutTransform(layoutStyle: LayoutStyles = this.baseLayoutStyle) {
+		this.layout = null;
+		this.layout = layoutStyle;
 		const layout = this.layout;
 		if (!layout) return;
-		layout.setStyle(this.baseLayoutStyle);
 		layout.forceUpdate();
 		layout.invalidateRoot(this);
 	}
@@ -192,12 +210,14 @@ export class CardContainer extends Container {
 	public readonly frontSprite: Container;
 	public readonly backSprite: Container;
 
-	constructor(frontSprite: Container, backSprite: Container) {
-		const aspectRatio = frontSprite.width / frontSprite.height;
+	constructor(frontSprite: Container, backSprite: Container, size?: VisualSize) {
+		const width = positiveDimension(size?.width ?? frontSprite.width);
+		const height = positiveDimension(size?.height ?? frontSprite.height);
+		const aspectRatio = width / height;
 		super({
 			layout: {
-				width: frontSprite.width,
-				height: frontSprite.height,
+				width,
+				height,
 				aspectRatio
 			}
 		});

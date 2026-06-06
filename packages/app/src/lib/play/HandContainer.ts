@@ -11,11 +11,13 @@ export class HandContainer {
 	private handTrayInner: Graphics | null = null;
 	private handTrayTopLine: Graphics | null = null;
 	private cardsContainer: LayoutContainer;
+	private itemWrappers: WeakMap<BoardGameItemNew, LayoutContainer>;
 	boardGameItems: Set<BoardGameItemNew>;
 
 	constructor(app: Application<Renderer>) {
 		this.app = app;
 		this.boardGameItems = new Set();
+		this.itemWrappers = new WeakMap();
 		this.container = new LayoutContainer({ layout: {} });
 		this.container.zIndex = 10;
 		this.container.sortableChildren = true;
@@ -30,7 +32,7 @@ export class HandContainer {
 				justifyContent: 'center',
 				flexDirection: 'row',
 				alignItems: 'flex-end',
-				alignContent: 'center',
+				alignContent: 'flex-end',
 				gap: 4
 			}
 		});
@@ -44,11 +46,10 @@ export class HandContainer {
 		});
 	}
 
-	// Having to set scale 1 here is a problem. Scale should never have to be set seperately and should always be 1.
-	// I have to find a better system for the sizing of the items
 	addItem(item: BoardGameItemNew) {
+		if (this.boardGameItems.has(item)) this.removeItem(item);
+		item.parent?.removeChild(item);
 		item.isInHand = true;
-		item.resetLayoutTransform();
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);
@@ -56,41 +57,46 @@ export class HandContainer {
 		item.x = 0;
 		item.y = 0;
 		item.alpha = 1.0;
+		item.visible = true;
+		item.renderable = true;
 		this.boardGameItems.add(item);
 		const wrapper = new LayoutContainer({
 			layout: {
 				height: '100%',
 				aspectRatio: item.baseAspectRatio,
-				objectFit: 'contain',
-				objectPosition: 'center'
+				justifyContent: 'center',
+				flexDirection: 'row',
+				alignItems: 'flex-end'
 			}
 		});
 		wrapper.zIndex = 1;
 		wrapper.addChild(item);
+		this.itemWrappers.set(item, wrapper);
 		this.cardsContainer.addChild(wrapper);
+		item.itemContainer.layout = {
+			...(item.itemContainer.layout?.style ?? {}),
+			width: '100%',
+			height: '100%',
+			aspectRatio: item.baseAspectRatio,
+			objectFit: 'contain',
+			objectPosition: 'center bottom'
+		};
+		item.resetLayoutTransform({
+			width: '100%',
+			height: '100%',
+			aspectRatio: item.baseAspectRatio
+		});
 	}
 
-	async removeItem(item: BoardGameItemNew) {
+	removeItem(item: BoardGameItemNew) {
 		this.boardGameItems.delete(item);
 		item.isInHand = false;
-		const overflowWrapper = item.parent;
-
-		if (overflowWrapper) {
-			overflowWrapper.removeChild(item);
-
-			const layoutWrapper = overflowWrapper.parent;
-
-			if (layoutWrapper) {
-				const removed = this.cardsContainer.removeChild(layoutWrapper);
-
-				setTimeout(() => {
-					removed.destroy();
-				}, 1);
-			}
-		}
-		// if (wrapper && wrapper.parent === this.container) {
-		// 	this.container.removeChild(wrapper);
-		// }
+		const wrapper = this.itemWrappers.get(item);
+		if (!wrapper) return;
+		this.itemWrappers.delete(item);
+		item.parent?.removeChild(item);
+		const removed = this.cardsContainer.removeChild(wrapper);
+		setTimeout(() => removed.destroy(), 1);
 	}
 
 	hasItem(item: BoardGameItemNew): boolean {
@@ -99,6 +105,7 @@ export class HandContainer {
 
 	clear() {
 		this.boardGameItems.clear();
+		this.itemWrappers = new WeakMap();
 		this.cardsContainer.removeChildren();
 	}
 
@@ -119,7 +126,7 @@ export class HandContainer {
 			justifyContent: 'center',
 			flexDirection: 'row',
 			alignItems: 'flex-end',
-			alignContent: 'center'
+			alignContent: 'flex-end'
 		};
 
 		this.cardsContainer.layout = {
@@ -128,7 +135,7 @@ export class HandContainer {
 			justifyContent: 'center',
 			flexDirection: 'row',
 			alignItems: 'flex-end',
-			alignContent: 'center',
+			alignContent: 'flex-end',
 			gap: 4
 		};
 

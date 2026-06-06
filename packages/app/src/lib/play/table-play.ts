@@ -8,12 +8,10 @@ import type {
 import type { ParsedSvg } from './initComponent';
 import {
 	canonicalPositionFromTablePose,
-	TABLE_CARD_HEIGHT,
-	TABLE_CARD_WIDTH,
-	tableSlotCellPosition
+	tableSlotCellPose,
+	type TableItemSize
 } from './table-geometry';
 
-export { TABLE_CARD_HEIGHT, TABLE_CARD_WIDTH };
 export const TABLE_NODE_ID = 'table';
 
 export type LoadedDeck = {
@@ -27,6 +25,8 @@ export type TablePlayItem = {
 	componentIds: string[];
 	x: number;
 	y: number;
+	width: number;
+	height: number;
 	rotation: number;
 	deckName?: string;
 	slotId?: string;
@@ -61,18 +61,36 @@ function runtimeCardId(deckName: string, tableCardId: string): string {
 function buildDeckLookup(loadedDecks: LoadedDeck[]) {
 	const deckCards = new Map<string, string[]>();
 	const knownCards = new Map<string, Set<string>>();
+	const deckCardSizes = new Map<string, TableItemSize>();
 
 	for (const deck of loadedDecks) {
 		const ids = deck.cards.map((card) => card.id);
 		deckCards.set(deck.deckName, ids);
 		knownCards.set(deck.deckName, new Set(ids));
+		deckCardSizes.set(deck.deckName, parsedCardSize(deck.cards[0]));
 	}
 
-	return { deckCards, knownCards };
+	return { deckCards, knownCards, deckCardSizes };
 }
 
-function boardTopLeft(x: number, y: number) {
-	return canonicalPositionFromTablePose({ centerX: x, centerY: y, rotation: 0 });
+function positiveSize(value: number) {
+	return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function parsedCardSize(card: ParsedSvg | undefined): TableItemSize {
+	if (!card) return { width: 1, height: 1 };
+	return {
+		width: positiveSize(card.width),
+		height: positiveSize(card.height)
+	};
+}
+
+function deckCardSize(deckName: string, deckCardSizes: Map<string, TableItemSize>): TableItemSize {
+	return deckCardSizes.get(deckName) ?? { width: 1, height: 1 };
+}
+
+function boardTopLeft(x: number, y: number, size: TableItemSize) {
+	return canonicalPositionFromTablePose({ centerX: x, centerY: y, rotation: 0 }, size);
 }
 
 function resolveCardIds(
@@ -115,11 +133,13 @@ function placementToItem(
 	placement: TablePlacement,
 	deckCards: Map<string, string[]>,
 	knownCards: Map<string, Set<string>>,
+	deckCardSizes: Map<string, TableItemSize>,
 	usedCardIds: Set<string>,
 	warn: (message: string) => void,
 	silentDuplicateCardIds?: Set<string>
 ): TablePlayItem[] {
-	const topLeft = boardTopLeft(placement.x, placement.y);
+	const size = deckCardSize(placement.deckName, deckCardSizes);
+	const topLeft = boardTopLeft(placement.x, placement.y, size);
 	if (placement.type === 'card') {
 		const componentIds = resolveCardIds(
 			{
@@ -141,6 +161,8 @@ function placementToItem(
 						componentIds,
 						deckName: placement.deckName,
 						rotation: placement.rotation,
+						width: size.width,
+						height: size.height,
 						...topLeft
 					}
 				]
@@ -168,6 +190,8 @@ function placementToItem(
 					componentIds,
 					deckName: placement.deckName,
 					rotation: placement.rotation,
+					width: size.width,
+					height: size.height,
 					...topLeft
 				}
 			]
@@ -180,11 +204,13 @@ function slotContentToItem(
 	index: number,
 	deckCards: Map<string, string[]>,
 	knownCards: Map<string, Set<string>>,
+	deckCardSizes: Map<string, TableItemSize>,
 	usedCardIds: Set<string>,
 	warn: (message: string) => void
 ): TablePlayItem[] {
 	const cellIndex = slot.layout?.mode === 'grid' ? (content.cellIndex ?? index) : index;
-	const { x, y } = tableSlotCellPosition(slot, cellIndex);
+	const size = deckCardSize(content.deckName, deckCardSizes);
+	const { x, y } = canonicalPositionFromTablePose(tableSlotCellPose(slot, cellIndex), size);
 
 	if (content.type === 'card') {
 		const componentIds = resolveCardIds(
@@ -207,6 +233,8 @@ function slotContentToItem(
 						componentIds,
 						x,
 						y,
+						width: size.width,
+						height: size.height,
 						rotation: slot.rotation ?? 0,
 						deckName: content.deckName,
 						slotId: slot.id,
@@ -236,6 +264,8 @@ function slotContentToItem(
 					componentIds,
 					x,
 					y,
+					width: size.width,
+					height: size.height,
 					rotation: slot.rotation ?? 0,
 					deckName: content.deckName,
 					slotId: slot.id,
@@ -250,7 +280,7 @@ export function buildTablePlayPlan(
 	loadedDecks: LoadedDeck[],
 	warn: (message: string) => void = (message) => console.warn(message)
 ): TablePlayPlan {
-	const { deckCards, knownCards } = buildDeckLookup(loadedDecks);
+	const { deckCards, knownCards, deckCardSizes } = buildDeckLookup(loadedDecks);
 	const usedCardIds = new Set<string>();
 	const placementItemsById = new Map<string, TablePlayItem[]>();
 
@@ -258,13 +288,22 @@ export function buildTablePlayPlan(
 		if (placement.type !== 'card') continue;
 		placementItemsById.set(
 			placement.id,
-			placementToItem(placement, deckCards, knownCards, usedCardIds, warn)
+			placementToItem(placement, deckCards, knownCards, deckCardSizes, usedCardIds, warn)
 		);
 	}
 
 	const slotItems = table.slots.flatMap((slot) =>
 		(slot.contents ?? []).flatMap((content, index) =>
-			slotContentToItem(slot, content, index, deckCards, knownCards, usedCardIds, warn)
+			slotContentToItem(
+				slot,
+				content,
+				index,
+				deckCards,
+				knownCards,
+				deckCardSizes,
+				usedCardIds,
+				warn
+			)
 		)
 	);
 	for (const placement of table.placements) {
@@ -275,6 +314,7 @@ export function buildTablePlayPlan(
 				placement,
 				deckCards,
 				knownCards,
+				deckCardSizes,
 				usedCardIds,
 				warn,
 				new Set(usedCardIds)
@@ -338,8 +378,8 @@ export function buildTableInitPayload(plan: TablePlayPlan): InitGamePayload {
 				componentId: item.id,
 				x: item.x,
 				y: item.y,
-				width: TABLE_CARD_WIDTH,
-				height: TABLE_CARD_HEIGHT,
+				width: item.width,
+				height: item.height,
 				rotation: item.rotation,
 				visible: true,
 				locked: false

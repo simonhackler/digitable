@@ -561,6 +561,65 @@ test.describe('setup-play-smoke local setup play project', () => {
 		});
 	});
 
+	test('local setup stacks singular board cards only with shift', async ({ page }) => {
+		test.setTimeout(60_000);
+		const sourceCardId = setupPlayCards.rotationTable;
+		const targetCardId = setupPlayCards.flipTable;
+
+		await withSetupPlayProject(page, async (page) => {
+			let initialStackCount = 0;
+			await expect
+				.poll(
+					async () => {
+						const state = await pixiState(page);
+						initialStackCount = state.visibleStackIds.length;
+						return {
+							sourceVisible: state.visibleBoardCardIds.includes(sourceCardId),
+							targetVisible: state.visibleBoardCardIds.includes(targetCardId)
+						};
+					},
+					{ timeout: 20_000 }
+				)
+				.toEqual({
+					sourceVisible: true,
+					targetVisible: true
+				});
+
+			const targetPoint = await pixiPoint(page, targetCardId);
+			await pixiDragTo(page, sourceCardId, targetPoint);
+			await expect
+				.poll(async () => {
+					const state = await pixiState(page);
+					return {
+						sourceVisible: state.visibleBoardCardIds.includes(sourceCardId),
+						targetVisible: state.visibleBoardCardIds.includes(targetCardId),
+						stackCount: state.visibleStackIds.length
+					};
+				})
+				.toEqual({
+					sourceVisible: true,
+					targetVisible: true,
+					stackCount: initialStackCount
+				});
+
+			await pixiDragTo(page, sourceCardId, targetPoint, { key: 'Shift' });
+			await expect
+				.poll(async () => {
+					const state = await pixiState(page);
+					return {
+						sourceVisible: state.visibleBoardCardIds.includes(sourceCardId),
+						targetVisible: state.visibleBoardCardIds.includes(targetCardId),
+						stackCount: state.visibleStackIds.length
+					};
+				})
+				.toEqual({
+					sourceVisible: false,
+					targetVisible: false,
+					stackCount: initialStackCount + 1
+				});
+		});
+	});
+
 	test('local setup slot accepts matching hand cards', async ({ page }) => {
 		test.setTimeout(60_000);
 		const drawCardId = setupPlayCards.acceptDraw;
@@ -593,6 +652,9 @@ test.describe('setup-play-smoke local setup play project', () => {
 			await page.keyboard.press('d');
 
 			await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(drawCardId);
+			const handContentBounds = await pixiContentBounds(page, drawCardId);
+			expect(handContentBounds.width).toBeGreaterThan(70);
+			expect(handContentBounds.height).toBeGreaterThan(100);
 			await pixiDragTo(page, drawCardId, await pixiPoint(page, 'stack-back-deck'));
 			await expect.poll(async () => (await pixiState(page)).handCardIds).toEqual([]);
 			await expect

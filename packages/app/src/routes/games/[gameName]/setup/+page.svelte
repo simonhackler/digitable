@@ -25,11 +25,13 @@
 		createDefaultTable,
 		normalizeTableSvg,
 		normalizeTableSlot,
+		resolveTableSlotSize,
 		placementToSvgElementJson,
 		tableToSvg,
 		slotToSvgElementJson,
 		snapPlacementToGrid,
 		svgElementToTable,
+		svgMarkupLogicalSize,
 		svgToTable,
 		TABLE_SVG_PATH,
 		tablePresets,
@@ -63,20 +65,9 @@
 	const projectName = $derived(requireParam('gameName'));
 
 	const tableSvgPath = $derived(joinFsPath(projectName, TABLE_SVG_PATH));
-	const SLOT_LABEL_ATTR = 'data-label';
-	const SLOT_ACCEPTED_DECKS_ATTR = 'data-accepted-deck-names';
-	const SLOT_ACCEPTED_CARDS_ATTR = 'data-accepted-card-ids';
 
 	function sortedUniqueStrings(values: string[]) {
 		return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-	}
-
-	function slotRuleAttributes(slot: TableSlot): Record<string, string> {
-		return {
-			[SLOT_LABEL_ATTR]: slot.label,
-			[SLOT_ACCEPTED_DECKS_ATTR]: JSON.stringify(sortedUniqueStrings(slot.acceptedDeckNames)),
-			[SLOT_ACCEPTED_CARDS_ATTR]: JSON.stringify(sortedUniqueStrings(slot.acceptedCardIds))
-		};
 	}
 
 	function serializeSvg(svg: SVGSVGElement): string {
@@ -318,14 +309,32 @@
 		return deckCards.find((card) => placement.cardIds.includes(card.id))?.frontSvg ?? null;
 	}
 
+	function cardSvgSize(cardSvg: string | null) {
+		return svgMarkupLogicalSize(cardSvg) ?? undefined;
+	}
+
+	function payloadCardSvg(payload: DragPayload) {
+		if (payload.kind === 'card') return cardById(payload.cardId)?.frontSvg ?? null;
+		return decks.find((deck) => deck.name === payload.deckName)?.cards[0]?.frontSvg ?? null;
+	}
+
+	function placementCardSize(placement: TablePlacement) {
+		return cardSvgSize(placementCardSvg(placement));
+	}
+
 	function svgAssetsForTable(targetTable: Table, sourceDecks = decks) {
 		const placementCardSvgs = new SvelteMap<string, string>();
 		const cardSvgs = new SvelteMap<string, string>();
 		const deckTopCardIds = new SvelteMap<string, string>();
+		const deckCardIds = new SvelteMap<string, string[]>();
 		const cardLabels = new SvelteMap<string, string>();
 		for (const deck of sourceDecks) {
 			const firstCard = deck.cards[0];
 			if (firstCard) deckTopCardIds.set(deck.name, firstCard.id);
+			deckCardIds.set(
+				deck.name,
+				deck.cards.map((card) => card.id)
+			);
 			for (const card of deck.cards) {
 				cardLabels.set(card.id, card.label);
 				if (card.frontSvg) cardSvgs.set(card.id, card.frontSvg);
@@ -335,7 +344,7 @@
 			const cardSvg = placementCardSvg(placement, sourceDecks);
 			if (cardSvg) placementCardSvgs.set(placement.id, cardSvg);
 		}
-		return { placementCardSvgs, cardSvgs, deckTopCardIds, cardLabels };
+		return { placementCardSvgs, cardSvgs, deckTopCardIds, deckCardIds, cardLabels };
 	}
 
 	function renderTableSvg(nextTable: Table, baseSvg: string | null) {
@@ -424,11 +433,11 @@
 
 	function addPlacement(payload: DragPayload, x: number, y: number) {
 		const currentTable = syncFromEditor();
-		const placement = snapPlacementToGrid(
+		const placementInput =
 			payload.kind === 'deck'
 				? {
 						id: crypto.randomUUID(),
-						type: 'deck',
+						type: 'deck' as const,
 						deckName: payload.deckName,
 						cardIds: cards
 							.filter((card) => card.deckName === payload.deckName)
@@ -440,15 +449,15 @@
 					}
 				: {
 						id: crypto.randomUUID(),
-						type: 'card',
+						type: 'card' as const,
 						deckName: payload.deckName,
 						cardId: payload.cardId,
 						x,
 						y,
 						rotation: 0,
 						label: payload.label
-					}
-		);
+					};
+		const placement = snapPlacementToGrid(placementInput, cardSvgSize(payloadCardSvg(payload)));
 		const nextTable = {
 			...currentTable,
 			placements: [...currentTable.placements, placement]
@@ -500,10 +509,13 @@
 
 	function updateSlot(slotId: string, patch: Partial<TableSlot>) {
 		const currentTable = syncFromEditor();
+		const assets = svgAssetsForTable(currentTable);
 		const nextTable = {
 			...currentTable,
 			slots: currentTable.slots.map((slot) =>
-				slot.id === slotId ? normalizeTableSlot({ ...slot, ...patch }) : slot
+				slot.id === slotId
+					? resolveTableSlotSize(normalizeTableSlot({ ...slot, ...patch }), assets)
+					: slot
 			)
 		};
 		const nextSlot = nextTable.slots.find((slot) => slot.id === slotId);
@@ -512,24 +524,7 @@
 	}
 
 	function updateSlotRules(slotId: string, patch: Partial<TableSlot>) {
-		const slot = table.slots.find((candidate) => candidate.id === slotId);
-		if (!slot) return;
-		const nextSlot = normalizeTableSlot({ ...slot, ...patch });
-		const nextTable = {
-			...table,
-			slots: table.slots.map((candidate) => (candidate.id === slotId ? nextSlot : candidate))
-		};
-		table = nextTable;
-		if (
-			!editorApi?.updateElementAttributes(slotId, slotRuleAttributes(nextSlot), {
-				select: true,
-				historyLabel: 'Update slot rules'
-			})
-		) {
-			updateSlot(slotId, patch);
-			return;
-		}
-		scheduleAutosave();
+		updateSlot(slotId, patch);
 	}
 
 	function slotContentKey(content: TableSlotContent) {
@@ -635,7 +630,10 @@
 			...currentTable,
 			placements: currentTable.placements.map((placement) =>
 				placement.id === placementId
-					? snapPlacementToGrid({ ...placement, ...patch } as TablePlacement)
+					? snapPlacementToGrid(
+							{ ...placement, ...patch } as TablePlacement,
+							placementCardSize({ ...placement, ...patch } as TablePlacement)
+						)
 					: placement
 			)
 		};
@@ -644,7 +642,10 @@
 		updateTableElement(
 			nextTable,
 			placementId,
-			placementToSvgElementJson(snapPlacementToGrid(nextPlacement), svgAssetsForTable(nextTable))
+			placementToSvgElementJson(
+				snapPlacementToGrid(nextPlacement, placementCardSize(nextPlacement)),
+				svgAssetsForTable(nextTable)
+			)
 		);
 	}
 
@@ -666,7 +667,7 @@
 					? snapPlacementToGrid({
 							...candidate,
 							cardIds: deckCardIds
-						})
+						}, placementCardSize({ ...candidate, cardIds: deckCardIds }))
 					: candidate
 			)
 		};
@@ -675,7 +676,10 @@
 		updateTableElement(
 			nextTable,
 			placementId,
-			placementToSvgElementJson(snapPlacementToGrid(nextPlacement), svgAssetsForTable(nextTable))
+			placementToSvgElementJson(
+				snapPlacementToGrid(nextPlacement, placementCardSize(nextPlacement)),
+				svgAssetsForTable(nextTable)
+			)
 		);
 	}
 
@@ -806,6 +810,7 @@
 			placementCardSvgs: Array.from(assets.placementCardSvgs.entries()),
 			cardSvgs: Array.from(assets.cardSvgs.entries()),
 			deckTopCardIds: Array.from(assets.deckTopCardIds.entries()),
+			deckCardIds: Array.from(assets.deckCardIds.entries()),
 			cardLabels: Array.from(assets.cardLabels.entries())
 		};
 	}

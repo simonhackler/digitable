@@ -79,7 +79,13 @@ export type TableSvgAssets = {
 	placementCardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	cardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	deckTopCardIds?: ReadonlyMap<string, string> | Record<string, string>;
+	deckCardIds?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
 	cardLabels?: ReadonlyMap<string, string> | Record<string, string>;
+};
+
+type CardVisualSize = {
+	width: number;
+	height: number;
 };
 
 export type TableSvgJson =
@@ -115,14 +121,12 @@ const SLOT_CARD_SIZE_ATTR = 'data-slot-card-size';
 const SLOT_CONTENTS_ATTR = 'data-slot-contents';
 const DECK_STACK_ATTR = 'data-deck-stack';
 const LOCKED_ATTRS = `${RESIZABLE_ATTR}="false" data-locked="true"`;
-const CARD_WIDTH = 110;
-const CARD_HEIGHT = 150;
+const LEGACY_CARD_SIZE = { width: 110, height: 150 };
 const DEFAULT_FLEX_VISIBLE_COUNT = 4;
 const DEFAULT_FLEX_GAP = 16;
 const DEFAULT_GRID_ROWS = 2;
 const DEFAULT_GRID_COLUMNS = 2;
 const TABLE_GRID_STEP = 20;
-const NON_RENDERED_TAGS = new Set(['defs', 'style', 'metadata', 'title', 'desc']);
 const LEGACY_TABLE_BACKGROUND_FILL = '#166534';
 const LEGACY_TABLE_BORDER_STROKE = '#bbf7d0';
 
@@ -162,6 +166,41 @@ function finiteNumber(value: unknown, fallback: number): number {
 function positiveNumber(value: unknown, fallback: number): number {
 	const number = finiteNumber(value, fallback);
 	return number > 0 ? number : fallback;
+}
+
+function legacyCardSize(): CardVisualSize {
+	return { ...LEGACY_CARD_SIZE };
+}
+
+function positiveSize(value: unknown, fallback: number): number {
+	const number = Number.parseFloat(String(value ?? ''));
+	return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function svgLogicalSize(root: Element | null): CardVisualSize | null {
+	if (!root || root.tagName.toLowerCase() !== 'svg') return null;
+	const viewBox =
+		root
+			.getAttribute('viewBox')
+			?.split(/[,\s]+/)
+			.map((part) => Number(part)) ?? [];
+	const width = Number.isFinite(viewBox[2])
+		? viewBox[2]
+		: positiveSize(root.getAttribute('width'), 0);
+	const height = Number.isFinite(viewBox[3])
+		? viewBox[3]
+		: positiveSize(root.getAttribute('height'), 0);
+	if (width <= 0 || height <= 0) return null;
+	return { width, height };
+}
+
+export function svgMarkupLogicalSize(svg: string | null | undefined): CardVisualSize | null {
+	if (!svg) return null;
+	try {
+		return svgLogicalSize(new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement);
+	} catch {
+		return null;
+	}
 }
 
 function nonNegativeNumber(value: unknown, fallback: number): number {
@@ -221,10 +260,7 @@ function uniqueSlotContents(contents: TableSlotContent[]): TableSlotContent[] {
 export function createHorizontalFlexSlotLayout(
 	input: Partial<Extract<TableSlotLayout, { mode: 'horizontal-flex' }>> = {}
 ): Extract<TableSlotLayout, { mode: 'horizontal-flex' }> {
-	const visibleCount = Math.max(
-		1,
-		positiveInteger(input.visibleCount, DEFAULT_FLEX_VISIBLE_COUNT)
-	);
+	const visibleCount = Math.max(1, positiveInteger(input.visibleCount, DEFAULT_FLEX_VISIBLE_COUNT));
 	const gap = Math.round(nonNegativeNumber(input.gap, DEFAULT_FLEX_GAP));
 	return {
 		mode: 'horizontal-flex',
@@ -267,12 +303,15 @@ function tableSlotLayout(value: unknown): TableSlotLayout {
 	});
 }
 
-function horizontalFlexSlotSize(
-	layout: Extract<TableSlotLayout, { mode: 'horizontal-flex' }>
-): { width: number; height: number } {
+function horizontalFlexSlotSize(layout: Extract<TableSlotLayout, { mode: 'horizontal-flex' }>): {
+	width: number;
+	height: number;
+} {
 	return {
-		width: layout.visibleCount * CARD_WIDTH + Math.max(0, layout.visibleCount - 1) * layout.gap,
-		height: CARD_HEIGHT
+		width:
+			layout.visibleCount * LEGACY_CARD_SIZE.width +
+			Math.max(0, layout.visibleCount - 1) * layout.gap,
+		height: LEGACY_CARD_SIZE.height
 	};
 }
 
@@ -281,8 +320,10 @@ function gridSlotSize(layout: Extract<TableSlotLayout, { mode: 'grid' }>): {
 	height: number;
 } {
 	return {
-		width: layout.columns * CARD_WIDTH + Math.max(0, layout.columns - 1) * layout.gapX,
-		height: layout.rows * CARD_HEIGHT + Math.max(0, layout.rows - 1) * layout.gapY
+		width:
+			layout.columns * LEGACY_CARD_SIZE.width + Math.max(0, layout.columns - 1) * layout.gapX,
+		height:
+			layout.rows * LEGACY_CARD_SIZE.height + Math.max(0, layout.rows - 1) * layout.gapY
 	};
 }
 
@@ -322,23 +363,23 @@ export function normalizeTableSlot(slot: TableSlot): TableSlot {
 	const layout = tableSlotLayout(slot.layout);
 	const rotation = finiteNumber(slot.rotation, 0);
 	if (layout.mode === 'horizontal-flex') {
-		const size = horizontalFlexSlotSize(layout);
+		const fallbackSize = horizontalFlexSlotSize(layout);
 		return {
 			...slot,
 			rotation,
-			width: size.width,
-			height: size.height,
+			width: positiveNumber(slot.width, fallbackSize.width),
+			height: positiveNumber(slot.height, fallbackSize.height),
 			layout,
 			contents: contentsForFixedLayout(slot.contents ?? [], layout)
 		};
 	}
 	if (layout.mode === 'grid') {
-		const size = gridSlotSize(layout);
+		const fallbackSize = gridSlotSize(layout);
 		return {
 			...slot,
 			rotation,
-			width: size.width,
-			height: size.height,
+			width: positiveNumber(slot.width, fallbackSize.width),
+			height: positiveNumber(slot.height, fallbackSize.height),
 			layout,
 			contents: contentsForFixedLayout(slot.contents ?? [], layout)
 		};
@@ -362,9 +403,12 @@ function snapToGrid(value: number, step = TABLE_GRID_STEP): number {
 	return Math.round(value / step) * step;
 }
 
-export function snapPlacementToGrid<T extends TablePlacement>(item: T): T {
-	const nextX = snapToGrid(item.x - CARD_WIDTH / 2) + CARD_WIDTH / 2;
-	const nextY = snapToGrid(item.y - CARD_HEIGHT / 2) + CARD_HEIGHT / 2;
+export function snapPlacementToGrid<T extends TablePlacement>(
+	item: T,
+	size: CardVisualSize = LEGACY_CARD_SIZE
+): T {
+	const nextX = snapToGrid(item.x - size.width / 2) + size.width / 2;
+	const nextY = snapToGrid(item.y - size.height / 2) + size.height / 2;
 	if (nextX === item.x && nextY === item.y) return item;
 	return { ...item, x: nextX, y: nextY };
 }
@@ -414,14 +458,20 @@ function slotLayoutFromElement(element: Element): TableSlotLayout {
 			columns: parseNumberAttribute(element, SLOT_COLUMNS_ATTR, DEFAULT_GRID_COLUMNS),
 			gapX: parseNumberAttribute(element, SLOT_GAP_X_ATTR, DEFAULT_FLEX_GAP),
 			gapY: parseNumberAttribute(element, SLOT_GAP_Y_ATTR, DEFAULT_FLEX_GAP),
-			cardSize: element.getAttribute(SLOT_CARD_SIZE_ATTR) === 'deck-card' ? 'deck-card' : 'content-card'
+			cardSize:
+				element.getAttribute(SLOT_CARD_SIZE_ATTR) === 'deck-card' ? 'deck-card' : 'content-card'
 		});
 	}
 	if (mode !== 'horizontal-flex') return { mode: 'free' };
 	return createHorizontalFlexSlotLayout({
-		visibleCount: parseNumberAttribute(element, SLOT_VISIBLE_COUNT_ATTR, DEFAULT_FLEX_VISIBLE_COUNT),
+		visibleCount: parseNumberAttribute(
+			element,
+			SLOT_VISIBLE_COUNT_ATTR,
+			DEFAULT_FLEX_VISIBLE_COUNT
+		),
 		gap: parseNumberAttribute(element, SLOT_GAP_ATTR, DEFAULT_FLEX_GAP),
-		cardSize: element.getAttribute(SLOT_CARD_SIZE_ATTR) === 'deck-card' ? 'deck-card' : 'content-card'
+		cardSize:
+			element.getAttribute(SLOT_CARD_SIZE_ATTR) === 'deck-card' ? 'deck-card' : 'content-card'
 	});
 }
 
@@ -485,7 +535,10 @@ function transformTranslationForRotationOrigin(
 	transform: ReturnType<typeof transformParts>,
 	origin: { x: number; y: number }
 ) {
-	if (!transform.matrix || (Math.abs(transform.matrix.b) < 0.000001 && Math.abs(transform.matrix.c) < 0.000001)) {
+	if (
+		!transform.matrix ||
+		(Math.abs(transform.matrix.b) < 0.000001 && Math.abs(transform.matrix.c) < 0.000001)
+	) {
 		return { x: transform.x, y: transform.y };
 	}
 	const { a, b, c, d, e, f } = transform.matrix;
@@ -495,17 +548,39 @@ function transformTranslationForRotationOrigin(
 	};
 }
 
-function visualBoundsOrigin(group: Element): { x: number; y: number; hasGraphics: boolean } {
+function cardVisualBounds(group: Element): {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	hasGraphics: boolean;
+} {
 	const graphics = Array.from(group.getElementsByTagName('*')).filter((element) => {
 		const tag = element.tagName.toLowerCase();
-		return tag === 'rect' || tag === 'image';
+		return (
+			(tag === 'rect' || tag === 'image') && element.getAttribute(DECK_STACK_ATTR) !== 'true'
+		);
 	});
-	const xValues = graphics.map((element) => parseNumberAttribute(element, 'x', 0));
-	const yValues = graphics.map((element) => parseNumberAttribute(element, 'y', 0));
+	const bounds = graphics.map((element) => {
+		const x = parseNumberAttribute(element, 'x', 0);
+		const y = parseNumberAttribute(element, 'y', 0);
+		const width = parseNumberAttribute(element, 'width', 0);
+		const height = parseNumberAttribute(element, 'height', 0);
+		return { x, y, width, height };
+	});
+	const visibleBounds = bounds.filter((rect) => rect.width > 0 && rect.height > 0);
+	const xValues = visibleBounds.map((rect) => rect.x);
+	const yValues = visibleBounds.map((rect) => rect.y);
+	const rightValues = visibleBounds.map((rect) => rect.x + rect.width);
+	const bottomValues = visibleBounds.map((rect) => rect.y + rect.height);
+	const x = xValues.length > 0 ? Math.min(...xValues) : 0;
+	const y = yValues.length > 0 ? Math.min(...yValues) : 0;
 	return {
-		x: xValues.length > 0 ? Math.min(...xValues) : 0,
-		y: yValues.length > 0 ? Math.min(...yValues) : 0,
-		hasGraphics: graphics.length > 0
+		x,
+		y,
+		width: rightValues.length > 0 ? Math.max(...rightValues) - x : LEGACY_CARD_SIZE.width,
+		height: bottomValues.length > 0 ? Math.max(...bottomValues) - y : LEGACY_CARD_SIZE.height,
+		hasGraphics: visibleBounds.length > 0
 	};
 }
 
@@ -547,25 +622,6 @@ function removeLegacyTableBackground(root: Element) {
 	}
 }
 
-function hasCustomTableContentElement(element: Element, root: Element): boolean {
-	const tag = element.tagName.toLowerCase();
-	if (NON_RENDERED_TAGS.has(tag)) return false;
-	if (element.hasAttribute(KIND_ATTR)) return false;
-	if (element !== root && isLegacyTableBackground(element)) return false;
-	const children = Array.from(element.children);
-	if ((element === root || tag === 'g' || tag === 'svg') && children.length > 0) {
-		return children.some((child) => hasCustomTableContentElement(child, root));
-	}
-	return element !== root;
-}
-
-export function svgHasCustomTableContent(svg: string): boolean {
-	const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-	const root = doc.documentElement;
-	if (!root || root.tagName.toLowerCase() !== 'svg') return false;
-	return hasCustomTableContentElement(root, root);
-}
-
 function svgRootToTable(root: Element, fallback: Table): Table {
 	if (!root || root.tagName.toLowerCase() !== 'svg') return fallback;
 
@@ -593,29 +649,36 @@ function svgRootToTable(root: Element, fallback: Table): Table {
 		const cardIds = parseJsonStringArray(group.getAttribute(CARD_IDS_ATTR));
 		const transform = transformParts(group.getAttribute('transform'));
 		if (!deckName) return [];
-		const origin = visualBoundsOrigin(group);
-		const topLeftGeometry = origin.hasGraphics && origin.x >= 0 && origin.y >= 0;
+		const visual = cardVisualBounds(group);
+		const topLeftGeometry = visual.hasGraphics && visual.x >= 0 && visual.y >= 0;
 		const groupTranslation = transformTranslationForRotationOrigin(transform, {
-			x: CARD_WIDTH / 2,
-			y: CARD_HEIGHT / 2
+			x: visual.x + visual.width / 2,
+			y: visual.y + visual.height / 2
 		});
 		const base = {
 			id,
 			deckName,
 			x: topLeftGeometry
-				? groupTranslation.x + origin.x * transform.scaleX + CARD_WIDTH / 2
+				? groupTranslation.x + visual.x * transform.scaleX + (visual.width * transform.scaleX) / 2
 				: groupTranslation.x,
 			y: topLeftGeometry
-				? groupTranslation.y + origin.y * transform.scaleY + CARD_HEIGHT / 2
+				? groupTranslation.y + visual.y * transform.scaleY + (visual.height * transform.scaleY) / 2
 				: groupTranslation.y,
 			rotation: transform.rotation,
 			label: textLabel(group, deckName)
 		};
-		if (type === 'deck') return [snapPlacementToGrid({ ...base, type, cardIds })];
+		const size = {
+			width: positiveNumber(roundedSvgNumber(visual.width * transform.scaleX), LEGACY_CARD_SIZE.width),
+			height: positiveNumber(
+				roundedSvgNumber(visual.height * transform.scaleY),
+				LEGACY_CARD_SIZE.height
+			)
+		};
+		if (type === 'deck') return [snapPlacementToGrid({ ...base, type, cardIds }, size)];
 		if (type === 'card') {
 			const cardId = group.getAttribute(CARD_ATTR) ?? '';
 			if (!cardId) return [];
-			return [snapPlacementToGrid({ ...base, type, cardId })];
+			return [snapPlacementToGrid({ ...base, type, cardId }, size)];
 		}
 		return [];
 	});
@@ -678,11 +741,7 @@ export function svgToTable(svg: string, fallback = createDefaultTable()): Table 
 	return svgElementToTable(doc.documentElement, fallback);
 }
 
-export function normalizeTableSvg(
-	svg: string,
-	table: Table,
-	assets: TableSvgAssets = {}
-): string {
+export function normalizeTableSvg(svg: string, table: Table, assets: TableSvgAssets = {}): string {
 	return normalizeTableSvgWithAssets(svg, table, assets);
 }
 
@@ -710,8 +769,18 @@ export function normalizeTableSvgWithAssets(
 }
 
 type SvgAssetMap = ReadonlyMap<string, string> | Record<string, string> | undefined;
+type SvgAssetListMap =
+	| ReadonlyMap<string, readonly string[]>
+	| Record<string, readonly string[]>
+	| undefined;
 
 function isReadonlyMap(value: SvgAssetMap): value is ReadonlyMap<string, string> {
+	return typeof (value as { get?: unknown } | undefined)?.get === 'function';
+}
+
+function isReadonlyListMap(
+	value: SvgAssetListMap
+): value is ReadonlyMap<string, readonly string[]> {
 	return typeof (value as { get?: unknown } | undefined)?.get === 'function';
 }
 
@@ -719,6 +788,12 @@ function svgAssetValue(source: SvgAssetMap, key: string): string | null {
 	if (!source) return null;
 	if (isReadonlyMap(source)) return source.get(key) ?? null;
 	return source[key] ?? null;
+}
+
+function svgAssetList(source: SvgAssetListMap, key: string): readonly string[] {
+	if (!source) return [];
+	if (isReadonlyListMap(source)) return source.get(key) ?? [];
+	return source[key] ?? [];
 }
 
 function placementCardSvg(assets: TableSvgAssets, placementId: string): string | null {
@@ -731,6 +806,80 @@ function slotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): 
 	return topCardId ? svgAssetValue(assets.cardSvgs, topCardId) : null;
 }
 
+function cardSvgSize(cardSvg: string | null): CardVisualSize {
+	return svgMarkupLogicalSize(cardSvg) ?? legacyCardSize();
+}
+
+function placementVisualSize(placement: TablePlacement, assets: TableSvgAssets): CardVisualSize {
+	return cardSvgSize(placementCardSvg(assets, placement.id));
+}
+
+function slotContentVisualSize(content: TableSlotContent, assets: TableSvgAssets): CardVisualSize {
+	return cardSvgSize(slotContentCardSvg(assets, content));
+}
+
+function cardIdVisualSize(cardId: string, assets: TableSvgAssets): CardVisualSize | null {
+	return svgMarkupLogicalSize(svgAssetValue(assets.cardSvgs, cardId));
+}
+
+function concreteSlotCardIds(slot: TableSlot, assets: TableSvgAssets): string[] {
+	const cardIds = new Set<string>();
+	for (const cardId of slot.acceptedCardIds) {
+		cardIds.add(cardId);
+	}
+	for (const deckName of slot.acceptedDeckNames) {
+		for (const cardId of svgAssetList(assets.deckCardIds, deckName)) {
+			cardIds.add(cardId);
+		}
+	}
+	for (const content of slot.contents ?? []) {
+		if (content.type === 'card') {
+			cardIds.add(content.cardId);
+			continue;
+		}
+		const deckIds = svgAssetList(assets.deckCardIds, content.deckName);
+		if (deckIds.length > 0) {
+			for (const cardId of deckIds) cardIds.add(cardId);
+			continue;
+		}
+		const topCardId = svgAssetValue(assets.deckTopCardIds, content.deckName);
+		if (topCardId) cardIds.add(topCardId);
+	}
+	return [...cardIds];
+}
+
+function fixedSlotContentSize(slot: TableSlot, assets: TableSvgAssets): CardVisualSize | null {
+	const sizes = concreteSlotCardIds(slot, assets).flatMap((cardId) => {
+		const size = cardIdVisualSize(cardId, assets);
+		return size ? [size] : [];
+	});
+	if (sizes.length === 0) return null;
+	return {
+		width: Math.max(...sizes.map((size) => size.width)),
+		height: Math.max(...sizes.map((size) => size.height))
+	};
+}
+
+export function resolveTableSlotSize(slot: TableSlot, assets: TableSvgAssets = {}): TableSlot {
+	const normalized = normalizeTableSlot(slot);
+	const layout = normalized.layout;
+	if (layout?.mode !== 'horizontal-flex' && layout?.mode !== 'grid') return normalized;
+	const cellSize = fixedSlotContentSize(normalized, assets);
+	if (!cellSize) return normalized;
+	if (layout.mode === 'horizontal-flex') {
+		return {
+			...normalized,
+			width: layout.visibleCount * cellSize.width + Math.max(0, layout.visibleCount - 1) * layout.gap,
+			height: cellSize.height
+		};
+	}
+	return {
+		...normalized,
+		width: layout.columns * cellSize.width + Math.max(0, layout.columns - 1) * layout.gapX,
+		height: layout.rows * cellSize.height + Math.max(0, layout.rows - 1) * layout.gapY
+	};
+}
+
 function slotContentLabel(assets: TableSvgAssets, content: TableSlotContent): string {
 	if (content.type === 'deck') return content.deckName;
 	return svgAssetValue(assets.cardLabels, content.cardId) ?? content.cardId;
@@ -740,14 +889,19 @@ function cardImageHref(cardSvg: string): string {
 	return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`;
 }
 
-function cardImageElementJson(cardSvg: string, x = 0, y = 0): TableSvgElementJson {
+function cardImageElementJson(
+	cardSvg: string,
+	size: CardVisualSize,
+	x = 0,
+	y = 0
+): TableSvgElementJson {
 	return {
 		element: 'image',
 		attr: {
 			x,
 			y,
-			width: CARD_WIDTH,
-			height: CARD_HEIGHT,
+			width: size.width,
+			height: size.height,
 			preserveAspectRatio: 'xMidYMid meet',
 			href: cardImageHref(cardSvg),
 			...lockedAttrs()
@@ -755,20 +909,25 @@ function cardImageElementJson(cardSvg: string, x = 0, y = 0): TableSvgElementJso
 	};
 }
 
-function cardImageMarkup(cardSvg: string, x = 0, y = 0): string {
+function cardImageMarkup(cardSvg: string, size: CardVisualSize, x = 0, y = 0): string {
 	const href = cardImageHref(cardSvg);
-	return `<image x="${x}" y="${y}" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" preserveAspectRatio="xMidYMid meet" href="${escapeXml(href)}" ${LOCKED_ATTRS}/>`;
+	return `<image x="${x}" y="${y}" width="${size.width}" height="${size.height}" preserveAspectRatio="xMidYMid meet" href="${escapeXml(href)}" ${LOCKED_ATTRS}/>`;
 }
 
-function deckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
+function stackOffset(size: CardVisualSize) {
+	return Math.max(2, Math.round(Math.min(size.width, size.height) / 16));
+}
+
+function deckStackElementsJson(size: CardVisualSize, x = 0, y = 0): TableSvgElementJson[] {
+	const offset = stackOffset(size);
 	return [
 		{
 			element: 'rect',
 			attr: {
-				x: x + 14,
-				y: y + 14,
-				width: CARD_WIDTH,
-				height: CARD_HEIGHT,
+				x: x + offset * 2,
+				y: y + offset * 2,
+				width: size.width,
+				height: size.height,
 				rx: 10,
 				fill: '#0f172a',
 				'fill-opacity': 0.28,
@@ -782,10 +941,10 @@ function deckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
 		{
 			element: 'rect',
 			attr: {
-				x: x + 7,
-				y: y + 7,
-				width: CARD_WIDTH,
-				height: CARD_HEIGHT,
+				x: x + offset,
+				y: y + offset,
+				width: size.width,
+				height: size.height,
 				rx: 10,
 				fill: '#f8fafc',
 				stroke: '#334155',
@@ -798,22 +957,24 @@ function deckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
 	];
 }
 
-function deckStackMarkup(): string[] {
+function deckStackMarkup(size: CardVisualSize): string[] {
+	const offset = stackOffset(size);
 	return [
-		`    <rect x="14" y="14" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="#0f172a" fill-opacity="0.28" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`,
-		`    <rect x="7" y="7" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.65" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`
+		`    <rect x="${offset * 2}" y="${offset * 2}" width="${size.width}" height="${size.height}" rx="10" fill="#0f172a" fill-opacity="0.28" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`,
+		`    <rect x="${offset}" y="${offset}" width="${size.width}" height="${size.height}" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.65" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`
 	];
 }
 
-function boundedDeckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
+function boundedDeckStackElementsJson(size: CardVisualSize, x = 0, y = 0): TableSvgElementJson[] {
+	const offset = stackOffset(size);
 	return [
 		{
 			element: 'rect',
 			attr: {
-				x: x + 8,
-				y: y + 8,
-				width: CARD_WIDTH - 8,
-				height: CARD_HEIGHT - 8,
+				x: x + offset * 2,
+				y: y + offset * 2,
+				width: Math.max(1, size.width - offset * 2),
+				height: Math.max(1, size.height - offset * 2),
 				rx: 10,
 				fill: '#0f172a',
 				'fill-opacity': 0.24,
@@ -827,10 +988,10 @@ function boundedDeckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
 		{
 			element: 'rect',
 			attr: {
-				x: x + 4,
-				y: y + 4,
-				width: CARD_WIDTH - 4,
-				height: CARD_HEIGHT - 4,
+				x: x + offset,
+				y: y + offset,
+				width: Math.max(1, size.width - offset),
+				height: Math.max(1, size.height - offset),
 				rx: 10,
 				fill: '#f8fafc',
 				stroke: '#334155',
@@ -843,10 +1004,11 @@ function boundedDeckStackElementsJson(x = 0, y = 0): TableSvgElementJson[] {
 	];
 }
 
-function boundedDeckStackMarkup(x = 0, y = 0): string[] {
+function boundedDeckStackMarkup(size: CardVisualSize, x = 0, y = 0): string[] {
+	const offset = stackOffset(size);
 	return [
-		`    <rect x="${x + 8}" y="${y + 8}" width="${CARD_WIDTH - 8}" height="${CARD_HEIGHT - 8}" rx="10" fill="#0f172a" fill-opacity="0.24" stroke="#0f172a" stroke-opacity="0.4" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`,
-		`    <rect x="${x + 4}" y="${y + 4}" width="${CARD_WIDTH - 4}" height="${CARD_HEIGHT - 4}" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.55" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`
+		`    <rect x="${x + offset * 2}" y="${y + offset * 2}" width="${Math.max(1, size.width - offset * 2)}" height="${Math.max(1, size.height - offset * 2)}" rx="10" fill="#0f172a" fill-opacity="0.24" stroke="#0f172a" stroke-opacity="0.4" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`,
+		`    <rect x="${x + offset}" y="${y + offset}" width="${Math.max(1, size.width - offset)}" height="${Math.max(1, size.height - offset)}" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.55" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`
 	];
 }
 
@@ -854,20 +1016,21 @@ function fallbackPlacementElementsJson(
 	item: TablePlacement,
 	label: string,
 	kind: string,
+	size: CardVisualSize,
 	x = 0,
 	y = 0
 ) {
 	const fill = item.type === 'deck' ? '#fef3c7' : '#f0fdf4';
 	const stroke = item.type === 'deck' ? '#b45309' : '#15803d';
 	return [
-		...(item.type === 'deck' ? deckStackElementsJson(x, y) : []),
+		...(item.type === 'deck' ? deckStackElementsJson(size, x, y) : []),
 		{
 			element: 'rect',
 			attr: {
 				x,
 				y,
-				width: CARD_WIDTH,
-				height: CARD_HEIGHT,
+				width: size.width,
+				height: size.height,
 				rx: 10,
 				fill,
 				stroke,
@@ -878,8 +1041,8 @@ function fallbackPlacementElementsJson(
 		{
 			element: 'text',
 			attr: {
-				x: x + CARD_WIDTH / 2,
-				y: y + CARD_HEIGHT / 2 - 6,
+				x: x + size.width / 2,
+				y: y + size.height / 2 - 6,
 				'text-anchor': 'middle',
 				fill: '#111827',
 				'font-family': 'system-ui, sans-serif',
@@ -892,8 +1055,8 @@ function fallbackPlacementElementsJson(
 		{
 			element: 'text',
 			attr: {
-				x: x + CARD_WIDTH / 2,
-				y: y + CARD_HEIGHT / 2 + 24,
+				x: x + size.width / 2,
+				y: y + size.height / 2 + 24,
 				'text-anchor': 'middle',
 				fill: '#4b5563',
 				'font-family': 'system-ui, sans-serif',
@@ -905,14 +1068,19 @@ function fallbackPlacementElementsJson(
 	];
 }
 
-function fallbackPlacementMarkup(item: TablePlacement, label: string, kind: string): string[] {
+function fallbackPlacementMarkup(
+	item: TablePlacement,
+	label: string,
+	kind: string,
+	size: CardVisualSize
+): string[] {
 	const fill = item.type === 'deck' ? '#fef3c7' : '#f0fdf4';
 	const stroke = item.type === 'deck' ? '#b45309' : '#15803d';
 	return [
-		...(item.type === 'deck' ? deckStackMarkup() : []),
-		`    <rect x="0" y="0" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${RESIZABLE_ATTR}="false"/>`,
-		`    <text x="${CARD_WIDTH / 2}" y="${CARD_HEIGHT / 2 - 6}" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="20" font-weight="700" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${label}</text>`,
-		`    <text x="${CARD_WIDTH / 2}" y="${CARD_HEIGHT / 2 + 24}" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="16" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${kind}</text>`
+		...(item.type === 'deck' ? deckStackMarkup(size) : []),
+		`    <rect x="0" y="0" width="${size.width}" height="${size.height}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${RESIZABLE_ATTR}="false"/>`,
+		`    <text x="${size.width / 2}" y="${size.height / 2 - 6}" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="20" font-weight="700" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${label}</text>`,
+		`    <text x="${size.width / 2}" y="${size.height / 2 + 24}" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="16" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${kind}</text>`
 	];
 }
 
@@ -955,20 +1123,21 @@ function slotTransform(slot: TableSlot): string {
 function fallbackSlotContentElementsJson(
 	content: TableSlotContent,
 	label: string,
+	size: CardVisualSize,
 	x: number,
 	y: number
 ): TableSvgElementJson[] {
 	const fill = content.type === 'deck' ? '#fef3c7' : '#f0fdf4';
 	const stroke = content.type === 'deck' ? '#b45309' : '#15803d';
 	return [
-		...(content.type === 'deck' ? boundedDeckStackElementsJson(x, y) : []),
+		...(content.type === 'deck' ? boundedDeckStackElementsJson(size, x, y) : []),
 		{
 			element: 'rect',
 			attr: {
 				x,
 				y,
-				width: CARD_WIDTH,
-				height: CARD_HEIGHT,
+				width: size.width,
+				height: size.height,
 				rx: 10,
 				fill,
 				stroke,
@@ -979,8 +1148,8 @@ function fallbackSlotContentElementsJson(
 		{
 			element: 'text',
 			attr: {
-				x: x + CARD_WIDTH / 2,
-				y: y + CARD_HEIGHT / 2 - 6,
+				x: x + size.width / 2,
+				y: y + size.height / 2 - 6,
 				'text-anchor': 'middle',
 				fill: '#111827',
 				'font-family': 'system-ui, sans-serif',
@@ -993,8 +1162,8 @@ function fallbackSlotContentElementsJson(
 		{
 			element: 'text',
 			attr: {
-				x: x + CARD_WIDTH / 2,
-				y: y + CARD_HEIGHT / 2 + 22,
+				x: x + size.width / 2,
+				y: y + size.height / 2 + 22,
 				'text-anchor': 'middle',
 				fill: '#4b5563',
 				'font-family': 'system-ui, sans-serif',
@@ -1013,31 +1182,63 @@ function slotContentElementsJson(
 	y: number
 ): TableSvgElementJson[] {
 	const cardSvg = slotContentCardSvg(assets, content);
-	if (!cardSvg) return fallbackSlotContentElementsJson(content, slotContentLabel(assets, content), x, y);
+	const size = slotContentVisualSize(content, assets);
+	if (!cardSvg)
+		return fallbackSlotContentElementsJson(content, slotContentLabel(assets, content), size, x, y);
 	return [
-		...(content.type === 'deck' ? boundedDeckStackElementsJson(x, y) : []),
-		cardImageElementJson(cardSvg, x, y)
+		...(content.type === 'deck' ? boundedDeckStackElementsJson(size, x, y) : []),
+		cardImageElementJson(cardSvg, size, x, y)
 	];
+}
+
+function fixedSlotCellSize(slot: TableSlot) {
+	const layout = slot.layout;
+	if (layout?.mode === 'grid') {
+		return {
+			width: positiveNumber(
+				(slot.width - Math.max(0, layout.columns - 1) * layout.gapX) / layout.columns,
+				LEGACY_CARD_SIZE.width
+			),
+			height: positiveNumber(
+				(slot.height - Math.max(0, layout.rows - 1) * layout.gapY) / layout.rows,
+				LEGACY_CARD_SIZE.height
+			)
+		};
+	}
+	if (layout?.mode === 'horizontal-flex') {
+		return {
+			width: positiveNumber(
+				(slot.width - Math.max(0, layout.visibleCount - 1) * layout.gap) / layout.visibleCount,
+				LEGACY_CARD_SIZE.width
+			),
+			height: positiveNumber(slot.height, LEGACY_CARD_SIZE.height)
+		};
+	}
+	return {
+		width: positiveNumber(slot.width, LEGACY_CARD_SIZE.width),
+		height: positiveNumber(slot.height, LEGACY_CARD_SIZE.height)
+	};
 }
 
 function fixedSlotCellPosition(slot: TableSlot, index: number) {
 	const layout = slot.layout;
+	const cellSize = fixedSlotCellSize(slot);
 	if (layout?.mode === 'grid') {
 		const column = index % layout.columns;
 		const row = Math.floor(index / layout.columns);
 		return {
-			x: column * (CARD_WIDTH + layout.gapX),
-			y: row * (CARD_HEIGHT + layout.gapY)
+			x: column * (cellSize.width + layout.gapX),
+			y: row * (cellSize.height + layout.gapY)
 		};
 	}
 	if (layout?.mode === 'horizontal-flex') {
-		return { x: index * (CARD_WIDTH + layout.gap), y: 0 };
+		return { x: index * (cellSize.width + layout.gap), y: 0 };
 	}
 	return { x: 0, y: 0 };
 }
 
 function fixedSlotChildrenJson(item: TableSlot, assets: TableSvgAssets): TableSvgElementJson[] {
-	const slot = normalizeTableSlot(item);
+	const slot = resolveTableSlotSize(item, assets);
 	const layout = slot.layout;
 	if (layout?.mode !== 'horizontal-flex' && layout?.mode !== 'grid') return [];
 	const capacity = slotLayoutCapacity(layout);
@@ -1066,8 +1267,8 @@ function fixedSlotChildrenJson(item: TableSlot, assets: TableSvgAssets): TableSv
 			element: 'rect',
 			attr: {
 				...fixedSlotCellPosition(slot, index),
-				width: CARD_WIDTH,
-				height: CARD_HEIGHT,
+				width: fixedSlotCellSize(slot).width,
+				height: fixedSlotCellSize(slot).height,
 				rx: 10,
 				fill: '#f8fafc',
 				'fill-opacity': 0.55,
@@ -1088,7 +1289,7 @@ export function slotToSvgElementJson(
 	item: TableSlot,
 	assets: TableSvgAssets = {}
 ): TableSvgElementJson {
-	const slot = normalizeTableSlot(item);
+	const slot = resolveTableSlotSize(item, assets);
 	if (slot.layout?.mode === 'horizontal-flex' || slot.layout?.mode === 'grid') {
 		return {
 			element: 'g',
@@ -1136,7 +1337,8 @@ export function placementToSvgElementJson(
 	item: TablePlacement,
 	assets: TableSvgAssets = {}
 ): TableSvgElementJson {
-	const placement = snapPlacementToGrid(item);
+	const size = placementVisualSize(item, assets);
+	const placement = snapPlacementToGrid(item, size);
 	const kind = item.type;
 	const cardSvg = placementCardSvg(assets, placement.id);
 	const attr: Record<string, string | number> = {
@@ -1153,14 +1355,14 @@ export function placementToSvgElementJson(
 	if (placement.type === 'deck') {
 		attr[CARD_IDS_ATTR] = JSON.stringify(placement.cardIds);
 	}
-	const visualX = placement.x - CARD_WIDTH / 2;
-	const visualY = placement.y - CARD_HEIGHT / 2;
+	const visualX = placement.x - size.width / 2;
+	const visualY = placement.y - size.height / 2;
 	const visual = cardSvg
 		? [
-				...(placement.type === 'deck' ? deckStackElementsJson(visualX, visualY) : []),
-				cardImageElementJson(cardSvg, visualX, visualY)
+				...(placement.type === 'deck' ? deckStackElementsJson(size, visualX, visualY) : []),
+				cardImageElementJson(cardSvg, size, visualX, visualY)
 			]
-		: fallbackPlacementElementsJson(placement, placement.label, kind, visualX, visualY);
+		: fallbackPlacementElementsJson(placement, placement.label, kind, size, visualX, visualY);
 	if (placement.rotation) {
 		attr.transform = `rotate(${placement.rotation} ${placement.x} ${placement.y})`;
 	}
@@ -1206,16 +1408,17 @@ function slotAttributesMarkup(item: TableSlot): string {
 function fallbackSlotContentMarkup(
 	content: TableSlotContent,
 	label: string,
+	size: CardVisualSize,
 	x: number,
 	y: number
 ): string[] {
 	const fill = content.type === 'deck' ? '#fef3c7' : '#f0fdf4';
 	const stroke = content.type === 'deck' ? '#b45309' : '#15803d';
 	return [
-		...(content.type === 'deck' ? boundedDeckStackMarkup(x, y) : []),
-		`    <rect x="${x}" y="${y}" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${LOCKED_ATTRS}/>`,
-		`    <text x="${x + CARD_WIDTH / 2}" y="${y + CARD_HEIGHT / 2 - 6}" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="18" font-weight="700" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${escapeXml(label)}</text>`,
-		`    <text x="${x + CARD_WIDTH / 2}" y="${y + CARD_HEIGHT / 2 + 22}" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="15" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${content.type}</text>`
+		...(content.type === 'deck' ? boundedDeckStackMarkup(size, x, y) : []),
+		`    <rect x="${x}" y="${y}" width="${size.width}" height="${size.height}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${LOCKED_ATTRS}/>`,
+		`    <text x="${x + size.width / 2}" y="${y + size.height / 2 - 6}" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="18" font-weight="700" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${escapeXml(label)}</text>`,
+		`    <text x="${x + size.width / 2}" y="${y + size.height / 2 + 22}" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="15" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${content.type}</text>`
 	];
 }
 
@@ -1226,22 +1429,25 @@ function slotContentMarkup(
 	y: number
 ): string[] {
 	const cardSvg = slotContentCardSvg(assets, content);
-	if (!cardSvg) return fallbackSlotContentMarkup(content, slotContentLabel(assets, content), x, y);
+	const size = slotContentVisualSize(content, assets);
+	if (!cardSvg)
+		return fallbackSlotContentMarkup(content, slotContentLabel(assets, content), size, x, y);
 	return [
-		...(content.type === 'deck' ? boundedDeckStackMarkup(x, y) : []),
-		`    ${cardImageMarkup(cardSvg, x, y)}`
+		...(content.type === 'deck' ? boundedDeckStackMarkup(size, x, y) : []),
+		`    ${cardImageMarkup(cardSvg, size, x, y)}`
 	];
 }
 
 function slotMarkup(item: TableSlot, assets: TableSvgAssets): string {
-	const slot = normalizeTableSlot(item);
+	const slot = resolveTableSlotSize(item, assets);
 	const label = escapeXml(slot.label);
 	const layout = slot.layout;
 	if (layout?.mode === 'horizontal-flex' || layout?.mode === 'grid') {
 		const capacity = slotLayoutCapacity(layout);
 		const cells = Array.from({ length: capacity }).map((_, index) => {
 			const { x, y } = fixedSlotCellPosition(slot, index);
-			return `    <rect x="${x}" y="${y}" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="#f8fafc" fill-opacity="0.55" stroke="#2563eb" stroke-opacity="0.48" stroke-width="2" ${LOCKED_ATTRS}/>`;
+			const { width, height } = fixedSlotCellSize(slot);
+			return `    <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="#f8fafc" fill-opacity="0.55" stroke="#2563eb" stroke-opacity="0.48" stroke-width="2" ${LOCKED_ATTRS}/>`;
 		});
 		const contents = (slot.contents ?? []).flatMap((content, index) => {
 			const { x, y } = fixedSlotCellPosition(slot, content.cellIndex ?? index);
@@ -1265,7 +1471,8 @@ function slotMarkup(item: TableSlot, assets: TableSvgAssets): string {
 }
 
 function placementMarkup(item: TablePlacement, assets: TableSvgAssets): string {
-	const placement = snapPlacementToGrid(item);
+	const size = placementVisualSize(item, assets);
+	const placement = snapPlacementToGrid(item, size);
 	const label = escapeXml(placement.label);
 	const kind = escapeXml(placement.type);
 	const cardAttrs =
@@ -1277,15 +1484,15 @@ function placementMarkup(item: TablePlacement, assets: TableSvgAssets): string {
 	const cardSvg = placementCardSvg(assets, placement.id);
 	const visual = cardSvg
 		? [
-				...(placement.type === 'deck' ? deckStackMarkup() : []),
-				`    ${cardImageMarkup(cardSvg)}`
+				...(placement.type === 'deck' ? deckStackMarkup(size) : []),
+				`    ${cardImageMarkup(cardSvg, size)}`
 			]
-		: fallbackPlacementMarkup(placement, label, kind);
-	const transformX = placement.x - CARD_WIDTH / 2;
-	const transformY = placement.y - CARD_HEIGHT / 2;
+		: fallbackPlacementMarkup(placement, label, kind, size);
+	const transformX = placement.x - size.width / 2;
+	const transformY = placement.y - size.height / 2;
 
 	return [
-		`  <g id="${escapeXml(placement.id)}" ${KIND_ATTR}="placement" ${TYPE_ATTR}="${kind}" ${DECK_ATTR}="${escapeXml(placement.deckName)}"${cardAttrs}${deckAttrs} ${LABEL_ATTR}="${label}" ${RESIZABLE_ATTR}="false" transform="translate(${transformX} ${transformY}) rotate(${placement.rotation} ${CARD_WIDTH / 2} ${CARD_HEIGHT / 2})">`,
+		`  <g id="${escapeXml(placement.id)}" ${KIND_ATTR}="placement" ${TYPE_ATTR}="${kind}" ${DECK_ATTR}="${escapeXml(placement.deckName)}"${cardAttrs}${deckAttrs} ${LABEL_ATTR}="${label}" ${RESIZABLE_ATTR}="false" transform="translate(${transformX} ${transformY}) rotate(${placement.rotation} ${size.width / 2} ${size.height / 2})">`,
 		...visual,
 		'  </g>'
 	].join('\n');
@@ -1317,12 +1524,7 @@ function replaceOrAppendGenerated(
 	parent.appendChild(next);
 }
 
-function syncGeneratedElements(
-	doc: Document,
-	root: Element,
-	table: Table,
-	assets: TableSvgAssets
-) {
+function syncGeneratedElements(doc: Document, root: Element, table: Table, assets: TableSvgAssets) {
 	const slotIds = new Set(table.slots.map((slot) => slot.id));
 	const placementIds = new Set(table.placements.map((placement) => placement.id));
 	const existingSlots = elementsByKind(root, 'slot');

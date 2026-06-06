@@ -53,13 +53,13 @@
 		type TableItemMetadata
 	} from './table-slot-rules';
 	import {
-		clampTableItemPose,
 		tableSlotCellIndexAtPoint,
 		tableSlotCellPose,
 		tableSlotCellRect
 	} from './table-geometry';
 	import {
 		applyTableCameraTransform,
+		clampTableItemPose,
 		configureTableItem,
 		configureTableViewport,
 		drawPreviewRect,
@@ -280,7 +280,9 @@
 		return {
 			id: item.id,
 			type: item.clientStack ? 'stack' : 'card',
-			componentIds: item.clientStack ? [...item.clientStack.clientStackState.componentIds] : [item.id]
+			componentIds: item.clientStack
+				? [...item.clientStack.clientStackState.componentIds]
+				: [item.id]
 		};
 	}
 
@@ -361,20 +363,19 @@
 		const slot = findTableSlotAtPoint(table, point);
 		if (!slot) return;
 
-		const cellIndex =
-			slot.layout?.mode === 'grid' ? tableSlotCellIndexAtPoint(slot, point) : null;
+		const cellIndex = slot.layout?.mode === 'grid' ? tableSlotCellIndexAtPoint(slot, point) : null;
 		const accepted = canPlaceItemInTableSlot(item, slot.id, cellIndex);
 		const rect = accepted
 			? tableDropPreviewRect(slot, item.id, tableSlotOccupants.get(slot.id) ?? [], cellIndex)
 			: cellIndex !== null
 				? tableSlotCellRect(slot, cellIndex)
 				: {
-					x: slot.x,
-					y: slot.y,
-					width: slot.width,
-					height: slot.height,
-					rotation: slot.rotation ?? 0
-				};
+						x: slot.x,
+						y: slot.y,
+						width: slot.width,
+						height: slot.height,
+						rotation: slot.rotation ?? 0
+					};
 		if (!rect) return;
 
 		drawPreviewRect(tableDropPreviewLayer, rect, accepted);
@@ -548,7 +549,7 @@
 			}
 			tableItemSlotIds.set(item.id, slot.id);
 			configureTableItem(item);
-			setTableItemPose(item, clampTableItemPose(table, tableItemPose(item)));
+			setTableItemPose(item, clampTableItemPose(table, item, tableItemPose(item)));
 			if (fromHand) {
 				handlePlayCard(item);
 			} else {
@@ -575,7 +576,7 @@
 	) {
 		const table = tableForPlay();
 
-		const clampedPose = clampTableItemPose(table, tableItemPose(item));
+		const clampedPose = clampTableItemPose(table, item, tableItemPose(item));
 		setTableItemPose(item, clampedPose);
 		const slot = findTableSlotAtPoint(
 			table,
@@ -625,19 +626,20 @@
 		return null;
 	}
 
-	function findStackTarget(dragged: BoardGameItemNew): BoardGameItemNew | null {
-		const bounds = dragged.getBounds();
-		const center = new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+	function findStackTargetAtPoint(
+		dragged: BoardGameItemNew,
+		point: { x: number; y: number }
+	): BoardGameItemNew | null {
 		for (const item of boardGameItems.values()) {
 			if (item === dragged) continue;
-			if (!item.visible) continue;
+			if (!item.visible || !item.renderable) continue;
 			if (handContainer.hasItem(item)) continue;
 			const itemBounds = item.getBounds();
 			if (
-				center.x >= itemBounds.x &&
-				center.x <= itemBounds.x + itemBounds.width &&
-				center.y >= itemBounds.y &&
-				center.y <= itemBounds.y + itemBounds.height
+				point.x >= itemBounds.x &&
+				point.x <= itemBounds.x + itemBounds.width &&
+				point.y >= itemBounds.y &&
+				point.y <= itemBounds.y + itemBounds.height
 			) {
 				return item;
 			}
@@ -645,24 +647,28 @@
 		return null;
 	}
 
-	function stackTargetForItem(item: BoardGameItemNew): BoardGameItemNew | null {
+	function stackTargetForItem(
+		item: BoardGameItemNew,
+		point: { x: number; y: number }
+	): BoardGameItemNew | null {
 		if (item.clientStack) return null;
 		if (handContainer.hasItem(item)) return null;
-
-		const target = findStackTarget(item);
-		if (!target) return null;
-		const targetIsStack = target.clientStack !== undefined;
-		return targetIsStack ? target : null;
+		return findStackTargetAtPoint(item, point);
 	}
 
-	function tryStackSelection(): boolean {
+	function selectedItemStackPoint(item: BoardGameItemNew) {
+		const bounds = item.getBounds();
+		return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+	}
+
+	function tryStackSelection(point: { x: number; y: number }): boolean {
 		if (!keys.has('Shift')) return false;
 		if (selectionManager.size !== 1) return false;
 		const iterator = selectionManager.values();
 		const item = iterator.next().value as BoardGameItemNew | undefined;
 		if (!item) return false;
 
-		const target = stackTargetForItem(item);
+		const target = stackTargetForItem(item, point);
 		if (!target) return false;
 
 		const previousSlotId = removeItemFromTableSlot(item.id);
@@ -676,15 +682,15 @@
 		return true;
 	}
 
-	function stackTargetForSelection(): BoardGameItemNew | null {
+	function stackTargetForSelection(point?: { x: number; y: number }): BoardGameItemNew | null {
 		if (!keys.has('Shift')) return null;
 		if (selectionManager.size !== 1) return null;
 		const item = selectionManager.values().next().value as BoardGameItemNew | undefined;
-		return item ? stackTargetForItem(item) : null;
+		return item ? stackTargetForItem(item, point ?? selectedItemStackPoint(item)) : null;
 	}
 
-	function updateStackDropPreview() {
-		const target = stackTargetForSelection();
+	function updateStackDropPreview(point?: { x: number; y: number }) {
+		const target = stackTargetForSelection(point);
 		if (!target) {
 			clearStackDropPreview();
 			return false;
@@ -725,14 +731,11 @@
 	}
 
 	async function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
-		viewport = createViewport(
-			app,
-			{
-				worldWidth: localTable.table.table.width,
-				worldHeight: localTable.table.table.height,
-				minScale: 0.2
-			}
-		);
+		viewport = createViewport(app, {
+			worldWidth: localTable.table.table.width,
+			worldHeight: localTable.table.table.height,
+			minScale: 0.2
+		});
 		app.stage.eventMode = 'static';
 
 		function resizeViewportToScreen() {
@@ -835,7 +838,8 @@
 					}
 				}
 			} else if (drag.dragType == 'selection') {
-				if (!drag.hasMoved) {
+				const stacked = tryStackSelection(e.global);
+				if (!drag.hasMoved && !stacked) {
 					for (const c of selectionManager.values()) {
 						if (handContainer.hasItem(c)) {
 							c.x = 0;
@@ -844,7 +848,6 @@
 						c.cursor = 'pointer';
 					}
 				} else {
-					const stacked = tryStackSelection();
 					for (const c of selectionManager.values()) {
 						if (!stacked) {
 							commitTableDrop(c, false, drag.startPositions?.get(c.id));
@@ -862,7 +865,7 @@
 					}
 				} else {
 					const dropPoint = boardContainer.toLocal(e.global);
-					const stacked = tryStackSelection();
+					const stacked = tryStackSelection(e.global);
 					for (const c of selectionManager.values()) {
 						if (handContainer.hasItem(c)) {
 							c.x = 0;
@@ -935,7 +938,7 @@
 						);
 						const delta = pointer.subtract(startPointer);
 						const currentPose = tableItemPose(boardItem);
-						const nextPose = clampTableItemPose(tableForPlay(), {
+						const nextPose = clampTableItemPose(tableForPlay(), boardItem, {
 							...currentPose,
 							centerX: currentPose.centerX + delta.x,
 							centerY: currentPose.centerY + delta.y
@@ -963,18 +966,12 @@
 							const newLocal = wrapper.toLocal({ x: newGlobalX, y: newGlobalY });
 							boardItem.position.set(newLocal.x, newLocal.y);
 
-							const cardBounds = tableItemVisualBoundsGlobal(app, boardItem);
-							const handBounds = handContainer.container.getBounds();
-							const cardHeight = cardBounds?.height ?? wrapper.getBounds().height;
 							const pointerRatio =
 								drag.visualPointerRatios?.get(boardItem.id) ??
 								visualPointerRatio(app, boardItem, e.global);
-
-							const cardCenterY = (cardBounds?.y ?? wrapper.getBounds().y) + cardHeight / 2;
-							const handTop = handBounds.maxY - cardHeight;
 							const liftedFromHand = e.global.y < drag.originGlobalY - drag.clickThreshold;
 
-							if (liftedFromHand || e.global.y < handBounds.y || cardCenterY < handTop) {
+							if (liftedFromHand) {
 								handContainer.removeItem(boardItem);
 								boardContainer.addChild(boardItem);
 								movingCardLayer?.attach(boardItem);
@@ -1009,7 +1006,10 @@
 					}
 				}
 			}
-			if (!updateStackDropPreview()) {
+			const stackPreview =
+				(drag.dragType === 'selection' || drag.dragType === 'handToBoard') &&
+				updateStackDropPreview(e.global);
+			if (!stackPreview) {
 				const previewItem = selectionManager.values().next().value as BoardGameItemNew | undefined;
 				if (previewItem && !handContainer.hasItem(previewItem)) {
 					const previewPoint =
@@ -1227,11 +1227,9 @@
 				s,
 				room
 			);
-			boardGameItems
-				.get(component.id)
-				?.clientPosition?.onPositionChanged.subscribe(() => {
-					if (!drag) refreshTableItemPlacement(component.id);
-				});
+			boardGameItems.get(component.id)?.clientPosition?.onPositionChanged.subscribe(() => {
+				if (!drag) refreshTableItemPlacement(component.id);
+			});
 			refreshTableItemPlacement(component.id);
 			strokeLayer.refreshAll();
 		});
@@ -1298,16 +1296,6 @@
 		e.preventDefault();
 	}
 
-	function updateShiftStackPreview(e: KeyboardEvent) {
-		if (e.key !== 'Shift') return;
-		if (drag?.dragType !== 'selection' && drag?.dragType !== 'handToBoard') return;
-		updateStackDropPreview();
-	}
-
-	function clearShiftStackPreview(e: KeyboardEvent) {
-		if (e.key === 'Shift') clearStackDropPreview();
-	}
-
 	function handleCameraShortcut(e: KeyboardEvent) {
 		if (!playReady) return;
 		const target = e.target;
@@ -1333,15 +1321,11 @@
 	onMount(() => {
 		document.addEventListener('contextmenu', blockNativeContextMenu);
 		window.addEventListener('keydown', handleCameraShortcut);
-		window.addEventListener('keydown', updateShiftStackPreview);
-		window.addEventListener('keyup', clearShiftStackPreview);
 	});
 
 	onDestroy(() => {
 		document.removeEventListener('contextmenu', blockNativeContextMenu);
 		window.removeEventListener('keydown', handleCameraShortcut);
-		window.removeEventListener('keydown', updateShiftStackPreview);
-		window.removeEventListener('keyup', clearShiftStackPreview);
 	});
 
 	function handleDrawCard(item: BoardGameItemNew) {
@@ -1363,7 +1347,6 @@
 			if (previousSlotId) reflowTableSlot(previousSlotId);
 		}
 		selectionManager.clear();
-		boardContainer.removeChild(item);
 		handContainer.addItem(item);
 		sendCmd(room, 'draw', { cardId: ogId });
 		strokeLayer.refreshAll();
@@ -1394,131 +1377,144 @@
 <div class="absolute inset-0">
 	{#if tableBlockMessage}
 		<div class="bg-background text-foreground flex h-full w-full items-center justify-center p-6">
-			<div class="max-w-md rounded-lg border bg-card p-6 text-card-foreground shadow-sm" role="status">
+			<div
+				class="bg-card text-card-foreground max-w-md rounded-lg border p-6 shadow-sm"
+				role="status"
+			>
 				<h1 class="text-xl font-semibold">Table setup required</h1>
 				<p class="text-muted-foreground mt-2 text-sm">{tableBlockMessage}</p>
 			</div>
 		</div>
 	{:else}
-		<div class="relative h-full w-full" style="pointer-events: auto;" {@attach attachApp(app)}></div>
+		<div
+			class="relative h-full w-full"
+			style="pointer-events: auto;"
+			{@attach attachApp(app)}
+		></div>
 
-	<div
-		class="bg-background/90 absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur"
-		role="toolbar"
-		aria-label="Play tools"
-	>
-		<button
-			type="button"
-			aria-label="Select tool"
-			aria-pressed={activeTool === 'select'}
-			title="Select"
-			class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
-			onclick={() => selectTool('select')}
+		<div
+			class="bg-background/90 absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur"
+			role="toolbar"
+			aria-label="Play tools"
 		>
-			<MousePointer2Icon class="size-4" />
-		</button>
-		<button
-			type="button"
-			aria-label="Pen tool"
-			aria-pressed={activeTool === 'pen'}
-			title="Pen"
-			class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
-			onclick={() => selectTool('pen')}
-		>
-			<PenLineIcon class="size-4" />
-		</button>
-		<button
-			type="button"
-			aria-label="Delete selected stroke"
-			title="Delete stroke"
-			disabled={!selectedStrokeId}
-			class="text-foreground hover:bg-accent rounded-sm p-2 disabled:pointer-events-none disabled:opacity-40"
-			onclick={deleteSelectedStroke}
-		>
-			<Trash2Icon class="size-4" />
-		</button>
-		<div class="bg-border mx-1 h-6 w-px" aria-hidden="true"></div>
-		<button
-			type="button"
-			aria-label="Rotate camera left"
-			title="Rotate camera left ([)"
-			class="text-foreground hover:bg-accent rounded-sm p-2"
-			onclick={() => rotateCamera(-90)}
-		>
-			<RotateCcwIcon class="size-4" />
-		</button>
-		<button
-			type="button"
-			aria-label="Reset camera rotation"
-			title="Reset camera rotation (0)"
-			class="text-foreground hover:bg-accent min-w-9 rounded-sm px-2 py-1 text-xs font-medium"
-			onclick={resetCameraRotation}
-		>
-			{cameraRotation}°
-		</button>
-		<button
-			type="button"
-			aria-label="Rotate camera right"
-			title="Rotate camera right (])"
-			class="text-foreground hover:bg-accent rounded-sm p-2"
-			onclick={() => rotateCamera(90)}
-		>
-			<RotateCwIcon class="size-4" />
-		</button>
-		{#if playtestFeedback}
 			<button
 				type="button"
-				aria-label={notesHaveDraft ? 'Playtest notes with unsent changes' : 'Playtest notes'}
-				title={notesHaveDraft ? 'Notes with unsent changes' : 'Notes'}
-				class={`relative rounded-sm p-2 ${
-					notesHaveDraft
-						? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
-						: 'text-foreground hover:bg-accent'
-				}`}
-				onclick={() => (notesOpen = true)}
+				aria-label="Select tool"
+				aria-pressed={activeTool === 'select'}
+				title="Select"
+				class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
+				onclick={() => selectTool('select')}
 			>
-				<FileTextIcon class="size-4" />
-				{#if notesHaveDraft}
-					<span class="bg-destructive absolute top-1 right-1 size-2 rounded-full" aria-hidden="true"
-					></span>
-				{/if}
+				<MousePointer2Icon class="size-4" />
 			</button>
+			<button
+				type="button"
+				aria-label="Pen tool"
+				aria-pressed={activeTool === 'pen'}
+				title="Pen"
+				class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
+				onclick={() => selectTool('pen')}
+			>
+				<PenLineIcon class="size-4" />
+			</button>
+			<button
+				type="button"
+				aria-label="Delete selected stroke"
+				title="Delete stroke"
+				disabled={!selectedStrokeId}
+				class="text-foreground hover:bg-accent rounded-sm p-2 disabled:pointer-events-none disabled:opacity-40"
+				onclick={deleteSelectedStroke}
+			>
+				<Trash2Icon class="size-4" />
+			</button>
+			<div class="bg-border mx-1 h-6 w-px" aria-hidden="true"></div>
+			<button
+				type="button"
+				aria-label="Rotate camera left"
+				title="Rotate camera left ([)"
+				class="text-foreground hover:bg-accent rounded-sm p-2"
+				onclick={() => rotateCamera(-90)}
+			>
+				<RotateCcwIcon class="size-4" />
+			</button>
+			<button
+				type="button"
+				aria-label="Reset camera rotation"
+				title="Reset camera rotation (0)"
+				class="text-foreground hover:bg-accent min-w-9 rounded-sm px-2 py-1 text-xs font-medium"
+				onclick={resetCameraRotation}
+			>
+				{cameraRotation}°
+			</button>
+			<button
+				type="button"
+				aria-label="Rotate camera right"
+				title="Rotate camera right (])"
+				class="text-foreground hover:bg-accent rounded-sm p-2"
+				onclick={() => rotateCamera(90)}
+			>
+				<RotateCwIcon class="size-4" />
+			</button>
+			{#if playtestFeedback}
+				<button
+					type="button"
+					aria-label={notesHaveDraft ? 'Playtest notes with unsent changes' : 'Playtest notes'}
+					title={notesHaveDraft ? 'Notes with unsent changes' : 'Notes'}
+					class={`relative rounded-sm p-2 ${
+						notesHaveDraft
+							? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
+							: 'text-foreground hover:bg-accent'
+					}`}
+					onclick={() => (notesOpen = true)}
+				>
+					<FileTextIcon class="size-4" />
+					{#if notesHaveDraft}
+						<span
+							class="bg-destructive absolute top-1 right-1 size-2 rounded-full"
+							aria-hidden="true"
+						></span>
+					{/if}
+				</button>
+			{/if}
+		</div>
+
+		{#if playtestFeedback}
+			<PlaytestNotes
+				bind:open={notesOpen}
+				bind:hasDraft={notesHaveDraft}
+				playtestId={playtestFeedback.playtestId}
+			/>
 		{/if}
-	</div>
 
-	{#if playtestFeedback}
-		<PlaytestNotes
-			bind:open={notesOpen}
-			bind:hasDraft={notesHaveDraft}
-			playtestId={playtestFeedback.playtestId}
-		/>
-	{/if}
-
-	<ContextMenu.Root bind:open={showContextMenu}>
-		<ContextMenu.Trigger
-			style="left:{contextMenuPosition.x}px; top: {contextMenuPosition.y}px;"
-			class="z-10"
-		>
-			<div
-				class="absolute h-1 w-1"
-				style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px"
-				aria-hidden="true"
-			></div>
-		</ContextMenu.Trigger>
-		<ContextMenu.Content strategy="absolute" style="top: {contextMenuPosition.y}px; z-index: 1000;">
-			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleFlipCard(item))}
-				>Flip Card
-				<ContextMenu.Shortcut>F</ContextMenu.Shortcut>
-			</ContextMenu.Item>
-			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleDrawCard(item))}
-				>Draw Card
-				<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
-			</ContextMenu.Item>
-			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleShuffleStack(item))}
-				>Shuffle Stack
-				<ContextMenu.Shortcut>S</ContextMenu.Shortcut>
-			</ContextMenu.Item>
-		</ContextMenu.Content>
-	</ContextMenu.Root>
+		<ContextMenu.Root bind:open={showContextMenu}>
+			<ContextMenu.Trigger
+				style="left:{contextMenuPosition.x}px; top: {contextMenuPosition.y}px;"
+				class="z-10"
+			>
+				<div
+					class="absolute h-1 w-1"
+					style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px"
+					aria-hidden="true"
+				></div>
+			</ContextMenu.Trigger>
+			<ContextMenu.Content
+				strategy="absolute"
+				style="top: {contextMenuPosition.y}px; z-index: 1000;"
+			>
+				<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleFlipCard(item))}
+					>Flip Card
+					<ContextMenu.Shortcut>F</ContextMenu.Shortcut>
+				</ContextMenu.Item>
+				<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleDrawCard(item))}
+					>Draw Card
+					<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
+				</ContextMenu.Item>
+				<ContextMenu.Item
+					onclick={() => selectionManager.forEach((item) => handleShuffleStack(item))}
+					>Shuffle Stack
+					<ContextMenu.Shortcut>S</ContextMenu.Shortcut>
+				</ContextMenu.Item>
+			</ContextMenu.Content>
+		</ContextMenu.Root>
 	{/if}
 </div>
