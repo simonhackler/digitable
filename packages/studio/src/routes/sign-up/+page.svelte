@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { base, resolve } from '$app/paths';
+	import { resolve } from '$app/paths';
 	import AuthBackdrop from '$lib/components/AuthBackdrop.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -49,7 +49,7 @@
 
 		isSubmitting = true;
 
-		const response = await fetch(`${base}/api/auth/sign-up/email`, {
+		const response = await fetch(resolve('/api/auth/sign-up/email'), {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json'
@@ -67,7 +67,7 @@
 			return;
 		}
 
-		const policyResponse = await fetch(`${base}/api/legal/accept-current`, {
+		const policyResponse = await fetch(resolve('/api/legal/accept-current'), {
 			method: 'POST'
 		});
 
@@ -84,7 +84,7 @@
 		errorMessage = '';
 		isGoogleSubmitting = true;
 
-		const response = await fetch(`${base}/api/auth/sign-in/social`, {
+		const response = await fetch(resolve('/api/auth/sign-in/social'), {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json'

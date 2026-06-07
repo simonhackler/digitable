@@ -1,5 +1,5 @@
 import { building } from '$app/environment';
-import { base, resolve as resolvePath } from '$app/paths';
+import { resolve as resolvePath } from '$app/paths';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { redirect, type Handle, type HandleServerError } from '@sveltejs/kit';
@@ -8,8 +8,11 @@ import { getMissingCurrentPolicies } from '@svg-table/db/policies';
 import { auth } from '$lib/server/auth';
 import { logError, logInfo, toError } from '$lib/server/otel-log';
 
+const APP_BASE = '/app';
+
 const publicPathPrefixes = [
-	`${base}/api/auth`,
+	`${APP_BASE}/api/auth`,
+	resolvePath('/api/legal/accept-current'),
 	resolvePath('/legal/accept'),
 	resolvePath('/sign-in'),
 	resolvePath('/sign-up')
@@ -57,7 +60,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const missingPolicies = await getMissingCurrentPolicies(event.locals.user.id);
 
 		if (missingPolicies.length > 0) {
-			redirect(303, resolvePath('/legal/accept'));
+			const legalPath = resolvePath('/legal/accept');
+			const playtestPrefix = resolvePath('/playtests/');
+			const next = `${event.url.pathname}${event.url.search}`;
+			const target = event.url.pathname.startsWith(playtestPrefix)
+				? `${legalPath}?next=${encodeURIComponent(next)}`
+				: legalPath;
+
+			redirect(303, target);
 		}
 	}
 

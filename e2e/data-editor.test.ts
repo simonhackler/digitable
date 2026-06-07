@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import {
+	migrateProjectsIfPrompted,
 	opfsEntryExists,
 	readOpfsText,
 	saveOpfsStoragePreference,
@@ -17,6 +18,7 @@ async function seedDataEditorProjects(page: Page) {
 	await seedProjectFiles(page, 'map');
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
+	await migrateProjectsIfPrompted(page);
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
 	await expect(page.getByRole('main').getByText('western-cards', { exact: true })).toBeVisible();
 	await expect(page.getByRole('main').getByText('map', { exact: true })).toBeVisible();
@@ -79,21 +81,21 @@ async function imageHrefText(page: Page, id: string) {
 }
 
 async function seedProjectImageColumn(page: Page) {
-	const frontPath = '/western-cards/system/western/front.svg';
+	const frontPath = '/western-cards/components/western/front.svg';
 	const frontSvg = await readOpfsText(page, frontPath);
 	if (!frontSvg.includes('id="portrait"')) {
 		const svgWithImageField = frontSvg.replace(
 			'<text data-svgedit-line-height',
-			'<image id="portrait" href="../../files/portrait.svg" x="2" y="2" width="10" height="10"/>\n   <text data-svgedit-line-height'
+			'<image id="portrait" href="../../assets/portrait.svg" x="2" y="2" width="10" height="10"/>\n   <text data-svgedit-line-height'
 		);
 		await writeOpfsText(page, frontPath, svgWithImageField);
 	}
 	await writeOpfsText(
 		page,
-		'/western-cards/files/portrait.svg',
+		'/western-cards/assets/portrait.svg',
 		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="red"/></svg>'
 	);
-	await writeOpfsText(page, '/western-cards/files/notes.txt', 'not an image');
+	await writeOpfsText(page, '/western-cards/assets/notes.txt', 'not an image');
 	await page.goto('/app/games/western-cards/decks/western/data');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
 	await expect.poll(() => spreadsheetHeaders(page)).toContain('portrait');
@@ -115,6 +117,10 @@ async function removeOpfsFile(page: Page, sourcePath: string) {
 		}
 		await dir.removeEntry(fileName).catch(() => {});
 	}, sourcePath);
+}
+
+async function openNewDeckDialog(page: Page) {
+	await page.locator('[data-sidebar="content"]').getByRole('button', { name: 'New' }).click();
 }
 
 test.describe.serial('data editor', () => {
@@ -151,28 +157,49 @@ test.describe.serial('data editor', () => {
 		await page.getByRole('menuitem', { name: 'Insert a new row before' }).click();
 	});
 
+	dataEditorTest('go to spreadsheet editor', async (page) => {
+		await expect(page.locator('h1')).toBeVisible();
+	});
+
 	dataEditorTest('generated fallback spreadsheet data is saved to csv', async (page) => {
-		await removeOpfsFile(page, '/map/system/map/data.csv');
-		await expect(await opfsEntryExists(page, '/map/system/map/data.csv')).toBe(false);
+		await removeOpfsFile(page, '/map/components/map/data.csv');
+		await expect(await opfsEntryExists(page, '/map/components/map/data.csv')).toBe(false);
 
 		await page.goto('/app/games/map/decks/map/data');
 		await expect(page).toHaveURL(/\/app\/games\/map\/decks\/map\/data/);
 		await expect.poll(() => spreadsheetHeaders(page)).toContain('text56');
 		await expect(page.getByText('Saved')).toBeVisible();
 
-		await expect.poll(() => opfsEntryExists(page, '/map/system/map/data.csv')).toBe(true);
-		const csv = await readOpfsText(page, '/map/system/map/data.csv');
+		await expect.poll(() => opfsEntryExists(page, '/map/components/map/data.csv')).toBe(true);
+		const csv = await readOpfsText(page, '/map/components/map/data.csv');
 		expect(csv).toContain('id');
 		expect(csv).toContain('text56');
 	});
 
+	dataEditorTest('spreadsheet editor toolbar opens layout editor', async (page) => {
+		await openWesternDataEditor(page);
+
+		const toolbar = page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' });
+		await toolbar.getByRole('button', { name: 'Back' }).click();
+		await expect(toolbar.getByRole('button', { name: 'Front' })).toBeVisible();
+
+		await page.getByRole('link', { name: 'Layout' }).click();
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+		const layoutToolbar = page.getByRole('toolbar', { name: 'Layout editor toolbar' });
+		await expect(layoutToolbar.getByRole('button', { name: 'Front' })).toBeVisible();
+
+		await page.getByRole('link', { name: 'Spreadsheet' }).click();
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+		await expect(toolbar.getByRole('button', { name: 'Front' })).toBeVisible();
+	});
+
 	dataEditorTest('appends missing svg columns after csv columns', async (page) => {
-		const frontSvg = await readOpfsText(page, '/western-cards/system/western/front.svg');
+		const frontSvg = await readOpfsText(page, '/western-cards/components/western/front.svg');
 		const svgWithExtraField = frontSvg.replace(
 			'</svg>',
 			'<text id="late_svg_field" x="5" y="5">Late Field</text>\n</svg>'
 		);
-		await writeOpfsText(page, '/western-cards/system/western/front.svg', svgWithExtraField);
+		await writeOpfsText(page, '/western-cards/components/western/front.svg', svgWithExtraField);
 
 		await page.getByRole('main').getByText('western-cards').click();
 		await page.getByRole('button', { name: 'Decks' }).click();
@@ -219,7 +246,7 @@ test.describe.serial('data editor', () => {
 		await page.goto('/app/games/western-cards/decks/western/data');
 
 		await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
-		const savedCsv = await readOpfsText(page, '/western-cards/system/western/data.csv');
+		const savedCsv = await readOpfsText(page, '/western-cards/components/western/data.csv');
 		expect(savedCsv).toContain('portrait.svg');
 	});
 
@@ -241,7 +268,7 @@ test.describe.serial('data editor', () => {
 	);
 
 	dataEditorTest(
-		'image upload writes to files uploads and fills the selected image cell',
+		'image upload writes to assets uploads and fills the selected image cell',
 		async (page) => {
 			await seedProjectImageColumn(page);
 
@@ -259,7 +286,7 @@ test.describe.serial('data editor', () => {
 			await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
 			const uploaded = await readOpfsText(
 				page,
-				'/western-cards/files/uploads/Uploaded-Portrait.svg'
+				'/western-cards/assets/uploads/Uploaded-Portrait.svg'
 			);
 			expect(uploaded).toContain('<circle');
 		}
@@ -268,15 +295,15 @@ test.describe.serial('data editor', () => {
 	dataEditorTest('flipped cards use back-prefixed image column values', async (page) => {
 		await writeOpfsText(
 			page,
-			'/western-cards/files/front-bg.svg',
+			'/western-cards/assets/front-bg.svg',
 			'<svg xmlns="http://www.w3.org/2000/svg"><title>front-bg-marker</title></svg>'
 		);
 		await writeOpfsText(
 			page,
-			'/western-cards/files/back-bg.svg',
+			'/western-cards/assets/back-bg.svg',
 			'<svg xmlns="http://www.w3.org/2000/svg"><title>back-bg-marker</title></svg>'
 		);
-		const csv = await readOpfsText(page, '/western-cards/system/western/data.csv');
+		const csv = await readOpfsText(page, '/western-cards/components/western/data.csv');
 		const [headerLine, firstRowLine, ...rest] = csv.split(/\r?\n/);
 		const headers = headerLine.split(',');
 		const firstRow = firstRowLine.split(',');
@@ -284,7 +311,7 @@ test.describe.serial('data editor', () => {
 		firstRow[headers.indexOf('back_background')] = 'back-bg.svg';
 		await writeOpfsText(
 			page,
-			'/western-cards/system/western/data.csv',
+			'/western-cards/components/western/data.csv',
 			[headerLine, firstRow.join(','), ...rest].join('\n')
 		);
 
@@ -315,7 +342,7 @@ test.describe.serial('data editor', () => {
 		async (page) => {
 			await page.getByRole('main').getByText('western-cards').click();
 			await page.getByRole('button', { name: 'Decks' }).click();
-			await page.locator('[data-sidebar="menu-sub-button"]').filter({ hasText: 'New' }).click();
+			await openNewDeckDialog(page);
 
 			await page.getByPlaceholder('deck name').fill('comma_one');
 			await page.getByPlaceholder('width').fill('55,9');
@@ -323,7 +350,7 @@ test.describe.serial('data editor', () => {
 			await page.getByRole('button', { name: 'Create new deck' }).click();
 			await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/comma_one\/editor/);
 
-			await page.locator('[data-sidebar="menu-sub-button"]').filter({ hasText: 'New' }).click();
+			await openNewDeckDialog(page);
 			await expect(page.getByPlaceholder('deck name')).toHaveValue('');
 			await page.getByPlaceholder('deck name').fill('comma_two');
 			await page.getByPlaceholder('width').fill('41');
@@ -331,9 +358,9 @@ test.describe.serial('data editor', () => {
 			await page.getByRole('button', { name: 'Create new deck' }).click();
 			await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/comma_two\/editor/);
 
-			const firstFront = await readOpfsText(page, '/western-cards/system/comma_one/front.svg');
+			const firstFront = await readOpfsText(page, '/western-cards/components/comma_one/front.svg');
 			expect(firstFront).toContain('viewBox="0 0 55.9 87.1"');
-			const secondFront = await readOpfsText(page, '/western-cards/system/comma_two/front.svg');
+			const secondFront = await readOpfsText(page, '/western-cards/components/comma_two/front.svg');
 			expect(secondFront).toContain('viewBox="0 0 41 63"');
 		}
 	);
@@ -341,7 +368,7 @@ test.describe.serial('data editor', () => {
 	dataEditorTest('creates a pre-made French playing card deck', async (page) => {
 		await page.getByRole('main').getByText('western-cards').click();
 		await page.getByRole('button', { name: 'Decks' }).click();
-		await page.locator('[data-sidebar="menu-sub-button"]').filter({ hasText: 'New' }).click();
+		await openNewDeckDialog(page);
 
 		await page.getByRole('button', { name: 'Blank deck' }).click();
 		await page.getByRole('option', { name: 'Pre-made deck' }).click();
@@ -352,22 +379,73 @@ test.describe.serial('data editor', () => {
 		await expect(page.getByRole('link', { name: 'french_builtin', exact: true })).toBeVisible();
 
 		await expect
-			.poll(() => opfsEntryExists(page, '/western-cards/system/french_builtin/front.svg'))
+			.poll(() => opfsEntryExists(page, '/western-cards/components/french_builtin/front.svg'))
 			.toBe(true);
 		await expect
 			.poll(() =>
 				opfsEntryExists(
 					page,
-					'/western-cards/files/premade-decks/french-playing-cards/ace_of_spades.png'
+					'/western-cards/assets/premade-decks/french-playing-cards/ace_of_spades.png'
 				)
 			)
 			.toBe(true);
 
-		const data = await readOpfsText(page, '/western-cards/system/french_builtin/data.csv');
+		const data = await readOpfsText(page, '/western-cards/components/french_builtin/data.csv');
 		expect(data).toContain('card_face');
 		expect(data).toContain('ace_of_spades.png');
 		expect(data.split('\n')).toHaveLength(55);
 		await expect(page.locator('main svg image').first()).toBeVisible();
 	});
 
+	dataEditorTest('creates a generated number and color deck', async (page) => {
+		await page.getByRole('main').getByText('western-cards').click();
+		await page.getByRole('button', { name: 'Decks' }).click();
+		await openNewDeckDialog(page);
+
+		await page.getByRole('button', { name: 'Blank deck' }).click();
+		await page.getByRole('option', { name: 'Pre-made deck' }).click();
+		await page.getByRole('button', { name: 'French playing cards' }).click();
+		await page.getByRole('option', { name: 'Number and color deck' }).click();
+		await page.getByPlaceholder('deck name').fill('numbers_builtin');
+		await page.getByRole('button', { name: 'Create new deck' }).click();
+
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/numbers_builtin\/data/);
+		await expect
+			.poll(() =>
+				opfsEntryExists(page, '/western-cards/assets/premade-decks/number-color/red_1.svg')
+			)
+			.toBe(true);
+
+		const data = await readOpfsText(page, '/western-cards/components/numbers_builtin/data.csv');
+		expect(data).toContain('Red 1');
+		expect(data).toContain('Yellow 13');
+		expect(data.split('\n')).toHaveLength(53);
+		await expect(page.locator('main svg image').first()).toBeVisible();
+	});
+
+	dataEditorTest('creates a pre-made French Tarot deck', async (page) => {
+		await page.getByRole('main').getByText('western-cards').click();
+		await page.getByRole('button', { name: 'Decks' }).click();
+		await openNewDeckDialog(page);
+
+		await page.getByRole('button', { name: 'Blank deck' }).click();
+		await page.getByRole('option', { name: 'Pre-made deck' }).click();
+		await page.getByRole('button', { name: 'French playing cards' }).click();
+		await page.getByRole('option', { name: 'French Tarot' }).click();
+		await page.getByPlaceholder('deck name').fill('tarot_builtin');
+		await page.getByRole('button', { name: 'Create new deck' }).click();
+
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/tarot_builtin\/data/);
+		await expect
+			.poll(() =>
+				opfsEntryExists(page, '/western-cards/assets/premade-decks/french-tarot/tarot_trump_21.svg')
+			)
+			.toBe(true);
+
+		const data = await readOpfsText(page, '/western-cards/components/tarot_builtin/data.csv');
+		expect(data).toContain('tarot_group');
+		expect(data).toContain('tarot_fool.svg');
+		expect(data.split('\n')).toHaveLength(79);
+		await expect(page.locator('main svg image').first()).toBeVisible();
+	});
 });

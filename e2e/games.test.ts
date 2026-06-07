@@ -166,7 +166,7 @@ gamesTest(
 		await expect(page).toHaveURL(
 			new RegExp(`/app/games/western-cards/decks/${originalDeckName}/editor`)
 		);
-		await writeOpfsText(page, `/western-cards/system/${originalDeckName}/data.csv`, dataCsv);
+		await writeOpfsText(page, `/western-cards/components/${originalDeckName}/data.csv`, dataCsv);
 
 		await page.goto('/app/games/western-cards');
 		await showDeckInSidebar(page, originalDeckName);
@@ -197,17 +197,17 @@ gamesTest(
 		);
 		await expect(page.getByRole('link', { name: renamedDeckName, exact: true })).toBeVisible();
 		await expect(page.getByRole('link', { name: originalDeckName, exact: true })).not.toBeVisible();
-		await expect(await opfsEntryExists(page, `/western-cards/system/${originalDeckName}`)).toBe(
+		await expect(await opfsEntryExists(page, `/western-cards/components/${originalDeckName}`)).toBe(
 			false
 		);
 		await expect(
-			await readOpfsText(page, `/western-cards/system/${renamedDeckName}/data.csv`)
+			await readOpfsText(page, `/western-cards/components/${renamedDeckName}/data.csv`)
 		).toBe(dataCsv);
 		await expect(
-			await opfsEntryExists(page, `/western-cards/system/${renamedDeckName}/front.svg`)
+			await opfsEntryExists(page, `/western-cards/components/${renamedDeckName}/front.svg`)
 		).toBe(true);
 		await expect(
-			await opfsEntryExists(page, `/western-cards/system/${renamedDeckName}/back.svg`)
+			await opfsEntryExists(page, `/western-cards/components/${renamedDeckName}/back.svg`)
 		).toBe(true);
 
 		await page.reload();

@@ -5,6 +5,7 @@ import '@pixi/layout';
 import { LayoutContainer } from '@pixi/layout/components';
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { ParsedSvg } from './initComponent';
+import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 
 const serializer = new XMLSerializer();
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -171,7 +172,7 @@ export async function loadAndProcessCards(
 	cardName: string,
 	fileSystem: FsDir
 ): Promise<ParsedSvg[]> {
-	const deckDir = await fileSystem.openDir(joinFsPath(projectName, 'system', cardName));
+	const deckDir = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR, cardName));
 	if (deckDir.error) throw new Error(deckDir.error.message);
 
 	const [frontFile, backFile] = await Promise.all([

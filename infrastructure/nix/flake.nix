@@ -53,12 +53,16 @@
       "packages/studio"
       "svgedit"
       "svgedit/packages/svgcanvas"
+      "vendor/svelte-lexical/packages/svelte-lexical"
     ];
 
     packageParentDirs = [
       "packages"
       "svgedit"
       "svgedit/packages"
+      "vendor"
+      "vendor/svelte-lexical"
+      "vendor/svelte-lexical/packages"
     ];
 
     packageSource = builtins.path {
@@ -105,7 +109,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-UxqDzy0CMz1bX6nFh13FqqQTG3y+t3MlDDvyJgEMx5U=";
+      outputHash = "sha256-eGb0JXInNBapcsyjLYbDmHxEDUUZthWIdHkeByvzMn0=";
 
       installPhase = ''
         runHook preInstall
@@ -184,6 +188,7 @@
         done
 
         (cd svgedit/packages/svgcanvas && ../../node_modules/.bin/vite build)
+        (cd vendor/svelte-lexical/packages/svelte-lexical && ./node_modules/.bin/svelte-kit sync && ./node_modules/.bin/svelte-package)
         (cd packages/game-server && ./node_modules/.bin/rimraf build && ./node_modules/.bin/tsc)
         (cd packages/app && ./node_modules/.bin/vite build)
         (cd packages/studio && ./node_modules/.bin/vite build)
@@ -197,6 +202,7 @@
         mkdir -p $out/packages/studio
         mkdir -p $out/packages/app
         mkdir -p $out/packages/game-server
+        mkdir -p $out/vendor/svelte-lexical/packages
 
         cp packages/studio/package.json $out/packages/studio/package.json
         cp -r packages/studio/build $out/packages/studio/build
@@ -217,6 +223,7 @@
         cp -a svgedit/node_modules $out/svgedit/node_modules
         rm -f $out/svgedit/node_modules/@svgedit/react-test
         cp -r svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas
+        cp -r vendor/svelte-lexical/packages/svelte-lexical $out/vendor/svelte-lexical/packages/svelte-lexical
         cp -a node_modules $out/node_modules
 
         runHook postInstall

@@ -8,7 +8,16 @@ import {
 	S3Client
 } from '@aws-sdk/client-s3';
 import { env } from '$env/dynamic/private';
-import { Err, Ok, tryAsync, trySync } from 'wellcrafted/result';
+import {
+	createPlaytestProjectCacheLoader,
+	logPlaytestCacheError,
+	writePlaytestProjectCache
+} from '$lib/server/playtest-project-cache';
+import {
+	formatByteLimit,
+	getPlaytestProjectMaxBytes,
+	getPlaytestProjectSize
+} from '$lib/server/playtest-project-size';
 
 export type StoredPlaytestFile = {
 	path: string;
@@ -41,6 +50,11 @@ export type PlaytestFeedback = {
 	fileName: string;
 };
 
+export type LoadedPlaytestProject = {
+	metadata: PlaytestMetadata;
+	files: IncomingPlaytestFile[];
+};
+
 let bucketReady: Promise<void> | null = null;
 
 function required(value: string | undefined, name: string): string {
@@ -53,6 +67,35 @@ function required(value: string | undefined, name: string): string {
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 	if (value === undefined) return fallback;
 	return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+function awsErrorName(cause: unknown): string | undefined {
+	return typeof cause === 'object' && cause !== null && 'name' in cause
+		? String(cause.name)
+		: undefined;
+}
+
+function awsErrorStatus(cause: unknown): number | undefined {
+	if (typeof cause !== 'object' || cause === null || !('$metadata' in cause)) return undefined;
+
+	const metadata = cause.$metadata;
+	if (typeof metadata !== 'object' || metadata === null || !('httpStatusCode' in metadata)) {
+		return undefined;
+	}
+
+	return typeof metadata.httpStatusCode === 'number' ? metadata.httpStatusCode : undefined;
+}
+
+function isMissingBucketError(cause: unknown): boolean {
+	return (
+		awsErrorName(cause) === 'NotFound' ||
+		awsErrorName(cause) === 'NoSuchBucket' ||
+		awsErrorStatus(cause) === 404
+	);
+}
+
+function isNoSuchKeyError(cause: unknown): boolean {
+	return cause instanceof NoSuchKey || awsErrorName(cause) === 'NoSuchKey';
 }
 
 export function validateS3AccessKeyId(accessKeyId: string | undefined): void {
@@ -77,18 +120,15 @@ function getEndpoint() {
 	}
 
 	if (minioPort && minioConsolePort) {
-		const { data: endpoint } = trySync({
-			try: () => {
-				const url = new URL(s3Endpoint);
-				if (url.hostname === '127.0.0.1' && url.port === minioConsolePort) {
-					url.port = minioPort;
-					return url.toString();
-				}
-				return s3Endpoint;
-			},
-			catch: () => Ok(s3Endpoint)
-		});
-		return endpoint;
+		try {
+			const url = new URL(s3Endpoint);
+			if (url.hostname === '127.0.0.1' && url.port === minioConsolePort) {
+				url.port = minioPort;
+				return url.toString();
+			}
+		} catch {
+			return s3Endpoint;
+		}
 	}
 
 	return s3Endpoint;
@@ -118,18 +158,12 @@ function getS3Config() {
 	};
 }
 
-export function validatePlaytestStorageConfig() {
-	getS3Config();
-}
-
 async function ensureBucket() {
 	const { bucket, client } = getS3Config();
-	const bucketExists = await tryAsync({
-		try: () => client.send(new HeadBucketCommand({ Bucket: bucket })),
-		catch: () => Ok(null)
-	});
-
-	if (!bucketExists.data) {
+	try {
+		await client.send(new HeadBucketCommand({ Bucket: bucket }));
+	} catch (cause) {
+		if (!isMissingBucketError(cause)) throw cause;
 		await client.send(new CreateBucketCommand({ Bucket: bucket }));
 	}
 }
@@ -229,11 +263,12 @@ function parseFeedbackMarkdown(key: string, body: string): PlaytestFeedback | nu
 		if (separator === -1) continue;
 		const name = line.slice(0, separator).trim();
 		const rawValue = line.slice(separator + 1).trim();
-		const parsedValue = trySync({
-			try: () => JSON.parse(rawValue) as string,
-			catch: () => Ok(rawValue)
-		});
-		metadata.set(name, parsedValue.data);
+		try {
+			const parsed = JSON.parse(rawValue);
+			metadata.set(name, typeof parsed === 'string' ? parsed : rawValue);
+		} catch {
+			metadata.set(name, rawValue);
+		}
 	}
 
 	const id = metadata.get('id');
@@ -266,14 +301,33 @@ export async function savePlaytestProject(input: {
 	const { bucket, client } = getS3Config();
 	const playtestId = normalizePlaytestId(input.metadata.id);
 	const prefix = projectPrefix(playtestId);
+	const files = input.files.map((file) => ({
+		...file,
+		path: normalizeProjectPath(file.path),
+		contentType: file.contentType || 'application/octet-stream'
+	}));
+	const metadata: PlaytestMetadata = {
+		...input.metadata,
+		id: playtestId,
+		files: files.map(({ path, contentType, size }) => ({ path, contentType, size }))
+	};
+	const maxProjectBytes = getPlaytestProjectMaxBytes();
+	const projectSize = getPlaytestProjectSize(files);
+	if (projectSize >= maxProjectBytes) {
+		throw new Error(`Playtest project must be smaller than ${formatByteLimit(maxProjectBytes)}`);
+	}
 
-	for (const file of input.files) {
-		const path = normalizeProjectPath(file.path);
+	for (const file of files) {
+		const body = Buffer.from(file.contentBase64, 'base64');
+		if (body.byteLength !== file.size) {
+			throw new Error(`Invalid content length for playtest file: ${file.path}`);
+		}
+
 		await client.send(
 			new PutObjectCommand({
 				Bucket: bucket,
-				Key: `${prefix}/${path}`,
-				Body: Buffer.from(file.contentBase64, 'base64'),
+				Key: `${prefix}/${file.path}`,
+				Body: body,
 				ContentType: file.contentType || 'application/octet-stream'
 			})
 		);
@@ -283,44 +337,42 @@ export async function savePlaytestProject(input: {
 		new PutObjectCommand({
 			Bucket: bucket,
 			Key: metadataKey(playtestId),
-			Body: JSON.stringify(input.metadata, null, 2),
+			Body: JSON.stringify(metadata, null, 2),
 			ContentType: 'application/json'
 		})
 	);
+
+	const cachedProject = await writePlaytestProjectCache({
+		metadata,
+		files
+	});
+	if (cachedProject.error !== null) {
+		logPlaytestCacheError(cachedProject.error);
+	}
 }
 
 export async function loadPlaytestMetadata(playtestId: string): Promise<PlaytestMetadata | null> {
 	await ensureBucketOnce();
 	const { bucket, client } = getS3Config();
 
-	const loaded = await tryAsync({
-		try: async () => {
-			const response = await client.send(
-				new GetObjectCommand({
-					Bucket: bucket,
-					Key: metadataKey(normalizePlaytestId(playtestId))
-				})
-			);
-			const body = await response.Body?.transformToString();
-			return body ? (JSON.parse(body) as PlaytestMetadata) : null;
-		},
-		catch: (error) => {
-			if (error instanceof NoSuchKey || (error as { name?: string }).name === 'NoSuchKey') {
-				return Ok(null);
-			}
-
-			return Err(error);
-		}
-	});
-
-	if (loaded.error) {
-		throw loaded.error;
+	try {
+		const response = await client.send(
+			new GetObjectCommand({
+				Bucket: bucket,
+				Key: metadataKey(normalizePlaytestId(playtestId))
+			})
+		);
+		const body = await response.Body?.transformToString();
+		return body ? (JSON.parse(body) as PlaytestMetadata) : null;
+	} catch (cause) {
+		if (isNoSuchKeyError(cause)) return null;
+		throw cause;
 	}
-
-	return loaded.data;
 }
 
-export async function loadPlaytestProject(playtestId: string) {
+async function loadPlaytestProjectFromS3(
+	playtestId: string
+): Promise<LoadedPlaytestProject | null> {
 	const metadata = await loadPlaytestMetadata(playtestId);
 	if (!metadata) return null;
 
@@ -343,6 +395,7 @@ export async function loadPlaytestProject(playtestId: string) {
 
 		files.push({
 			...file,
+			path,
 			contentBase64: Buffer.from(bytes).toString('base64')
 		});
 	}
@@ -352,6 +405,8 @@ export async function loadPlaytestProject(playtestId: string) {
 		files
 	};
 }
+
+export const loadPlaytestProject = createPlaytestProjectCacheLoader(loadPlaytestProjectFromS3);
 
 export async function savePlaytestFeedback(input: {
 	playtestId: string;

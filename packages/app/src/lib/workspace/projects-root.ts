@@ -3,6 +3,7 @@ import { Err, Ok, tryAsync, trySync, type Result } from 'wellcrafted/result';
 import type { FsDir, FsEntry } from '$lib/components/file-browser/adapters/adapter';
 import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 import { saveFolderHandle } from '$lib/components/file-browser/adapters/opfs/storage-preference';
+import { DIGITABLE_VERSION } from './digitable-version';
 
 export const PROJECTS_ROOT_MARKER = '.digitable.json';
 export const PROJECTS_ROOT_SCHEMA_VERSION = 1;
@@ -11,11 +12,14 @@ export type ProjectsRootMarker = {
 	schemaVersion: typeof PROJECTS_ROOT_SCHEMA_VERSION;
 	lastOpenedAppVersion: string;
 	updatedAt: string;
+	digitableVersion?: string;
 };
 
 type ProjectsRootOptions = {
 	appVersion: string;
 	now?: () => Date;
+	digitableVersion?: string;
+	omitDigitableVersion?: boolean;
 };
 
 type RootScope = 'selected' | 'saved';
@@ -66,11 +70,17 @@ export type ProjectsRootResult = Result<void, ProjectsRootError>;
 export type PickProjectsRootResult = Result<OPFSAdapter, ProjectsRootError>;
 
 export function projectsRootMarker(options: ProjectsRootOptions): ProjectsRootMarker {
-	return {
+	const marker: ProjectsRootMarker = {
 		schemaVersion: PROJECTS_ROOT_SCHEMA_VERSION,
 		lastOpenedAppVersion: options.appVersion,
 		updatedAt: (options.now ?? (() => new Date()))().toISOString()
 	};
+
+	if (!options.omitDigitableVersion) {
+		marker.digitableVersion = options.digitableVersion ?? DIGITABLE_VERSION;
+	}
+
+	return marker;
 }
 
 export function projectsRootMarkerJson(options: ProjectsRootOptions): string {
@@ -91,7 +101,8 @@ function validMarker(value: unknown): value is ProjectsRootMarker {
 		'updatedAt' in value &&
 		value.schemaVersion === PROJECTS_ROOT_SCHEMA_VERSION &&
 		typeof value.lastOpenedAppVersion === 'string' &&
-		typeof value.updatedAt === 'string'
+		typeof value.updatedAt === 'string' &&
+		(!('digitableVersion' in value) || typeof value.digitableVersion === 'string')
 	);
 }
 
@@ -104,7 +115,9 @@ async function listRoot(
 	return Ok(entries.data);
 }
 
-async function readMarker(root: FsDir): Promise<ProjectsRootResult> {
+export async function readProjectsRootMarker(
+	root: FsDir
+): Promise<Result<ProjectsRootMarker, ProjectsRootError>> {
 	const text = await root.readText(PROJECTS_ROOT_MARKER);
 	if (text.error) return ProjectsRootError.MarkerReadFailed({ cause: text.error });
 
@@ -121,10 +134,13 @@ async function readMarker(root: FsDir): Promise<ProjectsRootResult> {
 		});
 	}
 
-	return Ok(undefined);
+	return Ok(parsed.data);
 }
 
-async function writeMarker(root: FsDir, options: ProjectsRootOptions): Promise<ProjectsRootResult> {
+export async function writeProjectsRootMarker(
+	root: FsDir,
+	options: ProjectsRootOptions
+): Promise<ProjectsRootResult> {
 	const written = await root.write(PROJECTS_ROOT_MARKER, projectsRootMarkerJson(options));
 	if (written.error) return ProjectsRootError.MarkerWriteFailed({ cause: written.error });
 	return Ok(undefined);
@@ -134,9 +150,13 @@ async function acceptMarkedRoot(
 	root: FsDir,
 	options: ProjectsRootOptions
 ): Promise<ProjectsRootResult> {
-	const marker = await readMarker(root);
+	const marker = await readProjectsRootMarker(root);
 	if (marker.error) return Err(marker.error);
-	return writeMarker(root, options);
+	return writeProjectsRootMarker(root, {
+		...options,
+		digitableVersion: marker.data.digitableVersion,
+		omitDigitableVersion: !marker.data.digitableVersion
+	});
 }
 
 export async function preparePickedProjectsRoot(
@@ -156,7 +176,7 @@ export async function preparePickedProjectsRoot(
 
 	if (marker) return acceptMarkedRoot(root, options);
 
-	if (entries.data.length === 0) return writeMarker(root, options);
+	if (entries.data.length === 0) return writeProjectsRootMarker(root, options);
 
 	return ProjectsRootError.Rejected({
 		message:

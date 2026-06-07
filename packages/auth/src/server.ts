@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { anonymous } from 'better-auth/plugins';
 
 import { db } from '@svg-table/db';
 import * as schema from '@svg-table/db/schema';
@@ -66,7 +67,14 @@ export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOption
 					}
 				}
 			: {}),
-		plugins,
+		plugins: [
+			anonymous({
+				disableDeleteAnonymousUser: true,
+				emailDomainName: 'anonymous.digitable.invalid',
+				generateName: () => 'Playtester'
+			}),
+			...plugins
+		],
 		advanced: {
 			useSecureCookies: process.env.NODE_ENV === 'production',
 			...(cookiePrefix ? { cookiePrefix } : {}),

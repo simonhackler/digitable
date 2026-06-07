@@ -12,7 +12,15 @@ const config = {
 		}
 	},
 	kit: {
-		adapter: adapter()
+		adapter: adapter(),
+		experimental: {
+			instrumentation: {
+				server: true
+			},
+			tracing: {
+				server: true
+			}
+		}
 	}
 };
 

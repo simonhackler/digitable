@@ -12,6 +12,7 @@
 	import { useDebounce } from 'runed';
 	import { getFileSystemContext } from '../../../../context';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { requireParam } from '$lib/utils/assert';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 	import { isEmbeddedImageReference, resolveImageReference } from '../../../data-loader';
@@ -38,7 +39,7 @@
 	const fileSystem = getFileSystemContext();
 	const game = $derived(requireParam('gameName'));
 	const deck = $derived(requireParam('deckName'));
-	const folder = $derived(joinFsPath(game, 'system', deck));
+	const folder = $derived(joinFsPath(game, COMPONENTS_DIR, deck));
 	const dataPath = $derived(`/games/${game}/decks/${deck}/data`);
 	const maxSvgUploadSize = 12 * 1024 * 1024;
 	const deckSideIndex = getDeckSideIndexContext();
@@ -199,19 +200,19 @@
 	};
 
 	const projectImagePathToSvgHref = (imagePath: string) =>
-		`../../files/${imagePath.trim().replace(/^\/+/, '')}`;
+		`../../${ASSETS_DIR}/${imagePath.trim().replace(/^\/+/, '')}`;
 
 	const normalizeSvgImageFileInput = (value: string) => {
 		const trimmed = value.trim();
 		if (!trimmed || isEmbeddedImageReference(trimmed)) return trimmed;
-		const filesMarker = '/files/';
-		const filesIndex = trimmed.lastIndexOf(filesMarker);
-		if (filesIndex >= 0) {
-			return projectImagePathToSvgHref(trimmed.slice(filesIndex + filesMarker.length));
+		const assetsMarker = `/${ASSETS_DIR}/`;
+		const assetsIndex = trimmed.lastIndexOf(assetsMarker);
+		if (assetsIndex >= 0) {
+			return projectImagePathToSvgHref(trimmed.slice(assetsIndex + assetsMarker.length));
 		}
 		const localPath = trimmed
-			.replace(/^(\.\.\/)+files\//, '')
-			.replace(/^files\//, '')
+			.replace(new RegExp(`^(\\.\\.\\/)+${ASSETS_DIR}\\/`), '')
+			.replace(new RegExp(`^${ASSETS_DIR}\\/`), '')
 			.replace(/^\/+/, '');
 		return projectImagePathToSvgHref(localPath);
 	};
@@ -298,7 +299,7 @@
 		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
 			type: 'image/svg+xml'
 		});
-		const filesDir = await fileSystem.ensureDir(joinFsPath(game, 'files'));
+		const filesDir = await fileSystem.ensureDir(joinFsPath(game, ASSETS_DIR));
 		if (filesDir.error) {
 			console.error(filesDir.error);
 			return;

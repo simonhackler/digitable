@@ -19,25 +19,25 @@ const files = [
 		})
 	},
 	{
-		path: `${projectName}/files/placeholder.svg`,
+		path: `${projectName}/assets/placeholder.svg`,
 		type: 'image/svg+xml',
 		contents:
 			'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1"><rect width="1" height="1" fill="#0f172a"/></svg>'
 	},
 	{
-		path: `${projectName}/system/local-image-deck/front.svg`,
+		path: `${projectName}/components/local-image-deck/front.svg`,
 		type: 'image/svg+xml',
 		contents:
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect id="front_background" width="63" height="88" fill="#fff7ed"/><text id="title" x="8" y="44" font-size="8" fill="#111827">Title</text></svg>'
 	},
 	{
-		path: `${projectName}/system/local-image-deck/back.svg`,
+		path: `${projectName}/components/local-image-deck/back.svg`,
 		type: 'image/svg+xml',
 		contents:
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><image id="template_background" href="/placeholder.svg" width="63" height="88"/></svg>'
 	},
 	{
-		path: `${projectName}/system/local-image-deck/data.csv`,
+		path: `${projectName}/components/local-image-deck/data.csv`,
 		type: 'text/csv',
 		contents: 'id,title\n1,Export me\n'
 	}

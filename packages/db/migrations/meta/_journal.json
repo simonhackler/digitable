@@ -15,6 +15,13 @@
 			"when": 1778657653277,
 			"tag": "0001_parched_shriek",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1780595874916,
+			"tag": "0002_hesitant_mentallo",
+			"breakpoints": true
 		}
 	]
 }

@@ -34,6 +34,7 @@
 	import { initComponent } from './initComponent';
 	import { installPlayE2EBridge } from './e2e-bridge';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
 	import type { Table, TableSlot } from '../../routes/games/[gameName]/setup/table';
 	import {
@@ -709,8 +710,8 @@
 		return true;
 	}
 
-	async function hasPlayableDeckFiles(systemDir: FsDir, deckName: string) {
-		const deckDir = await systemDir.openDir(deckName);
+	async function hasPlayableDeckFiles(componentsDir: FsDir, deckName: string) {
+		const deckDir = await componentsDir.openDir(deckName);
 		if (deckDir.error) return false;
 
 		const entries = await deckDir.data.list();
@@ -1147,7 +1148,7 @@
 				() => cameraRotationValue
 			);
 		}
-		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, 'system'));
+		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
 		if (error) {
 			throw new Error(error.message);
 		}

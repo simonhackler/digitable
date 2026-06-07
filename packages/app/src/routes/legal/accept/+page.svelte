@@ -2,11 +2,70 @@
 	import { CheckCircle2 } from '@lucide/svelte';
 
 	let { data, form } = $props();
+	let errorMessage = $state('');
+	let isSubmitting = $state(false);
 
 	const policyLabels = {
 		terms: 'Terms & Conditions',
 		privacy_policy: 'Privacy Policy'
 	} as const;
+
+	const displayedError = $derived(form?.message ?? errorMessage);
+
+	async function readErrorMessage(response: Response) {
+		const contentType = response.headers.get('content-type') ?? '';
+
+		if (contentType.includes('application/json')) {
+			const body = (await response.json()) as Record<string, unknown>;
+
+			if (typeof body.message === 'string' && body.message.length > 0) {
+				return body.message;
+			}
+
+			if (typeof body.error === 'string' && body.error.length > 0) {
+				return body.error;
+			}
+		}
+
+		const text = await response.text();
+		return text || 'Could not accept the current legal documents.';
+	}
+
+	async function handleSubmit(event: SubmitEvent) {
+		if (!data.anonymousMode) return;
+		event.preventDefault();
+		if (isSubmitting) return;
+
+		const formElement = event.currentTarget as HTMLFormElement;
+		const formData = new FormData(formElement);
+		if (formData.get('accepted') !== 'on') {
+			errorMessage = 'Accept the current Terms & Conditions and acknowledge the Privacy Policy.';
+			return;
+		}
+
+		errorMessage = '';
+		isSubmitting = true;
+
+		const signInResponse = await fetch('/api/auth/sign-in/anonymous', {
+			method: 'POST'
+		});
+		if (!signInResponse.ok) {
+			errorMessage = await readErrorMessage(signInResponse);
+			isSubmitting = false;
+			return;
+		}
+
+		const policyResponse = await fetch('/api/legal/accept-current', {
+			method: 'POST'
+		});
+		if (!policyResponse.ok) {
+			errorMessage = await readErrorMessage(policyResponse);
+			isSubmitting = false;
+			return;
+		}
+
+		window.location.assign(data.next);
+	}
 </script>
 
 <svelte:head>
@@ -51,7 +110,12 @@
 				{/each}
 			</div>
 
-			<form method="POST" class="mt-8 grid gap-5">
+			<form method="POST" class="mt-8 grid gap-5" onsubmit={handleSubmit}>
+				<input name="next" type="hidden" value={data.next} />
+				{#if data.anonymousMode}
+					<input name="anonymous" type="hidden" value="playtest" />
+				{/if}
+
 				<label class="flex items-start gap-3 text-sm leading-6 text-[#3f463b]">
 					<input
 						class="mt-1 h-4 w-4 rounded border-black/20 accent-[#171717]"
@@ -64,17 +128,18 @@
 					</span>
 				</label>
 
-				{#if form?.message}
+				{#if displayedError}
 					<p class="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-						{form.message}
+						{displayedError}
 					</p>
 				{/if}
 
 				<button
 					class="inline-flex h-11 w-full items-center justify-center bg-[#171717] px-5 text-sm font-semibold text-white transition hover:bg-[#303030] sm:w-fit"
+					disabled={isSubmitting}
 					type="submit"
 				>
-					Continue
+					{isSubmitting ? 'Continuing...' : 'Continue'}
 				</button>
 			</form>
 		</div>
