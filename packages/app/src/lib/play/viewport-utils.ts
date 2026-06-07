@@ -1,16 +1,30 @@
 import { Application } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 
-export function createViewport(app: Application): Viewport {
+export type CreateViewportOptions = {
+	worldWidth?: number;
+	worldHeight?: number;
+	minScale?: number;
+	maxScale?: number;
+	wheelZoomPercent?: number;
+};
+
+const DEFAULT_WHEEL_ZOOM_PERCENT = 0.04;
+
+export function createViewport(app: Application, options: CreateViewportOptions = {}): Viewport {
+	const worldWidth = options.worldWidth ?? 6000;
+	const worldHeight = options.worldHeight ?? 3500;
 	const viewport = new Viewport({
-		screenWidth: window.innerWidth,
-		screenHeight: window.innerHeight,
-		worldWidth: 6000,
-		worldHeight: 3500,
+		screenWidth: app.screen.width,
+		screenHeight: app.screen.height,
+		worldWidth,
+		worldHeight,
 		events: app.renderer.events,
 		disableOnContextMenu: true
 	});
-	viewport.pinch().wheel();
+	viewport.pinch().wheel({
+		percent: options.wheelZoomPercent ?? DEFAULT_WHEEL_ZOOM_PERCENT
+	});
 	viewport.drag({
 		mouseButtons: 'right'
 	});
@@ -23,7 +37,7 @@ export function createViewport(app: Application): Viewport {
 		direction: 'all',
 		underflow: 'center'
 	});
-	viewport.clampZoom({ minScale: 0.3, maxScale: 5 });
+	viewport.clampZoom({ minScale: options.minScale ?? 0.3, maxScale: options.maxScale ?? 5 });
 	app.stage.addChild(viewport);
 	return viewport;
 }

@@ -1,8 +1,49 @@
 import { ArraySchema, MapSchema, Schema, SetSchema, type } from '@colyseus/schema';
 import { Stroke } from './stroke-schema';
 
+export type LayoutNodeKind = 'table' | 'slot' | 'hand' | 'component' | 'stack' | 'group';
+export type LayoutMode = 'free' | 'horizontal-flex' | 'grid' | 'stack' | 'hand';
+
+export interface InitStackPayload {
+	componentIds: string[];
+}
+
+export interface InitLayoutPayload {
+	mode?: LayoutMode;
+	maxChildren?: number;
+	acceptedDeckNames?: string[];
+	acceptedCardIds?: string[];
+}
+
+export interface InitLayoutNodePayload {
+	id: string;
+	kind: LayoutNodeKind;
+	parentId?: string;
+	componentId?: string;
+	x: number;
+	y: number;
+	width?: number;
+	height?: number;
+	rotation?: number;
+	visible?: boolean;
+	locked?: boolean;
+	layout?: InitLayoutPayload;
+}
+
+export interface InitTableItemPayload {
+	id: string;
+	type: 'card' | 'stack';
+	componentIds: string[];
+	x: number;
+	y: number;
+	parentId?: string;
+	componentName?: string;
+}
+
 export interface InitGamePayload {
-	stacks: { componentIds: string[] }[];
+	stacks?: InitStackPayload[];
+	tableItems?: InitTableItemPayload[];
+	layoutNodes?: InitLayoutNodePayload[];
 }
 
 // Should support different types of positions. For example a position might have differen
@@ -21,17 +62,48 @@ export class HandPosition extends Schema {
 	}
 }
 
-// Board, Tokens, Tiles, Figures, Cards, Dice
-export class Positionable extends Schema {
+export class Layout extends Schema {
+	@type('string') mode: LayoutMode;
+	@type('number') maxChildren: number;
+	@type(['string']) acceptedDeckNames: ArraySchema<string>;
+	@type(['string']) acceptedCardIds: ArraySchema<string>;
+
+	constructor(mode: LayoutMode = 'free') {
+		super();
+		this.mode = mode;
+		this.maxChildren = 0;
+		this.acceptedDeckNames = new ArraySchema<string>();
+		this.acceptedCardIds = new ArraySchema<string>();
+	}
+}
+
+export class LayoutNode extends Schema {
+	@type('string') id: string;
+	@type('string') kind: LayoutNodeKind;
+	@type('string') parentId: string;
+	@type('string') componentId: string;
 	@type('number') x: number;
 	@type('number') y: number;
+	@type('number') width: number;
+	@type('number') height: number;
+	@type('number') rotation: number;
 	@type('boolean') visible: boolean;
+	@type('boolean') locked: boolean;
+	@type(Layout) layout?: Layout;
 
-	constructor(x: number, y: number, visible: boolean) {
+	constructor(id = '', kind: LayoutNodeKind = 'group', x = 0, y = 0, visible = true) {
 		super();
+		this.id = id;
+		this.kind = kind;
+		this.parentId = '';
+		this.componentId = '';
 		this.x = x;
 		this.y = y;
+		this.width = 0;
+		this.height = 0;
+		this.rotation = 0;
 		this.visible = visible;
+		this.locked = false;
 	}
 }
 
@@ -48,21 +120,23 @@ export class Component extends Schema {
 	@type('string') id: string;
 	@type('string') owner: string;
 	@type('string') type: 'card' | 'stack';
+	@type('string') componentName: string;
 
-	constructor(id: string, owner: string, type: 'card' | 'stack') {
+	constructor(id: string, owner: string, type: 'card' | 'stack', componentName = '') {
 		super();
 		this.id = id;
 		this.owner = owner;
 		this.type = type;
+		this.componentName = componentName;
 	}
 }
 
 export class Item extends Schema {
 	@type(Component) component: Component;
-	@type(Positionable) position: Positionable;
+	@type(LayoutNode) position: LayoutNode;
 	@type(Flippable) flip: Flippable;
 
-	constructor(component: Component, position: Positionable, flip: Flippable) {
+	constructor(component: Component, position: LayoutNode, flip: Flippable) {
 		super();
 		this.component = component;
 		this.position = position;
@@ -102,11 +176,11 @@ export class Stack extends Schema {
 
 export class Deck extends Schema {
 	@type(Component) component: Component;
-	@type(Positionable) position: Positionable;
+	@type(LayoutNode) position: LayoutNode;
 	@type(Flippable) flip: Flippable;
 	@type(Stack) stack: Stack;
 
-	constructor(component: Component, position: Positionable, flip: Flippable, stack: Stack) {
+	constructor(component: Component, position: LayoutNode, flip: Flippable, stack: Stack) {
 		super();
 		this.component = component;
 		this.position = position;
@@ -128,7 +202,7 @@ export class Player extends Schema {
 
 export class BoardGameRoomState extends Schema {
 	@type({ map: Component }) components: MapSchema<Component>;
-	@type({ map: Positionable }) positions: MapSchema<Positionable>;
+	@type({ map: LayoutNode }) positions: MapSchema<LayoutNode>;
 	@type({ map: Flippable }) flippable: MapSchema<Flippable>;
 	@type({ map: Stack }) stacks: MapSchema<Stack>;
 	@type({ map: Player }) players: MapSchema<Player>;
@@ -137,7 +211,7 @@ export class BoardGameRoomState extends Schema {
 	constructor() {
 		super();
 		this.components = new MapSchema<Component>();
-		this.positions = new MapSchema<Positionable>();
+		this.positions = new MapSchema<LayoutNode>();
 		this.flippable = new MapSchema<Flippable>();
 		this.stacks = new MapSchema<Stack>();
 		this.players = new MapSchema<Player>();

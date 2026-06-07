@@ -2,6 +2,7 @@
 
 - `bun run playwright test e2e/data-editor.test.ts -g "Name of current test"`
 
+Do not write unit tests unless explicitly ask for it!
 Only propose to write e2e tests. Do not propose or write tests except for e2e tests.
 Tests should NEVER test visual changes, e.g asserting a position or something like that. They have to test functionality.
 Use the data-editor.test.ts as a guidline for how to write test files.

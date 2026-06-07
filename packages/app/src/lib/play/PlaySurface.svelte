@@ -4,8 +4,10 @@
 		Application,
 		Container,
 		type FederatedPointerEvent,
+		Graphics,
 		Point,
 		Rectangle,
+		RenderLayer,
 		type Renderer
 	} from 'pixi.js';
 	import { MarqueeSelection } from '@pixi/marquee-selection';
@@ -14,10 +16,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { env } from '$env/dynamic/public';
 	import { loadAndProcessCards } from './pixi-card-loader';
-	import {
-		type BoardGameRoomState,
-		type InitGamePayload
-	} from 'boardgame-server/src/rooms/schema/MyRoomState';
+	import { type BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItemNew } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { Viewport } from 'pixi-viewport';
@@ -27,20 +26,64 @@
 	import { SelectionManager } from './SelectionManager';
 	import { pixiToCSSCoordinates } from './coordinate-utils';
 	import { createViewport } from './viewport-utils';
+	import { FixedSlotLayout } from './FixedSlotLayout';
 	import { HandContainer } from './HandContainer';
 	import { assert } from '$lib/utils/assert';
 	import type { Attachment } from 'svelte/attachments';
 	import { PressedKeys } from 'runed';
-	import { initComponent, type ParsedSvg } from './initComponent';
+	import { initComponent } from './initComponent';
 	import { installPlayE2EBridge } from './e2e-bridge';
-	import { createBoardChrome } from './board-chrome';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
+	import type { Table, TableSlot } from '../../routes/games/[gameName]/setup/table';
+	import {
+		buildTableInitPayload,
+		buildTablePlayPlan,
+		TABLE_NODE_ID,
+		tableReferencedDeckNames,
+		type LoadedDeck
+	} from './table-play';
+	import { createTableLayer } from './table-layer';
+	import {
+		findTableSlotAtPoint,
+		tableItemMetadataById,
+		tableSlotAcceptsItem,
+		tableSlotIsFixedLayout,
+		type TableItemMetadata
+	} from './table-slot-rules';
+	import {
+		tableSlotCellCount,
+		tableSlotCellIndexAtPoint,
+		tableSlotCellRect,
+		tableSlotTargetId,
+		tableSlotTargetInfo
+	} from './table-geometry';
+	import {
+		applyTableCameraTransform,
+		clampTableItemPose,
+		configureTableItem,
+		configureTableViewport,
+		drawPreviewRect,
+		loadRequiredTable,
+		normalizeRotation,
+		setTableItemPose,
+		setTableItemRotation,
+		setTableItemVisualPointUnderPointer,
+		tableDropPreviewRect,
+		tableItemCenter,
+		tableItemPose,
+		tableItemRotation,
+		visualPointerRatio,
+		type LocalTable
+	} from './table-surface';
 	import PlaytestNotes from './PlaytestNotes.svelte';
+	import type { ClientPlacement } from './frontend-components/position';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import MousePointer2Icon from '@lucide/svelte/icons/mouse-pointer-2';
 	import PenLineIcon from '@lucide/svelte/icons/pen-line';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
+	import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 
 	type PlayRoomConnection =
@@ -133,10 +176,16 @@
 
 	let boardContainer: Container;
 	let handContainer: HandContainer;
-	let tableChrome: Container;
+	let fixedSlotLayout: FixedSlotLayout | null = null;
+	let tableLayer: Container | null = null;
 	let strokeLayer: StrokeLayer;
+	let tableDropPreviewLayer: Graphics | null = null;
+	let stackDropPreviewLayer: Graphics | null = null;
+	let movingCardLayer: RenderLayer | null = null;
+	let tableWorldOffset = { x: 0, y: 0 };
 
 	let viewport: Viewport;
+	let tableItemMetadata: Map<string, TableItemMetadata> = new SvelteMap();
 
 	let hoverItem: BoardGameItemNew | null = null;
 	let selectionManager = new SelectionManager();
@@ -144,6 +193,9 @@
 	let selectedStrokeId = $state<string | null>(null);
 	let notesOpen = $state(false);
 	let notesHaveDraft = $state(false);
+	let cameraRotationValue = 0;
+	let cameraRotation = $state(0);
+	let playReady = false;
 	const keys = new PressedKeys();
 
 	function selectTool(tool: PlayTool) {
@@ -170,13 +222,24 @@
 		selectTool('select');
 	});
 	keys.onKeys('F', () => {
+		if (!playReady) return;
 		selectionManager.forEach((item) => handleFlipCard(item));
 	});
 	keys.onKeys('D', () => {
+		if (!playReady) return;
 		selectionManager.forEach((item) => handleDrawCard(item));
 	});
 	keys.onKeys('S', () => {
+		if (!playReady) return;
 		selectionManager.forEach((item) => handleShuffleStack(item));
+	});
+	keys.onKeys('Q', () => {
+		if (!playReady) return;
+		rotateSelectedItems(-90);
+	});
+	keys.onKeys('E', () => {
+		if (!playReady) return;
+		rotateSelectedItems(90);
 	});
 	keys.onKeys('P', () => {
 		selectTool('pen');
@@ -188,20 +251,375 @@
 		deleteSelectedStroke();
 	});
 	keys.onKeys('alt', () => {
-		if (hoverItem) {
+		if (playReady && hoverItem) {
 			previewer.showPreview(hoverItem);
 		}
 	});
 
 	type DragState = {
+		originGlobalX: number;
+		originGlobalY: number;
 		startGlobalX: number;
 		startGlobalY: number;
 		clickThreshold: number;
+		hasMoved: boolean;
 		dragType: 'marquee' | 'selection' | 'handToBoard' | 'strokeDraft';
-		isFromHand?: boolean;
+		startPositions?: Map<string, ClientPlacement>;
+		visualPointerRatios?: Map<string, { x: number; y: number }>;
 	} | null;
 
 	let drag: DragState = null;
+
+	function tableForPlay(): Table {
+		return localTable.table;
+	}
+
+	function metadataForTableItem(item: BoardGameItemNew): TableItemMetadata {
+		const metadata = tableItemMetadata.get(item.id);
+		if (metadata) return metadata;
+		return {
+			id: item.id,
+			type: item.clientStack ? 'stack' : 'card',
+			componentIds: item.clientStack
+				? [...item.clientStack.clientStackState.componentIds]
+				: [item.id]
+		};
+	}
+
+	function rectFromBounds(bounds: ReturnType<Container['getBounds']>) {
+		const rect = 'rectangle' in bounds ? bounds.rectangle : bounds;
+		return {
+			x: rect.x,
+			y: rect.y,
+			width: rect.width,
+			height: rect.height
+		};
+	}
+
+	function tableLayers(): Array<Container | Graphics | null | undefined> {
+		return [tableLayer, boardContainer, tableDropPreviewLayer, movingCardLayer];
+	}
+
+	function applyCurrentTableCameraTransform(table = tableForPlay()) {
+		applyTableCameraTransform({
+			table,
+			cameraRotation: cameraRotationValue,
+			tableWorldOffset,
+			containers: tableLayers()
+		});
+	}
+
+	function configureCurrentTableViewport(table = tableForPlay()) {
+		tableWorldOffset = configureTableViewport({
+			app,
+			viewport,
+			table,
+			cameraRotation: cameraRotationValue,
+			containers: tableLayers()
+		});
+	}
+
+	function rotateCamera(delta: number) {
+		cameraRotationValue = normalizeRotation(cameraRotationValue + delta);
+		cameraRotation = cameraRotationValue;
+		configureCurrentTableViewport();
+	}
+
+	function resetCameraRotation() {
+		cameraRotationValue = 0;
+		cameraRotation = cameraRotationValue;
+		configureCurrentTableViewport();
+	}
+
+	function tableItemParentId(item: BoardGameItemNew) {
+		return item.clientPosition?.clientPositionState.parentId || TABLE_NODE_ID;
+	}
+
+	function tableItemFixedSlot(item: BoardGameItemNew) {
+		const target = tableSlotTargetInfo(tableForPlay(), tableItemParentId(item));
+		return target && tableSlotIsFixedLayout(target.slot) ? target : null;
+	}
+
+	function canRotateItem(item: BoardGameItemNew) {
+		if (!item.clientPosition) return false;
+		if (handContainer.hasItem(item)) return false;
+		if (tableItemFixedSlot(item)) return false;
+		return true;
+	}
+
+	function rotateSelectedItems(delta: number) {
+		if (drag) return;
+		for (const item of selectionManager.values()) {
+			if (!canRotateItem(item)) continue;
+			const rotation = normalizeRotation(tableItemRotation(item) + delta);
+			setTableItemRotation(item, rotation);
+			item.clientPosition?.moveEnd(tableItemPlacement(item, tableTargetNodeId(item), rotation));
+		}
+		strokeLayer?.refreshAll();
+	}
+
+	function fixedSlotCellOccupant(slot: TableSlot, cellIndex: number, ignoredItemId: string | null) {
+		const targetId = tableSlotTargetId(slot, cellIndex);
+		for (const item of boardGameItems.values()) {
+			if (item.id === ignoredItemId) continue;
+			if (handContainer.hasItem(item)) continue;
+			if (tableItemParentId(item) === targetId) return item.id;
+		}
+		return null;
+	}
+
+	function firstAvailableFixedSlotCell(slot: TableSlot, item: BoardGameItemNew) {
+		const currentTarget = tableSlotTargetInfo(tableForPlay(), tableItemParentId(item));
+		if (currentTarget && currentTarget.slot.id === slot.id && currentTarget.cellIndex !== null) {
+			return currentTarget.cellIndex;
+		}
+
+		const cellCount = tableSlotCellCount(slot);
+		for (let index = 0; index < cellCount; index += 1) {
+			if (!fixedSlotCellOccupant(slot, index, item.id)) return index;
+		}
+		return null;
+	}
+
+	function fixedSlotDropCellIndex(
+		slot: TableSlot,
+		item: BoardGameItemNew,
+		point: { x: number; y: number }
+	) {
+		if (!tableSlotIsFixedLayout(slot)) return null;
+		if (slot.layout?.mode === 'grid') return tableSlotCellIndexAtPoint(slot, point);
+		return firstAvailableFixedSlotCell(slot, item);
+	}
+
+	function drawTableDropPreview(item: BoardGameItemNew, point: { x: number; y: number }) {
+		const table = tableForPlay();
+		if (!tableDropPreviewLayer) return;
+
+		tableDropPreviewLayer.clear();
+		const slot = findTableSlotAtPoint(table, point);
+		if (!slot) return;
+
+		const cellIndex = fixedSlotDropCellIndex(slot, item, point);
+		const accepted = canPlaceItemInTableSlot(item, slot.id, cellIndex);
+		const rect = accepted
+			? tableDropPreviewRect(slot, item.id, [], cellIndex)
+			: cellIndex !== null
+				? tableSlotCellRect(slot, cellIndex)
+				: {
+						x: slot.x,
+						y: slot.y,
+						width: slot.width,
+						height: slot.height,
+						rotation: slot.rotation ?? 0
+					};
+		if (!rect) return;
+
+		drawPreviewRect(tableDropPreviewLayer, rect, accepted);
+	}
+
+	function clearTableDropPreview() {
+		tableDropPreviewLayer?.clear();
+	}
+
+	function clearStackDropPreview() {
+		stackDropPreviewLayer?.clear();
+	}
+
+	function drawStackDropPreview(target: BoardGameItemNew) {
+		if (!stackDropPreviewLayer) return;
+		const bounds = rectFromBounds(target.getBounds());
+		stackDropPreviewLayer.clear();
+		stackDropPreviewLayer
+			.roundRect(bounds.x - 8, bounds.y - 8, bounds.width + 16, bounds.height + 16, 12)
+			.fill({ color: 0x22c55e, alpha: 0.1 })
+			.stroke({ color: 0x16a34a, width: 5, alpha: 0.9 });
+	}
+
+	function clearMovingCardLayer() {
+		movingCardLayer?.detachAll();
+	}
+
+	function attachMovingSelection() {
+		const items = [...selectionManager.values()];
+		if (items.length > 0) movingCardLayer?.attach(...items);
+	}
+
+	function prepareSelectionForBoardDrag() {
+		for (const item of selectionManager.values()) {
+			if (handContainer.hasItem(item)) continue;
+			if (fixedSlotLayout?.detachItemToBoard(item)) {
+				item.clientPosition?.applyLocalPlacement(tableItemPlacement(item, TABLE_NODE_ID));
+				movingCardLayer?.attach(item);
+			}
+		}
+		strokeLayer?.refreshAll();
+	}
+
+	function tableTargetNodeId(item: BoardGameItemNew) {
+		return tableItemParentId(item);
+	}
+
+	function tableItemCommandPosition(item: BoardGameItemNew) {
+		if (item.positionManagedByLayout) {
+			const bounds = item.contentBoundsIn(boardContainer);
+			return { x: bounds.x, y: bounds.y };
+		}
+		return { x: item.x, y: item.y };
+	}
+
+	function tableItemCommandRotation(item: BoardGameItemNew) {
+		const target = item.positionManagedByLayout ? tableItemFixedSlot(item) : null;
+		return target ? normalizeRotation(target.slot.rotation ?? 0) : tableItemRotation(item);
+	}
+
+	function tableItemPlacement(
+		item: BoardGameItemNew,
+		parentId: string,
+		rotation = tableItemCommandRotation(item)
+	): ClientPlacement {
+		const position = tableItemCommandPosition(item);
+		return {
+			x: position.x,
+			y: position.y,
+			rotation,
+			parentId,
+			visible: item.visible
+		};
+	}
+
+	function syncTableBoardPosition(item: BoardGameItemNew, parentId = tableTargetNodeId(item)) {
+		if (!item.clientPosition) return;
+		const placement = tableItemPlacement(item, parentId);
+		item.clientPosition.moveTo(placement);
+		item.clientPosition.moveEnd(placement);
+	}
+
+	function applyTableItemPlacement(item: BoardGameItemNew, placement: ClientPlacement) {
+		item.visible = placement.visible ?? true;
+		item.renderable = item.visible;
+		if (fixedSlotLayout?.hasTarget(placement.parentId)) {
+			fixedSlotLayout.placeItem(placement.parentId, item);
+			return;
+		}
+
+		fixedSlotLayout?.detachItemToBoard(item, placement.rotation);
+		if (item.parent !== boardContainer) {
+			item.parent?.removeChild(item);
+			boardContainer.addChild(item);
+		}
+		configureTableItem(item);
+		item.position.set(placement.x, placement.y);
+		setTableItemRotation(item, placement.rotation);
+		strokeLayer?.refreshAll();
+	}
+
+	function returnTableCardToHand(item: BoardGameItemNew) {
+		if (!handContainer.hasItem(item)) {
+			item.parent?.removeChild(item);
+			handContainer.addItem(item);
+		} else {
+			item.x = 0;
+			item.y = 0;
+		}
+	}
+
+	function tableSlotById(slotId: string) {
+		return tableForPlay().slots.find((slot) => slot.id === slotId) ?? null;
+	}
+
+	function canPlaceItemInTableSlot(
+		item: BoardGameItemNew,
+		slotId: string,
+		cellIndex: number | null = null
+	): boolean {
+		const slot = tableSlotById(slotId);
+		if (!slot) return false;
+		if (!tableSlotAcceptsItem(slot, metadataForTableItem(item))) return false;
+
+		if (tableSlotIsFixedLayout(slot)) {
+			if (cellIndex === null) return false;
+			const occupant = fixedSlotCellOccupant(slot, cellIndex, item.id);
+			return !occupant || occupant === item.id;
+		}
+		return true;
+	}
+
+	function placeItemInTableSlot(
+		item: BoardGameItemNew,
+		slotId: string,
+		fromHand: boolean,
+		cellIndex: number | null = null
+	): boolean {
+		const table = tableForPlay();
+		const slot = tableSlotById(slotId);
+		if (!slot || !canPlaceItemInTableSlot(item, slot.id, cellIndex)) return false;
+
+		const targetId = tableSlotIsFixedLayout(slot) ? tableSlotTargetId(slot, cellIndex) : slot.id;
+		if (tableSlotIsFixedLayout(slot)) {
+			if (!fixedSlotLayout?.placeItem(targetId, item)) return false;
+		} else {
+			fixedSlotLayout?.detachItemToBoard(item);
+			configureTableItem(item);
+			setTableItemPose(item, clampTableItemPose(table, item, tableItemPose(item)));
+		}
+		item.clientPosition?.applyLocalPlacement(tableItemPlacement(item, targetId));
+		if (fromHand) {
+			handlePlayCard(item, targetId);
+		} else {
+			syncTableBoardPosition(item, targetId);
+		}
+		return true;
+	}
+
+	function restoreTableItemPosition(
+		item: BoardGameItemNew,
+		originalPosition: ClientPlacement | undefined
+	) {
+		if (!originalPosition) return;
+		applyTableItemPlacement(item, originalPosition);
+		item.clientPosition?.moveEnd(originalPosition);
+	}
+
+	function commitTableDrop(
+		item: BoardGameItemNew,
+		fromHand: boolean,
+		originalPosition: ClientPlacement | undefined,
+		dropPoint?: { x: number; y: number }
+	) {
+		const table = tableForPlay();
+
+		const clampedPose = clampTableItemPose(table, item, tableItemPose(item));
+		setTableItemPose(item, clampedPose);
+		const slot = findTableSlotAtPoint(
+			table,
+			dropPoint ?? { x: clampedPose.centerX, y: clampedPose.centerY }
+		);
+
+		if (slot) {
+			const cellIndex = fixedSlotDropCellIndex(
+				slot,
+				item,
+				dropPoint ?? { x: clampedPose.centerX, y: clampedPose.centerY }
+			);
+			if (placeItemInTableSlot(item, slot.id, fromHand, cellIndex)) return true;
+			if (fromHand) {
+				returnTableCardToHand(item);
+			} else {
+				restoreTableItemPosition(item, originalPosition);
+			}
+			return false;
+		}
+
+		fixedSlotLayout?.detachItemToBoard(item);
+		configureTableItem(item);
+		if (fromHand) {
+			handlePlayCard(item, TABLE_NODE_ID);
+		} else {
+			syncTableBoardPosition(item, TABLE_NODE_ID);
+		}
+		strokeLayer?.refreshAll();
+		return true;
+	}
 
 	function findTopLevelItem(curr: Container) {
 		while (curr != viewport && curr != app.stage) {
@@ -217,19 +635,20 @@
 		return null;
 	}
 
-	function findStackTarget(dragged: BoardGameItemNew): BoardGameItemNew | null {
-		const bounds = dragged.getBounds();
-		const center = new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+	function findStackTargetAtPoint(
+		dragged: BoardGameItemNew,
+		point: { x: number; y: number }
+	): BoardGameItemNew | null {
 		for (const item of boardGameItems.values()) {
 			if (item === dragged) continue;
-			if (!item.visible) continue;
+			if (!item.visible || !item.renderable) continue;
 			if (handContainer.hasItem(item)) continue;
 			const itemBounds = item.getBounds();
 			if (
-				center.x >= itemBounds.x &&
-				center.x <= itemBounds.x + itemBounds.width &&
-				center.y >= itemBounds.y &&
-				center.y <= itemBounds.y + itemBounds.height
+				point.x >= itemBounds.x &&
+				point.x <= itemBounds.x + itemBounds.width &&
+				point.y >= itemBounds.y &&
+				point.y <= itemBounds.y + itemBounds.height
 			) {
 				return item;
 			}
@@ -237,40 +656,58 @@
 		return null;
 	}
 
-	function tryStackSelection(): boolean {
+	function stackTargetForItem(
+		item: BoardGameItemNew,
+		point: { x: number; y: number }
+	): BoardGameItemNew | null {
+		if (item.clientStack) return null;
+		if (handContainer.hasItem(item)) return null;
+		return findStackTargetAtPoint(item, point);
+	}
+
+	function selectedItemStackPoint(item: BoardGameItemNew) {
+		const bounds = item.getBounds();
+		return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+	}
+
+	function tryStackSelection(point: { x: number; y: number }): boolean {
+		if (!keys.has('Shift')) return false;
 		if (selectionManager.size !== 1) return false;
 		const iterator = selectionManager.values();
 		const item = iterator.next().value as BoardGameItemNew | undefined;
 		if (!item) return false;
-		if (item.clientStack) return false;
-		if (handContainer.hasItem(item)) return false;
 
-		const target = findStackTarget(item);
+		const target = stackTargetForItem(item, point);
 		if (!target) return false;
-		const sourceFlip = item.clientFlippable?.clientFlippableState.isFaceUp;
-		const targetFlip = target.clientFlippable?.clientFlippableState.isFaceUp;
-		if (sourceFlip !== undefined && targetFlip !== undefined && sourceFlip !== targetFlip) {
-			return false;
-		}
 
+		fixedSlotLayout?.detachItemToBoard(item);
+		item.clientPosition?.applyLocalPlacement(tableItemPlacement(item, TABLE_NODE_ID));
+		const targetPosition = tableItemCommandPosition(target);
 		sendCmd(room, 'stack', {
 			sourceId: item.id,
 			targetId: target.id,
-			x: target.x,
-			y: target.y
+			x: targetPosition.x,
+			y: targetPosition.y
 		});
 		return true;
 	}
 
-	// Can init stacks, or singular components with ids and containers
-	// So one map of components and one map of stacks with stacks having maps of components
-	// I will need a better init system probably.
-	function parsePayload(parsedSvgs: ParsedSvg[][]): InitGamePayload {
-		const res = parsedSvgs.map((x) => {
-			return { componentIds: x.map((y) => y.id) };
-		});
-		const payload: InitGamePayload = { stacks: res };
-		return payload;
+	function stackTargetForSelection(point?: { x: number; y: number }): BoardGameItemNew | null {
+		if (!keys.has('Shift')) return null;
+		if (selectionManager.size !== 1) return null;
+		const item = selectionManager.values().next().value as BoardGameItemNew | undefined;
+		return item ? stackTargetForItem(item, point ?? selectedItemStackPoint(item)) : null;
+	}
+
+	function updateStackDropPreview(point?: { x: number; y: number }) {
+		const target = stackTargetForSelection(point);
+		if (!target) {
+			clearStackDropPreview();
+			return false;
+		}
+		clearTableDropPreview();
+		drawStackDropPreview(target);
+		return true;
 	}
 
 	async function hasPlayableDeckFiles(componentsDir: FsDir, deckName: string) {
@@ -289,8 +726,9 @@
 	async function initApp() {
 		const app = new Application();
 		await app.init({
-			background: '#eba92e',
-			resizeTo: window,
+			background: '#111827',
+			width: 1,
+			height: 1,
 			antialias: true,
 			resolution: window.devicePixelRatio || 1,
 			autoDensity: true
@@ -302,31 +740,47 @@
 		return app;
 	}
 
-	function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
-		const boardChrome = createBoardChrome(app);
-		tableChrome = boardChrome.container;
-		app.stage.addChild(tableChrome);
-		boardChrome.draw();
-		app.renderer.on('resize', () => {
-			boardChrome.draw();
+	async function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
+		viewport = createViewport(app, {
+			worldWidth: localTable.table.table.width,
+			worldHeight: localTable.table.table.height,
+			minScale: 0.2
 		});
-
-		viewport = createViewport(app);
 		app.stage.eventMode = 'static';
-		app.stage.hitArea = app.screen;
+
+		function resizeViewportToScreen() {
+			app.stage.hitArea = app.screen;
+			configureCurrentTableViewport(localTable.table);
+		}
+		resizeViewportToScreen();
+		app.renderer.on('resize', resizeViewportToScreen);
+
+		tableLayer = await createTableLayer(localTable);
+		viewport.addChild(tableLayer);
+		configureCurrentTableViewport(localTable.table);
 
 		boardContainer = new Container();
+		applyCurrentTableCameraTransform(localTable.table);
 		viewport.addChild(boardContainer);
+		fixedSlotLayout = new FixedSlotLayout(localTable.table, boardContainer);
+		tableDropPreviewLayer = new Graphics();
+		tableDropPreviewLayer.eventMode = 'none';
+		tableDropPreviewLayer.interactiveChildren = false;
+		viewport.addChild(tableDropPreviewLayer);
+		applyCurrentTableCameraTransform(localTable.table);
 
-		const screenContainer = new Container({
-			layout: {
+		const screenContainer = new Container();
+		const updateScreenContainerLayout = () => {
+			screenContainer.layout = {
 				width: app.screen.width,
 				height: app.screen.height,
 				flexDirection: 'column',
 				justifyContent: 'flex-end',
 				alignItems: 'center'
-			}
-		});
+			};
+		};
+		updateScreenContainerLayout();
+		app.renderer.on('resize', updateScreenContainerLayout);
 
 		app.stage.addChild(screenContainer);
 
@@ -369,6 +823,9 @@
 					});
 				}
 				drag = null;
+				clearMovingCardLayer();
+				clearTableDropPreview();
+				clearStackDropPreview();
 				return;
 			}
 
@@ -376,6 +833,9 @@
 
 			if (e.button === 2) {
 				drag = null;
+				clearMovingCardLayer();
+				clearTableDropPreview();
+				clearStackDropPreview();
 				return;
 			}
 
@@ -395,38 +855,69 @@
 					}
 				}
 			} else if (drag.dragType == 'selection') {
-				for (const c of selectionManager.values()) {
-					if (c.clientPosition) {
-						c.clientPosition.moveEnd(c.x, c.y);
+				const stacked = tryStackSelection(e.global);
+				if (!drag.hasMoved && !stacked) {
+					for (const c of selectionManager.values()) {
+						if (handContainer.hasItem(c)) {
+							c.x = 0;
+							c.y = 0;
+						}
 						c.cursor = 'pointer';
 					}
-				}
-				if (tryStackSelection()) {
-					selectionManager.clear();
+				} else {
+					for (const c of selectionManager.values()) {
+						if (!stacked) {
+							commitTableDrop(c, false, drag.startPositions?.get(c.id));
+						}
+						c.cursor = 'pointer';
+					}
+					if (stacked) {
+						selectionManager.clear();
+					}
 				}
 			} else if (drag.dragType == 'handToBoard') {
-				const stacked = tryStackSelection();
-				for (const c of selectionManager.values()) {
-					if (handContainer.hasItem(c)) {
-						c.x = 0;
-						c.y = 0;
-					} else if (!stacked) {
-						handlePlayCard(c);
+				if (!drag.hasMoved) {
+					for (const c of selectionManager.values()) {
+						c.cursor = 'pointer';
 					}
-					c.cursor = 'pointer';
+				} else {
+					const dropPoint = boardContainer.toLocal(e.global);
+					const stacked = tryStackSelection(e.global);
+					for (const c of selectionManager.values()) {
+						if (handContainer.hasItem(c)) {
+							c.x = 0;
+							c.y = 0;
+						} else if (!stacked) {
+							commitTableDrop(c, true, drag.startPositions?.get(c.id), {
+								x: dropPoint.x,
+								y: dropPoint.y
+							});
+						}
+						c.cursor = 'pointer';
+					}
+					if (stacked) {
+						selectionManager.clear();
+					}
+					strokeLayer?.refreshAll();
 				}
-				if (stacked) {
-					selectionManager.clear();
-				}
-				strokeLayer?.refreshAll();
 			}
 			drag = null;
+			clearMovingCardLayer();
+			clearTableDropPreview();
+			clearStackDropPreview();
 		}
 
 		app.stage.addChild(marquee);
+		stackDropPreviewLayer = new Graphics();
+		stackDropPreviewLayer.eventMode = 'none';
+		stackDropPreviewLayer.interactiveChildren = false;
+		app.stage.addChild(stackDropPreviewLayer);
+		movingCardLayer = new RenderLayer();
+		viewport.addChild(movingCardLayer);
+		applyCurrentTableCameraTransform(localTable.table);
 
 		app.stage.on('pointermove', (e) => {
-			previewer.updatePointer(e.globalX, e.globalY);
+			previewer.updatePointer(e.global.x, e.global.y);
 			const topItem = findTopLevelItem(e.target);
 			if (topItem) {
 				hoverItem = topItem;
@@ -443,26 +934,46 @@
 				return;
 			}
 			if (!drag) return;
+			if (
+				!drag.hasMoved &&
+				Math.hypot(e.global.x - drag.originGlobalX, e.global.y - drag.originGlobalY) >=
+					drag.clickThreshold
+			) {
+				drag.hasMoved = true;
+				if (drag.dragType === 'selection') {
+					prepareSelectionForBoardDrag();
+				}
+			}
 
 			if (drag.dragType == 'marquee') {
 				const width = e.global.x - drag.startGlobalX + e.globalX - marquee.x;
 				const height = e.global.y - drag.startGlobalY + e.globalY - marquee.y;
 				marquee.resize(width, height);
 			} else if (drag.dragType == 'selection') {
-				const worldPos = viewport.toWorld(e.global);
-				const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
-				const delta = worldPos.subtract(startWorldPos);
 				for (const boardItem of selectionManager.values()) {
 					if (boardItem.clientPosition) {
-						const newPos = boardItem.position.add(delta);
-						boardItem.clientPosition.moveTo(newPos.x, newPos.y);
+						const pointer = boardContainer.toLocal(e.global);
+						const startPointer = boardContainer.toLocal(
+							new Point(drag.startGlobalX, drag.startGlobalY)
+						);
+						const delta = pointer.subtract(startPointer);
+						const currentPose = tableItemPose(boardItem);
+						const nextPose = clampTableItemPose(tableForPlay(), boardItem, {
+							...currentPose,
+							centerX: currentPose.centerX + delta.x,
+							centerY: currentPose.centerY + delta.y
+						});
+						setTableItemPose(boardItem, nextPose);
+						boardItem.clientPosition.moveTo(
+							tableItemPlacement(boardItem, tableTargetNodeId(boardItem))
+						);
 					}
 				}
 			} else if (drag.dragType == 'handToBoard') {
 				for (const boardItem of selectionManager.values()) {
 					if (handContainer.hasItem(boardItem)) {
-						const deltaX = e.globalX - drag.startGlobalX;
-						const deltaY = e.globalY - drag.startGlobalY;
+						const deltaX = e.global.x - drag.startGlobalX;
+						const deltaY = e.global.y - drag.startGlobalY;
 						const wrapper = boardItem.parent;
 						if (wrapper) {
 							const wrapperGlobal = wrapper.toGlobal(boardItem.position);
@@ -472,45 +983,64 @@
 							const newLocal = wrapper.toLocal({ x: newGlobalX, y: newGlobalY });
 							boardItem.position.set(newLocal.x, newLocal.y);
 
-							const wrapperBounds = wrapper.getBounds();
-							const handBounds = handContainer.container.getBounds();
-							const cardHeight = wrapperBounds.height;
+							const pointerRatio =
+								drag.visualPointerRatios?.get(boardItem.id) ??
+								visualPointerRatio(app, boardItem, e.global);
+							const liftedFromHand = e.global.y < drag.originGlobalY - drag.clickThreshold;
 
-							const cardCenterY = wrapperBounds.y + cardHeight / 2;
-							const handTop = handBounds.maxY - cardHeight;
-
-							if (cardCenterY < handTop) {
+							if (liftedFromHand) {
 								handContainer.removeItem(boardItem);
 								boardContainer.addChild(boardItem);
-								boardItem.resetLayoutTransform();
-
-								boardItem.scale.set(0.5);
+								movingCardLayer?.attach(boardItem);
 								boardItem.rotation = 0;
 								boardItem.pivot.set(0, 0);
 								boardItem.alpha = 1.0;
-								const worldPos = viewport.toWorld(e.global);
+								setTableItemRotation(boardItem, normalizeRotation(-cameraRotationValue));
+								configureTableItem(boardItem);
 
-								drag.startGlobalX = e.globalX;
-								drag.startGlobalY = e.globalY;
-
-								const offset = e.global.subtract(new Point(wrapperBounds.minX, wrapperBounds.minY));
-
-								boardItem.position = worldPos
-									.subtract(offset)
-									.subtract(new Point(wrapperBounds.width / 2, wrapperBounds.height / 2));
+								drag.startGlobalX = e.global.x;
+								drag.startGlobalY = e.global.y;
+								setTableItemVisualPointUnderPointer({
+									boardContainer,
+									table: tableForPlay(),
+									item: boardItem,
+									pointer: e.global,
+									ratio: pointerRatio
+								});
 							}
 						}
 					} else {
-						const worldPos = viewport.toWorld(e.global);
-						const startWorldPos = viewport.toWorld(drag.startGlobalX, drag.startGlobalY);
-						const delta = worldPos.subtract(startWorldPos);
-						const newPos = boardItem.position.add(delta);
-						boardItem.position = newPos;
+						const pointerRatio =
+							drag.visualPointerRatios?.get(boardItem.id) ??
+							visualPointerRatio(app, boardItem, e.global);
+						setTableItemVisualPointUnderPointer({
+							boardContainer,
+							table: tableForPlay(),
+							item: boardItem,
+							pointer: e.global,
+							ratio: pointerRatio
+						});
 					}
 				}
 			}
-			drag.startGlobalX = e.globalX;
-			drag.startGlobalY = e.globalY;
+			const stackPreview =
+				(drag.dragType === 'selection' || drag.dragType === 'handToBoard') &&
+				updateStackDropPreview(e.global);
+			if (!stackPreview) {
+				const previewItem = selectionManager.values().next().value as BoardGameItemNew | undefined;
+				if (previewItem && !handContainer.hasItem(previewItem)) {
+					const previewPoint =
+						drag.dragType === 'handToBoard'
+							? boardContainer.toLocal(e.global)
+							: tableItemCenter(previewItem);
+					drawTableDropPreview(previewItem, { x: previewPoint.x, y: previewPoint.y });
+				} else {
+					clearTableDropPreview();
+				}
+				clearStackDropPreview();
+			}
+			drag.startGlobalX = e.global.x;
+			drag.startGlobalY = e.global.y;
 		});
 
 		app.stage.on('pointerup', endDrag);
@@ -531,9 +1061,12 @@
 				selectedStrokeId = null;
 				strokeLayer.beginDraft(target, e.global, currentStrokeStyle);
 				drag = {
-					startGlobalX: e.globalX,
-					startGlobalY: e.globalY,
+					originGlobalX: e.global.x,
+					originGlobalY: e.global.y,
+					startGlobalX: e.global.x,
+					startGlobalY: e.global.y,
 					clickThreshold: 0,
+					hasMoved: false,
 					dragType: 'strokeDraft'
 				};
 				return;
@@ -574,26 +1107,52 @@
 			}
 
 			drag = {
-				startGlobalX: e.globalX,
-				startGlobalY: e.globalY,
+				originGlobalX: e.global.x,
+				originGlobalY: e.global.y,
+				startGlobalX: e.global.x,
+				startGlobalY: e.global.y,
 				clickThreshold: 10,
-				dragType: dragType
+				hasMoved: false,
+				dragType: dragType,
+				startPositions: new Map(
+					[...selectionManager.values()].map((item) => [
+						item.id,
+						tableItemPlacement(item, tableTargetNodeId(item))
+					])
+				),
+				visualPointerRatios: new Map(
+					[...selectionManager.values()].map((item) => [
+						item.id,
+						visualPointerRatio(app, item, e.global)
+					])
+				)
 			};
-			if (e.shiftKey) {
+			if (e.shiftKey && !boardItem) {
 				drag.dragType = 'marquee';
 				marquee.position.copyFrom(e.global);
 				marquee.visible = true;
 				marquee.resize(2, 2);
 			} else if (!boardItem || (!selectionManager.has(boardItem) && dragType !== 'handToBoard')) {
 				drag = null;
+			} else {
+				attachMovingSelection();
 			}
 		});
 		return true;
 	}
 
-	async function createRoom(_init: boolean) {
+	async function createRoom() {
 		if (isE2EMode() && !playE2EBridge) {
-			playE2EBridge = installPlayE2EBridge(app, boardGameItems, handContainer, strokeLayer);
+			playE2EBridge = installPlayE2EBridge(
+				app,
+				boardGameItems,
+				handContainer,
+				strokeLayer,
+				viewport,
+				localTable.table,
+				(point) => boardContainer?.toGlobal(new Point(point.x, point.y)) ?? null,
+				() => cameraRotationValue
+			);
 		}
 		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
 		if (error) {
@@ -606,6 +1165,7 @@
 		const deckEntries = entries.data
 			.filter((entry) => entry.kind === 'directory')
 			.sort((a, b) => a.name.localeCompare(b.name));
+		const tableDeckNames = tableReferencedDeckNames(localTable.table);
 		const playableDeckEntries = (
 			await Promise.all(
 				deckEntries.map(async (entry) => ({
@@ -614,12 +1174,17 @@
 				}))
 			)
 		)
-			.filter(({ playable }) => playable)
+			.filter(({ entry, playable }) => playable && tableDeckNames.has(entry.name))
 			.map(({ entry }) => entry);
-		const loadedDecks = await Promise.all(
-			playableDeckEntries.map((entry) => loadAndProcessCards(projectName, entry.name, fileSystem))
+		const loadedDecks: LoadedDeck[] = await Promise.all(
+			playableDeckEntries.map(async (entry) => ({
+				deckName: entry.name,
+				cards: await loadAndProcessCards(projectName, entry.name, fileSystem)
+			}))
 		);
-		const allComponentsParsed = loadedDecks.flat();
+		const allComponentsParsed = loadedDecks.flatMap((deck) => deck.cards);
+		const tablePlayPlan = buildTablePlayPlan(localTable.table, loadedDecks);
+		tableItemMetadata = new SvelteMap(tableItemMetadataById(tablePlayPlan));
 		const privatePlaytest = roomConnection.kind === 'privatePlaytest' ? roomConnection : null;
 		const roomType = privatePlaytest ? 'private_room' : 'my_room';
 		const roomOptions = privatePlaytest
@@ -647,12 +1212,29 @@
 		let s = getStateCallbacks(room);
 		strokeLayer.connect(room, s);
 
+		function refreshTableItemPlacement(componentId: string) {
+			const boardItem = boardGameItems.get(componentId);
+			if (!boardItem) return;
+			if (boardItem.isInHand) return;
+
+			const position = boardItem.clientPosition?.clientPositionState;
+			if (!position) return;
+			applyTableItemPlacement(boardItem, {
+				x: position.x,
+				y: position.y,
+				rotation: position.rotation,
+				parentId: position.parentId || TABLE_NODE_ID,
+				visible: position.visible
+			});
+		}
+
 		s(room.state).components.onAdd((component, _index) => {
 			initComponent(
 				{
 					boardContainer,
 					boardGameItems,
-					isDragging: () => drag !== null
+					isDragging: () => drag !== null,
+					configureItem: configureTableItem
 				},
 				allComponentsParsed,
 				component,
@@ -660,33 +1242,67 @@
 				s,
 				room
 			);
+			boardGameItems.get(component.id)?.clientPosition?.onPositionChanged.subscribe(() => {
+				if (!drag) refreshTableItemPlacement(component.id);
+			});
+			refreshTableItemPlacement(component.id);
 			strokeLayer.refreshAll();
 		});
 		s(room.state).components.onRemove((component, _key) => {
 			const boardItem = boardGameItems.get(component.id);
 			if (!boardItem) return;
-			boardContainer.removeChild(boardItem);
+			fixedSlotLayout?.forgetItem(boardItem);
+			boardItem.parent?.removeChild(boardItem);
 			boardItem.destroy({ children: true });
 			boardGameItems.delete(component.id);
 			strokeLayer.refreshAll();
 		});
-		sendCmd(room, 'init', parsePayload(loadedDecks));
+		sendCmd(room, 'init', buildTableInitPayload(tablePlayPlan));
 		return room;
 	}
 
-	const app = await initApp();
-	// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
-	const previewer = new PreviewHelper(app);
-	const init = initEditor(app, previewer);
-	const room = await createRoom(init);
+	let localTable: LocalTable;
+	let app = $state<Application<Renderer>>(undefined!);
+	let previewer: PreviewHelper;
+	let room: Room<BoardGameRoomState>;
+	let tableBlockMessage = $state<string | null>(null);
+	const tableLoad = await (() => loadRequiredTable({ fileSystem, projectName }))();
+	if (tableLoad.error) {
+		if ('cause' in tableLoad.error) {
+			console.warn(tableLoad.error.message, tableLoad.error.cause);
+		}
+		tableBlockMessage = tableLoad.error.message;
+	} else {
+		localTable = tableLoad.data;
+		const initializedApp = await initApp();
+		app = initializedApp;
+		// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
+		previewer = new PreviewHelper(initializedApp);
+		await initEditor(initializedApp, previewer);
+		room = await createRoom();
+		playReady = true;
+	}
 
 	function attachApp(app: Application): Attachment {
 		return (element) => {
-			element.appendChild(app.canvas);
+			const resizeTarget = element as HTMLElement;
+			resizeTarget.appendChild(app.canvas);
+			app.canvas.style.display = 'block';
+			app.canvas.style.width = '100%';
+			app.canvas.style.height = '100%';
+			app.resizeTo = resizeTarget;
+			app.resize();
+			const resizeObserver = new ResizeObserver(() => {
+				app.queueResize();
+			});
+			resizeObserver.observe(resizeTarget);
 			return () => {
+				resizeObserver.disconnect();
 				playE2EBridge?.clear();
 				playE2EBridge = null;
-				element.removeChild(app.canvas);
+				fixedSlotLayout?.destroy();
+				fixedSlotLayout = null;
+				resizeTarget.removeChild(app.canvas);
 				app.destroy(true, { children: true, texture: true });
 			};
 		};
@@ -696,12 +1312,36 @@
 		e.preventDefault();
 	}
 
+	function handleCameraShortcut(e: KeyboardEvent) {
+		if (!playReady) return;
+		const target = e.target;
+		if (
+			target instanceof HTMLInputElement ||
+			target instanceof HTMLTextAreaElement ||
+			target instanceof HTMLSelectElement
+		) {
+			return;
+		}
+		if (e.key === '[' || e.code === 'BracketLeft') {
+			e.preventDefault();
+			rotateCamera(-90);
+		} else if (e.key === ']' || e.code === 'BracketRight') {
+			e.preventDefault();
+			rotateCamera(90);
+		} else if (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0') {
+			e.preventDefault();
+			resetCameraRotation();
+		}
+	}
+
 	onMount(() => {
 		document.addEventListener('contextmenu', blockNativeContextMenu);
+		window.addEventListener('keydown', handleCameraShortcut);
 	});
 
 	onDestroy(() => {
 		document.removeEventListener('contextmenu', blockNativeContextMenu);
+		window.removeEventListener('keydown', handleCameraShortcut);
 	});
 
 	function handleDrawCard(item: BoardGameItemNew) {
@@ -718,8 +1358,10 @@
 			newItem.visible = true;
 			newItem.renderable = true;
 			item = newItem;
+		} else {
+			fixedSlotLayout?.forgetItem(item);
 		}
-		boardContainer.removeChild(item);
+		selectionManager.clear();
 		handContainer.addItem(item);
 		sendCmd(room, 'draw', { cardId: ogId });
 		strokeLayer.refreshAll();
@@ -730,104 +1372,163 @@
 		item.clientStack.shuffle();
 	}
 
-	function handlePlayCard(item: BoardGameItemNew) {
-		item.clientPosition?.predictPosition(item.x, item.y, true);
-		sendCmd(room, 'play', { cardId: item.id, x: item.x, y: item.y });
+	function handlePlayCard(item: BoardGameItemNew, parentId = tableTargetNodeId(item)) {
+		item.visible = true;
+		item.renderable = true;
+		const placement = tableItemPlacement(item, parentId);
+		item.clientPosition?.predictPlacement({ ...placement, visible: true });
+		sendCmd(room, 'play', {
+			cardId: item.id,
+			x: placement.x,
+			y: placement.y,
+			rotation: placement.rotation,
+			targetNodeId: placement.parentId
+		});
 		strokeLayer.refreshAll();
 	}
 </script>
 
 <div class="absolute inset-0">
-	<div class="full relative w-full" style="pointer-events: auto;" {@attach attachApp(app)}></div>
+	{#if tableBlockMessage}
+		<div class="bg-background text-foreground flex h-full w-full items-center justify-center p-6">
+			<div
+				class="bg-card text-card-foreground max-w-md rounded-lg border p-6 shadow-sm"
+				role="status"
+			>
+				<h1 class="text-xl font-semibold">Table setup required</h1>
+				<p class="text-muted-foreground mt-2 text-sm">{tableBlockMessage}</p>
+			</div>
+		</div>
+	{:else}
+		<div
+			class="relative h-full w-full"
+			style="pointer-events: auto;"
+			{@attach attachApp(app)}
+		></div>
 
-	<div
-		class="bg-background/90 absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur"
-		role="toolbar"
-		aria-label="Play tools"
-	>
-		<button
-			type="button"
-			aria-label="Select tool"
-			aria-pressed={activeTool === 'select'}
-			title="Select"
-			class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
-			onclick={() => selectTool('select')}
+		<div
+			class="bg-background/90 absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-md border p-1 shadow-sm backdrop-blur"
+			role="toolbar"
+			aria-label="Play tools"
 		>
-			<MousePointer2Icon class="size-4" />
-		</button>
-		<button
-			type="button"
-			aria-label="Pen tool"
-			aria-pressed={activeTool === 'pen'}
-			title="Pen"
-			class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
-			onclick={() => selectTool('pen')}
-		>
-			<PenLineIcon class="size-4" />
-		</button>
-		<button
-			type="button"
-			aria-label="Delete selected stroke"
-			title="Delete stroke"
-			disabled={!selectedStrokeId}
-			class="text-foreground hover:bg-accent rounded-sm p-2 disabled:pointer-events-none disabled:opacity-40"
-			onclick={deleteSelectedStroke}
-		>
-			<Trash2Icon class="size-4" />
-		</button>
-		{#if playtestFeedback}
 			<button
 				type="button"
-				aria-label={notesHaveDraft ? 'Playtest notes with unsent changes' : 'Playtest notes'}
-				title={notesHaveDraft ? 'Notes with unsent changes' : 'Notes'}
-				class={`relative rounded-sm p-2 ${
-					notesHaveDraft
-						? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
-						: 'text-foreground hover:bg-accent'
-				}`}
-				onclick={() => (notesOpen = true)}
+				aria-label="Select tool"
+				aria-pressed={activeTool === 'select'}
+				title="Select"
+				class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
+				onclick={() => selectTool('select')}
 			>
-				<FileTextIcon class="size-4" />
-				{#if notesHaveDraft}
-					<span class="bg-destructive absolute top-1 right-1 size-2 rounded-full" aria-hidden="true"
-					></span>
-				{/if}
+				<MousePointer2Icon class="size-4" />
 			</button>
+			<button
+				type="button"
+				aria-label="Pen tool"
+				aria-pressed={activeTool === 'pen'}
+				title="Pen"
+				class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
+				onclick={() => selectTool('pen')}
+			>
+				<PenLineIcon class="size-4" />
+			</button>
+			<button
+				type="button"
+				aria-label="Delete selected stroke"
+				title="Delete stroke"
+				disabled={!selectedStrokeId}
+				class="text-foreground hover:bg-accent rounded-sm p-2 disabled:pointer-events-none disabled:opacity-40"
+				onclick={deleteSelectedStroke}
+			>
+				<Trash2Icon class="size-4" />
+			</button>
+			<div class="bg-border mx-1 h-6 w-px" aria-hidden="true"></div>
+			<button
+				type="button"
+				aria-label="Rotate camera left"
+				title="Rotate camera left ([)"
+				class="text-foreground hover:bg-accent rounded-sm p-2"
+				onclick={() => rotateCamera(-90)}
+			>
+				<RotateCcwIcon class="size-4" />
+			</button>
+			<button
+				type="button"
+				aria-label="Reset camera rotation"
+				title="Reset camera rotation (0)"
+				class="text-foreground hover:bg-accent min-w-9 rounded-sm px-2 py-1 text-xs font-medium"
+				onclick={resetCameraRotation}
+			>
+				{cameraRotation}°
+			</button>
+			<button
+				type="button"
+				aria-label="Rotate camera right"
+				title="Rotate camera right (])"
+				class="text-foreground hover:bg-accent rounded-sm p-2"
+				onclick={() => rotateCamera(90)}
+			>
+				<RotateCwIcon class="size-4" />
+			</button>
+			{#if playtestFeedback}
+				<button
+					type="button"
+					aria-label={notesHaveDraft ? 'Playtest notes with unsent changes' : 'Playtest notes'}
+					title={notesHaveDraft ? 'Notes with unsent changes' : 'Notes'}
+					class={`relative rounded-sm p-2 ${
+						notesHaveDraft
+							? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
+							: 'text-foreground hover:bg-accent'
+					}`}
+					onclick={() => (notesOpen = true)}
+				>
+					<FileTextIcon class="size-4" />
+					{#if notesHaveDraft}
+						<span
+							class="bg-destructive absolute top-1 right-1 size-2 rounded-full"
+							aria-hidden="true"
+						></span>
+					{/if}
+				</button>
+			{/if}
+		</div>
+
+		{#if playtestFeedback}
+			<PlaytestNotes
+				bind:open={notesOpen}
+				bind:hasDraft={notesHaveDraft}
+				playtestId={playtestFeedback.playtestId}
+			/>
 		{/if}
-	</div>
 
-	{#if playtestFeedback}
-		<PlaytestNotes
-			bind:open={notesOpen}
-			bind:hasDraft={notesHaveDraft}
-			playtestId={playtestFeedback.playtestId}
-		/>
+		<ContextMenu.Root bind:open={showContextMenu}>
+			<ContextMenu.Trigger
+				style="left:{contextMenuPosition.x}px; top: {contextMenuPosition.y}px;"
+				class="z-10"
+			>
+				<div
+					class="absolute h-1 w-1"
+					style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px"
+					aria-hidden="true"
+				></div>
+			</ContextMenu.Trigger>
+			<ContextMenu.Content
+				strategy="absolute"
+				style="top: {contextMenuPosition.y}px; z-index: 1000;"
+			>
+				<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleFlipCard(item))}
+					>Flip Card
+					<ContextMenu.Shortcut>F</ContextMenu.Shortcut>
+				</ContextMenu.Item>
+				<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleDrawCard(item))}
+					>Draw Card
+					<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
+				</ContextMenu.Item>
+				<ContextMenu.Item
+					onclick={() => selectionManager.forEach((item) => handleShuffleStack(item))}
+					>Shuffle Stack
+					<ContextMenu.Shortcut>S</ContextMenu.Shortcut>
+				</ContextMenu.Item>
+			</ContextMenu.Content>
+		</ContextMenu.Root>
 	{/if}
-
-	<ContextMenu.Root bind:open={showContextMenu}>
-		<ContextMenu.Trigger
-			style="left:{contextMenuPosition.x}px; top: {contextMenuPosition.y}px;"
-			class="z-10"
-		>
-			<div
-				class="absolute h-1 w-1"
-				style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px"
-				aria-hidden="true"
-			></div>
-		</ContextMenu.Trigger>
-		<ContextMenu.Content strategy="absolute" style="top: {contextMenuPosition.y}px; z-index: 1000;">
-			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleFlipCard(item))}
-				>Flip Card
-				<ContextMenu.Shortcut>F</ContextMenu.Shortcut>
-			</ContextMenu.Item>
-			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleDrawCard(item))}
-				>Draw Card
-				<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
-			</ContextMenu.Item>
-			<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleShuffleStack(item))}
-				>Shuffle Stack
-				<ContextMenu.Shortcut>S</ContextMenu.Shortcut>
-			</ContextMenu.Item>
-		</ContextMenu.Content>
-	</ContextMenu.Root>
 </div>

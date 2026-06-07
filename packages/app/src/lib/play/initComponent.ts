@@ -16,6 +16,8 @@ import {
 
 export interface ParsedSvg {
 	id: string;
+	width: number;
+	height: number;
 	front: Container;
 	back: Container;
 }
@@ -24,39 +26,53 @@ export interface InitComponentDependencies {
 	boardContainer: Container;
 	boardGameItems: Map<string, BoardGameItemNew>;
 	isDragging: () => boolean;
+	configureItem?: (item: BoardGameItemNew) => void;
 }
 
-function firstTexture(container: Container): Texture | null {
+function collectSpriteTextures(container: Container): Texture[] {
+	const textures: Texture[] = [];
 	if (container instanceof Sprite) {
-		return container.texture;
+		textures.push(container.texture);
 	}
 
 	for (const child of container.children) {
-		const texture = firstTexture(child as Container);
-		if (texture) return texture;
+		textures.push(...collectSpriteTextures(child as Container));
 	}
 
-	return null;
+	return textures;
 }
 
-async function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
+function createStackFace(textures: Texture[], size: { width: number; height: number }) {
+	assert(textures.length > 0, 'Stack card texture not found');
+
+	const face = new Container({
+		layout: {
+			width: size.width,
+			height: size.height,
+			aspectRatio: size.width / size.height
+		}
+	});
+	for (const texture of textures) {
+		const sprite = new Sprite(texture);
+		sprite.width = size.width;
+		sprite.height = size.height;
+		face.addChild(sprite);
+	}
+	return face;
+}
+
+function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
 	const cardContainer = topItem.itemContainer as CardContainer;
 	const face = !isFaceUp ? cardContainer.backSprite : cardContainer.frontSprite;
-	const tex = firstTexture(face);
-	assert(tex, 'Stack card texture not found');
+	const textures = collectSpriteTextures(face);
+	const cardSize = topItem.contentLocalBounds();
 
-	const topSprite = new Sprite(tex);
-	topSprite.setSize(topItem.getSize());
-	topSprite.scale.set(1.0);
+	const topSprite = createStackFace(textures, cardSize);
 
-	const secondSprite = new Sprite(tex);
-	topSprite.setSize(topItem.getSize());
-	topSprite.scale.set(1.0);
+	const secondSprite = createStackFace(textures, cardSize);
 	secondSprite.position.set(-15, 15);
 
-	const thirdSprite = new Sprite(tex);
-	thirdSprite.setSize(topItem.getSize());
-	thirdSprite.scale.set(1.0);
+	const thirdSprite = createStackFace(textures, cardSize);
 	thirdSprite.position.set(-30, 30);
 	return [topSprite, secondSprite, thirdSprite];
 }
@@ -104,15 +120,17 @@ export async function initComponent(
 			item.renderable = false;
 		}
 		function rebuild(frontendFlip: ClientFlippable | null) {
-			stackContainer.removeChildren();
+			for (const child of stackContainer.removeChildren()) {
+				child.destroy({ children: true });
+			}
+
 			const isFaceUp = frontendFlip !== null ? frontendFlip.clientFlippableState.isFaceUp : true;
 			const index = isFaceUp ? 0 : stacks.length - 1;
 			const item = stacks[index];
-			buildStack(isFaceUp, item).then((stackSprites) => {
-				for (const sprite of stackSprites) {
-					stackContainer.addChild(sprite);
-				}
-			});
+			const stackSprites = buildStack(isFaceUp, item);
+			for (const sprite of stackSprites) {
+				stackContainer.addChild(sprite);
+			}
 		}
 
 		const flippable = state.flippable.get(component.id);
@@ -165,7 +183,10 @@ export async function initComponent(
 		if (boardGameItems.has(card.id)) {
 			return;
 		}
-		const cardContainer = new CardContainer(card.front, card.back);
+		const cardContainer = new CardContainer(card.front, card.back, {
+			width: card.width,
+			height: card.height
+		});
 
 		let frontendPosition: ClientPosition | null = null;
 		const position = state.positions.get(component.id);
@@ -177,14 +198,9 @@ export async function initComponent(
 		const flippable = state.flippable.get(component.id);
 		if (flippable) {
 			frontendFlip = new ClientFlippable(sharedClientValues, flippable);
+			cardContainer.showFace(frontendFlip.clientFlippableState.isFaceUp);
 			frontendFlip.onFlipped.subscribe((flippable) => {
-				if (flippable.isFaceUp) {
-					card.front.visible = true;
-					card.back.visible = false;
-				} else {
-					card.front.visible = false;
-					card.back.visible = true;
-				}
+				cardContainer.showFace(flippable.isFaceUp);
 			});
 		}
 
@@ -192,12 +208,15 @@ export async function initComponent(
 			cardContainer,
 			component.id,
 			frontendPosition,
-			frontendFlip
+			frontendFlip,
+			null,
+			{ width: card.width, height: card.height }
 		);
 	}
 	boardGameItems.set(component.id, boardGameItem);
 
-	boardGameItem.scale.set(0.5);
+	// boardGameItem.scale.set(0.5);
+	deps.configureItem?.(boardGameItem);
 	boardGameItem.eventMode = 'static';
 	boardGameItem.cursor = 'pointer';
 	boardGameItem.on('pointerover', () => {

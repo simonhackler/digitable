@@ -5,6 +5,7 @@
 	import { normalizeSvg } from '../core/normalizeSvg';
 	import type {
 		ChangeEvent,
+		ChangeSvgEmission,
 		EditorError,
 		ErrorEvent,
 		ModeChangeEvent,
@@ -20,6 +21,9 @@
 		disabled?: boolean;
 		readonly?: boolean;
 		centerOnLoad?: boolean;
+		centerOnExternalValueChange?: boolean;
+		syncExternalValueUpdates?: boolean;
+		emitChangeSvg?: ChangeSvgEmission;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
 		class?: string;
@@ -32,6 +36,9 @@
 		disabled = false,
 		readonly = false,
 		centerOnLoad = true,
+		centerOnExternalValueChange = centerOnLoad,
+		syncExternalValueUpdates = false,
+		emitChangeSvg = true,
 		initialZoom,
 		assetBasePath,
 		class: className = '',
@@ -54,7 +61,7 @@
 	let rulerX: HTMLDivElement | null = null;
 	let rulerY: HTMLDivElement | null = null;
 	let rulerCorner: HTMLDivElement | null = null;
-	let controller: SvgEditorApi | null = null;
+	let controller = $state<SvgEditorApi | null>(null);
 	let resizeObserver: ResizeObserver | null = null;
 	let lastExternalValue: string | null = null;
 	let lastUserValue: string | null = null;
@@ -125,6 +132,7 @@
 				value: normalizedInitial,
 				config: resolvedConfig,
 				centerOnLoad,
+				emitChangeSvg,
 				rulers: {
 					frame: rulerFrame,
 					x: rulerX,
@@ -133,7 +141,15 @@
 				},
 				onChange: (svg) => {
 					if (suppressChange) return;
-					lastUserValue = svg;
+					if (!emitChangeSvg) {
+						dispatch('change', { source: 'user' });
+						return;
+					}
+					if (svg === undefined) {
+						dispatch('change', { source: 'user' });
+						return;
+					}
+					lastUserValue = normalizeSvg(svg, resolvedConfig);
 					dispatch('change', { svg, source: 'user' });
 				},
 				onSelectionChange: (payload) => {
@@ -235,12 +251,18 @@
 	});
 
 	$effect(() => {
+		if (!syncExternalValueUpdates) return;
 		if (!controller) return;
 
 		const loadWithSuppression = (svg: string) => {
 			suppressChange = true;
 			try {
-				return controller?.loadSvg(svg, { preventUndo: true, center: centerOnLoad }) ?? false;
+				return (
+					controller?.loadSvg(svg, {
+						preventUndo: true,
+						center: centerOnExternalValueChange
+					}) ?? false
+				);
 			} finally {
 				suppressChange = false;
 			}
@@ -250,6 +272,7 @@
 			value,
 			lastExternalValue,
 			lastUserValue,
+			currentValue: normalizeSvg(controller.getSvg(), resolvedConfig),
 			normalize: (next) => normalizeSvg(next, resolvedConfig),
 			load: loadWithSuppression
 		});

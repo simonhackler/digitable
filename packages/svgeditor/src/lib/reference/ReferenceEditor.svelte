@@ -2,7 +2,14 @@
 	import { createEventDispatcher } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { PressedKeys } from 'runed';
-	import type { ChangeEvent, ReadyEvent, SvgCanvasConfig, SvgEditorApi } from '../core/types';
+	import type {
+		ChangeEvent,
+		ChangeSvgEmission,
+		ReadyEvent,
+		SelectionChangeEvent,
+		SvgCanvasConfig,
+		SvgEditorApi
+	} from '../core/types';
 	import { createEditorController } from '../svelte/createEditorController.svelte.ts';
 	import SvgCanvasHost from '../svelte/SvgCanvasHost.svelte';
 	import Inspector from './Inspector.svelte';
@@ -17,9 +24,17 @@
 		disabled?: boolean;
 		readonly?: boolean;
 		centerOnLoad?: boolean;
+		centerOnExternalValueChange?: boolean;
+		syncExternalValueUpdates?: boolean;
+		emitChangeSvg?: ChangeSvgEmission;
+		selectedElementId?: string | null;
 		initialZoom?: number | 'fit';
 		assetBasePath?: string;
+		activePanel?: string;
+		api?: SvgEditorApi | null;
 		toolbarActions?: () => ReturnType<Snippet>;
+		tablePanel?: () => ReturnType<Snippet>;
+		componentPanel?: () => ReturnType<Snippet>;
 		imageToolAction?: (controller: EditorController) => void | Promise<void>;
 		selectedImageChangeAction?: (controller: EditorController) => void | Promise<void>;
 		selectedImageHrefApplyAction?: (
@@ -36,15 +51,26 @@
 		disabled = false,
 		readonly = false,
 		centerOnLoad = true,
+		centerOnExternalValueChange = centerOnLoad,
+		syncExternalValueUpdates = false,
+		emitChangeSvg = true,
+		selectedElementId = undefined,
 		initialZoom,
 		assetBasePath,
+		activePanel = $bindable('inspector'),
+		api = $bindable(null),
 		toolbarActions,
+		tablePanel,
+		componentPanel,
 		imageToolAction,
 		selectedImageChangeAction,
 		selectedImageHrefApplyAction
 	}: ReferenceEditorProps = $props();
 
-	const dispatch = createEventDispatcher<{ change: ChangeEvent }>();
+	const dispatch = createEventDispatcher<{
+		change: ChangeEvent;
+		selectionchange: SelectionChangeEvent;
+	}>();
 	const controller = createEditorController();
 	const keys = new PressedKeys();
 
@@ -56,10 +82,19 @@
 		...(config ?? {})
 	}));
 	const extraActions = $derived(toolbarActions as Snippet | undefined);
+	const extraTablePanel = $derived(tablePanel as Snippet | undefined);
+	const extraComponentPanel = $derived(componentPanel as Snippet | undefined);
+	let selectionSyncToken = 0;
 
 	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		dispatch('change', event.detail);
 		controller.handleChange(event);
+		if (event.detail.source === 'external') scheduleControlledSelection();
+	};
+
+	const handleSelectionChange = (event: CustomEvent<SelectionChangeEvent>) => {
+		controller.handleSelectionChange(event);
+		dispatch('selectionchange', event.detail);
 	};
 
 	const shouldExposeE2E = () => {
@@ -77,6 +112,7 @@
 			global.__svgEditorApi = controller.api;
 			global.__svgEditorController = controller;
 		}
+		scheduleControlledSelection();
 	};
 
 	const isEditableTarget = (target: EventTarget | null) => {
@@ -139,6 +175,29 @@
 		action();
 	};
 
+	const syncControlledSelection = (targetId: string | null, token: number, attempt = 0) => {
+		if (token !== selectionSyncToken) return;
+		if (targetId === null) {
+			controller.clearSelection();
+			return;
+		}
+		if (!controller.api?.getElementById(targetId)) {
+			if (attempt < 4) {
+				requestAnimationFrame(() => syncControlledSelection(targetId, token, attempt + 1));
+			}
+			return;
+		}
+		controller.selectTreeElement(targetId);
+	};
+
+	const scheduleControlledSelection = () => {
+		if (selectedElementId === undefined) return;
+		if (!controller.isReady) return;
+		const targetId = selectedElementId;
+		const token = ++selectionSyncToken;
+		requestAnimationFrame(() => syncControlledSelection(targetId, token));
+	};
+
 	const onModCombo = (combo: string[], handler: () => void) => {
 		keys.onKeys(['meta', ...combo], handler);
 		keys.onKeys(['control', ...combo], handler);
@@ -197,6 +256,7 @@
 		runIfModShortcut(() => controller.clear(), { requireShift: true })
 	);
 	onModCombo(['a'], () => runIfModShortcut(() => controller.selectAll()));
+	onModCombo(['d'], () => runIfModShortcut(() => controller.duplicateSelection()));
 	onModCombo(['='], () => runIfModShortcut(() => controller.zoomIn()));
 	onModCombo(['+'], () => runIfModShortcut(() => controller.zoomIn(), { allowShift: true }));
 	onModCombo(['-'], () => runIfModShortcut(() => controller.zoomOut()));
@@ -279,7 +339,7 @@
 				event.preventDefault();
 				return;
 			}
-			if ((key === 'a' || key === 'n') && !event.shiftKey) {
+			if ((key === 'a' || key === 'd' || key === 'n') && !event.shiftKey) {
 				event.preventDefault();
 				return;
 			}
@@ -346,15 +406,19 @@
 						<div class="h-full py-4 pr-4">
 							<SvgCanvasHost
 								{value}
+								bind:api
 								config={resolvedConfig}
 								{disabled}
 								{readonly}
 								{centerOnLoad}
+								{centerOnExternalValueChange}
+								{syncExternalValueUpdates}
+								{emitChangeSvg}
 								{initialZoom}
 								{assetBasePath}
 								on:ready={handleReady}
 								on:change={handleChange}
-								on:selectionchange={controller.handleSelectionChange}
+								on:selectionchange={handleSelectionChange}
 								on:modechange={controller.handleModeChange}
 								on:error={controller.handleError}
 							/>
@@ -367,10 +431,16 @@
 			</div>
 		</div>
 		<div class="min-h-0 min-w-0">
-			<Tabs.Root value="inspector" class="h-full min-h-0 gap-3">
+			<Tabs.Root bind:value={activePanel} class="h-full min-h-0 gap-3">
 				<Tabs.List class="w-full">
 					<Tabs.Trigger value="inspector">Inspector</Tabs.Trigger>
 					<Tabs.Trigger value="structure">Structure</Tabs.Trigger>
+					{#if extraTablePanel}
+						<Tabs.Trigger value="table">Table</Tabs.Trigger>
+					{/if}
+					{#if extraComponentPanel}
+						<Tabs.Trigger value="component">Component</Tabs.Trigger>
+					{/if}
 				</Tabs.List>
 				<Tabs.Content value="inspector" class="min-h-0 overflow-auto pr-1">
 					<Inspector
@@ -383,6 +453,16 @@
 				<Tabs.Content value="structure" class="min-h-0 overflow-auto pr-1">
 					<StructureTree {controller} framed={false} disabled={interactionDisabled} />
 				</Tabs.Content>
+				{#if extraTablePanel}
+					<Tabs.Content value="table" class="min-h-0 overflow-auto pr-1">
+						{@render extraTablePanel()}
+					</Tabs.Content>
+				{/if}
+				{#if extraComponentPanel}
+					<Tabs.Content value="component" class="min-h-0 overflow-auto pr-1">
+						{@render extraComponentPanel()}
+					</Tabs.Content>
+				{/if}
 			</Tabs.Root>
 		</div>
 	</div>

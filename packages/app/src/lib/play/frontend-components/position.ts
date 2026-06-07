@@ -1,6 +1,6 @@
 import {
 	type BoardGameRoomState,
-	Positionable,
+	LayoutNode,
 	type Component,
 	Flippable,
 	Stack
@@ -13,16 +13,23 @@ type Handler<T> = (payload: T) => void;
 const POSITION_EPSILON = 0.001;
 const POSITION_INTERPOLATION = 0.2;
 
+export type ClientPlacement = {
+	x: number;
+	y: number;
+	rotation: number;
+	parentId: string;
+	visible?: boolean;
+};
+
 type PositionSnapshot = {
 	x: number;
 	y: number;
+	rotation: number;
+	parentId: string;
 	visible: boolean;
 };
 
-type PendingPrediction = {
-	x: number;
-	y: number;
-	visible: boolean;
+type PendingPrediction = PositionSnapshot & {
 	reconcileOnRelease: boolean;
 };
 
@@ -39,11 +46,38 @@ function samePoint(a: { x: number; y: number }, b: { x: number; y: number }): bo
 }
 
 function samePosition(a: PositionSnapshot, b: PositionSnapshot): boolean {
-	return samePoint(a, b) && a.visible === b.visible;
+	return (
+		samePoint(a, b) &&
+		Math.abs(a.rotation - b.rotation) <= POSITION_EPSILON &&
+		a.parentId === b.parentId &&
+		a.visible === b.visible
+	);
 }
 
 function lerp(start: number, end: number, amount: number): number {
 	return start + (end - start) * amount;
+}
+
+function cloneLayoutNode(position: LayoutNode): LayoutNode {
+	const clone = new LayoutNode(position.id, position.kind, position.x, position.y, position.visible);
+	clone.parentId = position.parentId;
+	clone.componentId = position.componentId;
+	clone.width = position.width;
+	clone.height = position.height;
+	clone.rotation = position.rotation;
+	clone.locked = position.locked;
+	clone.layout = position.layout;
+	return clone;
+}
+
+function positionSnapshot(position: LayoutNode): PositionSnapshot {
+	return {
+		x: position.x,
+		y: position.y,
+		rotation: position.rotation,
+		parentId: position.parentId,
+		visible: position.visible
+	};
 }
 
 export class Event<T> {
@@ -74,43 +108,66 @@ export interface SharedClientValues {
 // I am still not sure. I can't rely on the backend state only.
 export class ClientPosition {
 	sharedValues: SharedClientValues;
-	clientPositionState: Positionable;
-	onPositionChanged: Event<Positionable> = new Event();
-	private serverPositionState: Positionable;
+	clientPositionState: LayoutNode;
+	onPositionChanged: Event<LayoutNode> = new Event();
+	private serverPositionState: LayoutNode;
 	private pendingPrediction: PendingPrediction | null = null;
 
-	constructor(sharedValues: SharedClientValues, position: Positionable) {
+	constructor(sharedValues: SharedClientValues, position: LayoutNode) {
 		this.sharedValues = sharedValues;
-		this.clientPositionState = new Positionable(position.x, position.y, position.visible);
+		this.clientPositionState = cloneLayoutNode(position);
 		this.serverPositionState = position;
 
 		sharedValues.s(position).onChange(() => {
 			this.handleServerPositionChanged();
 		});
+		sharedValues.s(sharedValues.component).onChange(() => {
+			this.handleServerPositionChanged();
+		});
+	}
+
+	private placementSnapshot(placement: ClientPlacement): PositionSnapshot {
+		return {
+			x: placement.x,
+			y: placement.y,
+			rotation: placement.rotation,
+			parentId: placement.parentId,
+			visible: placement.visible ?? this.clientPositionState.visible
+		};
 	}
 
 	private applyClientPosition(next: PositionSnapshot): boolean {
-		if (samePosition(this.clientPositionState, next)) {
+		const current = positionSnapshot(this.clientPositionState);
+		if (samePosition(current, next)) {
 			return false;
 		}
 		this.clientPositionState.x = next.x;
 		this.clientPositionState.y = next.y;
+		this.clientPositionState.rotation = next.rotation;
+		this.clientPositionState.parentId = next.parentId;
 		this.clientPositionState.visible = next.visible;
 		this.onPositionChanged.emit(this.clientPositionState);
 		return true;
 	}
 
 	private handleServerPositionChanged() {
+		const serverPosition = positionSnapshot(this.serverPositionState);
 		if (!this.pendingPrediction) {
-			if (this.clientPositionState.visible !== this.serverPositionState.visible) {
-				this.applyClientPosition(this.serverPositionState);
+			if (samePoint(this.clientPositionState, serverPosition)) {
+				this.applyClientPosition(serverPosition);
+			} else {
+				this.applyClientPosition({
+					...serverPosition,
+					x: this.clientPositionState.x,
+					y: this.clientPositionState.y
+				});
 			}
 			return;
 		}
 
-		if (samePosition(this.pendingPrediction, this.serverPositionState)) {
+		if (samePosition(this.pendingPrediction, serverPosition)) {
 			this.pendingPrediction = null;
-			this.applyClientPosition(this.serverPositionState);
+			this.applyClientPosition(serverPosition);
 			return;
 		}
 
@@ -120,7 +177,7 @@ export class ClientPosition {
 
 		if (ownedByAnotherPlayer || releasedAfterMoveEnd) {
 			this.pendingPrediction = null;
-			this.applyClientPosition(this.serverPositionState);
+			this.applyClientPosition(serverPosition);
 		}
 	}
 
@@ -128,18 +185,19 @@ export class ClientPosition {
 		if (this.pendingPrediction) {
 			return false;
 		}
-		if (samePoint(this.clientPositionState, this.serverPositionState)) {
+		const serverPosition = positionSnapshot(this.serverPositionState);
+		if (samePoint(this.clientPositionState, serverPosition)) {
 			return false;
 		}
 
 		const next = {
-			x: lerp(this.clientPositionState.x, this.serverPositionState.x, POSITION_INTERPOLATION),
-			y: lerp(this.clientPositionState.y, this.serverPositionState.y, POSITION_INTERPOLATION),
-			visible: this.serverPositionState.visible
+			...serverPosition,
+			x: lerp(this.clientPositionState.x, serverPosition.x, POSITION_INTERPOLATION),
+			y: lerp(this.clientPositionState.y, serverPosition.y, POSITION_INTERPOLATION)
 		};
-		if (samePoint(next, this.serverPositionState)) {
-			next.x = this.serverPositionState.x;
-			next.y = this.serverPositionState.y;
+		if (samePoint(next, serverPosition)) {
+			next.x = serverPosition.x;
+			next.y = serverPosition.y;
 		}
 		return this.applyClientPosition(next);
 	}
@@ -148,7 +206,11 @@ export class ClientPosition {
 	// Or I will need a frontend command or something like that?
 	// I somehow want to tightly couple server and frontend commands
 	// How will the commands then have to look like?
-	moveTo(x: number, y: number) {
+	applyLocalPlacement(placement: ClientPlacement) {
+		return this.applyClientPosition(this.placementSnapshot(placement));
+	}
+
+	moveTo(placement: ClientPlacement) {
 		if (
 			this.sharedValues.component.owner !== this.sharedValues.sessionId &&
 			this.sharedValues.component.owner !== ''
@@ -159,44 +221,57 @@ export class ClientPosition {
 			return;
 		}
 		this.pendingPrediction = {
-			x,
-			y,
-			visible: this.clientPositionState.visible,
+			...this.placementSnapshot(placement),
 			reconcileOnRelease: false
 		};
-		this.applyClientPosition({ x, y, visible: this.clientPositionState.visible });
+		this.applyClientPosition(this.pendingPrediction);
 
 		this.sharedValues.room.send('cmd', {
 			commandType: 'move',
 			payload: {
 				componentId: this.sharedValues.component.id,
-				x,
-				y
+				x: placement.x,
+				y: placement.y,
+				rotation: placement.rotation,
+				targetNodeId: placement.parentId
 			}
 		});
 	}
 
-	moveEnd(x: number, y: number) {
+	moveEnd(placement: ClientPlacement) {
 		this.pendingPrediction = {
-			x,
-			y,
-			visible: this.clientPositionState.visible,
+			...this.placementSnapshot(placement),
 			reconcileOnRelease: true
 		};
-		this.applyClientPosition({ x, y, visible: this.clientPositionState.visible });
+		this.applyClientPosition(this.pendingPrediction);
 		this.sharedValues.room.send('cmd', {
 			commandType: 'moveend',
 			payload: {
 				cardId: this.sharedValues.component.id,
-				x,
-				y
+				x: placement.x,
+				y: placement.y,
+				rotation: placement.rotation,
+				targetNodeId: placement.parentId
 			}
 		});
 	}
 
+	predictPlacement(placement: ClientPlacement) {
+		this.pendingPrediction = {
+			...this.placementSnapshot(placement),
+			reconcileOnRelease: true
+		};
+		this.applyClientPosition(this.pendingPrediction);
+	}
+
 	predictPosition(x: number, y: number, visible: boolean) {
-		this.pendingPrediction = { x, y, visible, reconcileOnRelease: true };
-		this.applyClientPosition({ x, y, visible });
+		this.predictPlacement({
+			x,
+			y,
+			rotation: this.clientPositionState.rotation,
+			parentId: this.clientPositionState.parentId,
+			visible
+		});
 	}
 }
 

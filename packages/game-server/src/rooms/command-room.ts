@@ -1,16 +1,25 @@
 import { Client, Room, logger } from 'colyseus';
 
 import {
-	BoardGameRoomState as BoardGameRoomState,
-	Deck,
-	Item,
-	Player,
+	BoardGameRoomState,
 	Component,
-	Positionable,
 	Flippable,
+	Player,
 	Stack,
-	InitGamePayload
+	type InitGamePayload
 } from './schema/MyRoomState';
+import {
+	applyPlacement,
+	clearNodeParent,
+	createPositionNode,
+	initializeGameState,
+	isFiniteCoordinate,
+	normalizeRotation,
+	setNodeParent,
+	resolvePlacementParentId,
+	targetCanAcceptChild,
+	validateGameInitializationPayload
+} from './layout-state';
 import { Command, Dispatcher } from '../command';
 import { randomUUID } from 'crypto';
 import { StrokeCreateCommand, StrokeDeleteCommand } from './stroke-commands';
@@ -112,44 +121,15 @@ export class InitCommand extends Command<
 	} & InitGamePayload
 > {
 	execute(payload: this['payload']) {
-		for (const stack of payload.stacks) {
-			for (let i = 0; i < stack.componentIds.length; i++) {
-				const cardId = stack.componentIds[i];
-				const cardComponent = new Component(cardId, '', 'card');
-				const cardPosition = new Positionable(10 + i * 220, 50 + i * 320, false);
-				const cardFlip = new Flippable(false);
-				const _card = new Item(cardComponent, cardPosition, cardFlip);
-
-				this.state.positions.set(cardId, cardPosition);
-				this.state.flippable.set(cardId, cardFlip);
-				this.state.components.set(cardId, cardComponent);
-			}
-
-			if (stack.componentIds.length === 1) {
-				this.state.positions.get(stack.componentIds[0]).visible = true;
-			} else if (stack.componentIds.length > 1) {
-				const deckId = randomUUID();
-				const deckComponent = new Component(deckId, '', 'stack');
-				// TODO positions
-				const deckPosition = new Positionable(400, 400, true);
-				const deckFlip = new Flippable(false);
-				const deckStack = new Stack(stack.componentIds);
-				const _deck = new Deck(deckComponent, deckPosition, deckFlip, deckStack);
-
-				this.state.positions.set(deckId, deckPosition);
-				this.state.flippable.set(deckId, deckFlip);
-				this.state.components.set(deckId, deckComponent);
-				this.state.stacks.set(deckId, deckStack);
-			}
-		}
+		initializeGameState(this.state, payload, randomUUID);
 	}
 
-	validate(_payload: this['payload']) {
-		if (this.state.components.size !== 0) {
+	validate(payload: this['payload']) {
+		if (this.state.components.size !== 0 || this.state.positions.size !== 0) {
 			console.warn('Game already initialized');
 			return false;
 		}
-		return true;
+		return validateGameInitializationPayload(payload);
 	}
 }
 
@@ -160,12 +140,20 @@ export class MoveCommand extends Command<
 		componentId: string;
 		x: number;
 		y: number;
+		rotation?: number;
+		targetNodeId?: string;
 	}
 > {
 	execute(payload: this['payload']) {
-		const position = this.state.positions.get(payload.componentId);
-		position.x = payload.x;
-		position.y = payload.y;
+		applyPlacement(
+			this.state,
+			payload.componentId,
+			payload.x,
+			payload.y,
+			payload.targetNodeId,
+			false,
+			payload.rotation
+		);
 
 		const component = this.state.components.get(payload.componentId);
 		component.owner = payload.sessionId;
@@ -173,7 +161,14 @@ export class MoveCommand extends Command<
 
 	validate(payload: this['payload']) {
 		const component = getValidComponent(this.state, payload.componentId, payload.sessionId, false);
-		return this.state.positions.has(component.id);
+		if (!component) return false;
+		if (!isFiniteCoordinate(payload.x) || !isFiniteCoordinate(payload.y)) return false;
+		if (payload.rotation !== undefined && !isFiniteCoordinate(payload.rotation)) return false;
+		const position = this.state.positions.get(component.id);
+		if (!position || position.locked) return false;
+		if (payload.targetNodeId === undefined) return true;
+		if (typeof payload.targetNodeId !== 'string') return false;
+		return targetCanAcceptChild(this.state, component.id, payload.targetNodeId);
 	}
 }
 
@@ -184,12 +179,20 @@ export class MoveEndCommand extends Command<
 		cardId: string;
 		x: number;
 		y: number;
+		rotation?: number;
+		targetNodeId?: string;
 	}
 > {
 	execute(payload: this['payload']) {
-		const position = this.state.positions.get(payload.cardId);
-		position.x = payload.x;
-		position.y = payload.y;
+		applyPlacement(
+			this.state,
+			payload.cardId,
+			payload.x,
+			payload.y,
+			payload.targetNodeId,
+			true,
+			payload.rotation
+		);
 		const component = this.state.components.get(payload.cardId);
 		component.owner = '';
 		console.log(`Card ${payload.cardId} move ended at (${payload.x}, ${payload.y})`);
@@ -198,10 +201,23 @@ export class MoveEndCommand extends Command<
 	validate(payload: this['payload']) {
 		const card = getValidComponent(this.state, payload.cardId, payload.sessionId, true);
 		if (!card) return false;
-		if (card.owner !== payload.sessionId) {
+		const position = this.state.positions.get(payload.cardId);
+		if (!position || position.locked) return false;
+		const pureRotation =
+			card.owner === '' &&
+			payload.rotation !== undefined &&
+			payload.x === position.x &&
+			payload.y === position.y;
+		if (card.owner !== payload.sessionId && !pureRotation) {
 			console.warn(`Card ${payload.cardId} moveend ignored; not owned by player.`);
 			return false;
 		}
+		if (!isFiniteCoordinate(payload.x) || !isFiniteCoordinate(payload.y)) return false;
+		if (payload.rotation !== undefined && !isFiniteCoordinate(payload.rotation)) return false;
+		if (payload.targetNodeId !== undefined && typeof payload.targetNodeId !== 'string')
+			return false;
+		const parentId = resolvePlacementParentId(this.state, payload.targetNodeId);
+		if (parentId && !targetCanAcceptChild(this.state, payload.cardId, parentId)) return false;
 		return true;
 	}
 }
@@ -219,6 +235,7 @@ export class DrawCommand extends Command<
 		const stack = this.state.stacks.get(payload.cardId);
 		const stackPosition = this.state.positions.get(payload.cardId);
 		if (stack) {
+			const stackParentId = stackPosition?.parentId ?? '';
 			const flippable = this.state.flippable.get(payload.cardId);
 			if (flippable.isFaceUp) {
 				cardId = stack.componentIds.splice(0, 1)[0];
@@ -232,7 +249,9 @@ export class DrawCommand extends Command<
 					if (remainingPosition && stackPosition) {
 						remainingPosition.x = stackPosition.x;
 						remainingPosition.y = stackPosition.y;
+						remainingPosition.rotation = stackPosition.rotation;
 						remainingPosition.visible = true;
+						setNodeParent(this.state, remainingId, stackParentId);
 					}
 					const stackFlip = this.state.flippable.get(payload.cardId);
 					const remainingFlip = this.state.flippable.get(remainingId);
@@ -245,6 +264,8 @@ export class DrawCommand extends Command<
 				this.state.flippable.delete(payload.cardId);
 				this.state.components.delete(payload.cardId);
 			}
+		} else {
+			clearNodeParent(this.state, cardId);
 		}
 		const flippable = this.state.flippable.get(cardId);
 		flippable.isFaceUp = true;
@@ -254,8 +275,10 @@ export class DrawCommand extends Command<
 		cardComponent.owner = payload.sessionId;
 		const drawnCardPosition = this.state.positions.get(cardId);
 		if (drawnCardPosition) {
+			drawnCardPosition.rotation = 0;
 			drawnCardPosition.visible = false;
 		}
+		clearNodeParent(this.state, cardId);
 	}
 
 	validate(payload: this['payload']) {
@@ -278,15 +301,24 @@ export class PlayCommand extends Command<
 		cardId: string;
 		x: number;
 		y: number;
+		rotation?: number;
+		targetNodeId?: string;
 	}
 > {
 	execute(payload: this['payload']) {
 		const player = this.state.players.get(payload.sessionId);
 		player.hand.delete(payload.cardId);
 
+		applyPlacement(
+			this.state,
+			payload.cardId,
+			payload.x,
+			payload.y,
+			payload.targetNodeId,
+			true,
+			payload.rotation
+		);
 		const position = this.state.positions.get(payload.cardId);
-		position.x = payload.x;
-		position.y = payload.y;
 		position.visible = true;
 
 		const component = this.state.components.get(payload.cardId);
@@ -307,6 +339,14 @@ export class PlayCommand extends Command<
 			console.warn(`Card ${payload.cardId} is not in player's hand`);
 			return false;
 		}
+		if (!isFiniteCoordinate(payload.x) || !isFiniteCoordinate(payload.y)) return false;
+		if (payload.rotation !== undefined && !isFiniteCoordinate(payload.rotation)) return false;
+		const position = this.state.positions.get(payload.cardId);
+		if (!position || position.locked) return false;
+		if (payload.targetNodeId !== undefined && typeof payload.targetNodeId !== 'string')
+			return false;
+		const parentId = resolvePlacementParentId(this.state, payload.targetNodeId);
+		if (parentId && !targetCanAcceptChild(this.state, payload.cardId, parentId)) return false;
 		return true;
 	}
 }
@@ -339,28 +379,39 @@ export class StackCommand extends Command<
 		const targetStack = this.state.stacks.get(payload.targetId);
 		if (targetStack) {
 			const targetFlippable = this.state.flippable.get(payload.targetId);
-			if (targetFlippable) {
-				targetFlippable.isFaceUp = sourceFaceUp;
+			const targetFaceUp = targetFlippable?.isFaceUp ?? sourceFaceUp;
+			if (sourceFlippable) {
+				sourceFlippable.isFaceUp = targetFaceUp;
 			}
-			if (sourceFaceUp) {
+			if (targetFaceUp) {
 				targetStack.componentIds.unshift(payload.sourceId);
 			} else {
 				targetStack.componentIds.push(payload.sourceId);
 			}
 			if (sourcePosition) {
 				sourcePosition.visible = false;
+				clearNodeParent(this.state, payload.sourceId);
 			}
 			sourceComponent.owner = '';
 			return;
 		}
 
 		const stackId = randomUUID();
-		const stackComponent = new Component(stackId, '', 'stack');
-		const stackPosition = new Positionable(
+		const componentName =
+			sourceComponent.componentName === targetComponent.componentName
+				? sourceComponent.componentName
+				: '';
+		const targetParentId = targetPosition?.parentId ?? '';
+		const stackComponent = new Component(stackId, '', 'stack', componentName);
+		const stackPosition = createPositionNode(
+			stackId,
+			'stack',
 			targetPosition?.x ?? payload.x,
 			targetPosition?.y ?? payload.y,
-			true
+			true,
+			targetParentId
 		);
+		stackPosition.rotation = normalizeRotation(targetPosition?.rotation ?? 0);
 		const stackFlippable = new Flippable(sourceFaceUp);
 		const stack = new Stack(
 			sourceFaceUp ? [payload.sourceId, payload.targetId] : [payload.targetId, payload.sourceId]
@@ -373,9 +424,11 @@ export class StackCommand extends Command<
 
 		if (sourcePosition) {
 			sourcePosition.visible = false;
+			clearNodeParent(this.state, payload.sourceId);
 		}
 		if (targetPosition) {
 			targetPosition.visible = false;
+			clearNodeParent(this.state, payload.targetId);
 		}
 		sourceComponent.owner = '';
 		targetComponent.owner = '';
@@ -388,6 +441,10 @@ export class StackCommand extends Command<
 		const target = getValidComponent(this.state, payload.targetId, payload.sessionId, false);
 		if (!source || !target) return false;
 		if (source.type !== 'card') return false;
+		const sourcePosition = this.state.positions.get(payload.sourceId);
+		const targetPosition = this.state.positions.get(payload.targetId);
+		if (!sourcePosition || !targetPosition || sourcePosition.locked || targetPosition.locked)
+			return false;
 
 		const player = this.state.players.get(payload.sessionId);
 		if (!player) {
@@ -397,10 +454,6 @@ export class StackCommand extends Command<
 
 		const sourceFlip = this.state.flippable.get(payload.sourceId);
 		const targetFlip = this.state.flippable.get(payload.targetId);
-		if (sourceFlip && targetFlip && sourceFlip.isFaceUp !== targetFlip.isFaceUp) {
-			console.warn(`Cannot stack ${payload.sourceId} onto ${payload.targetId}: face mismatch`);
-			return false;
-		}
 
 		if (player.hand.has(payload.targetId)) {
 			console.warn(`Cannot stack onto card ${payload.targetId} in hand`);
@@ -408,6 +461,11 @@ export class StackCommand extends Command<
 		}
 
 		const targetStack = this.state.stacks.get(payload.targetId);
+		if (!targetStack && sourceFlip && targetFlip && sourceFlip.isFaceUp !== targetFlip.isFaceUp) {
+			console.warn(`Cannot stack ${payload.sourceId} onto ${payload.targetId}: face mismatch`);
+			return false;
+		}
+
 		if (targetStack && targetStack.componentIds.includes(payload.sourceId)) {
 			console.warn(`Card ${payload.sourceId} is already in stack ${payload.targetId}`);
 			return false;
