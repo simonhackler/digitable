@@ -103,11 +103,7 @@ export class ClientPosition {
 	private handleServerPositionChanged() {
 		if (!this.pendingPrediction) {
 			if (this.clientPositionState.visible !== this.serverPositionState.visible) {
-				this.applyClientPosition({
-					x: this.clientPositionState.x,
-					y: this.clientPositionState.y,
-					visible: this.serverPositionState.visible
-				});
+				this.applyClientPosition(this.serverPositionState);
 			}
 			return;
 		}
