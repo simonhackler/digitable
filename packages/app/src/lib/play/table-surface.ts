@@ -111,6 +111,7 @@ export function setTableItemRotation(item: BoardGameItemNew, rotation: number) {
 }
 
 export function configureTableItem(item: BoardGameItemNew) {
+	item.positionManagedByLayout = false;
 	if (!item.isInHand) {
 		const rect = item.contentLocalBounds();
 		if (rect.width <= 0 || rect.height <= 0) return;
@@ -123,6 +124,35 @@ export function configureTableItem(item: BoardGameItemNew) {
 		item.scale.set(1);
 	}
 	item.setDisplayedRotation(tableItemRotation(item));
+}
+
+export function configureFixedSlotTableItem(item: BoardGameItemNew, rotation: number) {
+	const rect = item.contentLocalBounds();
+	if (rect.width <= 0 || rect.height <= 0) return;
+	item.isInHand = false;
+	item.positionManagedByLayout = true;
+	item.scale.set(1);
+	item.rotation = 0;
+	item.pivot.set(rect.x, rect.y);
+	if (item.clientPosition) {
+		item.clientPosition.clientPositionState.rotation = normalizeRotation(rotation);
+	}
+	item.setDisplayedRotation(0);
+	item.resetLayoutTransform({
+		width: rect.width,
+		height: rect.height,
+		aspectRatio: rect.width / rect.height,
+		flexGrow: 0,
+		flexShrink: 0
+	});
+	item.itemContainer.layout = {
+		...(item.itemContainer.layout?.style ?? {}),
+		width: '100%',
+		height: '100%',
+		aspectRatio: item.baseAspectRatio,
+		objectFit: 'contain',
+		objectPosition: 'center'
+	};
 }
 
 function tableItemSize(item: BoardGameItemNew): TableItemSize {
@@ -142,6 +172,14 @@ function tableItemCenterOffset(item: BoardGameItemNew) {
 }
 
 export function tableItemPose(item: BoardGameItemNew): TableItemPose {
+	if (item.parent) {
+		const bounds = item.contentBoundsIn(item.parent);
+		return {
+			centerX: bounds.x + bounds.width / 2,
+			centerY: bounds.y + bounds.height / 2,
+			rotation: tableItemRotation(item)
+		};
+	}
 	const offset = tableItemCenterOffset(item);
 	return {
 		centerX: item.x + offset.x,
@@ -202,6 +240,13 @@ export function visualPointerRatio(
 
 export function setTableItemPose(item: BoardGameItemNew, pose: TableItemPose) {
 	setTableItemRotation(item, pose.rotation);
+	if (item.parent) {
+		const bounds = item.contentBoundsIn(item.parent);
+		const deltaX = pose.centerX - (bounds.x + bounds.width / 2);
+		const deltaY = pose.centerY - (bounds.y + bounds.height / 2);
+		item.position.set(item.x + deltaX, item.y + deltaY);
+		return;
+	}
 	const offset = tableItemCenterOffset(item);
 	item.position.set(pose.centerX - offset.x, pose.centerY - offset.y);
 }
@@ -326,6 +371,7 @@ export function tableDropPreviewRect(
 		};
 	}
 
+	if (cellIndex !== null) return tableSlotCellRect(slot, cellIndex);
 	const existingIndex = occupants.indexOf(itemId);
 	const index = existingIndex >= 0 ? existingIndex : occupants.length;
 	return tableSlotCellRect(slot, index);

@@ -1,4 +1,7 @@
-import type { InitGamePayload } from 'boardgame-server/src/rooms/schema/MyRoomState';
+import type {
+	InitGamePayload,
+	InitLayoutNodePayload
+} from 'boardgame-server/src/rooms/schema/MyRoomState';
 import type {
 	TablePlacement,
 	TableSlot,
@@ -8,7 +11,10 @@ import type {
 import type { ParsedSvg } from './initComponent';
 import {
 	canonicalPositionFromTablePose,
+	tableSlotCellCount,
 	tableSlotCellPose,
+	tableSlotCellRect,
+	tableSlotTargetId,
 	type TableItemSize
 } from './table-geometry';
 
@@ -29,8 +35,7 @@ export type TablePlayItem = {
 	height: number;
 	rotation: number;
 	deckName?: string;
-	slotId?: string;
-	slotCellIndex?: number;
+	parentId?: string;
 };
 
 export type TablePlayPlan = {
@@ -208,9 +213,11 @@ function slotContentToItem(
 	usedCardIds: Set<string>,
 	warn: (message: string) => void
 ): TablePlayItem[] {
-	const cellIndex = slot.layout?.mode === 'grid' ? (content.cellIndex ?? index) : index;
+	const cellCount = tableSlotCellCount(slot);
+	const cellIndex = cellCount > 0 ? (content.cellIndex ?? index) : index;
 	const size = deckCardSize(content.deckName, deckCardSizes);
 	const { x, y } = canonicalPositionFromTablePose(tableSlotCellPose(slot, cellIndex), size);
+	const parentId = cellCount > 0 ? tableSlotTargetId(slot, cellIndex) : slot.id;
 
 	if (content.type === 'card') {
 		const componentIds = resolveCardIds(
@@ -237,8 +244,7 @@ function slotContentToItem(
 						height: size.height,
 						rotation: slot.rotation ?? 0,
 						deckName: content.deckName,
-						slotId: slot.id,
-						slotCellIndex: slot.layout?.mode === 'grid' ? cellIndex : undefined
+						parentId
 					}
 				]
 			: [];
@@ -268,11 +274,73 @@ function slotContentToItem(
 					height: size.height,
 					rotation: slot.rotation ?? 0,
 					deckName: content.deckName,
-					slotId: slot.id,
-					slotCellIndex: slot.layout?.mode === 'grid' ? cellIndex : undefined
+					parentId
 				}
 			]
 		: [];
+}
+
+function slotLayoutNodes(slot: TableSlot): InitLayoutNodePayload[] {
+	const cellCount = tableSlotCellCount(slot);
+	if (cellCount <= 0) {
+		return [
+			{
+				id: slot.id,
+				kind: 'slot' as const,
+				parentId: TABLE_NODE_ID,
+				x: slot.x,
+				y: slot.y,
+				width: slot.width,
+				height: slot.height,
+				rotation: slot.rotation ?? 0,
+				visible: true,
+				locked: true,
+				layout: {
+					mode: slot.layout?.mode ?? 'free',
+					maxChildren: 0,
+					acceptedDeckNames: slot.acceptedDeckNames,
+					acceptedCardIds: slot.acceptedCardIds
+				}
+			}
+		];
+	}
+
+	const groupNode = {
+		id: slot.id,
+		kind: 'group' as const,
+		parentId: TABLE_NODE_ID,
+		x: slot.x,
+		y: slot.y,
+		width: slot.width,
+		height: slot.height,
+		rotation: slot.rotation ?? 0,
+		visible: true,
+		locked: true
+	};
+
+	const cellNodes = Array.from({ length: cellCount }, (_unused, index) => {
+		const rect = tableSlotCellRect(slot, index);
+		return {
+			id: tableSlotTargetId(slot, index),
+			kind: 'slot' as const,
+			parentId: slot.id,
+			x: rect.x,
+			y: rect.y,
+			width: rect.width,
+			height: rect.height,
+			rotation: rect.rotation,
+			visible: true,
+			locked: true,
+			layout: {
+				mode: 'free' as const,
+				maxChildren: 1,
+				acceptedDeckNames: slot.acceptedDeckNames,
+				acceptedCardIds: slot.acceptedCardIds
+			}
+		};
+	});
+
+	return [groupNode, ...cellNodes];
 }
 
 export function buildTablePlayPlan(
@@ -348,33 +416,11 @@ export function buildTableInitPayload(plan: TablePlayPlan): InitGamePayload {
 					mode: 'free'
 				}
 			},
-			...plan.table.slots.map((slot) => ({
-				id: slot.id,
-				kind: 'slot' as const,
-				parentId: TABLE_NODE_ID,
-				x: slot.x,
-				y: slot.y,
-				width: slot.width,
-				height: slot.height,
-				rotation: slot.rotation ?? 0,
-				visible: true,
-				locked: true,
-				layout: {
-					mode: slot.layout?.mode ?? 'free',
-					maxChildren:
-						slot.layout?.mode === 'horizontal-flex'
-							? slot.layout.visibleCount
-							: slot.layout?.mode === 'grid'
-								? slot.layout.rows * slot.layout.columns
-								: 0,
-					acceptedDeckNames: slot.acceptedDeckNames,
-					acceptedCardIds: slot.acceptedCardIds
-				}
-			})),
+			...plan.table.slots.flatMap((slot) => slotLayoutNodes(slot)),
 			...plan.items.map((item) => ({
 				id: item.id,
 				kind: item.type === 'stack' ? ('stack' as const) : ('component' as const),
-				parentId: item.slotId ?? TABLE_NODE_ID,
+				parentId: item.parentId ?? TABLE_NODE_ID,
 				componentId: item.id,
 				x: item.x,
 				y: item.y,
@@ -391,7 +437,7 @@ export function buildTableInitPayload(plan: TablePlayPlan): InitGamePayload {
 			componentIds: item.componentIds,
 			x: item.x,
 			y: item.y,
-			parentId: item.slotId ?? TABLE_NODE_ID,
+			parentId: item.parentId ?? TABLE_NODE_ID,
 			componentName: item.deckName ?? ''
 		}))
 	};

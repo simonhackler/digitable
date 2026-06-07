@@ -125,6 +125,30 @@ export function tableSlotCellCount(slot: TableSlot): number {
 	return 0;
 }
 
+export function tableSlotCellTargetId(slotId: string, index: number): string {
+	return `${slotId}:cell:${index}`;
+}
+
+export function tableSlotTargetId(slot: TableSlot, cellIndex: number | null = null): string {
+	const cellCount = tableSlotCellCount(slot);
+	if (cellCount <= 0) return slot.id;
+	const index = cellIndex === null ? 0 : Math.max(0, Math.min(cellCount - 1, cellIndex));
+	return tableSlotCellTargetId(slot.id, index);
+}
+
+export function tableSlotTargetInfo(table: Table, targetId: string) {
+	for (const slot of table.slots) {
+		if (slot.id === targetId) return { slot, cellIndex: null };
+		const cellCount = tableSlotCellCount(slot);
+		for (let index = 0; index < cellCount; index += 1) {
+			if (tableSlotCellTargetId(slot.id, index) === targetId) {
+				return { slot, cellIndex: index };
+			}
+		}
+	}
+	return null;
+}
+
 export function tableSlotCellPosition(slot: TableSlot, index: number): { x: number; y: number } {
 	return canonicalPositionFromTablePose(tableSlotCellPose(slot, index), tableSlotCellSize(slot));
 }

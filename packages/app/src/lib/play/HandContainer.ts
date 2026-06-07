@@ -50,6 +50,7 @@ export class HandContainer {
 		if (this.boardGameItems.has(item)) this.removeItem(item);
 		item.parent?.removeChild(item);
 		item.isInHand = true;
+		item.positionManagedByLayout = false;
 		item.scale.set(1);
 		item.rotation = 0;
 		item.pivot.set(0, 0);

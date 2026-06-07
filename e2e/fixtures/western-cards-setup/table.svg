@@ -8,6 +8,9 @@
   <g id="4175838d-2b1d-4d6e-8602-00d7c0a9d6b8" data-digitable-kind="slot" data-label="Slot 1" data-accepted-deck-names="[]" data-accepted-card-ids="[]" data-slot-layout-mode="horizontal-flex" data-slot-visible-count="4" data-slot-gap="16" data-slot-card-size="content-card" data-slot-contents='[{"type":"card","deckName":"western","cardId":"western:71412f2b-80a5-48af-aa7d-68a525a1c872"}]' data-svgedit-resizable="false" transform="translate(480 650)">
     <rect x="0" y="0" width="488" height="150" rx="12"/>
   </g>
+  <g id="7898b02a-0640-459f-b5ef-ae3731000f56" data-digitable-kind="slot" data-label="Slot 3" data-accepted-deck-names='["western"]' data-accepted-card-ids="[]" data-slot-layout-mode="grid" data-slot-rows="1" data-slot-columns="4" data-slot-gap-x="16" data-slot-gap-y="16" data-slot-card-size="content-card" data-slot-contents='[{"type":"card","deckName":"western","cardId":"western:824db35c-0f48-4c01-b955-de6a83c1aa29","cellIndex":2}]' data-svgedit-resizable="false" transform="translate(180 520) rotate(90 150 44)">
+    <rect x="0" y="0" width="300" height="88" rx="12"/>
+  </g>
   <g id="c2bdd932-3478-4a7f-8c37-40c07f059460" data-digitable-kind="slot" data-label="Slot 2" data-accepted-deck-names='["western"]' data-accepted-card-ids="[]" data-slot-layout-mode="free" transform="translate(1060 150)">
     <rect x="0" y="0" width="240" height="320" rx="12"/>
   </g>

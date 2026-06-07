@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedProjectFiles, useBrowserStorage, writeOpfsText } from './helpers/opfs';
-import { pixiState, waitForPixi } from './helpers/pixi';
+import { pixiContentBounds, pixiSlotPoint, pixiState, waitForPixi } from './helpers/pixi';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const westernSetupFixtureDir = join(here, 'fixtures/western-cards-setup');
@@ -42,9 +42,19 @@ test('local play renders copied western table setup', async ({ page }) => {
 			visibleStackIds: ['5b5bf734-861d-4e33-8c7a-a04c7e9b5492'],
 			visibleBoardCardIds: [
 				'5f408ad5-6799-4258-b4bd-c7c8a570c97b',
-				'71412f2b-80a5-48af-aa7d-68a525a1c872'
+				'71412f2b-80a5-48af-aa7d-68a525a1c872',
+				'824db35c-0f48-4c01-b955-de6a83c1aa29'
 			].toSorted(),
 			handCardIds: []
 		});
 
+	const slotCenter = await pixiSlotPoint(page, '4175838d-2b1d-4d6e-8602-00d7c0a9d6b8');
+	const slotCardBounds = await pixiContentBounds(page, '71412f2b-80a5-48af-aa7d-68a525a1c872');
+	expect(Math.abs(slotCardBounds.centerX - slotCenter.x)).toBeLessThanOrEqual(2);
+	expect(Math.abs(slotCardBounds.centerY - slotCenter.y)).toBeLessThanOrEqual(2);
+
+	const gridSlotCenter = await pixiSlotPoint(page, '7898b02a-0640-459f-b5ef-ae3731000f56', 2);
+	const gridSlotCardBounds = await pixiContentBounds(page, '824db35c-0f48-4c01-b955-de6a83c1aa29');
+	expect(Math.abs(gridSlotCardBounds.centerX - gridSlotCenter.x)).toBeLessThanOrEqual(2);
+	expect(Math.abs(gridSlotCardBounds.centerY - gridSlotCenter.y)).toBeLessThanOrEqual(2);
 });

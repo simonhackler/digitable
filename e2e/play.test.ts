@@ -149,6 +149,10 @@ function setupPlayCardId(cardId: string) {
 	return `${setupPlayDeckName}:${cardId}`;
 }
 
+function setupSlotCellTargetId(slotId: string, cellIndex = 0) {
+	return `${slotId}:cell:${cellIndex}`;
+}
+
 function setupSlotSvg(input: {
 	id: string;
 	label: string;
@@ -1387,6 +1391,80 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 			.toEqual({
 				playedCardIsVisible: true,
 				handCardIds: []
+			});
+	} finally {
+		await secondContext.close();
+	}
+});
+
+test('playtest invitees sync fixed slot parenting when another player moves a card', async ({
+	page,
+	browser
+}) => {
+	test.setTimeout(120_000);
+	const secondContext = await browser.newContext({
+		baseURL: test.info().project.use.baseURL as string | undefined
+	});
+	const secondPage = await secondContext.newPage();
+	const cardId = setupPlayCards.dragDraw;
+	const slotTargetId = setupSlotCellTargetId('drag-slot');
+
+	try {
+		await signUp(page);
+		await writeSharedSetupPlayProject(page);
+
+		const inviteUrl = await startPlaytestAndGetInvite(page, setupPlayProjectSlug);
+
+		await page.goto(`${inviteUrl}?e2e=1`);
+		await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+		await waitForPixi(page);
+
+		await signUp(secondPage);
+		await secondPage.goto(`${inviteUrl}?e2e=1`);
+		await expect(secondPage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+		await waitForPixi(secondPage);
+
+		await expect
+			.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })
+			.toContain('drag-deck');
+		await pixiClick(page, 'drag-deck');
+		await page.keyboard.press('d');
+		await expect.poll(async () => (await pixiState(page)).handCardIds).toContain(cardId);
+		await pixiDragTo(page, cardId, await pixiSlotPoint(page, 'drag-slot'));
+
+		await expect
+			.poll(
+				async () => {
+					const state = await pixiState(secondPage);
+					return {
+						visible: state.visibleBoardCardIds.includes(cardId),
+						parentId: state.parentIds[cardId]
+					};
+				},
+				{ timeout: 20_000 }
+			)
+			.toEqual({
+				visible: true,
+				parentId: slotTargetId
+			});
+
+		await pixiDragTo(secondPage, cardId, await pixiPoint(secondPage, setupPlayCards.rotationTable));
+
+		await expect
+			.poll(
+				async () => {
+					const firstState = await pixiState(page);
+					const secondState = await pixiState(secondPage);
+					return {
+						firstParentId: firstState.parentIds[cardId],
+						secondParentId: secondState.parentIds[cardId]
+					};
+				},
+				{ timeout: 20_000 }
+			)
+			.toEqual({
+				firstParentId: 'table',
+				secondParentId: 'table'
 			});
 	} finally {
 		await secondContext.close();

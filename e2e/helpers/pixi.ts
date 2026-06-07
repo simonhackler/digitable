@@ -4,6 +4,7 @@ export interface PixiPlayState {
 	visibleStackIds: string[];
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
+	parentIds: Record<string, string>;
 	cameraRotation: number;
 	rotations: Record<string, { state: number; visual: number }>;
 	cardFaces: Record<
@@ -43,7 +44,7 @@ type PixiBridgeWindow = Window & {
 		bounds: (id: string) => PixiBounds | null;
 		contentBounds: (id: string) => PixiBounds | null;
 		clickPoint: (id: string) => { x: number; y: number } | null;
-		slotPoint: (id: string) => { x: number; y: number } | null;
+		slotPoint: (id: string, cellIndex?: number) => { x: number; y: number } | null;
 	};
 };
 
@@ -80,10 +81,10 @@ export async function pixiPoint(page: Page, id: string) {
 	return point;
 }
 
-export async function pixiSlotPoint(page: Page, id: string) {
+export async function pixiSlotPoint(page: Page, id: string, cellIndex = 0) {
 	const point = await page.evaluate(
-		(slotId) => (window as PixiBridgeWindow).__PIXI_E2E__!.slotPoint(slotId),
-		id
+		({ slotId, index }) => (window as PixiBridgeWindow).__PIXI_E2E__!.slotPoint(slotId, index),
+		{ slotId: id, index: cellIndex }
 	);
 	if (!point) {
 		throw new Error(`No Pixi slot point found for "${id}"`);

@@ -48,6 +48,7 @@ export class BoardGameItemNew extends Container {
 	public readonly clientFlippable: ClientFlippable | null;
 	public readonly clientStack: ClientStack | null;
 	public isInHand = false;
+	public positionManagedByLayout = false;
 	private displayedRotation = 0;
 
 	constructor(
@@ -89,6 +90,7 @@ export class BoardGameItemNew extends Container {
 				if (!position) return;
 				this.visible = newPos.visible;
 				this.renderable = newPos.visible;
+				if (this.positionManagedByLayout) return;
 				position.set(newPos.x, newPos.y);
 				this.refreshVisualRotation();
 			});
