@@ -16,6 +16,14 @@ function parseSvgLength(value: string | null) {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+function svgLogicalSize(svg: SVGSVGElement) {
+	const viewBox = svg.viewBox.baseVal;
+	return {
+		width: viewBox.width > 0 ? viewBox.width : (parseSvgLength(svg.getAttribute('width')) ?? 1),
+		height: viewBox.height > 0 ? viewBox.height : (parseSvgLength(svg.getAttribute('height')) ?? 1)
+	};
+}
+
 function addWhiteBackground(svg: SVGSVGElement): SVGSVGElement {
 	const viewBox = svg.viewBox.baseVal;
 	const x = viewBox.width > 0 ? viewBox.x : 0;
@@ -59,6 +67,14 @@ function stripImagesFromSvg(svg: SVGSVGElement): SVGSVGElement {
 	const svgClone = svg.cloneNode(true) as SVGSVGElement;
 	svgClone.querySelectorAll('image').forEach((img) => img.remove());
 	return svgClone;
+}
+
+function hasRenderableSvgContent(svg: SVGSVGElement) {
+	const ignoredElements = new Set(['defs', 'desc', 'metadata', 'title']);
+	for (const child of svg.children) {
+		if (!ignoredElements.has(child.localName)) return true;
+	}
+	return false;
 }
 
 function getTextureCacheKey(svg: SVGSVGElement) {
@@ -106,6 +122,7 @@ export async function createHybridContainer(
 		textureCache
 	);
 	const svgSprite = new Sprite({
+		label: 'svgOnly',
 		texture: svgTexture,
 		layout: {
 			objectFit: 'contain',
@@ -120,14 +137,29 @@ export async function createHybridContainer(
 	}
 
 	const imageTexture = await svgToTexture(addWhiteBackground(imagesOnlySvg), textureCache);
+	if (!hasRenderableSvgContent(strippedSvg)) {
+		return new Sprite({
+			texture: imageTexture,
+			layout: {
+				objectFit: 'contain',
+				objectPosition: 'center',
+				width: '100%',
+				aspectRatio: imageTexture.width / imageTexture.height
+			}
+		});
+	}
+
 	const imageBackground = new Sprite(imageTexture);
+	imageBackground.label = 'Background';
 	const container = new LayoutContainer({
 		layout: {
 			aspectRatio: svgTexture.width / svgTexture.height,
 			objectFit: 'contain',
-			objectPosition: 'center'
+			objectPosition: 'center',
+			width: '100%'
 		},
-		background: imageBackground
+		background: imageBackground,
+		label: 'FaceContainer'
 	});
 	container.addChild(svgSprite);
 
@@ -194,7 +226,14 @@ export async function loadAndProcessCards(
 				createHybridContainer(card.front, textureCache),
 				createHybridContainer(card.back, textureCache)
 			]);
-			return { id: card.id, front: frontContainer, back: backContainer };
+			const size = svgLogicalSize(card.front);
+			return {
+				id: card.id,
+				width: size.width,
+				height: size.height,
+				front: frontContainer,
+				back: backContainer
+			};
 		} catch (error) {
 			console.error('failed card', card.id, error);
 			throw error;

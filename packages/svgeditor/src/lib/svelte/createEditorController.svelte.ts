@@ -6,6 +6,7 @@ import type {
 	ModeChangeEvent,
 	ReadyEvent,
 	SelectionChangeEvent,
+	SvgElementJsonNode,
 	SvgEditorApi
 } from '../core/types';
 
@@ -152,6 +153,21 @@ class EditorController {
 		this.api?.deleteSelection();
 	};
 
+	duplicateSelection = () => {
+		const ids = this.api?.duplicateSelection() ?? [];
+		if (ids.length === 0) return ids;
+
+		const rawCanvas = this.api?._unsafe?.rawCanvas?.();
+		const selected = rawCanvas?.getSelectedElements?.() ?? [];
+		this.mode = this.api?.getMode() ?? this.mode;
+		this.selection = selected;
+		this.multiselect = selected.length > 1;
+		this.selectedIds = ids;
+		this.refreshElementTree();
+		this.refreshHistory();
+		return ids;
+	};
+
 	selectAll = () => {
 		const rawCanvas = this.api?._unsafe?.rawCanvas?.();
 		if (rawCanvas && typeof rawCanvas.selectAllInCurrentLayer === 'function') {
@@ -222,6 +238,52 @@ class EditorController {
 		this.refreshElementTree();
 		this.refreshHistory();
 		return id ?? null;
+	};
+
+	insertSvgElement = (
+		data: SvgElementJsonNode,
+		opts?: { selectId?: string; historyLabel?: string }
+	) => {
+		const id = this.api?.insertSvgElement(data, opts);
+		this.mode = this.api?.getMode() ?? this.mode;
+		this.refreshElementTree();
+		this.refreshHistory();
+		return id ?? null;
+	};
+
+	updateSvgElement = (
+		id: string,
+		data: SvgElementJsonNode,
+		opts?: { select?: boolean; historyLabel?: string }
+	) => {
+		const changed = this.api?.updateSvgElement(id, data, opts) ?? false;
+		if (changed) {
+			this.refreshElementTree();
+			this.refreshHistory();
+		}
+		return changed;
+	};
+
+	updateElementAttributes = (
+		id: string,
+		attributes: Record<string, string | null>,
+		opts?: { select?: boolean; historyLabel?: string }
+	) => {
+		const changed = this.api?.updateElementAttributes(id, attributes, opts) ?? false;
+		if (changed) {
+			this.refreshElementTree();
+			this.refreshHistory();
+		}
+		return changed;
+	};
+
+	removeElementById = (id: string, opts?: { historyLabel?: string }) => {
+		const changed = this.api?.removeElementById(id, opts) ?? false;
+		if (changed) {
+			this.refreshElementTree();
+			this.refreshHistory();
+		}
+		return changed;
 	};
 
 	setSelectedImageHref = (href: string, opts?: { attributes?: Record<string, string> }) => {

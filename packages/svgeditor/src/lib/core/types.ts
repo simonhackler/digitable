@@ -15,6 +15,8 @@ export type SvgCanvasConfig = {
 	[key: string]: unknown;
 };
 
+export type ChangeSvgEmission = boolean | 'non-setup';
+
 export type SvgCanvasBBox = {
 	x: number;
 	y: number;
@@ -22,16 +24,25 @@ export type SvgCanvasBBox = {
 	height: number;
 };
 
+export type SvgElementJson =
+	| string
+	| {
+			element: string;
+			namespace?: string;
+			attr?: Record<string, string | number>;
+			children?: SvgElementJson[];
+			curStyles?: boolean;
+	  };
+
+export type SvgElementJsonNode = Exclude<SvgElementJson, string>;
+
 export type SvgCanvasRawApi = {
 	addExtension?: (
 		name: string,
 		extInitFunc: (args: Record<string, unknown>) => unknown,
 		opts?: { importLocale?: unknown }
 	) => unknown | Promise<unknown>;
-	addSVGElementsFromJson?: (data: {
-		element: string;
-		attr?: Record<string, string | number>;
-	}) => Element;
+	addSVGElementsFromJson?: (data: SvgElementJson) => Element | Text | null;
 	addToSelection?: (elems: Element[], showGrips?: boolean) => void;
 	alignSelectedElements?: (type: string, relativeTo: string) => void;
 	bind?: (event: string, callback: (...args: unknown[]) => void) => void;
@@ -39,6 +50,7 @@ export type SvgCanvasRawApi = {
 	changeSelectedAttribute?: (attr: string, val: string | number, elems?: Element[]) => void;
 	clear?: () => void;
 	clearSelection?: (noUndo?: boolean) => void;
+	cloneSelectedElements?: (x: number, y: number) => void;
 	contentH?: number;
 	contentW?: number;
 	deleteSelectedElements?: () => void;
@@ -159,6 +171,7 @@ export type SvgEditorApi = {
 
 	clear(): void;
 	deleteSelection(): void;
+	duplicateSelection(opts?: { dx?: number; dy?: number }): string[];
 
 	zoomIn(): void;
 	zoomOut(): void;
@@ -206,6 +219,21 @@ export type SvgEditorApi = {
 
 	getElementTree(): ElementTreeNode[];
 	getElementById(id: string): Element | null;
+	insertSvgElement(
+		data: SvgElementJsonNode,
+		opts?: { selectId?: string; historyLabel?: string }
+	): string | null;
+	updateSvgElement(
+		id: string,
+		data: SvgElementJsonNode,
+		opts?: { select?: boolean; historyLabel?: string }
+	): boolean;
+	updateElementAttributes(
+		id: string,
+		attributes: Record<string, string | null>,
+		opts?: { select?: boolean; historyLabel?: string }
+	): boolean;
+	removeElementById(id: string, opts?: { historyLabel?: string }): boolean;
 	insertImage(
 		href: string,
 		opts?: { width?: number; height?: number; attributes?: Record<string, string> }
@@ -233,7 +261,7 @@ export type ReadyEvent = {
 };
 
 export type ChangeEvent = {
-	svg: string;
+	svg?: string;
 	source: 'user' | 'external';
 };
 

@@ -62,13 +62,15 @@
 </script>
 
 {#if importedPlaytest}
-	<PlaySurface
-		projectName={importedPlaytest.projectName}
-		fileSystem={importedPlaytest.fileSystem}
-		roomConnection={privatePlaytestConnection(importedPlaytest.privateRoomId)}
-		playtestFeedback={{ playtestId: data.playtestId }}
-		{e2e}
-	/>
+	<main class="relative h-svh min-h-0 w-full overflow-hidden">
+		<PlaySurface
+			projectName={importedPlaytest.projectName}
+			fileSystem={importedPlaytest.fileSystem}
+			roomConnection={privatePlaytestConnection(importedPlaytest.privateRoomId)}
+			playtestFeedback={{ playtestId: data.playtestId }}
+			{e2e}
+		/>
+	</main>
 {:else}
 	<main class="flex min-h-screen w-full items-center justify-center p-6">
 		<div class="bg-background flex w-full max-w-md flex-col gap-3 rounded-lg border p-6 shadow-sm">

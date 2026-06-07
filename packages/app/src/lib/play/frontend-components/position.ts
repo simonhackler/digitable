@@ -1,6 +1,6 @@
 import {
 	type BoardGameRoomState,
-	Positionable,
+	LayoutNode,
 	type Component,
 	Flippable,
 	Stack
@@ -9,6 +9,14 @@ import { type SchemaCallbackProxy } from '@colyseus/schema';
 import type { Room } from 'colyseus.js';
 
 type Handler<T> = (payload: T) => void;
+
+export type ClientPlacement = {
+	x: number;
+	y: number;
+	rotation: number;
+	parentId: string;
+	visible?: boolean;
+};
 
 function arraysEqual<T>(a: ArrayLike<T>, b: ArrayLike<T>): boolean {
 	if (a.length !== b.length) return false;
@@ -46,26 +54,44 @@ export interface SharedClientValues {
 // I am still not sure. I can't rely on the backend state only.
 export class ClientPosition {
 	sharedValues: SharedClientValues;
-	clientPositionState: Positionable;
-	onPositionChanged: Event<Positionable> = new Event();
+	clientPositionState: LayoutNode;
+	onPositionChanged: Event<LayoutNode> = new Event();
 
-	constructor(sharedValues: SharedClientValues, position: Positionable) {
+	constructor(sharedValues: SharedClientValues, position: LayoutNode) {
 		this.sharedValues = sharedValues;
-		this.clientPositionState = new Positionable(position.x, position.y, position.visible);
+		this.clientPositionState = new LayoutNode(
+			position.id,
+			position.kind,
+			position.x,
+			position.y,
+			position.visible
+		);
+		this.clientPositionState.rotation = position.rotation;
+		this.clientPositionState.parentId = position.parentId;
 
 		sharedValues.s(position).onChange(() => {
-			console.log('position changed', position.x, position.y);
-			this.clientPositionState.x = position.x;
-			this.clientPositionState.y = position.y;
-			this.clientPositionState.visible = position.visible;
-			this.onPositionChanged.emit(position);
+			this.applyLocalPlacement({
+				x: position.x,
+				y: position.y,
+				rotation: position.rotation,
+				parentId: position.parentId,
+				visible: position.visible
+			});
 		});
 	}
-	// IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client
-	// Or I will need a frontend command or something like that?
-	// I somehow want to tightly couple server and frontend commands
-	// How will the commands then have to look like?
-	moveTo(x: number, y: number) {
+
+	applyLocalPlacement(placement: ClientPlacement) {
+		this.clientPositionState.x = placement.x;
+		this.clientPositionState.y = placement.y;
+		this.clientPositionState.rotation = placement.rotation;
+		this.clientPositionState.parentId = placement.parentId;
+		if (placement.visible !== undefined) {
+			this.clientPositionState.visible = placement.visible;
+		}
+		this.onPositionChanged.emit(this.clientPositionState);
+	}
+
+	moveTo(placement: ClientPlacement) {
 		if (
 			this.sharedValues.component.owner !== this.sharedValues.sessionId &&
 			this.sharedValues.component.owner !== ''
@@ -75,31 +101,30 @@ export class ClientPosition {
 			);
 			return;
 		}
-		this.clientPositionState.x = x;
-		this.clientPositionState.y = y;
-		this.onPositionChanged.emit(this.clientPositionState);
-		console.log(this.sharedValues.component.owner);
+		this.applyLocalPlacement(placement);
 
 		this.sharedValues.room.send('cmd', {
 			commandType: 'move',
 			payload: {
 				componentId: this.sharedValues.component.id,
-				x,
-				y
+				x: placement.x,
+				y: placement.y,
+				rotation: placement.rotation,
+				targetNodeId: placement.parentId
 			}
 		});
 	}
 
-	moveEnd(x: number, y: number) {
-		this.clientPositionState.x = x;
-		this.clientPositionState.y = y;
-		this.onPositionChanged.emit(this.clientPositionState);
+	moveEnd(placement: ClientPlacement) {
+		this.applyLocalPlacement(placement);
 		this.sharedValues.room.send('cmd', {
 			commandType: 'moveend',
 			payload: {
 				cardId: this.sharedValues.component.id,
-				x,
-				y
+				x: placement.x,
+				y: placement.y,
+				rotation: placement.rotation,
+				targetNodeId: placement.parentId
 			}
 		});
 	}

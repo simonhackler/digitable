@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="custom">
+  <g id="single-card" data-digitable-kind="placement" data-digitable-type="card" data-deck-name="western" data-card-id="western:western-card-1" data-label="western-card-1" data-svgedit-resizable="false" transform="translate(395 225) rotate(0 55 75)">
+    <rect x="0" y="0" width="110" height="150" rx="10" fill="#fef3c7" stroke="#92400e" stroke-width="2" data-svgedit-resizable="false" data-locked="true"/>
+    <text x="55" y="82" fill="#111827" font-family="system-ui, sans-serif" font-size="16" font-weight="700" text-anchor="middle" data-svgedit-resizable="false" data-locked="true" style="pointer-events:none;user-select:none">western</text>
+  </g>
+</svg>
