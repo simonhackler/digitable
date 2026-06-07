@@ -1,9 +1,4 @@
-import {
-	normalizeTableSvg,
-	tableToSvg,
-	type Table,
-	type TableSvgAssets
-} from './table';
+import { normalizeTableSvg, tableToSvg, type Table, type TableSvgAssets } from './table';
 
 type ExportRequest = {
 	generation: number;

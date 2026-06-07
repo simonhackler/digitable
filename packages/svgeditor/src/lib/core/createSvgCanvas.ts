@@ -1816,8 +1816,7 @@ export const createSvgCanvas = ({
 				unapply(handler?: HistoryHandler) {
 					handler?.handleHistoryEvent?.('before_unapply', this);
 					if (current && current.parentNode !== parent) {
-						const reference =
-							nextSibling && nextSibling.parentNode === parent ? nextSibling : null;
+						const reference = nextSibling && nextSibling.parentNode === parent ? nextSibling : null;
 						parent.insertBefore(current, reference);
 					}
 					if (current) selectElement(current);

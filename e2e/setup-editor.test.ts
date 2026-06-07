@@ -456,7 +456,7 @@ test('table setup handles broken deck previews and preserves slot rotation on au
 
 	await writeOpfsText(
 		page,
-		'/western-cards/system/cool_deck/front.svg',
+		'/western-cards/components/cool_deck/front.svg',
 		'<svg xmlns="http://www.w3.org/2000/svg"><text id="bad-text">broken</text></svg>'
 	);
 

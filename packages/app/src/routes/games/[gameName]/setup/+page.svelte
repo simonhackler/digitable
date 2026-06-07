@@ -15,6 +15,7 @@
 	import { Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndDataForSides } from '../data-loader';
 	import { parseCsvFile } from '../csv-helper';
@@ -77,7 +78,7 @@
 	async function loadFallbackCards(deckName: string) {
 		try {
 			const csv = await fileSystem.readText(
-				joinFsPath(projectName, 'system', deckName, 'data.csv')
+				joinFsPath(projectName, COMPONENTS_DIR, deckName, 'data.csv')
 			);
 			if (csv.error) return [];
 			const parsed = await parseCsvFile(new File([csv.data], 'data.csv', { type: 'text/csv' }));
@@ -103,7 +104,7 @@
 	async function loadDeckEntry(deckName: string): Promise<DeckEntry> {
 		try {
 			const front = await fileSystem.readText(
-				joinFsPath(projectName, 'system', deckName, 'front.svg')
+				joinFsPath(projectName, COMPONENTS_DIR, deckName, 'front.svg')
 			);
 			if (front.error) {
 				return {
@@ -145,9 +146,9 @@
 	}
 
 	async function loadDeckLibrary(): Promise<DeckEntry[]> {
-		const systemDir = await fileSystem.openDir(joinFsPath(projectName, 'system'));
-		if (systemDir.error) return [];
-		const entries = await systemDir.data.list();
+		const componentsDir = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
+		if (componentsDir.error) return [];
+		const entries = await componentsDir.data.list();
 		if (entries.error) return [];
 		const decks = await Promise.all(
 			entries.data
@@ -195,9 +196,7 @@
 	let saveInFlight = false;
 	let pendingSaveGeneration: number | null = null;
 	let svgExportInFlight = false;
-	let pendingSvgExport:
-		| { table: Table; baseSvg: string | null; generation: number }
-		| null = null;
+	let pendingSvgExport: { table: Table; baseSvg: string | null; generation: number } | null = null;
 
 	type WindowWithIdleCallback = Window & {
 		requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
@@ -208,9 +207,7 @@
 	const AUTOSAVE_IDLE_TIMEOUT_MS = 2000;
 
 	const selectedSlot = $derived(table.slots.find((slot) => slot.id === selectedSlotId) ?? null);
-	const selectedSlotLayout = $derived<TableSlotLayout>(
-		selectedSlot?.layout ?? { mode: 'free' }
-	);
+	const selectedSlotLayout = $derived<TableSlotLayout>(selectedSlot?.layout ?? { mode: 'free' });
 	const selectedSlotContents = $derived(selectedSlot?.contents ?? []);
 	const selectedPlacement = $derived(
 		table.placements.find((placement) => placement.id === selectedPlacementId) ?? null
@@ -358,13 +355,14 @@
 		scheduleAutosave();
 	}
 
-	function insertTableElement(
-		nextTable: Table,
-		elementId: string,
-		element: TableSvgElementJson
-	) {
+	function insertTableElement(nextTable: Table, elementId: string, element: TableSvgElementJson) {
 		table = nextTable;
-		if (!editorApi?.insertSvgElement(element, { selectId: elementId, historyLabel: 'Add table element' })) {
+		if (
+			!editorApi?.insertSvgElement(element, {
+				selectId: elementId,
+				historyLabel: 'Add table element'
+			})
+		) {
 			editorSvg = renderTableSvg(nextTable, currentEditorSvg());
 			scheduleAutosave();
 			return;
@@ -373,13 +371,14 @@
 		scheduleAutosave();
 	}
 
-	function updateTableElement(
-		nextTable: Table,
-		elementId: string,
-		element: TableSvgElementJson
-	) {
+	function updateTableElement(nextTable: Table, elementId: string, element: TableSvgElementJson) {
 		table = nextTable;
-		if (!editorApi?.updateSvgElement(elementId, element, { select: true, historyLabel: 'Update table element' })) {
+		if (
+			!editorApi?.updateSvgElement(elementId, element, {
+				select: true,
+				historyLabel: 'Update table element'
+			})
+		) {
 			editorSvg = renderTableSvg(nextTable, currentEditorSvg());
 			scheduleAutosave();
 			return;
@@ -501,7 +500,11 @@
 			...currentTable,
 			slots: [...currentTable.slots, slot]
 		};
-		insertTableElement(nextTable, slot.id, slotToSvgElementJson(slot, svgAssetsForTable(nextTable)));
+		insertTableElement(
+			nextTable,
+			slot.id,
+			slotToSvgElementJson(slot, svgAssetsForTable(nextTable))
+		);
 		selectedSlotId = slot.id;
 		selectedPlacementId = null;
 		editorPanel = 'component';
@@ -520,7 +523,11 @@
 		};
 		const nextSlot = nextTable.slots.find((slot) => slot.id === slotId);
 		if (!nextSlot) return;
-		updateTableElement(nextTable, slotId, slotToSvgElementJson(nextSlot, svgAssetsForTable(nextTable)));
+		updateTableElement(
+			nextTable,
+			slotId,
+			slotToSvgElementJson(nextSlot, svgAssetsForTable(nextTable))
+		);
 	}
 
 	function updateSlotRules(slotId: string, patch: Partial<TableSlot>) {
@@ -600,8 +607,7 @@
 	) {
 		const current = table.slots.find((candidate) => candidate.id === slotId);
 		if (!current) return;
-		const currentLayout =
-			current.layout?.mode === 'grid' ? current.layout : createGridSlotLayout();
+		const currentLayout = current.layout?.mode === 'grid' ? current.layout : createGridSlotLayout();
 		const layout = createGridSlotLayout({ ...currentLayout, ...patch });
 		updateSlot(slotId, {
 			layout,
@@ -664,10 +670,13 @@
 			...currentTable,
 			placements: currentTable.placements.map((candidate) =>
 				candidate.id === placementId && candidate.type === 'deck'
-					? snapPlacementToGrid({
-							...candidate,
-							cardIds: deckCardIds
-						}, placementCardSize({ ...candidate, cardIds: deckCardIds }))
+					? snapPlacementToGrid(
+							{
+								...candidate,
+								cardIds: deckCardIds
+							},
+							placementCardSize({ ...candidate, cardIds: deckCardIds })
+						)
 					: candidate
 			)
 		};
@@ -1221,7 +1230,9 @@
 											</div>
 										</div>
 									{:else}
-										<p class="text-muted-foreground rounded-md border p-3 text-sm">No decks found.</p>
+										<p class="text-muted-foreground rounded-md border p-3 text-sm">
+											No decks found.
+										</p>
 									{/each}
 								</div>
 							</Dialog.Content>

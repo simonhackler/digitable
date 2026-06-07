@@ -3,6 +3,7 @@ import {
 	openOpfsSeedPage,
 	saveOpfsStoragePreference,
 	seedProjectFiles,
+	useBrowserStorage,
 	writeOpfsText
 } from './helpers/opfs';
 import {
@@ -22,6 +23,19 @@ function appPath(pathname: string) {
 	return `${playtestAppOrigin}/app${pathname}`;
 }
 
+async function writeCurrentWorkspaceMarker(page: Page) {
+	await writeOpfsText(
+		page,
+		'/.digitable.json',
+		JSON.stringify({
+			schemaVersion: 1,
+			lastOpenedAppVersion: 'dev',
+			digitableVersion: '0.0.1',
+			updatedAt: '2026-05-16T12:00:00.000Z'
+		})
+	);
+}
+
 async function openPixiProject(page: Page, projectSlug: string) {
 	await seedPixiProject(page, projectSlug);
 	await page.goto(`/app/games/${projectSlug}/play?e2e=1`);
@@ -31,6 +45,7 @@ async function openPixiProject(page: Page, projectSlug: string) {
 async function seedPixiProject(page: Page, projectSlug: string) {
 	await openOpfsSeedPage(page);
 	await seedProjectFiles(page, projectSlug);
+	await writeCurrentWorkspaceMarker(page);
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
@@ -286,7 +301,7 @@ async function writeSharedSetupPlayProject(page: Page) {
 	await writeOpfsText(page, `/${setupPlayProjectSlug}/rules.md`, '# Setup Play Smoke\n');
 	await writeOpfsText(
 		page,
-		`/${setupPlayProjectSlug}/system/${setupPlayDeckName}/front.svg`,
+		`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/front.svg`,
 		[
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">',
 			' <rect width="63" height="88" fill="#f7efd9"/>',
@@ -297,7 +312,7 @@ async function writeSharedSetupPlayProject(page: Page) {
 	);
 	await writeOpfsText(
 		page,
-		`/${setupPlayProjectSlug}/system/${setupPlayDeckName}/back.svg`,
+		`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/back.svg`,
 		[
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">',
 			' <rect width="63" height="88" fill="#2f2419"/>',
@@ -308,10 +323,11 @@ async function writeSharedSetupPlayProject(page: Page) {
 	);
 	await writeOpfsText(
 		page,
-		`/${setupPlayProjectSlug}/system/${setupPlayDeckName}/data.csv`,
+		`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/data.csv`,
 		['id,label', ...cardRows].join('\n')
 	);
 	await writeOpfsText(page, `/${setupPlayProjectSlug}/setup/table.svg`, sharedSetupTableSvg());
+	await writeCurrentWorkspaceMarker(page);
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
@@ -346,15 +362,16 @@ test('local play blocks when table setup is missing', async ({ page }) => {
 	await writeOpfsText(page, `/${projectSlug}/rules.md`, '# Missing Setup Play\n');
 	await writeOpfsText(
 		page,
-		`/${projectSlug}/system/western/front.svg`,
+		`/${projectSlug}/components/western/front.svg`,
 		'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#f7efd9"/></svg>'
 	);
 	await writeOpfsText(
 		page,
-		`/${projectSlug}/system/western/back.svg`,
+		`/${projectSlug}/components/western/back.svg`,
 		'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#2f2419"/></svg>'
 	);
-	await writeOpfsText(page, `/${projectSlug}/system/western/data.csv`, 'id,label\ncard-1,Card\n');
+	await writeOpfsText(page, `/${projectSlug}/components/western/data.csv`, 'id,label\ncard-1,Card\n');
+	await writeCurrentWorkspaceMarker(page);
 	await saveOpfsStoragePreference(page);
 
 	await page.goto(`/app/games/${projectSlug}/play?e2e=1`);
@@ -1364,6 +1381,7 @@ test('anonymous playtest invitee accepts legal terms and reopens the invite', as
 		await signUp(page);
 		await page.goto(appPath('/games'));
 		await seedProjectFiles(page, 'pixi-play-smoke');
+		await writeCurrentWorkspaceMarker(page);
 		await useBrowserStorage(page);
 		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
 

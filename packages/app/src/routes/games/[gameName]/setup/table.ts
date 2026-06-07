@@ -320,10 +320,8 @@ function gridSlotSize(layout: Extract<TableSlotLayout, { mode: 'grid' }>): {
 	height: number;
 } {
 	return {
-		width:
-			layout.columns * LEGACY_CARD_SIZE.width + Math.max(0, layout.columns - 1) * layout.gapX,
-		height:
-			layout.rows * LEGACY_CARD_SIZE.height + Math.max(0, layout.rows - 1) * layout.gapY
+		width: layout.columns * LEGACY_CARD_SIZE.width + Math.max(0, layout.columns - 1) * layout.gapX,
+		height: layout.rows * LEGACY_CARD_SIZE.height + Math.max(0, layout.rows - 1) * layout.gapY
 	};
 }
 
@@ -557,9 +555,7 @@ function cardVisualBounds(group: Element): {
 } {
 	const graphics = Array.from(group.getElementsByTagName('*')).filter((element) => {
 		const tag = element.tagName.toLowerCase();
-		return (
-			(tag === 'rect' || tag === 'image') && element.getAttribute(DECK_STACK_ATTR) !== 'true'
-		);
+		return (tag === 'rect' || tag === 'image') && element.getAttribute(DECK_STACK_ATTR) !== 'true';
 	});
 	const bounds = graphics.map((element) => {
 		const x = parseNumberAttribute(element, 'x', 0);
@@ -668,7 +664,10 @@ function svgRootToTable(root: Element, fallback: Table): Table {
 			label: textLabel(group, deckName)
 		};
 		const size = {
-			width: positiveNumber(roundedSvgNumber(visual.width * transform.scaleX), LEGACY_CARD_SIZE.width),
+			width: positiveNumber(
+				roundedSvgNumber(visual.width * transform.scaleX),
+				LEGACY_CARD_SIZE.width
+			),
 			height: positiveNumber(
 				roundedSvgNumber(visual.height * transform.scaleY),
 				LEGACY_CARD_SIZE.height
@@ -869,7 +868,8 @@ export function resolveTableSlotSize(slot: TableSlot, assets: TableSvgAssets = {
 	if (layout.mode === 'horizontal-flex') {
 		return {
 			...normalized,
-			width: layout.visibleCount * cellSize.width + Math.max(0, layout.visibleCount - 1) * layout.gap,
+			width:
+				layout.visibleCount * cellSize.width + Math.max(0, layout.visibleCount - 1) * layout.gap,
 			height: cellSize.height
 		};
 	}

@@ -110,34 +110,37 @@ describe('table setup', () => {
 	});
 
 	it('sizes horizontal flex slots to the biggest accepted card', () => {
-		const slot = resolveTableSlotSize({
-			id: 'slot-1',
-			label: 'Market',
-			x: 50,
-			y: 60,
-			width: 999,
-			height: 999,
-			acceptedDeckNames: ['western'],
-			acceptedCardIds: ['western:oversized'],
-			layout: {
-				mode: 'horizontal-flex',
-				visibleCount: 3,
-				gap: 12,
-				cardSize: 'content-card'
+		const slot = resolveTableSlotSize(
+			{
+				id: 'slot-1',
+				label: 'Market',
+				x: 50,
+				y: 60,
+				width: 999,
+				height: 999,
+				acceptedDeckNames: ['western'],
+				acceptedCardIds: ['western:oversized'],
+				layout: {
+					mode: 'horizontal-flex',
+					visibleCount: 3,
+					gap: 12,
+					cardSize: 'content-card'
+				},
+				contents: [
+					{ type: 'deck', deckName: 'western' },
+					{ type: 'card', deckName: 'western', cardId: 'western:1' },
+					{ type: 'card', deckName: 'western', cardId: 'western:2' },
+					{ type: 'card', deckName: 'western', cardId: 'western:3' }
+				]
 			},
-			contents: [
-				{ type: 'deck', deckName: 'western' },
-				{ type: 'card', deckName: 'western', cardId: 'western:1' },
-				{ type: 'card', deckName: 'western', cardId: 'western:2' },
-				{ type: 'card', deckName: 'western', cardId: 'western:3' }
-			]
-		}, {
-			cardSvgs: new Map([
-				['western:1', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88"/>'],
-				['western:oversized', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 120"/>']
-			]),
-			deckCardIds: new Map([['western', ['western:1']]])
-		});
+			{
+				cardSvgs: new Map([
+					['western:1', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88"/>'],
+					['western:oversized', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 120"/>']
+				]),
+				deckCardIds: new Map([['western', ['western:1']]])
+			}
+		);
 
 		expect(slot).toEqual(
 			expect.objectContaining({

@@ -59,6 +59,7 @@
 		"@pixi/devtools": "^2.0.1",
 		"@pixi/layout": "^3.2.0",
 		"feed": "^5.2.0",
+		"import-in-the-middle": "^3.0.1",
 		"pixi-viewport": "^6.0.3",
 		"pixi.js": "8.17.1",
 		"studio": "workspace:*",
