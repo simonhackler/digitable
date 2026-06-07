@@ -77,6 +77,7 @@ export type Table = {
 
 export type TableSvgAssets = {
 	placementCardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
+	placementCardSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
 	cardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	deckTopCardIds?: ReadonlyMap<string, string> | Record<string, string>;
 	deckCardIds?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
@@ -546,7 +547,98 @@ function transformTranslationForRotationOrigin(
 	};
 }
 
-function cardVisualBounds(group: Element): {
+type SvgAssetMap = ReadonlyMap<string, string> | Record<string, string> | undefined;
+type SvgAssetListMap =
+	| ReadonlyMap<string, readonly string[]>
+	| Record<string, readonly string[]>
+	| undefined;
+type SvgSizeMap = ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize> | undefined;
+
+function isReadonlyMap(value: SvgAssetMap): value is ReadonlyMap<string, string> {
+	return typeof (value as { get?: unknown } | undefined)?.get === 'function';
+}
+
+function isReadonlyListMap(
+	value: SvgAssetListMap
+): value is ReadonlyMap<string, readonly string[]> {
+	return typeof (value as { get?: unknown } | undefined)?.get === 'function';
+}
+
+function isReadonlySizeMap(value: SvgSizeMap): value is ReadonlyMap<string, CardVisualSize> {
+	return typeof (value as { get?: unknown } | undefined)?.get === 'function';
+}
+
+function svgAssetValue(source: SvgAssetMap, key: string): string | null {
+	if (!source) return null;
+	if (isReadonlyMap(source)) return source.get(key) ?? null;
+	return source[key] ?? null;
+}
+
+function svgAssetList(source: SvgAssetListMap, key: string): readonly string[] {
+	if (!source) return [];
+	if (isReadonlyListMap(source)) return source.get(key) ?? [];
+	return source[key] ?? [];
+}
+
+function normalizedCardVisualSize(value: CardVisualSize | null | undefined): CardVisualSize | null {
+	if (!value) return null;
+	const width = positiveNumber(value.width, 0);
+	const height = positiveNumber(value.height, 0);
+	if (width <= 0 || height <= 0) return null;
+	return { width, height };
+}
+
+function svgAssetSize(source: SvgSizeMap, key: string): CardVisualSize | null {
+	if (!source) return null;
+	const size = isReadonlySizeMap(source) ? source.get(key) : source[key];
+	return normalizedCardVisualSize(size);
+}
+
+function placementCardSvg(assets: TableSvgAssets, placementId: string): string | null {
+	return svgAssetValue(assets.placementCardSvgs, placementId);
+}
+
+function slotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): string | null {
+	if (content.type === 'card') return svgAssetValue(assets.cardSvgs, content.cardId);
+	const topCardId = svgAssetValue(assets.deckTopCardIds, content.deckName);
+	return topCardId ? svgAssetValue(assets.cardSvgs, topCardId) : null;
+}
+
+function cardSvgSize(cardSvg: string | null): CardVisualSize {
+	return svgMarkupLogicalSize(cardSvg) ?? legacyCardSize();
+}
+
+function placementVisualSize(placement: TablePlacement, assets: TableSvgAssets): CardVisualSize {
+	return (
+		svgAssetSize(assets.placementCardSizes, placement.id) ??
+		cardSvgSize(placementCardSvg(assets, placement.id))
+	);
+}
+
+function placementVisualSizeFromAssets(
+	group: Element,
+	assets: TableSvgAssets
+): CardVisualSize | null {
+	const id = group.getAttribute('id');
+	if (!id) return null;
+	return (
+		svgAssetSize(assets.placementCardSizes, id) ??
+		svgMarkupLogicalSize(placementCardSvg(assets, id))
+	);
+}
+
+function slotContentVisualSize(content: TableSlotContent, assets: TableSvgAssets): CardVisualSize {
+	return cardSvgSize(slotContentCardSvg(assets, content));
+}
+
+function cardIdVisualSize(cardId: string, assets: TableSvgAssets): CardVisualSize | null {
+	return svgMarkupLogicalSize(svgAssetValue(assets.cardSvgs, cardId));
+}
+
+function cardVisualBounds(
+	group: Element,
+	expectedSize: CardVisualSize | null = null
+): {
 	x: number;
 	y: number;
 	width: number;
@@ -571,12 +663,15 @@ function cardVisualBounds(group: Element): {
 	const bottomValues = visibleBounds.map((rect) => rect.y + rect.height);
 	const x = xValues.length > 0 ? Math.min(...xValues) : 0;
 	const y = yValues.length > 0 ? Math.min(...yValues) : 0;
+	const width = rightValues.length > 0 ? Math.max(...rightValues) - x : LEGACY_CARD_SIZE.width;
+	const height = bottomValues.length > 0 ? Math.max(...bottomValues) - y : LEGACY_CARD_SIZE.height;
+	const size = expectedSize ?? { width, height };
 	return {
 		x,
 		y,
-		width: rightValues.length > 0 ? Math.max(...rightValues) - x : LEGACY_CARD_SIZE.width,
-		height: bottomValues.length > 0 ? Math.max(...bottomValues) - y : LEGACY_CARD_SIZE.height,
-		hasGraphics: visibleBounds.length > 0
+		width: size.width,
+		height: size.height,
+		hasGraphics: visibleBounds.length > 0 || expectedSize !== null
 	};
 }
 
@@ -618,7 +713,7 @@ function removeLegacyTableBackground(root: Element) {
 	}
 }
 
-function svgRootToTable(root: Element, fallback: Table): Table {
+function svgRootToTable(root: Element, fallback: Table, assets: TableSvgAssets = {}): Table {
 	if (!root || root.tagName.toLowerCase() !== 'svg') return fallback;
 
 	const parsedPresetId = presetId(root.getAttribute(PRESET_ATTR));
@@ -645,7 +740,7 @@ function svgRootToTable(root: Element, fallback: Table): Table {
 		const cardIds = parseJsonStringArray(group.getAttribute(CARD_IDS_ATTR));
 		const transform = transformParts(group.getAttribute('transform'));
 		if (!deckName) return [];
-		const visual = cardVisualBounds(group);
+		const visual = cardVisualBounds(group, placementVisualSizeFromAssets(group, assets));
 		const topLeftGeometry = visual.hasGraphics && visual.x >= 0 && visual.y >= 0;
 		const groupTranslation = transformTranslationForRotationOrigin(transform, {
 			x: visual.x + visual.width / 2,
@@ -729,15 +824,20 @@ function svgRootToTable(root: Element, fallback: Table): Table {
 
 export function svgElementToTable(
 	root: Element | null | undefined,
-	fallback = createDefaultTable()
+	fallback = createDefaultTable(),
+	assets: TableSvgAssets = {}
 ): Table {
 	if (!root) return fallback;
-	return svgRootToTable(root, fallback);
+	return svgRootToTable(root, fallback, assets);
 }
 
-export function svgToTable(svg: string, fallback = createDefaultTable()): Table {
+export function svgToTable(
+	svg: string,
+	fallback = createDefaultTable(),
+	assets: TableSvgAssets = {}
+): Table {
 	const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-	return svgElementToTable(doc.documentElement, fallback);
+	return svgElementToTable(doc.documentElement, fallback, assets);
 }
 
 export function normalizeTableSvg(svg: string, table: Table, assets: TableSvgAssets = {}): string {
@@ -765,60 +865,6 @@ export function normalizeTableSvgWithAssets(
 	syncGeneratedElements(doc, root, table, assets);
 
 	return new XMLSerializer().serializeToString(root);
-}
-
-type SvgAssetMap = ReadonlyMap<string, string> | Record<string, string> | undefined;
-type SvgAssetListMap =
-	| ReadonlyMap<string, readonly string[]>
-	| Record<string, readonly string[]>
-	| undefined;
-
-function isReadonlyMap(value: SvgAssetMap): value is ReadonlyMap<string, string> {
-	return typeof (value as { get?: unknown } | undefined)?.get === 'function';
-}
-
-function isReadonlyListMap(
-	value: SvgAssetListMap
-): value is ReadonlyMap<string, readonly string[]> {
-	return typeof (value as { get?: unknown } | undefined)?.get === 'function';
-}
-
-function svgAssetValue(source: SvgAssetMap, key: string): string | null {
-	if (!source) return null;
-	if (isReadonlyMap(source)) return source.get(key) ?? null;
-	return source[key] ?? null;
-}
-
-function svgAssetList(source: SvgAssetListMap, key: string): readonly string[] {
-	if (!source) return [];
-	if (isReadonlyListMap(source)) return source.get(key) ?? [];
-	return source[key] ?? [];
-}
-
-function placementCardSvg(assets: TableSvgAssets, placementId: string): string | null {
-	return svgAssetValue(assets.placementCardSvgs, placementId);
-}
-
-function slotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): string | null {
-	if (content.type === 'card') return svgAssetValue(assets.cardSvgs, content.cardId);
-	const topCardId = svgAssetValue(assets.deckTopCardIds, content.deckName);
-	return topCardId ? svgAssetValue(assets.cardSvgs, topCardId) : null;
-}
-
-function cardSvgSize(cardSvg: string | null): CardVisualSize {
-	return svgMarkupLogicalSize(cardSvg) ?? legacyCardSize();
-}
-
-function placementVisualSize(placement: TablePlacement, assets: TableSvgAssets): CardVisualSize {
-	return cardSvgSize(placementCardSvg(assets, placement.id));
-}
-
-function slotContentVisualSize(content: TableSlotContent, assets: TableSvgAssets): CardVisualSize {
-	return cardSvgSize(slotContentCardSvg(assets, content));
-}
-
-function cardIdVisualSize(cardId: string, assets: TableSvgAssets): CardVisualSize | null {
-	return svgMarkupLogicalSize(svgAssetValue(assets.cardSvgs, cardId));
 }
 
 function concreteSlotCardIds(slot: TableSlot, assets: TableSvgAssets): string[] {
@@ -1347,7 +1393,8 @@ export function placementToSvgElementJson(
 		[TYPE_ATTR]: kind,
 		[DECK_ATTR]: placement.deckName,
 		[LABEL_ATTR]: placement.label,
-		[RESIZABLE_ATTR]: 'false'
+		[RESIZABLE_ATTR]: 'false',
+		transform: placementTransform(placement, size)
 	};
 	if (placement.type === 'card') {
 		attr[CARD_ATTR] = placement.cardId;
@@ -1355,23 +1402,24 @@ export function placementToSvgElementJson(
 	if (placement.type === 'deck') {
 		attr[CARD_IDS_ATTR] = JSON.stringify(placement.cardIds);
 	}
-	const visualX = placement.x - size.width / 2;
-	const visualY = placement.y - size.height / 2;
 	const visual = cardSvg
 		? [
-				...(placement.type === 'deck' ? deckStackElementsJson(size, visualX, visualY) : []),
-				cardImageElementJson(cardSvg, size, visualX, visualY)
+				...(placement.type === 'deck' ? deckStackElementsJson(size) : []),
+				cardImageElementJson(cardSvg, size)
 			]
-		: fallbackPlacementElementsJson(placement, placement.label, kind, size, visualX, visualY);
-	if (placement.rotation) {
-		attr.transform = `rotate(${placement.rotation} ${placement.x} ${placement.y})`;
-	}
+		: fallbackPlacementElementsJson(placement, placement.label, kind, size, 0, 0);
 
 	return {
 		element: 'g',
 		attr,
 		children: visual
 	};
+}
+
+function placementTransform(placement: TablePlacement, size: CardVisualSize): string {
+	const transformX = placement.x - size.width / 2;
+	const transformY = placement.y - size.height / 2;
+	return `translate(${transformX} ${transformY}) rotate(${placement.rotation} ${size.width / 2} ${size.height / 2})`;
 }
 
 function slotAttributesMarkup(item: TableSlot): string {
@@ -1488,11 +1536,9 @@ function placementMarkup(item: TablePlacement, assets: TableSvgAssets): string {
 				`    ${cardImageMarkup(cardSvg, size)}`
 			]
 		: fallbackPlacementMarkup(placement, label, kind, size);
-	const transformX = placement.x - size.width / 2;
-	const transformY = placement.y - size.height / 2;
 
 	return [
-		`  <g id="${escapeXml(placement.id)}" ${KIND_ATTR}="placement" ${TYPE_ATTR}="${kind}" ${DECK_ATTR}="${escapeXml(placement.deckName)}"${cardAttrs}${deckAttrs} ${LABEL_ATTR}="${label}" ${RESIZABLE_ATTR}="false" transform="translate(${transformX} ${transformY}) rotate(${placement.rotation} ${size.width / 2} ${size.height / 2})">`,
+		`  <g id="${escapeXml(placement.id)}" ${KIND_ATTR}="placement" ${TYPE_ATTR}="${kind}" ${DECK_ATTR}="${escapeXml(placement.deckName)}"${cardAttrs}${deckAttrs} ${LABEL_ATTR}="${label}" ${RESIZABLE_ATTR}="false" transform="${placementTransform(placement, size)}">`,
 		...visual,
 		'  </g>'
 	].join('\n');

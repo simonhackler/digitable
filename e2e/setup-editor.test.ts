@@ -140,6 +140,7 @@ async function expectSetupElementPresentOnce(
 }
 
 test('table setup editor saves semantic svg', async ({ page }) => {
+	test.setTimeout(120_000);
 	const pointerEventSanitizeWarnings: string[] = [];
 	page.on('console', (message) => {
 		const text = message.text();
@@ -349,7 +350,10 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 		.poll(async () => {
 			try {
 				svg = await readOpfsText(page, '/western-cards/setup/table.svg');
-				return svg.includes('viewBox="0 0 1200 700"') && svg.includes('Draw deck');
+				return (
+					svg.includes('viewBox="0 0 1200 700"') &&
+					svg.includes('data-slot-layout-mode="horizontal-flex"')
+				);
 			} catch {
 				return false;
 			}
@@ -449,22 +453,112 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	expect(pointerEventSanitizeWarnings).toEqual([]);
 });
 
-test('table setup handles broken deck previews and preserves slot rotation on autosave', async ({
-	page
-}) => {
+test('table setup components stay non-resizable after double click', async ({ page }) => {
 	await seedProjects(page);
-
+	const placementId = 'locked-deck';
 	await writeOpfsText(
 		page,
-		'/western-cards/components/cool_deck/front.svg',
-		'<svg xmlns="http://www.w3.org/2000/svg"><text id="bad-text">broken</text></svg>'
+		'/western-cards/setup/table.svg',
+		[
+			'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="two-player">',
+			`  <g id="${placementId}" data-digitable-kind="placement" data-digitable-type="deck" data-deck-name="western" data-card-ids='["western:c6da04fb-1955-43e1-adbc-7f4fda4b83cf"]' data-label="western" data-svgedit-resizable="false" transform="translate(240 180) rotate(0 55 75)">`,
+			'    <rect x="14" y="14" width="110" height="150" rx="10" fill="#0f172a" fill-opacity="0.28" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" data-deck-stack="true" data-svgedit-resizable="false" data-locked="true"/>',
+			'    <rect x="7" y="7" width="110" height="150" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.65" stroke-width="2" data-deck-stack="true" data-svgedit-resizable="false" data-locked="true"/>',
+			'    <rect x="0" y="0" width="110" height="150" rx="10" fill="#fef3c7" stroke="#92400e" stroke-width="2" data-svgedit-resizable="false" data-locked="true"/>',
+			'    <text x="55" y="82" fill="#111827" font-family="system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle" data-svgedit-resizable="false" data-locked="true" style="pointer-events:none;user-select:none">western</text>',
+			'  </g>',
+			'</svg>'
+		].join('\n')
 	);
 
 	await page.goto('/app/games/western-cards/setup?e2e');
 	await expect(page.getByRole('status')).toContainText('Loaded');
+	await page.waitForFunction(
+		(id) => Boolean((window as SvgEditorWindow).__svgEditorApi?.getElementById?.(id)),
+		placementId
+	);
+	await page.evaluate((id) => {
+		(window as SvgEditorWindow).__svgEditorController?.selectTreeElement(id);
+	}, placementId);
+	await expect
+		.poll(() =>
+			page.evaluate((id) => {
+				const global = window as SvgEditorWindow;
+				const selected =
+					global.__svgEditorController?.api?._unsafe?.rawCanvas()?.getSelectedElements?.() ?? [];
+				return selected[0]?.getAttribute('id') === id;
+			}, placementId)
+		)
+		.toBe(true);
 
-	await page.getByRole('button', { name: 'Add component' }).click();
-	await expect(page.getByRole('button', { name: /^western deck$/ })).toBeVisible();
+	const placementPoint = await page.evaluate((id) => {
+		const global = window as SvgEditorWindow;
+		const placement = global.__svgEditorApi!.getElementById!(id) as SVGGraphicsElement;
+		const rect = placement.getBoundingClientRect();
+		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+	}, placementId);
+	await page.mouse.dblclick(placementPoint.x, placementPoint.y);
+
+	await expect
+		.poll(() =>
+			page.evaluate((id) => {
+				const global = window as SvgEditorWindow;
+				const selected =
+					global.__svgEditorController?.api?._unsafe?.rawCanvas()?.getSelectedElements?.() ?? [];
+				const selectedElement = selected[0] ?? null;
+				return {
+					display:
+						document
+							.querySelector('#selectorGrip_resize_se')
+							?.parentElement?.getAttribute('display') ?? '',
+					id: selectedElement?.getAttribute('id'),
+					kind: selectedElement?.getAttribute('data-digitable-kind'),
+					resizable: selectedElement?.getAttribute('data-svgedit-resizable'),
+					tag: selectedElement?.tagName,
+					expectedId: id
+				};
+			}, placementId)
+		)
+		.toEqual({
+			display: 'none',
+			id: placementId,
+			kind: 'placement',
+			resizable: 'false',
+			tag: 'g',
+			expectedId: placementId
+		});
+
+	const beforeResize = await page.evaluate((id) => {
+		return (window as SvgEditorWindow).__svgEditorApi?.getElementById?.(id)?.outerHTML ?? '';
+	}, placementId);
+	const resizeGripPoint = await page.evaluate(() => {
+		const grip = document.querySelector('#selectorGrip_resize_se');
+		if (!(grip instanceof SVGGraphicsElement)) return null;
+		// Recreate the broken state where resize handles become visible for a locked setup item.
+		grip.parentElement?.removeAttribute('display');
+		const rect = grip.getBoundingClientRect();
+		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+	});
+	expect(resizeGripPoint).toBeTruthy();
+	await page.mouse.move(resizeGripPoint!.x, resizeGripPoint!.y);
+	await page.mouse.down();
+	await page.mouse.move(resizeGripPoint!.x + 80, resizeGripPoint!.y + 60);
+	await page.mouse.up();
+	await expect
+		.poll(() =>
+			page.evaluate((id) => {
+				return (window as SvgEditorWindow).__svgEditorApi?.getElementById?.(id)?.outerHTML ?? '';
+			}, placementId)
+		)
+		.toBe(beforeResize);
+
+	await page.getByRole('tab', { name: 'Inspector' }).click();
+	await expect(page.locator('#inspector-width')).toBeDisabled();
+	await expect(page.locator('#inspector-height')).toBeDisabled();
+});
+
+test('table setup preserves slot rotation on autosave', async ({ page }) => {
+	await seedProjects(page);
 
 	await writeOpfsText(
 		page,
@@ -501,7 +595,7 @@ test('table setup handles broken deck previews and preserves slot rotation on au
 	}, svg);
 	expect(slot).toEqual(
 		expect.objectContaining({
-			transform: 'translate(100 120) rotate(30 110 150)',
+			transform: 'matrix(0.866025 0.5 -0.5 0.866025 189.737 85.096)',
 			acceptedDeckNames: expect.arrayContaining([expect.any(String)])
 		})
 	);

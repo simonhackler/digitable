@@ -192,9 +192,15 @@
       ];
     };
 
+    dependencySourceFingerprint =
+      builtins.substring 0 12
+      (builtins.hashString "sha256" (
+        builtins.unsafeDiscardStringContext (toString dependencySource)
+      ));
+
     bunDependencies = pkgs.stdenv.mkDerivation {
       pname = "digitable-bun-dependencies";
-      version = "0.0.1";
+      version = "0.0.1-${dependencySourceFingerprint}";
       src = dependencySource;
 
       nativeBuildInputs = [
@@ -208,7 +214,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-JH1MzZPcjfPB81P4sMpXNJqvdI/IDQQ6GMFWM/MHils=";
+      outputHash = "sha256-HKnw3V0hA1l1x60iZqtNT7buOvu6wYxhfwUVp70QaQs=";
 
       installPhase = ''
         runHook preInstall
@@ -239,7 +245,7 @@
 
     runtimeBunDependencies = pkgs.stdenv.mkDerivation {
       pname = "digitable-runtime-bun-dependencies";
-      version = "0.0.1";
+      version = "0.0.1-${dependencySourceFingerprint}";
       src = dependencySource;
 
       nativeBuildInputs = [
@@ -253,7 +259,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-fQ5RzeT1EwVLTQaeCBt/SiP1lQEW1G2UrcscpIrv6CA=";
+      outputHash = "sha256-DjLVoWUXBsaFEI0pr7sdT9tWIntLZF/lAnATd5dOCy4=";
 
       installPhase = ''
         runHook preInstall
@@ -507,8 +513,6 @@
         ];
       }}
 
-        (cd svgedit/packages/svgcanvas && ../../node_modules/.bin/vite build)
-        (cd vendor/svelte-lexical/packages/svelte-lexical && ./node_modules/.bin/svelte-kit sync && ./node_modules/.bin/svelte-package)
         (cd packages/game-server && ./node_modules/.bin/rimraf build && ./node_modules/.bin/tsc)
         (cd packages/app && ./node_modules/.bin/vite build)
 
@@ -644,10 +648,6 @@
           echo "ERROR: broken symlink in studio package: $brokenSymlink"
           exit 1
         fi
-        cp -r svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas
-        cp -r vendor/svelte-lexical/packages/svelte-lexical $out/vendor/svelte-lexical/packages/svelte-lexical
-        cp -a node_modules $out/node_modules
-
         runHook postInstall
       '';
     };

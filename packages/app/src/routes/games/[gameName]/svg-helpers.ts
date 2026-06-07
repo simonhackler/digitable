@@ -89,6 +89,17 @@ const toNumber = (value: string | null | undefined) => {
 
 const stringifyNumber = (value: number) => Number.parseFloat(value.toFixed(6)).toString();
 
+const firstDirectTspanPosition = (text: SVGTextElement) => {
+	const tspan = getDirectTspans(text).find(
+		(candidate) => candidate.getAttribute('x') && candidate.getAttribute('y')
+	);
+	if (!tspan) return null;
+	return {
+		x: tspan.getAttribute('x')!,
+		y: tspan.getAttribute('y')!
+	};
+};
+
 const getHighlightBounds = (svg: SVGSVGElement, el: SVGGraphicsElement) => {
 	if (el.tagName.toLowerCase() === 'text') {
 		const frameBounds = getTextFrameBounds(svg, el as SVGTextElement);
@@ -123,7 +134,12 @@ function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string
 			text.setAttribute('data-svgedit-shape-inside-ref', `#${frameBounds.shapeId}`);
 		}
 	} else if (!text.getAttribute('x') || !text.getAttribute('y')) {
-		throw new Error(`Element ${text.id} is missing x or y attributes`);
+		const tspanPosition = firstDirectTspanPosition(text);
+		if (!tspanPosition) {
+			throw new Error(`Element ${text.id} is missing x or y attributes`);
+		}
+		if (!text.getAttribute('x')) text.setAttribute('x', tspanPosition.x);
+		if (!text.getAttribute('y')) text.setAttribute('y', tspanPosition.y);
 	}
 
 	applyPretextSvgText(text, data);

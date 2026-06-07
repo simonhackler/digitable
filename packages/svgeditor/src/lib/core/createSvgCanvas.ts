@@ -957,6 +957,11 @@ export const createSvgCanvas = ({
 	const canResizeSelectedSetupElement = (element: Element) =>
 		element.closest?.(`[${RESIZABLE_ATTR}="false"]`) === null;
 
+	const resizeGripFromEventTarget = (target: EventTarget | null) => {
+		if (!(target instanceof Element)) return null;
+		return target.closest?.('[id^="selectorGrip_resize_"]') ?? null;
+	};
+
 	const selectedSetupRoot = () => {
 		for (const element of canvas.getSelectedElements?.() ?? []) {
 			const root = setupSelectionRoot(element);
@@ -1118,6 +1123,17 @@ export const createSvgCanvas = ({
 	const preventSetupTextEdit = (event: MouseEvent) => {
 		const root = setupRootForEditorEvent(event);
 		if (!root) return;
+		event.preventDefault();
+		event.stopPropagation();
+		event.stopImmediatePropagation();
+		canvas.setMode('select');
+		selectElement(root);
+	};
+
+	const preventSetupResize = (event: Event) => {
+		if (!resizeGripFromEventTarget(event.target)) return;
+		const root = selectedSetupRoot();
+		if (!root || canResizeSelectedSetupElement(root)) return;
 		event.preventDefault();
 		event.stopPropagation();
 		event.stopImmediatePropagation();
@@ -1419,7 +1435,11 @@ export const createSvgCanvas = ({
 	multilineTextInput.addEventListener('click', forwardMultilineCursor);
 	multilineTextInput.addEventListener('mouseup', forwardMultilineCursor);
 	multilineTextInput.addEventListener('select', forwardMultilineCursor);
-	(canvasContainer ?? container).addEventListener('dblclick', preventSetupTextEdit, true);
+	const editorEventTarget = canvasContainer ?? container;
+	editorEventTarget.addEventListener('pointerdown', preventSetupResize, true);
+	editorEventTarget.addEventListener('mousedown', preventSetupResize, true);
+	editorEventTarget.addEventListener('dblclick', preventSetupResize, true);
+	editorEventTarget.addEventListener('dblclick', preventSetupTextEdit, true);
 
 	if (rulerElements.x || rulerElements.y) {
 		container.addEventListener('scroll', syncRulerScroll);
@@ -2039,7 +2059,10 @@ export const createSvgCanvas = ({
 			multilineTextInput.removeEventListener('click', forwardMultilineCursor);
 			multilineTextInput.removeEventListener('mouseup', forwardMultilineCursor);
 			multilineTextInput.removeEventListener('select', forwardMultilineCursor);
-			(canvasContainer ?? container).removeEventListener('dblclick', preventSetupTextEdit, true);
+			editorEventTarget.removeEventListener('pointerdown', preventSetupResize, true);
+			editorEventTarget.removeEventListener('mousedown', preventSetupResize, true);
+			editorEventTarget.removeEventListener('dblclick', preventSetupResize, true);
+			editorEventTarget.removeEventListener('dblclick', preventSetupTextEdit, true);
 			if (rulerElements.x || rulerElements.y) {
 				container.removeEventListener('scroll', syncRulerScroll);
 			}

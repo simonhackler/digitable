@@ -170,7 +170,7 @@ export async function loadSpreadsheetData(
 			],
 			data: [
 				[
-					crypto.randomUUID(),
+					'template',
 					...Array.from(svgData.keys()).map((key) => svgData.get(key)?.data[0] || '')
 				]
 			],
