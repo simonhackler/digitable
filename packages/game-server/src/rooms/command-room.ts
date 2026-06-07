@@ -113,20 +113,6 @@ export class InitCommand extends Command<
 > {
 	execute(payload: this['payload']) {
 		for (const stack of payload.stacks) {
-			const deckId = randomUUID();
-			const deckComponent = new Component(deckId, '', 'stack');
-			// TODO positions
-			const deckPosition = new Positionable(400, 400, true);
-			const deckFlip = new Flippable(false);
-			const deckStack = new Stack(stack.componentIds);
-			const _deck = new Deck(deckComponent, deckPosition, deckFlip, deckStack);
-
-			this.state.positions.set(deckId, deckPosition);
-			this.state.flippable.set(deckId, deckFlip);
-			this.state.components.set(deckId, deckComponent);
-			this.state.stacks.set(deckId, deckStack);
-
-			// create cards
 			for (let i = 0; i < stack.componentIds.length; i++) {
 				const cardId = stack.componentIds[i];
 				const cardComponent = new Component(cardId, '', 'card');
@@ -137,6 +123,23 @@ export class InitCommand extends Command<
 				this.state.positions.set(cardId, cardPosition);
 				this.state.flippable.set(cardId, cardFlip);
 				this.state.components.set(cardId, cardComponent);
+			}
+
+			if (stack.componentIds.length === 1) {
+				this.state.positions.get(stack.componentIds[0]).visible = true;
+			} else if (stack.componentIds.length > 1) {
+				const deckId = randomUUID();
+				const deckComponent = new Component(deckId, '', 'stack');
+				// TODO positions
+				const deckPosition = new Positionable(400, 400, true);
+				const deckFlip = new Flippable(false);
+				const deckStack = new Stack(stack.componentIds);
+				const _deck = new Deck(deckComponent, deckPosition, deckFlip, deckStack);
+
+				this.state.positions.set(deckId, deckPosition);
+				this.state.flippable.set(deckId, deckFlip);
+				this.state.components.set(deckId, deckComponent);
+				this.state.stacks.set(deckId, deckStack);
 			}
 		}
 	}

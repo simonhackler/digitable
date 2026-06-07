@@ -507,6 +507,9 @@
         ];
       }}
 
+        (cd svgedit/packages/svgcanvas && ../../node_modules/.bin/vite build)
+        (cd vendor/svelte-lexical/packages/svelte-lexical && ./node_modules/.bin/svelte-kit sync && ./node_modules/.bin/svelte-package)
+        (cd packages/game-server && ./node_modules/.bin/rimraf build && ./node_modules/.bin/tsc)
         (cd packages/app && ./node_modules/.bin/vite build)
 
         runHook postBuild
@@ -560,6 +563,9 @@
         runHook preInstall
 
         mkdir -p $out/packages/studio
+        mkdir -p $out/packages/app
+        mkdir -p $out/packages/game-server
+        mkdir -p $out/vendor/svelte-lexical/packages
 
         cp packages/studio/package.json $out/packages/studio/package.json
         cp -r packages/studio/build $out/packages/studio/build
@@ -638,6 +644,9 @@
           echo "ERROR: broken symlink in studio package: $brokenSymlink"
           exit 1
         fi
+        cp -r svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas
+        cp -r vendor/svelte-lexical/packages/svelte-lexical $out/vendor/svelte-lexical/packages/svelte-lexical
+        cp -a node_modules $out/node_modules
 
         runHook postInstall
       '';

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { requireParam } from '$lib/utils/assert';
 	import { getFileSystemContext } from '../../../context';
 	import { loadSvgTemplate } from '../../svg-helpers';
@@ -14,7 +15,7 @@
 
 	const currentProject = $derived(requireParam('gameName'));
 	const currentCard = $derived(requireParam('deckName'));
-	const fullFolderPath = $derived(joinFsPath(currentProject, 'system', currentCard));
+	const fullFolderPath = $derived(joinFsPath(currentProject, COMPONENTS_DIR, currentCard));
 
 	const fileSystem = getFileSystemContext();
 	const deckSideIndex = createDeckSideIndexState();

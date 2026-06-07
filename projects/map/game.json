@@ -3,5 +3,8 @@
 	"minPlayers": 1,
 	"maxPlayers": 4,
 	"description": "Single-card map project.",
-	"tags": ["Map"]
+	"tags": [
+		"Map"
+	],
+	"digitableVersion": "0.0.1"
 }

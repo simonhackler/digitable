@@ -35,6 +35,7 @@
 	import { installPlayE2EBridge } from './e2e-bridge';
 	import { createBoardChrome } from './board-chrome';
 	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
 	import PlaytestNotes from './PlaytestNotes.svelte';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
@@ -272,8 +273,8 @@
 		return payload;
 	}
 
-	async function hasPlayableDeckFiles(systemDir: FsDir, deckName: string) {
-		const deckDir = await systemDir.openDir(deckName);
+	async function hasPlayableDeckFiles(componentsDir: FsDir, deckName: string) {
+		const deckDir = await componentsDir.openDir(deckName);
 		if (deckDir.error) return false;
 
 		const entries = await deckDir.data.list();
@@ -594,7 +595,7 @@
 		if (isE2EMode() && !playE2EBridge) {
 			playE2EBridge = installPlayE2EBridge(app, boardGameItems, handContainer, strokeLayer);
 		}
-		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, 'system'));
+		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
 		if (error) {
 			throw new Error(error.message);
 		}

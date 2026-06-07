@@ -15,6 +15,7 @@ identity derived from the server's SSH host key and currently declares:
 - `replicate-api-token`, rendered into `app.env` as `REPLICATE_API_TOKEN`
 - `s3-access-key-id`, rendered into `app.env` as `S3_ACCESS_KEY_ID`
 - `s3-secret-access-key`, rendered into `app.env` as `S3_SECRET_ACCESS_KEY`
+- `kit-api-key`, rendered into `studio.env` as `KIT_API_KEY`
 
 Make sure that encrypted key exists in `infrastructure/nix/secrets/secrets.yaml` before deploying.
 

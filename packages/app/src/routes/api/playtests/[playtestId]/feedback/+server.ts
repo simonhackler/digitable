@@ -4,8 +4,7 @@ import { getActiveMembership } from '@svg-table/db/private-rooms';
 import {
 	listPlaytestFeedback,
 	loadPlaytestMetadata,
-	savePlaytestFeedback,
-	validatePlaytestStorageConfig
+	savePlaytestFeedback
 } from '$lib/server/playtest-storage';
 import { Err, tryAsync } from 'wellcrafted/result';
 
@@ -26,8 +25,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	if (!locals.user) {
 		error(401, 'Not authenticated');
 	}
-
-	validatePlaytestStorageConfig();
 
 	const playtestId = params.playtestId;
 	if (!playtestId) {
@@ -77,8 +74,6 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	if (!locals.user) {
 		error(401, 'Not authenticated');
 	}
-
-	validatePlaytestStorageConfig();
 
 	const playtestId = params.playtestId;
 	if (!playtestId) {

@@ -88,7 +88,7 @@
 					isSubmitting = true;
 					showSuccessMessage = false;
 
-					const data: CreateGameForm = form.data;
+					const data: CreateGameForm = { ...form.data };
 					const folderName = data.name.replace(/\s+/g, '_');
 					const gameData = JSON.stringify(data, null, 2);
 					const gameFile = new File([gameData], 'game.json', { type: 'application/json' });

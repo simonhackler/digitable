@@ -19,10 +19,10 @@
  <g class="layer">
   <title>Layer 1</title>
   <g id="layer1" transform="matrix(1 0 0 1 0 0)">
-   <image xmlns:xlink="http://www.w3.org/1999/xlink" height="88" href="../../files/template_blank.png" id="background" preserveAspectRatio="none" width="63" x="0" y="0" xlink:href="../../files/template_blank.png"/>
-   <image xmlns:xlink="http://www.w3.org/1999/xlink" height="35.64" href="../../files/dice_6.png" id="dice_image" preserveAspectRatio="none" width="35.64" x="13.62" y="14.59" xlink:href="../../files/dice_6.png"/>
-   <text data-svgedit-line-height="51.2" data-svgedit-multiline="true" data-svgedit-raw-text="Sfds f" data-svgedit-shape-inside-ref="#rect1" data-svgedit-text-overflow="false" data-svgedit-wrap-height="130" data-svgedit-wrap-width="200" display="inline" font-family="sans-serif" font-size="42.67" font-stretch="normal" font-style="normal" font-weight="normal" id="effect_zone" letter-spacing="0px" text-anchor="start" transform="matrix(0.264583 0 0 0.264583 -33.2253 24.0748)" x="150" xml:space="preserve" y="162.67">
-    <tspan id="svg_9" x="195.46" y="162.67">Sfds f</tspan>
+   <image xmlns:xlink="http://www.w3.org/1999/xlink" height="88" href="../../assets/template_blank.png" id="background" preserveAspectRatio="none" width="63" x="0" y="0" xlink:href="../../assets/template_blank.png"/>
+   <image xmlns:xlink="http://www.w3.org/1999/xlink" height="35.64" href="../../assets/dice_6.png" id="dice_image" preserveAspectRatio="none" width="35.64" x="13.62" y="14.59" xlink:href="../../assets/dice_6.png"/>
+   <text data-svgedit-line-height="51.2" data-svgedit-multiline="true" data-svgedit-raw-text="Sfds f" data-svgedit-shape-inside-ref="#rect1" data-svgedit-text-overflow="false" data-svgedit-wrap-height="130" data-svgedit-wrap-width="210" display="inline" font-family="sans-serif" font-size="42.67" font-stretch="normal" font-style="normal" font-weight="normal" id="effect_zone" letter-spacing="0px" text-align="center" text-anchor="start" transform="matrix(0.264583 0 0 0.264583 -33.2253 24.0748)" x="152.14" xml:space="preserve" y="162.67">
+    <tspan font-size="42.67" id="svg_5" x="202.61" y="162.67">Sfds f</tspan>
    </text>
   </g>
   <text data-svgedit-line-height="51.2" data-svgedit-multiline="true" data-svgedit-shape-inside-ref="#svg_17" data-svgedit-wrap-height="120" data-svgedit-wrap-width="240" fill="#000000" font-family="sans-serif" font-size="42.67" id="svg_18" stroke-width="0" text-anchor="start" x="80" xml:space="preserve" y="102.67"/>

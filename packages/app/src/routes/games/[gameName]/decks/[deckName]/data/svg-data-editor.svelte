@@ -20,6 +20,7 @@
 	import { loadSvgsAndDataForSides, resolveImageReference } from '../../../data-loader';
 	import { assert, requireParam } from '$lib/utils/assert';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import { ImageEditor } from './custom-image';
 	import { getDeckSideIndexContext } from '../svg-context.svelte';
@@ -137,7 +138,7 @@
 			type: 'text/csv',
 			lastModified: Date.now()
 		});
-		const deckDir = await fileSystem.ensureDir(joinFsPath(projectName, 'system', cardName));
+		const deckDir = await fileSystem.ensureDir(joinFsPath(projectName, COMPONENTS_DIR, cardName));
 		if (deckDir.error) throw new Error(`Upload failed for data.csv: ${deckDir.error.message}`);
 		const res = await deckDir.data.write(csvFile.name, csvFile);
 		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);

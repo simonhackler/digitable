@@ -42,6 +42,9 @@
   appSecretServiceConfig = lib.optionalAttrs enableAppSecrets {
     EnvironmentFile = config.sops.templates."app.env".path;
   };
+  studioSecretServiceConfig = lib.optionalAttrs enableAppSecrets {
+    EnvironmentFile = config.sops.templates."studio.env".path;
+  };
   mkNodeService = {
     description,
     port,
@@ -91,11 +94,16 @@ in {
     secrets.replicate-api-token = {};
     secrets.s3-access-key-id = {};
     secrets.s3-secret-access-key = {};
+    secrets.kit-api-key = {};
 
     templates."app.env".content = ''
       REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
       S3_ACCESS_KEY_ID=${config.sops.placeholder.s3-access-key-id}
       S3_SECRET_ACCESS_KEY=${config.sops.placeholder.s3-secret-access-key}
+    '';
+
+    templates."studio.env".content = ''
+      KIT_API_KEY=${config.sops.placeholder.kit-api-key}
     '';
   };
 
@@ -198,7 +206,14 @@ in {
     workingDirectory = "${studioPackage}/packages/studio";
     extraEnvironment = {
       BETTER_AUTH_URL = studioOrigin;
+      OTEL_SERVICE_NAME = "digitable-studio";
+      OTEL_SERVICE_VERSION = tracewayAppVersion;
+      PUBLIC_APP_VERSION = tracewayAppVersion;
+      PUBLIC_TRACEWAY_CONNECTION = "${tracewayProjectToken}@${tracewayUrl}/api/report";
+      TRACEWAY_PROJECT_TOKEN = tracewayProjectToken;
+      TRACEWAY_URL = tracewayUrl;
     };
+    extraServiceConfig = studioSecretServiceConfig;
   };
 
   systemd.services.app = mkNodeService {

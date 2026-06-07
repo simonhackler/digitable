@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "table": {
+    "presetId": "four-player",
+    "width": 1400,
+    "height": 900
+  },
+  "placements": [],
+  "slots": [
+    {
+      "id": "ad5cb508-f1b2-4e90-8b14-520a4c84d631",
+      "label": "Slot 1",
+      "x": 860,
+      "y": 56.25,
+      "width": 240,
+      "height": 320,
+      "acceptedDeckNames": [],
+      "acceptedCardIds": []
+    }
+  ]
+}

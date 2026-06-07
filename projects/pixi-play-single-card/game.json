@@ -1,0 +1,11 @@
+{
+	"name": "Pixi Play Single Card",
+	"minPlayers": 1,
+	"maxPlayers": 4,
+	"description": "Single-card fixture project for Pixi play loose card E2E coverage.",
+	"tags": [
+		"E2E",
+		"Pixi"
+	],
+	"digitableVersion": "0.0.1"
+}

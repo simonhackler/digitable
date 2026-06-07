@@ -41,12 +41,12 @@ describe('data-loader image helpers', () => {
 	});
 
 	it('normalizes project-local image paths', () => {
-		expect(getProjectFilePath('game', 'placeholder.svg')).toBe('/game/files/placeholder.svg');
-		expect(getProjectFilePath('game', '../../files/generated/card.png')).toBe(
-			'/game/files/generated/card.png'
+		expect(getProjectFilePath('game', 'placeholder.svg')).toBe('/game/assets/placeholder.svg');
+		expect(getProjectFilePath('game', '../../assets/generated/card.png')).toBe(
+			'/game/assets/generated/card.png'
 		);
-		expect(getProjectFilePath('game', '/game/files/generated/card.png')).toBe(
-			'/game/files/generated/card.png'
+		expect(getProjectFilePath('game', '/game/assets/generated/card.png')).toBe(
+			'/game/assets/generated/card.png'
 		);
 		expect(getProjectFilePath('game', 'data:image/png;base64,AA==')).toBeNull();
 	});
@@ -57,14 +57,14 @@ describe('data-loader image helpers', () => {
 		await expect(resolveImageReference(fs, 'game', 'missing.png')).resolves.toBe(TRANSPARENT_IMAGE);
 	});
 
-	it('lists image files recursively under project files', async () => {
+	it('lists image files recursively under project assets', async () => {
 		const fs = createFs({
-			'game/files': [
+			'game/assets': [
 				{ name: 'placeholder.svg', kind: 'file' },
 				{ name: 'notes.csv', kind: 'file' },
 				{ name: 'generated', kind: 'directory' }
 			],
-			'game/files/generated': [
+			'game/assets/generated': [
 				{ name: 'card.webp', kind: 'file' },
 				{ name: 'prompt.txt', kind: 'file' }
 			]

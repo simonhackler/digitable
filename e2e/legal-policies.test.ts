@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { eq } from 'drizzle-orm';
 
@@ -81,6 +82,20 @@ async function userAcceptances(userId: string) {
 		.where(eq(schemaModule.userPolicyAcceptance.userId, userId));
 }
 
+async function currentAppSessionUser(page: import('@playwright/test').Page) {
+	const response = await page.request.get('/api/auth/get-session');
+	expect(response.ok()).toBe(true);
+
+	const session = (await response.json()) as {
+		user?: {
+			id: string;
+			isAnonymous?: boolean;
+		};
+	} | null;
+
+	return session?.user ?? null;
+}
+
 test('sign up records current policy acceptances', async ({ page, context }) => {
 	const email = `legal-ui-e2e-${Date.now()}@example.com`;
 
@@ -156,4 +171,29 @@ test('missing current policy acceptances redirect to the legal acceptance page',
 	await expect(page).toHaveURL(/\/app\/games$/, { timeout: 20000 });
 	await expect.poll(async () => policiesModule.getMissingCurrentPolicies(user.id)).toHaveLength(0);
 	await expect.poll(async () => userAcceptances(user.id)).toHaveLength(2);
+});
+
+test('anonymous playtest legal acceptance records current policy acceptances', async ({ page }) => {
+	const playtestPath = `/app/playtests/${randomUUID()}?e2e=1`;
+
+	await page.goto(`/app/legal/accept?anonymous=playtest&next=${encodeURIComponent(playtestPath)}`, {
+		waitUntil: 'networkidle'
+	});
+	await expect(
+		page.getByRole('heading', { name: 'Review the current legal documents.' })
+	).toBeVisible();
+
+	await page.getByRole('checkbox').check();
+	await page.getByRole('button', { name: 'Continue' }).click();
+
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/, { timeout: 20_000 });
+
+	const anonymousUser = await currentAppSessionUser(page);
+	expect(anonymousUser).toBeTruthy();
+	expect(anonymousUser?.isAnonymous).toBe(true);
+
+	await expect
+		.poll(async () => policiesModule.getMissingCurrentPolicies(anonymousUser!.id))
+		.toHaveLength(0);
+	await expect.poll(async () => userAcceptances(anonymousUser!.id)).toHaveLength(2);
 });

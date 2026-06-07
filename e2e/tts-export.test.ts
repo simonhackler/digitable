@@ -19,25 +19,25 @@ const files = [
 		})
 	},
 	{
-		path: `${projectName}/files/placeholder.svg`,
+		path: `${projectName}/assets/placeholder.svg`,
 		type: 'image/svg+xml',
 		contents:
 			'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1"><rect width="1" height="1" fill="#0f172a"/></svg>'
 	},
 	{
-		path: `${projectName}/system/local-image-deck/front.svg`,
+		path: `${projectName}/components/local-image-deck/front.svg`,
 		type: 'image/svg+xml',
 		contents:
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect id="front_background" width="63" height="88" fill="#fff7ed"/><text id="title" x="8" y="44" font-size="8" fill="#111827">Title</text></svg>'
 	},
 	{
-		path: `${projectName}/system/local-image-deck/back.svg`,
+		path: `${projectName}/components/local-image-deck/back.svg`,
 		type: 'image/svg+xml',
 		contents:
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><image id="template_background" href="/placeholder.svg" width="63" height="88"/></svg>'
 	},
 	{
-		path: `${projectName}/system/local-image-deck/data.csv`,
+		path: `${projectName}/components/local-image-deck/data.csv`,
 		type: 'text/csv',
 		contents: 'id,title\n1,Export me\n'
 	}
@@ -296,6 +296,8 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	await expect(page.getByText(`Saved to ${exportPath}`)).toBeVisible();
 
 	const exportFileNames = [
+		'ggd_0_70_sheet.png',
+		'ggd_0_70_back_sheet.png',
 		'western_0_70_sheet.png',
 		'western_0_70_back_sheet.png',
 		'next_deck_0_70_sheet.png',
@@ -323,14 +325,17 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	const exportJson = JSON.parse(await readOpfsTextFile(page, `${exportPath}/western-cards.json`));
 	expect(
 		exportJson.ObjectStates.map((state: { Nickname: string }) => state.Nickname).sort()
-	).toEqual(['next_deck', 'western']);
+	).toEqual(['ggd', 'next_deck', 'western']);
 	const westernDeck = exportJson.ObjectStates.find(
 		(state: { Nickname: string }) => state.Nickname === 'western'
 	);
 	if (!westernDeck) {
 		throw new Error('western deck missing from TTS export');
 	}
-	const customDeck = westernDeck.CustomDeck['1'];
+	const customDeck = Object.values(westernDeck.CustomDeck)[0] as {
+		FaceURL: string;
+		BackURL: string;
+	};
 	expect(customDeck.FaceURL).toBe(`${jsonExportPath}/western_0_70_sheet.png`);
 	expect(customDeck.BackURL).toBe(`${jsonExportPath}/western_0_70_back_sheet.png`);
 
