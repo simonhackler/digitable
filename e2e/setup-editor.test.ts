@@ -140,7 +140,7 @@ async function expectSetupElementPresentOnce(
 }
 
 test('table setup editor saves semantic svg', async ({ page }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(180_000);
 	const pointerEventSanitizeWarnings: string[] = [];
 	page.on('console', (message) => {
 		const text = message.text();
@@ -209,6 +209,21 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 			})
 		)
 		.toContain('Draw deck');
+	const placementShuffleCheckbox = page.getByRole('checkbox', { name: 'Shuffle stack at start' });
+	if (!(await placementShuffleCheckbox.isChecked())) {
+		await placementShuffleCheckbox.click();
+	}
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const global = window as SvgEditorWindow;
+				return global.__svgEditorApi?.getSvg() ?? '';
+			})
+		)
+		.toContain('data-initial-shuffle="true"');
+	await page.evaluate((placementId) => {
+		(window as SvgEditorWindow).__svgEditorController?.selectTreeElement(placementId);
+	}, placementId);
 	await expectSelectedOverlayAligned(page, 'placement', placementId);
 
 	await page.evaluate((placementId) => {
@@ -333,6 +348,8 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 		.getByRole('dialog')
 		.getByRole('button', { name: /^western deck$/ })
 		.click();
+	await expect(page.getByRole('checkbox', { name: 'Shuffle western at start' })).toBeVisible();
+	await page.getByRole('checkbox', { name: 'Shuffle western at start' }).click();
 	await page.getByRole('button', { name: 'Add content' }).click();
 	await page
 		.getByRole('dialog')
@@ -343,7 +360,7 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	await expect(page.getByText('2/2')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Add content' })).toBeDisabled();
 
-	await expect(page.getByRole('status')).toContainText('Autosaved');
+	await expect(page.getByRole('status')).toContainText('Autosaved', { timeout: 15_000 });
 
 	let svg = '';
 	await expect
@@ -375,6 +392,7 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 					type: placement?.getAttribute('data-digitable-type'),
 					deckName: placement?.getAttribute('data-deck-name'),
 					label: placement?.getAttribute('data-label'),
+					initialShuffle: placement?.getAttribute('data-initial-shuffle'),
 					cardIds: JSON.parse(placement?.getAttribute('data-card-ids') ?? '[]') as string[]
 				},
 				slot: {
@@ -406,6 +424,7 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 			type: 'deck',
 			deckName: 'western',
 			label: 'Draw deck',
+			initialShuffle: 'true',
 			cardIds: expect.arrayContaining([expect.any(String)])
 		})
 	);
@@ -419,12 +438,13 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 			visibleCount: 2,
 			gap: 12,
 			contents: [
-				{ type: 'deck', deckName: 'western' },
+				{ type: 'deck', deckName: 'western', shuffle: true },
 				expect.objectContaining({ type: 'card', deckName: 'western' })
 			]
 		})
 	);
 	expect(svg).toContain('viewBox="0 0 1200 700"');
+	expect(svg).toContain('data-initial-shuffle="true"');
 	expect(svg).not.toContain('#166534');
 	expect(svg).not.toContain('#bbf7d0');
 	expect(svg).toContain(savedSetup.slot.label ?? '');
@@ -443,12 +463,21 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	await expect(page.getByRole('status')).toContainText('Loaded');
 	await page.waitForFunction(
 		(id) => Boolean((window as SvgEditorWindow).__svgEditorApi?.getElementById?.(id)),
+		placementId
+	);
+	await page.evaluate((id) => {
+		(window as SvgEditorWindow).__svgEditorController?.selectTreeElement(id);
+	}, placementId);
+	await expect(page.getByRole('checkbox', { name: 'Shuffle stack at start' })).toBeChecked();
+	await page.waitForFunction(
+		(id) => Boolean((window as SvgEditorWindow).__svgEditorApi?.getElementById?.(id)),
 		slotId
 	);
 	await page.evaluate((id) => {
 		(window as SvgEditorWindow).__svgEditorController?.selectTreeElement(id);
 	}, slotId);
 	await expect(page.getByLabel('Slot layout')).toHaveValue('horizontal-flex');
+	await expect(page.getByRole('checkbox', { name: 'Shuffle western at start' })).toBeChecked();
 	await expect(page.getByText('2/2')).toBeVisible();
 	expect(pointerEventSanitizeWarnings).toEqual([]);
 });

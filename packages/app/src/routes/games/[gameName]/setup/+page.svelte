@@ -292,6 +292,11 @@
 		return editorApi?.getSvg() ?? editorSvg;
 	}
 
+	function currentEditorSvgForSave() {
+		const svg = currentEditorSvg();
+		return updateSerializedTableRoot(svg, tableViewFromSvg(svg).table);
+	}
+
 	function currentEditorSvgElement() {
 		return editorApi?._unsafe?.rawCanvas()?.getSvgContent?.() ?? null;
 	}
@@ -324,11 +329,6 @@
 		return assetAwareTableViewFromSvg(currentEditorSvg());
 	}
 
-	function currentEditorSvgForSave() {
-		const svg = currentEditorSvg();
-		return updateSerializedTableRoot(svg, tableViewFromSvg(svg).table);
-	}
-
 	function cardById(cardId: string, sourceDecks = decks) {
 		return sourceDecks.flatMap((deck) => deck.cards).find((card) => card.id === cardId) ?? null;
 	}
@@ -357,7 +357,6 @@
 		const cardSvgs = new SvelteMap<string, string>();
 		const deckTopCardIds = new SvelteMap<string, string>();
 		const deckCardIds = new SvelteMap<string, string[]>();
-		const cardLabels = new SvelteMap<string, string>();
 		for (const deck of sourceDecks) {
 			const firstCard = deck.cards[0];
 			if (firstCard) deckTopCardIds.set(deck.name, firstCard.id);
@@ -366,7 +365,6 @@
 				deck.cards.map((card) => card.id)
 			);
 			for (const card of deck.cards) {
-				cardLabels.set(card.id, card.label);
 				cardSvgs.set(card.id, card.frontSvg);
 			}
 		}
@@ -382,8 +380,7 @@
 			placementCardSizes,
 			cardSvgs,
 			deckTopCardIds,
-			deckCardIds,
-			cardLabels
+			deckCardIds
 		};
 	}
 
@@ -725,6 +722,22 @@
 		});
 	}
 
+	function updateSlotDeckContentShuffle(slotId: string, index: number, checked: boolean) {
+		const current = currentEditorTable().slots.find((candidate) => candidate.id === slotId);
+		if (!current) return;
+		updateSlot(slotId, {
+			contents: (current.contents ?? []).map((content, candidateIndex) => {
+				if (candidateIndex !== index || content.type !== 'deck') return content;
+				if (checked) return { ...content, shuffle: true };
+				return {
+					type: 'deck',
+					deckName: content.deckName,
+					...(content.cellIndex === undefined ? {} : { cellIndex: content.cellIndex })
+				};
+			})
+		});
+	}
+
 	function updatePlacement(placementId: string, patch: Partial<TablePlacement>) {
 		const placement = currentEditorTable().placements.find(
 			(candidate) => candidate.id === placementId
@@ -735,6 +748,9 @@
 		if (patch.label !== undefined) attributes['data-label'] = nextPlacement.label;
 		if (nextPlacement.type === 'deck' && 'cardIds' in patch) {
 			attributes['data-card-ids'] = JSON.stringify(nextPlacement.cardIds);
+		}
+		if (nextPlacement.type === 'deck' && 'shuffle' in patch) {
+			attributes['data-initial-shuffle'] = nextPlacement.shuffle ? 'true' : null;
 		}
 		if (Object.keys(attributes).length > 0) {
 			updateTableElementAttributes(placementId, attributes, 'Update component metadata');
@@ -852,7 +868,7 @@
 	function scheduleAutosave() {
 		if (isLoading) return;
 		saveGeneration += 1;
-		status = 'Unsaved changes';
+		status = 'Unsaved';
 		queueAutosave(saveGeneration);
 	}
 
@@ -920,7 +936,6 @@
 		status = 'Autosaving';
 		try {
 			const svg = currentEditorSvgForSave();
-			editorSvg = svg;
 			const saved = await saveTableSvg(svg, generation);
 			if (saved && generation === saveGeneration) {
 				status = 'Autosaved';
@@ -1151,6 +1166,17 @@
 								<div class="flex items-center gap-2 rounded-md border px-2 py-1">
 									<Badge variant="outline">{content.type}</Badge>
 									<span class="min-w-0 flex-1 truncate">{slotContentLabel(content)}</span>
+									{#if content.type === 'deck'}
+										<label class="text-muted-foreground flex items-center gap-1 text-xs">
+											<Checkbox
+												aria-label={`Shuffle ${slotContentLabel(content)} at start`}
+												checked={content.shuffle === true}
+												onCheckedChange={(checked) =>
+													updateSlotDeckContentShuffle(selectedSlot.id, index, checked === true)}
+											/>
+											<span>Shuffle</span>
+										</label>
+									{/if}
 									<Button
 										type="button"
 										variant="ghost"
@@ -1300,6 +1326,15 @@
 				</label>
 				<p class="text-muted-foreground text-xs">{selectedPlacement.deckName}</p>
 				{#if selectedPlacement.type === 'deck'}
+					<label class="flex items-center gap-2 rounded-md border px-2 py-2">
+						<Checkbox
+							aria-label="Shuffle stack at start"
+							checked={selectedPlacement.shuffle === true}
+							onCheckedChange={(checked) =>
+								updatePlacement(selectedPlacement.id, { shuffle: checked === true })}
+						/>
+						<span>Shuffle at start</span>
+					</label>
 					<div class="space-y-2">
 						<div class="flex items-center justify-between gap-2">
 							<h3 class="font-medium">Cards in deck</h3>

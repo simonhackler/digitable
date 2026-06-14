@@ -13,6 +13,7 @@ export type TablePlacement =
 			type: 'deck';
 			deckName: string;
 			cardIds: string[];
+			shuffle?: boolean;
 			x: number;
 			y: number;
 			rotation: number;
@@ -47,7 +48,7 @@ export type TableSlotLayout =
 	  };
 
 export type TableSlotContent =
-	| { type: 'deck'; deckName: string; cellIndex?: number }
+	| { type: 'deck'; deckName: string; cellIndex?: number; shuffle?: boolean }
 	| { type: 'card'; deckName: string; cardId: string; cellIndex?: number };
 
 export type TableSlot = {
@@ -81,7 +82,6 @@ export type TableSvgAssets = {
 	cardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	deckTopCardIds?: ReadonlyMap<string, string> | Record<string, string>;
 	deckCardIds?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
-	cardLabels?: ReadonlyMap<string, string> | Record<string, string>;
 };
 
 type CardVisualSize = {
@@ -106,6 +106,7 @@ const TYPE_ATTR = 'data-digitable-type';
 const DECK_ATTR = 'data-deck-name';
 const CARD_ATTR = 'data-card-id';
 const CARD_IDS_ATTR = 'data-card-ids';
+const INITIAL_SHUFFLE_ATTR = 'data-initial-shuffle';
 const LABEL_ATTR = 'data-label';
 const PRESET_ATTR = 'data-preset-id';
 const RESIZABLE_ATTR = 'data-svgedit-resizable';
@@ -121,15 +122,12 @@ const SLOT_GAP_Y_ATTR = 'data-slot-gap-y';
 const SLOT_CARD_SIZE_ATTR = 'data-slot-card-size';
 const SLOT_CONTENTS_ATTR = 'data-slot-contents';
 const DECK_STACK_ATTR = 'data-deck-stack';
-const LOCKED_ATTRS = `${RESIZABLE_ATTR}="false" data-locked="true"`;
 const LEGACY_CARD_SIZE = { width: 110, height: 150 };
 const DEFAULT_FLEX_VISIBLE_COUNT = 4;
 const DEFAULT_FLEX_GAP = 16;
 const DEFAULT_GRID_ROWS = 2;
 const DEFAULT_GRID_COLUMNS = 2;
 const TABLE_GRID_STEP = 20;
-const LEGACY_TABLE_BACKGROUND_FILL = '#166534';
-const LEGACY_TABLE_BORDER_STROKE = '#bbf7d0';
 
 const nonResizableAttrs = () => ({ [RESIZABLE_ATTR]: 'false' });
 const lockedAttrs = () => ({ ...nonResizableAttrs(), 'data-locked': 'true' });
@@ -227,7 +225,8 @@ function tableSlotContent(value: unknown): TableSlotContent | null {
 	const rawCellIndex = finiteNumber(input.cellIndex, -1);
 	const cellIndex = rawCellIndex >= 0 ? Math.floor(rawCellIndex) : undefined;
 	const cell = cellIndex === undefined ? {} : { cellIndex };
-	if (input.type === 'deck') return { type: 'deck', deckName, ...cell };
+	const shuffle = input.shuffle === true ? { shuffle: true } : {};
+	if (input.type === 'deck') return { type: 'deck', deckName, ...cell, ...shuffle };
 	if (input.type === 'card') {
 		const cardId = typeof input.cardId === 'string' ? input.cardId : '';
 		if (!cardId) return null;
@@ -412,14 +411,6 @@ export function snapPlacementToGrid<T extends TablePlacement>(
 	return { ...item, x: nextX, y: nextY };
 }
 
-function escapeXml(value: string): string {
-	return value
-		.replaceAll('&', '&amp;')
-		.replaceAll('<', '&lt;')
-		.replaceAll('>', '&gt;')
-		.replaceAll('"', '&quot;');
-}
-
 function sortedStrings(values: string[]): string[] {
 	return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
@@ -598,10 +589,23 @@ function placementCardSvg(assets: TableSvgAssets, placementId: string): string |
 	return svgAssetValue(assets.placementCardSvgs, placementId);
 }
 
+function requirePlacementCardSvg(assets: TableSvgAssets, placement: TablePlacement): string {
+	const cardSvg = placementCardSvg(assets, placement.id);
+	if (cardSvg) return cardSvg;
+	throw new Error(`Missing SVG asset for table placement "${placement.id}"`);
+}
+
 function slotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): string | null {
 	if (content.type === 'card') return svgAssetValue(assets.cardSvgs, content.cardId);
 	const topCardId = svgAssetValue(assets.deckTopCardIds, content.deckName);
 	return topCardId ? svgAssetValue(assets.cardSvgs, topCardId) : null;
+}
+
+function requireSlotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): string {
+	const cardSvg = slotContentCardSvg(assets, content);
+	if (cardSvg) return cardSvg;
+	const target = content.type === 'deck' ? content.deckName : content.cardId;
+	throw new Error(`Missing SVG asset for table slot ${content.type} "${target}"`);
 }
 
 function cardSvgSize(cardSvg: string | null): CardVisualSize {
@@ -696,23 +700,6 @@ function firstElementByTag(root: Element, tagName: string): Element | null {
 	return root.getElementsByTagName(tagName)[0] ?? null;
 }
 
-function isLegacyTableBackground(element: Element): boolean {
-	if (element.tagName.toLowerCase() !== 'rect') return false;
-	return (
-		element.getAttribute('fill') === LEGACY_TABLE_BACKGROUND_FILL ||
-		element.getAttribute('stroke') === LEGACY_TABLE_BORDER_STROKE
-	);
-}
-
-function removeLegacyTableBackground(root: Element) {
-	const children = Array.from(root.childNodes).filter(
-		(child): child is Element => child.nodeType === 1
-	);
-	for (const child of children) {
-		if (isLegacyTableBackground(child)) child.parentNode?.removeChild(child);
-	}
-}
-
 function svgRootToTable(root: Element, fallback: Table, assets: TableSvgAssets = {}): Table {
 	if (!root || root.tagName.toLowerCase() !== 'svg') return fallback;
 
@@ -738,6 +725,7 @@ function svgRootToTable(root: Element, fallback: Table, assets: TableSvgAssets =
 		const type = group.getAttribute(TYPE_ATTR);
 		const deckName = group.getAttribute(DECK_ATTR) ?? '';
 		const cardIds = parseJsonStringArray(group.getAttribute(CARD_IDS_ATTR));
+		const shuffle = group.getAttribute(INITIAL_SHUFFLE_ATTR) === 'true';
 		const transform = transformParts(group.getAttribute('transform'));
 		if (!deckName) return [];
 		const visual = cardVisualBounds(group, placementVisualSizeFromAssets(group, assets));
@@ -768,7 +756,11 @@ function svgRootToTable(root: Element, fallback: Table, assets: TableSvgAssets =
 				LEGACY_CARD_SIZE.height
 			)
 		};
-		if (type === 'deck') return [snapPlacementToGrid({ ...base, type, cardIds }, size)];
+		if (type === 'deck') {
+			return [
+				snapPlacementToGrid({ ...base, type, cardIds, ...(shuffle ? { shuffle } : {}) }, size)
+			];
+		}
 		if (type === 'card') {
 			const cardId = group.getAttribute(CARD_ATTR) ?? '';
 			if (!cardId) return [];
@@ -840,33 +832,6 @@ export function svgToTable(
 	return svgElementToTable(doc.documentElement, fallback, assets);
 }
 
-export function normalizeTableSvg(svg: string, table: Table, assets: TableSvgAssets = {}): string {
-	return normalizeTableSvgWithAssets(svg, table, assets);
-}
-
-export function normalizeTableSvgWithAssets(
-	svg: string,
-	table: Table,
-	assets: TableSvgAssets = {}
-): string {
-	const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-	const root = doc.documentElement;
-	if (!root || root.tagName.toLowerCase() !== 'svg') return tableToSvg(table, assets);
-
-	root.setAttribute('width', String(table.table.width));
-	root.setAttribute('height', String(table.table.height));
-	root.setAttribute('viewBox', `0 0 ${table.table.width} ${table.table.height}`);
-	root.setAttribute('role', 'img');
-	root.setAttribute('aria-label', 'Digitable table setup');
-	root.setAttribute(TABLE_ATTR, 'true');
-	root.setAttribute(PRESET_ATTR, table.table.presetId);
-
-	removeLegacyTableBackground(root);
-	syncGeneratedElements(doc, root, table, assets);
-
-	return new XMLSerializer().serializeToString(root);
-}
-
 function concreteSlotCardIds(slot: TableSlot, assets: TableSvgAssets): string[] {
 	const cardIds = new Set<string>();
 	for (const cardId of slot.acceptedCardIds) {
@@ -926,11 +891,6 @@ export function resolveTableSlotSize(slot: TableSlot, assets: TableSvgAssets = {
 	};
 }
 
-function slotContentLabel(assets: TableSvgAssets, content: TableSlotContent): string {
-	if (content.type === 'deck') return content.deckName;
-	return svgAssetValue(assets.cardLabels, content.cardId) ?? content.cardId;
-}
-
 function cardImageHref(cardSvg: string): string {
 	return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`;
 }
@@ -953,11 +913,6 @@ function cardImageElementJson(
 			...lockedAttrs()
 		}
 	};
-}
-
-function cardImageMarkup(cardSvg: string, size: CardVisualSize, x = 0, y = 0): string {
-	const href = cardImageHref(cardSvg);
-	return `<image x="${x}" y="${y}" width="${size.width}" height="${size.height}" preserveAspectRatio="xMidYMid meet" href="${escapeXml(href)}" ${LOCKED_ATTRS}/>`;
 }
 
 function stackOffset(size: CardVisualSize) {
@@ -1003,14 +958,6 @@ function deckStackElementsJson(size: CardVisualSize, x = 0, y = 0): TableSvgElem
 	];
 }
 
-function deckStackMarkup(size: CardVisualSize): string[] {
-	const offset = stackOffset(size);
-	return [
-		`    <rect x="${offset * 2}" y="${offset * 2}" width="${size.width}" height="${size.height}" rx="10" fill="#0f172a" fill-opacity="0.28" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`,
-		`    <rect x="${offset}" y="${offset}" width="${size.width}" height="${size.height}" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.65" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`
-	];
-}
-
 function boundedDeckStackElementsJson(size: CardVisualSize, x = 0, y = 0): TableSvgElementJson[] {
 	const offset = stackOffset(size);
 	return [
@@ -1050,86 +997,6 @@ function boundedDeckStackElementsJson(size: CardVisualSize, x = 0, y = 0): Table
 	];
 }
 
-function boundedDeckStackMarkup(size: CardVisualSize, x = 0, y = 0): string[] {
-	const offset = stackOffset(size);
-	return [
-		`    <rect x="${x + offset * 2}" y="${y + offset * 2}" width="${Math.max(1, size.width - offset * 2)}" height="${Math.max(1, size.height - offset * 2)}" rx="10" fill="#0f172a" fill-opacity="0.24" stroke="#0f172a" stroke-opacity="0.4" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`,
-		`    <rect x="${x + offset}" y="${y + offset}" width="${Math.max(1, size.width - offset)}" height="${Math.max(1, size.height - offset)}" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.55" stroke-width="2" ${DECK_STACK_ATTR}="true" ${LOCKED_ATTRS}/>`
-	];
-}
-
-function fallbackPlacementElementsJson(
-	item: TablePlacement,
-	label: string,
-	kind: string,
-	size: CardVisualSize,
-	x = 0,
-	y = 0
-) {
-	const fill = item.type === 'deck' ? '#fef3c7' : '#f0fdf4';
-	const stroke = item.type === 'deck' ? '#b45309' : '#15803d';
-	return [
-		...(item.type === 'deck' ? deckStackElementsJson(size, x, y) : []),
-		{
-			element: 'rect',
-			attr: {
-				x,
-				y,
-				width: size.width,
-				height: size.height,
-				rx: 10,
-				fill,
-				stroke,
-				'stroke-width': 3,
-				...lockedAttrs()
-			}
-		},
-		{
-			element: 'text',
-			attr: {
-				x: x + size.width / 2,
-				y: y + size.height / 2 - 6,
-				'text-anchor': 'middle',
-				fill: '#111827',
-				'font-family': 'system-ui, sans-serif',
-				'font-size': 20,
-				'font-weight': 700,
-				...lockedTextAttrs()
-			},
-			children: [label]
-		},
-		{
-			element: 'text',
-			attr: {
-				x: x + size.width / 2,
-				y: y + size.height / 2 + 24,
-				'text-anchor': 'middle',
-				fill: '#4b5563',
-				'font-family': 'system-ui, sans-serif',
-				'font-size': 16,
-				...lockedTextAttrs()
-			},
-			children: [kind]
-		}
-	];
-}
-
-function fallbackPlacementMarkup(
-	item: TablePlacement,
-	label: string,
-	kind: string,
-	size: CardVisualSize
-): string[] {
-	const fill = item.type === 'deck' ? '#fef3c7' : '#f0fdf4';
-	const stroke = item.type === 'deck' ? '#b45309' : '#15803d';
-	return [
-		...(item.type === 'deck' ? deckStackMarkup(size) : []),
-		`    <rect x="0" y="0" width="${size.width}" height="${size.height}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${RESIZABLE_ATTR}="false"/>`,
-		`    <text x="${size.width / 2}" y="${size.height / 2 - 6}" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="20" font-weight="700" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${label}</text>`,
-		`    <text x="${size.width / 2}" y="${size.height / 2 + 24}" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="16" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${kind}</text>`
-	];
-}
-
 function slotAttributes(item: TableSlot): Record<string, string | number> {
 	const slot = normalizeTableSlot(item);
 	const attributes: Record<string, string | number> = {
@@ -1166,71 +1033,14 @@ function slotTransform(slot: TableSlot): string {
 	return `translate(${slot.x} ${slot.y})${rotate}`;
 }
 
-function fallbackSlotContentElementsJson(
-	content: TableSlotContent,
-	label: string,
-	size: CardVisualSize,
-	x: number,
-	y: number
-): TableSvgElementJson[] {
-	const fill = content.type === 'deck' ? '#fef3c7' : '#f0fdf4';
-	const stroke = content.type === 'deck' ? '#b45309' : '#15803d';
-	return [
-		...(content.type === 'deck' ? boundedDeckStackElementsJson(size, x, y) : []),
-		{
-			element: 'rect',
-			attr: {
-				x,
-				y,
-				width: size.width,
-				height: size.height,
-				rx: 10,
-				fill,
-				stroke,
-				'stroke-width': 3,
-				...lockedAttrs()
-			}
-		},
-		{
-			element: 'text',
-			attr: {
-				x: x + size.width / 2,
-				y: y + size.height / 2 - 6,
-				'text-anchor': 'middle',
-				fill: '#111827',
-				'font-family': 'system-ui, sans-serif',
-				'font-size': 18,
-				'font-weight': 700,
-				...lockedTextAttrs()
-			},
-			children: [label]
-		},
-		{
-			element: 'text',
-			attr: {
-				x: x + size.width / 2,
-				y: y + size.height / 2 + 22,
-				'text-anchor': 'middle',
-				fill: '#4b5563',
-				'font-family': 'system-ui, sans-serif',
-				'font-size': 15,
-				...lockedTextAttrs()
-			},
-			children: [content.type]
-		}
-	];
-}
-
 function slotContentElementsJson(
 	content: TableSlotContent,
 	assets: TableSvgAssets,
 	x: number,
 	y: number
 ): TableSvgElementJson[] {
-	const cardSvg = slotContentCardSvg(assets, content);
+	const cardSvg = requireSlotContentCardSvg(assets, content);
 	const size = slotContentVisualSize(content, assets);
-	if (!cardSvg)
-		return fallbackSlotContentElementsJson(content, slotContentLabel(assets, content), size, x, y);
 	return [
 		...(content.type === 'deck' ? boundedDeckStackElementsJson(size, x, y) : []),
 		cardImageElementJson(cardSvg, size, x, y)
@@ -1386,7 +1196,7 @@ export function placementToSvgElementJson(
 	const size = placementVisualSize(item, assets);
 	const placement = snapPlacementToGrid(item, size);
 	const kind = item.type;
-	const cardSvg = placementCardSvg(assets, placement.id);
+	const cardSvg = requirePlacementCardSvg(assets, placement);
 	const attr: Record<string, string | number> = {
 		id: placement.id,
 		[KIND_ATTR]: 'placement',
@@ -1401,13 +1211,12 @@ export function placementToSvgElementJson(
 	}
 	if (placement.type === 'deck') {
 		attr[CARD_IDS_ATTR] = JSON.stringify(placement.cardIds);
+		if (placement.shuffle) attr[INITIAL_SHUFFLE_ATTR] = 'true';
 	}
-	const visual = cardSvg
-		? [
-				...(placement.type === 'deck' ? deckStackElementsJson(size) : []),
-				cardImageElementJson(cardSvg, size)
-			]
-		: fallbackPlacementElementsJson(placement, placement.label, kind, size, 0, 0);
+	const visual = [
+		...(placement.type === 'deck' ? deckStackElementsJson(size) : []),
+		cardImageElementJson(cardSvg, size)
+	];
 
 	return {
 		element: 'g',
@@ -1420,206 +1229,4 @@ function placementTransform(placement: TablePlacement, size: CardVisualSize): st
 	const transformX = placement.x - size.width / 2;
 	const transformY = placement.y - size.height / 2;
 	return `translate(${transformX} ${transformY}) rotate(${placement.rotation} ${size.width / 2} ${size.height / 2})`;
-}
-
-function slotAttributesMarkup(item: TableSlot): string {
-	const slot = normalizeTableSlot(item);
-	const label = escapeXml(slot.label);
-	const base = [
-		`id="${escapeXml(slot.id)}"`,
-		`${KIND_ATTR}="slot"`,
-		`${LABEL_ATTR}="${label}"`,
-		`${ACCEPTED_DECKS_ATTR}="${escapeXml(JSON.stringify(sortedStrings(slot.acceptedDeckNames)))}"`,
-		`${ACCEPTED_CARDS_ATTR}="${escapeXml(JSON.stringify(sortedStrings(slot.acceptedCardIds)))}"`,
-		`${SLOT_LAYOUT_MODE_ATTR}="${slot.layout?.mode ?? 'free'}"`
-	];
-	if (slot.layout?.mode === 'horizontal-flex') {
-		base.push(`${RESIZABLE_ATTR}="false"`);
-		base.push(`${SLOT_VISIBLE_COUNT_ATTR}="${slot.layout.visibleCount}"`);
-		base.push(`${SLOT_GAP_ATTR}="${slot.layout.gap}"`);
-		base.push(`${SLOT_CARD_SIZE_ATTR}="${slot.layout.cardSize}"`);
-		base.push(`${SLOT_CONTENTS_ATTR}="${escapeXml(JSON.stringify(slot.contents ?? []))}"`);
-	}
-	if (slot.layout?.mode === 'grid') {
-		base.push(`${RESIZABLE_ATTR}="false"`);
-		base.push(`${SLOT_ROWS_ATTR}="${slot.layout.rows}"`);
-		base.push(`${SLOT_COLUMNS_ATTR}="${slot.layout.columns}"`);
-		base.push(`${SLOT_GAP_X_ATTR}="${slot.layout.gapX}"`);
-		base.push(`${SLOT_GAP_Y_ATTR}="${slot.layout.gapY}"`);
-		base.push(`${SLOT_CARD_SIZE_ATTR}="${slot.layout.cardSize}"`);
-		base.push(`${SLOT_CONTENTS_ATTR}="${escapeXml(JSON.stringify(slot.contents ?? []))}"`);
-	}
-	base.push(`transform="${slotTransform(slot)}"`);
-	return base.join(' ');
-}
-
-function fallbackSlotContentMarkup(
-	content: TableSlotContent,
-	label: string,
-	size: CardVisualSize,
-	x: number,
-	y: number
-): string[] {
-	const fill = content.type === 'deck' ? '#fef3c7' : '#f0fdf4';
-	const stroke = content.type === 'deck' ? '#b45309' : '#15803d';
-	return [
-		...(content.type === 'deck' ? boundedDeckStackMarkup(size, x, y) : []),
-		`    <rect x="${x}" y="${y}" width="${size.width}" height="${size.height}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="3" ${LOCKED_ATTRS}/>`,
-		`    <text x="${x + size.width / 2}" y="${y + size.height / 2 - 6}" text-anchor="middle" fill="#111827" font-family="system-ui, sans-serif" font-size="18" font-weight="700" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${escapeXml(label)}</text>`,
-		`    <text x="${x + size.width / 2}" y="${y + size.height / 2 + 22}" text-anchor="middle" fill="#4b5563" font-family="system-ui, sans-serif" font-size="15" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${content.type}</text>`
-	];
-}
-
-function slotContentMarkup(
-	content: TableSlotContent,
-	assets: TableSvgAssets,
-	x: number,
-	y: number
-): string[] {
-	const cardSvg = slotContentCardSvg(assets, content);
-	const size = slotContentVisualSize(content, assets);
-	if (!cardSvg)
-		return fallbackSlotContentMarkup(content, slotContentLabel(assets, content), size, x, y);
-	return [
-		...(content.type === 'deck' ? boundedDeckStackMarkup(size, x, y) : []),
-		`    ${cardImageMarkup(cardSvg, size, x, y)}`
-	];
-}
-
-function slotMarkup(item: TableSlot, assets: TableSvgAssets): string {
-	const slot = resolveTableSlotSize(item, assets);
-	const label = escapeXml(slot.label);
-	const layout = slot.layout;
-	if (layout?.mode === 'horizontal-flex' || layout?.mode === 'grid') {
-		const capacity = slotLayoutCapacity(layout);
-		const cells = Array.from({ length: capacity }).map((_, index) => {
-			const { x, y } = fixedSlotCellPosition(slot, index);
-			const { width, height } = fixedSlotCellSize(slot);
-			return `    <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="#f8fafc" fill-opacity="0.55" stroke="#2563eb" stroke-opacity="0.48" stroke-width="2" ${LOCKED_ATTRS}/>`;
-		});
-		const contents = (slot.contents ?? []).flatMap((content, index) => {
-			const { x, y } = fixedSlotCellPosition(slot, content.cellIndex ?? index);
-			return slotContentMarkup(content, assets, x, y);
-		});
-		return [
-			`  <g ${slotAttributesMarkup(slot)}>`,
-			`    <title>${label}</title>`,
-			`    <rect x="0" y="0" width="${slot.width}" height="${slot.height}" rx="12" fill="#eff6ff" fill-opacity="0.22" stroke="#2563eb" stroke-width="3" stroke-dasharray="12 8" ${LOCKED_ATTRS}/>`,
-			...cells,
-			...contents,
-			'  </g>'
-		].join('\n');
-	}
-	return [
-		`  <g ${slotAttributesMarkup(slot)}>`,
-		`    <rect x="0" y="0" width="${slot.width}" height="${slot.height}" rx="14" fill="#dbeafe" fill-opacity="0.32" stroke="#2563eb" stroke-width="4" stroke-dasharray="14 10"/>`,
-		`    <text x="16" y="32" fill="#1e3a8a" font-family="system-ui, sans-serif" font-size="28" font-weight="700" ${LOCKED_ATTRS} style="pointer-events:none;user-select:none">${label}</text>`,
-		'  </g>'
-	].join('\n');
-}
-
-function placementMarkup(item: TablePlacement, assets: TableSvgAssets): string {
-	const size = placementVisualSize(item, assets);
-	const placement = snapPlacementToGrid(item, size);
-	const label = escapeXml(placement.label);
-	const kind = escapeXml(placement.type);
-	const cardAttrs =
-		placement.type === 'card' ? ` ${CARD_ATTR}="${escapeXml(placement.cardId)}"` : '';
-	const deckAttrs =
-		placement.type === 'deck'
-			? ` ${CARD_IDS_ATTR}="${escapeXml(JSON.stringify(placement.cardIds))}"`
-			: '';
-	const cardSvg = placementCardSvg(assets, placement.id);
-	const visual = cardSvg
-		? [
-				...(placement.type === 'deck' ? deckStackMarkup(size) : []),
-				`    ${cardImageMarkup(cardSvg, size)}`
-			]
-		: fallbackPlacementMarkup(placement, label, kind, size);
-
-	return [
-		`  <g id="${escapeXml(placement.id)}" ${KIND_ATTR}="placement" ${TYPE_ATTR}="${kind}" ${DECK_ATTR}="${escapeXml(placement.deckName)}"${cardAttrs}${deckAttrs} ${LABEL_ATTR}="${label}" ${RESIZABLE_ATTR}="false" transform="${placementTransform(placement, size)}">`,
-		...visual,
-		'  </g>'
-	].join('\n');
-}
-
-function parseGeneratedMarkup(doc: Document, markup: string): Element | null {
-	const parsed = new DOMParser().parseFromString(
-		`<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`,
-		'image/svg+xml'
-	);
-	const element = parsed.documentElement.firstElementChild;
-	if (!element) return null;
-	if (typeof doc.importNode === 'function') return doc.importNode(element, true) as Element;
-	return element.cloneNode(true) as Element;
-}
-
-function replaceOrAppendGenerated(
-	doc: Document,
-	parent: Element,
-	existing: Element | null,
-	markup: string
-) {
-	const next = parseGeneratedMarkup(doc, markup);
-	if (!next) return;
-	if (existing?.parentNode) {
-		existing.parentNode.replaceChild(next, existing);
-		return;
-	}
-	parent.appendChild(next);
-}
-
-function syncGeneratedElements(doc: Document, root: Element, table: Table, assets: TableSvgAssets) {
-	const slotIds = new Set(table.slots.map((slot) => slot.id));
-	const placementIds = new Set(table.placements.map((placement) => placement.id));
-	const existingSlots = elementsByKind(root, 'slot');
-	const existingPlacements = elementsByKind(root, 'placement');
-	const generatedParent =
-		existingSlots[0]?.parentElement ?? existingPlacements[0]?.parentElement ?? root;
-
-	for (const element of existingSlots) {
-		const id = element.getAttribute('id');
-		if (!id || !slotIds.has(id)) element.parentNode?.removeChild(element);
-	}
-	for (const element of existingPlacements) {
-		const id = element.getAttribute('id');
-		if (!id || !placementIds.has(id)) element.parentNode?.removeChild(element);
-	}
-	for (const slot of table.slots) {
-		replaceOrAppendGenerated(
-			doc,
-			generatedParent,
-			elementsByKind(root, 'slot').find((element) => element.getAttribute('id') === slot.id) ??
-				null,
-			slotMarkup(slot, assets)
-		);
-	}
-	for (const placement of table.placements) {
-		replaceOrAppendGenerated(
-			doc,
-			generatedParent,
-			elementsByKind(root, 'placement').find(
-				(element) => element.getAttribute('id') === placement.id
-			) ?? null,
-			placementMarkup(placement, assets)
-		);
-	}
-}
-
-export function tableToSvg(table: Table, assets: TableSvgAssets = {}): string {
-	const width = table.table.width;
-	const height = table.table.height;
-	const slotsMarkup = table.slots.map((item) => slotMarkup(item, assets)).join('\n');
-	const placementsMarkup = table.placements.map((item) => placementMarkup(item, assets)).join('\n');
-
-	return [
-		`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Digitable table setup" ${TABLE_ATTR}="true" ${PRESET_ATTR}="${escapeXml(table.table.presetId)}">`,
-		slotsMarkup,
-		placementsMarkup,
-		'</svg>',
-		''
-	]
-		.filter((line) => line !== '')
-		.join('\n');
 }

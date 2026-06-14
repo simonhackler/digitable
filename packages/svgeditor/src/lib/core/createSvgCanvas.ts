@@ -935,18 +935,12 @@ export const createSvgCanvas = ({
 	};
 
 	type SelectorLike = {
-		selectorGroup?: Element;
-		selectorRect?: Element;
-		gripCoords?: Record<string, [number, number]>;
+		showGrips?: (show: boolean) => void;
 	};
 
 	type SelectorManagerLike = {
 		requestSelector?: (elem: Element) => SelectorLike | null;
 		selectorParentGroup?: Element | null;
-		selectorGrips?: Record<string, Element | null>;
-		selectorGripsGroup?: Element | null;
-		rotateGripConnector?: Element | null;
-		rotateGrip?: Element | null;
 	};
 
 	const setupSelectionRoot = (element: Element | null | undefined) =>
@@ -970,85 +964,12 @@ export const createSvgCanvas = ({
 		return null;
 	};
 
-	const getGraphicsRectInSelectorSpace = (element: Element, selectorElement: Element) => {
-		if (!(element instanceof SVGGraphicsElement)) return null;
-		if (!(selectorElement instanceof SVGGraphicsElement)) return null;
-		const svgRoot = element.ownerSVGElement;
-		const elementMatrix = element.getScreenCTM();
-		const selectorMatrix = selectorElement.getScreenCTM();
-		if (!svgRoot || !elementMatrix || !selectorMatrix) return null;
-		let bbox: DOMRect | SVGRect;
-		try {
-			bbox = element.getBBox();
-		} catch {
-			return null;
-		}
-		const selectorInverse = selectorMatrix.inverse();
-		const points = [
-			[bbox.x, bbox.y],
-			[bbox.x + bbox.width, bbox.y],
-			[bbox.x + bbox.width, bbox.y + bbox.height],
-			[bbox.x, bbox.y + bbox.height]
-		].map(([x, y]) => {
-			const point = svgRoot.createSVGPoint();
-			point.x = x;
-			point.y = y;
-			return point.matrixTransform(elementMatrix).matrixTransform(selectorInverse);
-		});
-		const xs = points.map((point) => point.x);
-		const ys = points.map((point) => point.y);
-		const offset = 1;
-		const left = Math.min(...xs) - offset;
-		const top = Math.min(...ys) - offset;
-		const right = Math.max(...xs) + offset;
-		const bottom = Math.max(...ys) + offset;
-		return {
-			left,
-			top,
-			right,
-			bottom,
-			width: right - left,
-			height: bottom - top
-		};
-	};
-
 	const correctSetupSelector = (element: Element | null | undefined) => {
 		const setupRoot = setupSelectionRoot(element);
 		if (!setupRoot) return;
-		const manager = canvas.selectorManager as SelectorManagerLike | undefined;
-		const selector = manager?.requestSelector?.(setupRoot);
-		if (!selector?.selectorRect) return;
-		const rect = getGraphicsRectInSelectorSpace(setupRoot, selector.selectorRect);
-		if (!rect) return;
-
-		const d = `M${rect.left},${rect.top} L${rect.right},${rect.top} ${rect.right},${rect.bottom} ${rect.left},${rect.bottom}z`;
-		selector.selectorGroup?.setAttribute('transform', '');
-		selector.selectorRect.setAttribute('d', d);
-		selector.gripCoords = {
-			nw: [rect.left, rect.top],
-			n: [rect.left + rect.width / 2, rect.top],
-			ne: [rect.right, rect.top],
-			e: [rect.right, rect.top + rect.height / 2],
-			se: [rect.right, rect.bottom],
-			s: [rect.left + rect.width / 2, rect.bottom],
-			sw: [rect.left, rect.bottom],
-			w: [rect.left, rect.top + rect.height / 2]
-		};
-
-		for (const [dir, coords] of Object.entries(selector.gripCoords)) {
-			const grip = manager?.selectorGrips?.[dir];
-			grip?.setAttribute('cx', String(coords[0]));
-			grip?.setAttribute('cy', String(coords[1]));
-		}
-		manager?.rotateGripConnector?.setAttribute('x1', String(rect.left + rect.width / 2));
-		manager?.rotateGripConnector?.setAttribute('y1', String(rect.top));
-		manager?.rotateGripConnector?.setAttribute('x2', String(rect.left + rect.width / 2));
-		manager?.rotateGripConnector?.setAttribute('y2', String(rect.top - 20));
-		manager?.rotateGrip?.setAttribute('cx', String(rect.left + rect.width / 2));
-		manager?.rotateGrip?.setAttribute('cy', String(rect.top - 20));
-
 		if (!canResizeSelectedSetupElement(setupRoot)) {
-			manager?.selectorGripsGroup?.setAttribute('display', 'none');
+			const manager = canvas.selectorManager as SelectorManagerLike | undefined;
+			manager?.requestSelector?.(setupRoot)?.showGrips?.(false);
 		}
 	};
 

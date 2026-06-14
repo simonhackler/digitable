@@ -2,6 +2,7 @@ import { expect, type Page } from '@playwright/test';
 
 export interface PixiPlayState {
 	visibleStackIds: string[];
+	stackComponentIds: Record<string, string[]>;
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
 	parentIds: Record<string, string>;
@@ -26,6 +27,7 @@ export interface PixiPlayState {
 		visible: boolean;
 		parentId: string | null;
 		points: number;
+		width: number;
 	}[];
 }
 

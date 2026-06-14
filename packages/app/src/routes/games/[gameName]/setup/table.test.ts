@@ -1,87 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import {
-	createDefaultTable,
-	normalizeTableSvg,
-	normalizeTableSlot,
+	placementToSvgElementJson,
 	resolveTableSlotSize,
-	tableToSvg,
 	snapPlacementToGrid,
 	slotToSvgElementJson,
 	svgToTable,
-	type Table
+	type Table,
+	type TablePlacement,
+	type TableSvgElementJson
 } from './table';
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
+import { DOMParser } from '@xmldom/xmldom';
 
 globalThis.DOMParser = DOMParser as unknown as typeof globalThis.DOMParser;
-globalThis.XMLSerializer = XMLSerializer as unknown as typeof globalThis.XMLSerializer;
 
-function groupById(svg: string, id: string) {
-	const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-	const group = Array.from(doc.getElementsByTagName('g')).find(
-		(element) => element.getAttribute('id') === id
+function elementChildren(node: TableSvgElementJson): TableSvgElementJson[] {
+	return (
+		node.children?.filter((child): child is TableSvgElementJson => typeof child !== 'string') ?? []
 	);
-	expect(group).toBeTruthy();
-	return group!;
 }
 
-function hasDeckStack(group: Element) {
-	return Array.from(group.getElementsByTagName('*')).some(
-		(element) => element.getAttribute('data-deck-stack') === 'true'
-	);
+function hasDeckStack(node: TableSvgElementJson) {
+	return elementChildren(node).some((child) => child.attr?.['data-deck-stack'] === 'true');
+}
+
+const legacyCardSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 150"/>';
+
+function placementCardAssets(...placementIds: string[]) {
+	return {
+		placementCardSvgs: new Map(placementIds.map((id) => [id, legacyCardSvg]))
+	};
 }
 
 describe('table setup', () => {
-	it('renders table setup as deterministic svg', () => {
-		const setup: Table = {
-			version: 1,
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [
-				{
-					id: 'deck-1',
-					type: 'deck',
-					deckName: 'western',
-					cardIds: ['western:2', 'western:1'],
-					x: 200,
-					y: 240,
-					rotation: 15,
-					label: 'Western & Co'
-				}
-			],
-			slots: [
-				{
-					id: 'slot-1',
-					label: 'Only <aces>',
-					x: 100,
-					y: 100,
-					width: 220,
-					height: 300,
-					acceptedDeckNames: [],
-					acceptedCardIds: []
-				}
-			]
-		};
-
-		const svg = tableToSvg(setup);
-		expect(svg).toContain('viewBox="0 0 800 600"');
-		expect(svg).not.toContain('#166534');
-		expect(svg).not.toContain('#bbf7d0');
-		expect(svg).toContain('Western &amp; Co');
-		expect(svg).toContain('Only &lt;aces&gt;');
-		expect(svg).toContain('data-card-ids="[&quot;western:2&quot;,&quot;western:1&quot;]"');
-		expect(svg).toContain('data-deck-stack="true"');
-		expect(svg).toContain('data-svgedit-resizable="false"');
-		expect(svg).toContain('data-locked="true"');
-		expect(svg).toContain('style="pointer-events:none;user-select:none"');
-		expect(svg).not.toContain('pointer-events="none"');
-		const deckGroup = groupById(svg, 'deck-1');
-		const slotGroup = groupById(svg, 'slot-1');
-		const slotRect = slotGroup.getElementsByTagName('rect')[0]!;
-		expect(deckGroup.getAttribute('transform')).toBe('translate(140 160) rotate(15 55 75)');
-		expect(slotGroup.getAttribute('transform')).toBe('translate(100 100)');
-		expect(slotRect.getAttribute('x')).toBe('0');
-		expect(slotRect.getAttribute('y')).toBe('0');
-	});
-
 	it('uses saved slot geometry for live svg editor slot updates', () => {
 		const slot = slotToSvgElementJson({
 			id: 'slot-1',
@@ -160,61 +110,45 @@ describe('table setup', () => {
 		);
 	});
 
-	it('renders horizontal flex slot contents as locked card-sized visuals', () => {
-		const setup: Table = {
-			version: 1,
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [],
-			slots: [
-				{
-					id: 'slot-1',
-					label: 'Market',
-					x: 50,
-					y: 60,
-					width: 0,
-					height: 0,
-					acceptedDeckNames: [],
-					acceptedCardIds: [],
-					layout: {
-						mode: 'horizontal-flex',
-						visibleCount: 2,
-						gap: 20,
-						cardSize: 'content-card'
-					},
-					contents: [
-						{ type: 'deck', deckName: 'western' },
-						{ type: 'card', deckName: 'western', cardId: 'western:1' }
-					]
-				}
-			]
-		};
-
-		const svg = tableToSvg(setup, {
-			cardSvgs: new Map([
-				['western:1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Ace</text></svg>']
-			]),
-			deckTopCardIds: new Map([['western', 'western:1']])
-		});
-		const group = groupById(svg, 'slot-1');
-		const rects = Array.from(group.getElementsByTagName('rect'));
-
-		expect(group.getAttribute('data-svgedit-resizable')).toBe('false');
-		expect(group.getAttribute('data-slot-layout-mode')).toBe('horizontal-flex');
-		expect(group.getAttribute('data-slot-contents')).toContain('western:1');
-		expect(rects[0]?.getAttribute('width')).toBe('240');
-		expect(rects[0]?.getAttribute('height')).toBe('150');
-		expect(svg).toContain('<image');
-		expect(svg).toContain('data-deck-stack="true"');
-		expect(svg).toContain('data-locked="true"');
-
-		const parsed = svgToTable(svg, setup);
-		expect(parsed.slots[0]).toEqual(
-			expect.objectContaining({
-				width: 240,
-				height: 150,
-				contents: setup.slots[0].contents
-			})
+	it('renders horizontal flex slot contents as locked card-sized editor elements', () => {
+		const slot = slotToSvgElementJson(
+			{
+				id: 'slot-1',
+				label: 'Market',
+				x: 50,
+				y: 60,
+				width: 0,
+				height: 0,
+				acceptedDeckNames: [],
+				acceptedCardIds: [],
+				layout: {
+					mode: 'horizontal-flex',
+					visibleCount: 2,
+					gap: 20,
+					cardSize: 'content-card'
+				},
+				contents: [
+					{ type: 'deck', deckName: 'western' },
+					{ type: 'card', deckName: 'western', cardId: 'western:1' }
+				]
+			},
+			{
+				cardSvgs: new Map([
+					['western:1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Ace</text></svg>']
+				]),
+				deckTopCardIds: new Map([['western', 'western:1']])
+			}
 		);
+		const children = elementChildren(slot);
+		const rects = children.filter((child) => child.element === 'rect');
+
+		expect(slot.attr?.['data-svgedit-resizable']).toBe('false');
+		expect(slot.attr?.['data-slot-layout-mode']).toBe('horizontal-flex');
+		expect(String(slot.attr?.['data-slot-contents'])).toContain('western:1');
+		expect(rects[0]?.attr).toEqual(expect.objectContaining({ width: 240, height: 150 }));
+		expect(children.some((child) => child.element === 'image')).toBe(true);
+		expect(hasDeckStack(slot)).toBe(true);
+		expect(children.some((child) => child.attr?.['data-locked'] === 'true')).toBe(true);
 	});
 
 	it('snaps placement visual top-left corners to the table grid', () => {
@@ -230,45 +164,9 @@ describe('table setup', () => {
 		});
 
 		expect(placement).toEqual(expect.objectContaining({ x: 155, y: 155 }));
-		expect(tableToSvg({ ...createDefaultTable(), placements: [placement] })).toContain(
-			'transform="translate(100 80) rotate(0 55 75)"'
-		);
-	});
-
-	it('roundtrips generated slot and placement coordinates through svg markup', () => {
-		const setup: Table = {
-			version: 1,
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [
-				{
-					id: 'deck-1',
-					type: 'deck',
-					deckName: 'western',
-					cardIds: ['western:1'],
-					x: 200,
-					y: 240,
-					rotation: 15,
-					label: 'Western'
-				}
-			],
-			slots: [
-				{
-					id: 'slot-1',
-					label: 'Slot 1',
-					x: 100,
-					y: 110,
-					width: 220,
-					height: 300,
-					acceptedDeckNames: [],
-					acceptedCardIds: []
-				}
-			]
-		};
-
-		const parsed = svgToTable(tableToSvg(setup), setup);
-
-		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 195, y: 235 }));
-		expect(parsed.slots[0]).toEqual(expect.objectContaining({ x: 100, y: 110 }));
+		expect(
+			placementToSvgElementJson(placement, placementCardAssets('deck-1')).attr?.transform
+		).toBe('translate(100 80) rotate(0 55 75)');
 	});
 
 	it('folds svg editor slot scale transforms into saved slot dimensions', () => {
@@ -289,10 +187,13 @@ describe('table setup', () => {
 				}
 			]
 		};
-		const svg = tableToSvg(setup).replace(
-			'transform="translate(100 110)"',
-			'transform="matrix(1.5 0 0 2 100 110)"'
-		);
+		const svg = [
+			'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-digitable-table="true" data-preset-id="custom">',
+			'  <g id="slot-1" data-digitable-kind="slot" data-label="Slot 1" data-slot-layout-mode="free" transform="matrix(1.5 0 0 2 100 110)">',
+			'    <rect x="0" y="0" width="220" height="300"/>',
+			'  </g>',
+			'</svg>'
+		].join('\n');
 
 		const parsed = svgToTable(svg, setup);
 
@@ -322,76 +223,68 @@ describe('table setup', () => {
 	});
 
 	it('renders placement card art as a locked image when card svg is available', () => {
-		const setup: Table = {
-			version: 1,
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [
-				{
-					id: 'deck-1',
-					type: 'deck',
-					deckName: 'western',
-					cardIds: ['western:1'],
-					x: 200,
-					y: 240,
-					rotation: 0,
-					label: 'Western'
-				}
-			],
-			slots: []
+		const placement: TablePlacement = {
+			id: 'deck-1',
+			type: 'deck',
+			deckName: 'western',
+			cardIds: ['western:1'],
+			x: 200,
+			y: 240,
+			rotation: 0,
+			label: 'Western'
 		};
-
-		const svg = tableToSvg(setup, {
+		const group = placementToSvgElementJson(placement, {
 			placementCardSvgs: new Map([
 				['deck-1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Top card</text></svg>']
 			])
 		});
+		const children = elementChildren(group);
 
-		expect(svg).toContain('<image');
-		expect(svg).toContain('data:image/svg+xml');
-		expect(svg).toContain('data-deck-stack="true"');
-		expect(svg).toContain('data-locked="true"');
-		expect(svg).not.toContain('pointer-events="none"');
-		expect(svg).not.toContain('<text x="0" y="-6"');
+		expect(children.some((child) => child.element === 'image')).toBe(true);
+		expect(
+			children.some((child) => String(child.attr?.href).startsWith('data:image/svg+xml'))
+		).toBe(true);
+		expect(hasDeckStack(group)).toBe(true);
+		expect(children.some((child) => child.attr?.['data-locked'] === 'true')).toBe(true);
+		expect(children.some((child) => child.element === 'text')).toBe(false);
 	});
 
 	it('renders decks as stacks and individual cards as one card face', () => {
-		const setup: Table = {
-			version: 1,
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [
-				{
-					id: 'deck-1',
-					type: 'deck',
-					deckName: 'western',
-					cardIds: ['western:1'],
-					x: 200,
-					y: 240,
-					rotation: 0,
-					label: 'Western'
-				},
-				{
-					id: 'card-1',
-					type: 'card',
-					deckName: 'western',
-					cardId: 'western:1',
-					x: 360,
-					y: 240,
-					rotation: 0,
-					label: 'Ace'
-				}
-			],
-			slots: []
-		};
-
-		const svg = tableToSvg(setup, {
+		const assets = {
 			placementCardSvgs: new Map([
 				['deck-1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Top card</text></svg>'],
 				['card-1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Single card</text></svg>']
 			])
-		});
+		};
+		const deck = placementToSvgElementJson(
+			{
+				id: 'deck-1',
+				type: 'deck',
+				deckName: 'western',
+				cardIds: ['western:1'],
+				x: 200,
+				y: 240,
+				rotation: 0,
+				label: 'Western'
+			},
+			assets
+		);
+		const card = placementToSvgElementJson(
+			{
+				id: 'card-1',
+				type: 'card',
+				deckName: 'western',
+				cardId: 'western:1',
+				x: 360,
+				y: 240,
+				rotation: 0,
+				label: 'Ace'
+			},
+			assets
+		);
 
-		expect(hasDeckStack(groupById(svg, 'deck-1'))).toBe(true);
-		expect(hasDeckStack(groupById(svg, 'card-1'))).toBe(false);
+		expect(hasDeckStack(deck)).toBe(true);
+		expect(hasDeckStack(card)).toBe(false);
 	});
 
 	it('keeps slot labels from metadata if visible slot text is edited', () => {
@@ -412,7 +305,14 @@ describe('table setup', () => {
 				}
 			]
 		};
-		const editedSvg = tableToSvg(setup).replace('>Slot 1</text>', '>Renamed</text>');
+		const editedSvg = [
+			'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-digitable-table="true" data-preset-id="custom">',
+			'  <g id="slot-1" data-digitable-kind="slot" data-label="Slot 1" transform="translate(50 60)">',
+			'    <rect x="0" y="0" width="200" height="300"/>',
+			'    <text>Renamed</text>',
+			'  </g>',
+			'</svg>'
+		].join('\n');
 
 		expect(svgToTable(editedSvg, setup).slots[0]?.label).toBe('Slot 1');
 	});
@@ -424,28 +324,9 @@ describe('table setup', () => {
 			placements: [],
 			slots: []
 		};
-		const svg = tableToSvg(setup).replace('viewBox="0 0 1200 700"', 'viewBox="0 0 12000 7000"');
+		const svg =
+			'<svg xmlns="http://www.w3.org/2000/svg" width="12000" height="7000" viewBox="0 0 12000 7000" data-digitable-table="true" data-preset-id="two-player"></svg>';
 
 		expect(svgToTable(svg, setup).table).toEqual(setup.table);
-		expect(normalizeTableSvg(svg, setup)).toContain('viewBox="0 0 1200 700"');
-	});
-
-	it('removes the legacy green table background during normalization', () => {
-		const setup: Table = {
-			version: 1,
-			table: { presetId: 'custom', width: 800, height: 600 },
-			placements: [],
-			slots: []
-		};
-		const svg = [
-			'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">',
-			'  <rect width="100%" height="100%" rx="32" fill="#166534"/>',
-			'  <rect x="24" y="24" width="752" height="552" rx="24" fill="none" stroke="#bbf7d0" stroke-width="6" stroke-opacity="0.8"/>',
-			'</svg>'
-		].join('\n');
-		const normalized = normalizeTableSvg(svg, setup);
-
-		expect(normalized).not.toContain('#166534');
-		expect(normalized).not.toContain('#bbf7d0');
 	});
 });
