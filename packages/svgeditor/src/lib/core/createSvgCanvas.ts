@@ -824,7 +824,10 @@ export const createSvgCanvas = ({
 		if (emitChangeSvg !== 'non-setup') return true;
 		const changedElements = changedElementsFromArgs(args);
 		if (changedElements.length === 0) return true;
-		return !changedElements.every((element) => setupSelectionRoot(element));
+		const svgContent = canvas.getSvgContent?.();
+		return !changedElements.every(
+			(element) => element === svgContent || Boolean(setupSelectionRoot(element))
+		);
 	};
 
 	const changeHandler = (...args: unknown[]) => {
@@ -1434,6 +1437,14 @@ export const createSvgCanvas = ({
 		},
 		getSvg() {
 			return canvas.getSvgString();
+		},
+		setResolution(width, height) {
+			const changed = canvas.setResolution?.(width, height) ?? false;
+			if (!changed) return false;
+			refreshLayout({ center: true });
+			if (gridState.show) updateGrid(canvas.getZoom() || 1);
+			if (rulerState.show) updateRulers(canvas.getZoom() || 1);
+			return true;
 		},
 		setMode(mode) {
 			if (mode === 'text' && cancelSetupTextEdit(canvas.getSelectedElements?.()?.[0])) return;

@@ -184,7 +184,7 @@
 	let movingCardLayer: RenderLayer | null = null;
 	let tableWorldOffset = { x: 0, y: 0 };
 
-	let viewport: Viewport;
+	// let viewport: Viewport;
 	let tableItemMetadata: Map<string, TableItemMetadata> = new SvelteMap();
 
 	let hoverItem: BoardGameItemNew | null = null;
@@ -755,11 +755,12 @@
 	}
 
 	async function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
-		viewport = createViewport(app, {
-			worldWidth: localTable.table.table.width,
-			worldHeight: localTable.table.table.height,
-			minScale: 0.2
-		});
+		// viewport = createViewport(app, {
+		// 	worldWidth: localTable.table.table.width,
+		// 	worldHeight: localTable.table.table.height,
+		// 	minScale: 0.2
+		// });
+
 		app.stage.eventMode = 'static';
 
 		function resizeViewportToScreen() {
@@ -1279,22 +1280,23 @@
 	}
 
 	let localTable: LocalTable;
-	let app = $state<Application<Renderer>>(undefined!);
-	let previewer: PreviewHelper;
 	let room: Room<BoardGameRoomState>;
 
 	const { data: tableData, error: tableError } = $derived(
 		await loadRequiredTable({ fileSystem, projectName })
 	);
 	const tableBlockMessage = $derived(tableError?.message);
+    const app = $state(await initApp());
+    const previewer = $derived(new PreviewHelper(app));
+	const viewport = $derived(createViewport(app, {
+			worldWidth: tableData.table.table.width,
+			worldHeight: tableData.table.table.height,
+			minScale: 0.2
+		}));
 
 	if (tableData) {
 		localTable = tableData;
-		const initializedApp = await initApp();
-		app = initializedApp;
-		// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
-		previewer = new PreviewHelper(initializedApp);
-		await initEditor(initializedApp, previewer);
+		await initEditor(app, previewer);
 		room = await createRoom();
 	}
 

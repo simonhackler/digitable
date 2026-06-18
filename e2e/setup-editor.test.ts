@@ -586,6 +586,112 @@ test('table setup components stay non-resizable after double click', async ({ pa
 	await expect(page.locator('#inspector-height')).toBeDisabled();
 });
 
+test('table setup resizes the table canvas without scaling contents', async ({ page }) => {
+	await seedProjects(page);
+	const slotId = 'resize-slot';
+	await writeOpfsText(
+		page,
+		'/western-cards/setup/table.svg',
+		[
+			'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="two-player">',
+			`  <g id="${slotId}" data-digitable-kind="slot" data-label="Resize slot" data-accepted-deck-names="[]" data-accepted-card-ids="[]" data-slot-layout-mode="free" transform="translate(140 160)">`,
+			'    <rect x="0" y="0" width="240" height="320" rx="14" fill="#dbeafe" fill-opacity="0.32" stroke="#2563eb" stroke-width="4" stroke-dasharray="14 10"/>',
+			'    <text x="16" y="32" fill="#1e3a8a" font-family="system-ui, sans-serif" font-size="28" font-weight="700" data-svgedit-resizable="false" data-locked="true" style="pointer-events:none;user-select:none">Resize slot</text>',
+			'  </g>',
+			'</svg>'
+		].join('\n')
+	);
+
+	await page.goto('/app/games/western-cards/setup?e2e');
+	await expect(page.getByRole('status')).toContainText('Loaded');
+	await page.waitForFunction(
+		(id) => Boolean((window as SvgEditorWindow).__svgEditorApi?.getElementById?.(id)),
+		slotId
+	);
+	await page.getByRole('button', { name: 'ResizeTable' }).click();
+	const dialog = page.getByRole('dialog', { name: 'ResizeTable' });
+	await dialog.getByLabel('Preset').selectOption('six-player');
+	await expect(dialog.getByLabel('Table width')).toHaveValue('1800');
+	await expect(dialog.getByLabel('Table height')).toHaveValue('1000');
+	await dialog.getByLabel('Table width').fill('1600');
+	await dialog.getByLabel('Table height').fill('900');
+	await dialog.getByRole('button', { name: 'Apply' }).click();
+
+	await expect
+		.poll(() =>
+			page.evaluate((id) => {
+				const global = window as SvgEditorWindow;
+				const svg = global.__svgEditorApi?.getSvg() ?? '';
+				const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+				const root = doc.documentElement;
+				const slot = global.__svgEditorApi?.getElementById?.(id);
+				const rect = slot?.querySelector('rect');
+				return {
+					width: root.getAttribute('width'),
+					height: root.getAttribute('height'),
+					presetId: root.getAttribute('data-preset-id'),
+					slotTransform: slot?.getAttribute('transform'),
+					slotRect: {
+						x: rect?.getAttribute('x'),
+						y: rect?.getAttribute('y'),
+						width: rect?.getAttribute('width'),
+						height: rect?.getAttribute('height')
+					}
+				};
+			}, slotId)
+		)
+		.toEqual({
+			width: '1600',
+			height: '900',
+			presetId: 'custom',
+			slotTransform: 'translate(140 160)',
+			slotRect: {
+				x: '0',
+				y: '0',
+				width: '240',
+				height: '320'
+			}
+		});
+
+	await expect(page.getByRole('status')).toContainText('Autosaved', { timeout: 15_000 });
+	const svg = await readOpfsText(page, '/western-cards/setup/table.svg');
+	const saved = await page.evaluate(
+		({ svg, slotId }) => {
+			const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+			const root = doc.documentElement;
+			const slot = root.querySelector(`#${CSS.escape(slotId)}`);
+			const rect = slot?.querySelector('rect');
+			return {
+				width: root.getAttribute('width'),
+				height: root.getAttribute('height'),
+				viewBox: root.getAttribute('viewBox'),
+				presetId: root.getAttribute('data-preset-id'),
+				slotTransform: slot?.getAttribute('transform'),
+				slotRect: {
+					x: rect?.getAttribute('x'),
+					y: rect?.getAttribute('y'),
+					width: rect?.getAttribute('width'),
+					height: rect?.getAttribute('height')
+				}
+			};
+		},
+		{ svg, slotId }
+	);
+	expect(saved).toEqual({
+		width: '1600',
+		height: '900',
+		viewBox: '0 0 1600 900',
+		presetId: 'custom',
+		slotTransform: 'translate(140 160)',
+		slotRect: {
+			x: '0',
+			y: '0',
+			width: '240',
+			height: '320'
+		}
+	});
+});
+
 test('table setup preserves slot rotation on autosave', async ({ page }) => {
 	await seedProjects(page);
 

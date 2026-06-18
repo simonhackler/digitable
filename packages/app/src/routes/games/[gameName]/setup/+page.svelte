@@ -12,7 +12,7 @@
 		type SelectionChangeEvent,
 		type SvgEditorApi
 	} from '@svg-table/svgeditor';
-	import { Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
+	import { Maximize2, Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
@@ -77,14 +77,18 @@
 		return `<svg xmlns="http://www.w3.org/2000/svg" width="${table.width}" height="${table.height}" viewBox="0 0 ${table.width} ${table.height}" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="${table.presetId}"></svg>`;
 	}
 
-	function applyTableRootInfo(root: Element, table: TableInfo) {
-		root.setAttribute('width', String(table.width));
-		root.setAttribute('height', String(table.height));
-		root.setAttribute('viewBox', `0 0 ${table.width} ${table.height}`);
+	function applyTableRootMetadata(root: Element, table: TableInfo) {
 		root.setAttribute('role', 'img');
 		root.setAttribute('aria-label', 'Digitable table setup');
 		root.setAttribute('data-digitable-table', 'true');
 		root.setAttribute('data-preset-id', table.presetId);
+	}
+
+	function applyTableRootInfo(root: Element, table: TableInfo) {
+		root.setAttribute('width', String(table.width));
+		root.setAttribute('height', String(table.height));
+		root.setAttribute('viewBox', `0 0 ${table.width} ${table.height}`);
+		applyTableRootMetadata(root, table);
 	}
 
 	function updateSerializedTableRoot(svg: string, table: TableInfo) {
@@ -203,6 +207,11 @@
 	let isLoading = $state(true);
 	let addComponentOpen = $state(false);
 	let addSlotContentOpen = $state(false);
+	let resizeTableOpen = $state(false);
+	let resizeTablePresetId = $state<TablePresetId>(fallbackTable.table.presetId);
+	let resizeTableWidth = $state<number | undefined>(fallbackTable.table.width);
+	let resizeTableHeight = $state<number | undefined>(fallbackTable.table.height);
+	let resizeTableError = $state('');
 	let editorSvg = $state(emptyTableSvg(fallbackTable.table));
 	let editorApi = $state<SvgEditorApi | null>(null);
 	let editorPanel = $state('component');
@@ -219,6 +228,7 @@
 
 	const AUTOSAVE_DELAY_MS = 800;
 	const AUTOSAVE_IDLE_TIMEOUT_MS = 2000;
+	const MIN_TABLE_DIMENSION = 100;
 
 	const setupView = $derived.by(() => tableViewFromSvg(editorSvg));
 	const selectedSlot = $derived(setupView.slots.find((slot) => slot.id === selectedSlotId) ?? null);
@@ -299,6 +309,37 @@
 
 	function currentEditorSvgElement() {
 		return editorApi?._unsafe?.rawCanvas()?.getSvgContent?.() ?? null;
+	}
+
+	function positiveSvgNumber(value: string | null | undefined): number | null {
+		const number = Number.parseFloat(String(value ?? ''));
+		return Number.isFinite(number) && number > 0 ? number : null;
+	}
+
+	function tablePresetIdFromRoot(root: Element | null | undefined): TablePresetId {
+		const value = root?.getAttribute('data-preset-id');
+		return tablePresets.find((preset) => preset.id === value)?.id ?? fallbackTable.table.presetId;
+	}
+
+	function tableRootInfo(root: Element | null | undefined = currentEditorSvgElement()): TableInfo {
+		const viewBox =
+			root
+				?.getAttribute('viewBox')
+				?.split(/[,\s]+/)
+				.map((part) => Number(part)) ?? [];
+		const width =
+			(Number.isFinite(viewBox[2]) && viewBox[2] > 0 ? viewBox[2] : null) ??
+			positiveSvgNumber(root?.getAttribute('width')) ??
+			fallbackTable.table.width;
+		const height =
+			(Number.isFinite(viewBox[3]) && viewBox[3] > 0 ? viewBox[3] : null) ??
+			positiveSvgNumber(root?.getAttribute('height')) ??
+			fallbackTable.table.height;
+		return {
+			presetId: tablePresetIdFromRoot(root),
+			width,
+			height
+		};
 	}
 
 	function fallbackTableWithRoot(tableInfo: TableInfo = fallbackTable.table): Table {
@@ -488,34 +529,61 @@
 		scheduleAutosave();
 	}
 
-	function setPreset(presetId: TablePresetId) {
+	function parseResizeTableDimension(label: 'Width' | 'Height', value: number | undefined) {
+		if (value === undefined || !Number.isFinite(value) || value < MIN_TABLE_DIMENSION) {
+			return { error: `${label} must be at least ${MIN_TABLE_DIMENSION}.` };
+		}
+		return { value: Math.round(value) };
+	}
+
+	function openResizeTableDialog() {
+		const table = tableRootInfo();
+		resizeTablePresetId = table.presetId;
+		resizeTableWidth = table.width;
+		resizeTableHeight = table.height;
+		resizeTableError = '';
+		resizeTableOpen = true;
+	}
+
+	function setResizeTablePreset(presetId: TablePresetId) {
 		const preset = tablePresets.find((candidate) => candidate.id === presetId);
 		if (!preset) return;
-		updateTableRoot({
-			presetId,
-			width: preset.width,
-			height: preset.height
-		});
+		resizeTablePresetId = presetId;
+		resizeTableWidth = preset.width;
+		resizeTableHeight = preset.height;
+		resizeTableError = '';
 	}
 
-	function updateTableSize(key: 'width' | 'height', value: number) {
-		updateTableRoot({
-			...currentEditorTable().table,
-			presetId: 'custom',
-			[key]: Math.max(100, value)
-		});
+	function resizeTablePresetForDimensions(presetId: TablePresetId, width: number, height: number) {
+		const preset = tablePresets.find((candidate) => candidate.id === presetId);
+		return preset?.width === width && preset.height === height ? presetId : 'custom';
 	}
 
-	function updateTableRoot(tableInfo: TableInfo) {
-		const root = currentEditorSvgElement();
-		if (root) {
-			applyTableRootInfo(root, tableInfo);
-			editorApi?.refreshLayout();
-			editorSvg = serializeSvg(root);
+	function applyResizeTable() {
+		const width = parseResizeTableDimension('Width', resizeTableWidth);
+		if ('error' in width) {
+			resizeTableError = width.error;
+			return;
+		}
+		const height = parseResizeTableDimension('Height', resizeTableHeight);
+		if ('error' in height) {
+			resizeTableError = height.error;
+			return;
+		}
+		const table = {
+			width: width.value,
+			height: height.value,
+			presetId: resizeTablePresetForDimensions(resizeTablePresetId, width.value, height.value)
+		};
+		if (editorApi?.setResolution(table.width, table.height)) {
+			const root = currentEditorSvgElement();
+			if (root) applyTableRootMetadata(root, table);
 		} else {
-			editorSvg = updateSerializedTableRoot(editorSvg, tableInfo);
+			editorSvg = updateSerializedTableRoot(currentEditorSvg(), table);
 		}
 		scheduleAutosave();
+		resizeTableError = '';
+		resizeTableOpen = false;
 	}
 
 	function addPlacement(payload: DragPayload, x: number, y: number) {
@@ -961,7 +1029,6 @@
 </svelte:head>
 
 <main class="flex h-svh min-h-0 flex-col gap-3 overflow-hidden p-4">
-	{@render tableControls()}
 	<div
 		role="region"
 		aria-label="Table SVG editor"
@@ -991,57 +1058,6 @@
 		{/if}
 	</div>
 </main>
-
-{#snippet tableControls()}
-	<section class="bg-background rounded-md border px-4 py-3 text-sm">
-		<div class="flex flex-wrap items-end gap-3">
-			<div class="mr-auto min-w-40">
-				<h2 class="font-semibold">Table</h2>
-				<p class="text-muted-foreground text-xs">{projectName}</p>
-			</div>
-			<div class="grid gap-1">
-				<label class="font-medium" for="table-preset">Preset</label>
-				<select
-					id="table-preset"
-					class="border-input bg-background h-9 w-44 rounded-md border px-3"
-					value={setupView.table.presetId}
-					disabled={isLoading}
-					onchange={(event) =>
-						setPreset((event.currentTarget as HTMLSelectElement).value as TablePresetId)}
-				>
-					{#each tablePresets as preset (preset.id)}
-						<option value={preset.id}>{preset.name}</option>
-					{/each}
-				</select>
-			</div>
-			<label class="grid gap-1 font-medium">
-				Width
-				<Input
-					class="w-28"
-					type="number"
-					min="100"
-					value={setupView.table.width}
-					disabled={isLoading}
-					oninput={(event) => updateTableSize('width', Number(event.currentTarget.value))}
-				/>
-			</label>
-			<label class="grid gap-1 font-medium">
-				Height
-				<Input
-					class="w-28"
-					type="number"
-					min="100"
-					value={setupView.table.height}
-					disabled={isLoading}
-					oninput={(event) => updateTableSize('height', Number(event.currentTarget.value))}
-				/>
-			</label>
-		</div>
-		{#if saveError}
-			<p class="text-destructive mt-2 text-xs" role="alert">{saveError}</p>
-		{/if}
-	</section>
-{/snippet}
 
 {#snippet tableComponentPanel()}
 	<div class="space-y-4 text-sm">
@@ -1445,7 +1461,84 @@
 		<SquareDashedMousePointer class="size-4" />
 		Add slot
 	</Button>
+	<Dialog.Root bind:open={resizeTableOpen}>
+		<Dialog.Trigger>
+			{#snippet child({ props })}
+				<Button
+					{...props}
+					size="sm"
+					variant="ghost"
+					class="rounded-lg px-3 text-xs font-semibold tracking-wide uppercase"
+					title="Resize table"
+					disabled={isLoading || !editorApi}
+					onclick={openResizeTableDialog}
+				>
+					<Maximize2 class="size-4" />
+					ResizeTable
+				</Button>
+			{/snippet}
+		</Dialog.Trigger>
+		<Dialog.Content class="sm:max-w-md">
+			<Dialog.Header>
+				<Dialog.Title>ResizeTable</Dialog.Title>
+				<Dialog.Description>Set the table canvas size.</Dialog.Description>
+			</Dialog.Header>
+			<div class="grid gap-4">
+				<div class="grid gap-1">
+					<label class="font-medium" for="resize-table-preset">Preset</label>
+					<select
+						id="resize-table-preset"
+						class="border-input bg-background h-9 rounded-md border px-3"
+						value={resizeTablePresetId}
+						onchange={(event) =>
+							setResizeTablePreset(
+								(event.currentTarget as HTMLSelectElement).value as TablePresetId
+							)}
+					>
+						{#each tablePresets as preset (preset.id)}
+							<option value={preset.id}>{preset.name}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="grid grid-cols-2 gap-3">
+					<label class="grid gap-1 font-medium">
+						Width
+						<Input
+							aria-label="Table width"
+							aria-describedby={resizeTableError ? 'resize-table-error' : undefined}
+							aria-invalid={resizeTableError.startsWith('Width') ? 'true' : undefined}
+							type="number"
+							min="100"
+							bind:value={resizeTableWidth}
+						/>
+					</label>
+					<label class="grid gap-1 font-medium">
+						Height
+						<Input
+							aria-label="Table height"
+							aria-describedby={resizeTableError ? 'resize-table-error' : undefined}
+							aria-invalid={resizeTableError.startsWith('Height') ? 'true' : undefined}
+							type="number"
+							min="100"
+							bind:value={resizeTableHeight}
+						/>
+					</label>
+				</div>
+				{#if resizeTableError}
+					<p id="resize-table-error" class="text-destructive text-sm" role="alert">
+						{resizeTableError}
+					</p>
+				{/if}
+				<div class="flex justify-end">
+					<Button type="button" onclick={applyResizeTable}>Apply</Button>
+				</div>
+			</div>
+		</Dialog.Content>
+	</Dialog.Root>
 	<span class="text-muted-foreground px-2 text-xs" role="status">
 		{isSaving ? 'Autosaving' : status}
 	</span>
+	{#if saveError}
+		<span class="text-destructive px-2 text-xs" role="alert">{saveError}</span>
+	{/if}
 {/snippet}

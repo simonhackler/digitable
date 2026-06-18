@@ -77,7 +77,6 @@
 	const interactionDisabled = $derived(disabled || readonly);
 	const resolvedConfig = $derived.by(() => ({
 		canvas_expansion: 1,
-		show_outside_canvas: false,
 		showRulers: true,
 		...(config ?? {})
 	}));
