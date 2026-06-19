@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import type jspreadsheet from 'jspreadsheet-ce';
 	import GenerateImagesModal from './generate-images-modal.svelte';
@@ -11,6 +10,8 @@
 	import { ASSETS_DIR } from '$lib/workspace/project-layout';
 	import { requireParam } from '$lib/utils/assert';
 	import { FlipHorizontal2, LayoutTemplate } from '@lucide/svelte';
+	import GameTopBar from '../../../../game-top-bar.svelte';
+	import { Separator } from '$lib/components/ui/separator/index.js';
 
 	let {
 		deletedSvgColumns,
@@ -23,7 +24,9 @@
 		editorPath,
 		spreadsheet,
 		svgTemplate,
-		imagePaths
+		imagePaths,
+		status,
+		statusError = null
 	}: {
 		deletedSvgColumns: string[];
 		onAddColumn: (col: string) => void;
@@ -41,6 +44,8 @@
 		spreadsheet: jspreadsheet.WorksheetInstance;
 		svgTemplate: SVGSVGElement;
 		imagePaths: Map<string, string>;
+		status?: string;
+		statusError?: string | null;
 	} = $props();
 
 	const gameName = $derived(requireParam('gameName'));
@@ -92,16 +97,13 @@
 	}
 </script>
 
-<div
-	class="flex w-full flex-wrap items-center gap-2"
-	role="toolbar"
-	aria-label="Spreadsheet editor toolbar"
->
-	<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
-		<Button size="sm" variant="ghost" href={editorPath} title="Open Layout editor">
-			<LayoutTemplate class="size-4" />
-			Layout
-		</Button>
+<GameTopBar {status} {statusError}>
+	<Button size="sm" variant="ghost" href={editorPath} title="Open Layout editor">
+		<LayoutTemplate class="size-4" />
+		Layout
+	</Button>
+	<Separator orientation="vertical" class="h-5" />
+	<div class="flex items-center">
 		<Button
 			size="sm"
 			variant="ghost"
@@ -112,8 +114,6 @@
 			<FlipHorizontal2 class="size-4" />
 			{showFront ? 'Back' : 'Front'}
 		</Button>
-	</ButtonGroup.Root>
-	<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
 		<Popover.Root>
 			<Popover.Trigger>
 				{#snippet child({ props })}
@@ -150,5 +150,5 @@
 			onGenerateImages={handleGenerateImages}
 		/>
 		<ImageSelectionModal {selection} {spreadsheet} {imagePaths} />
-	</ButtonGroup.Root>
-</div>
+	</div>
+</GameTopBar>

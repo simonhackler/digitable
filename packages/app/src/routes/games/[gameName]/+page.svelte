@@ -16,6 +16,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import GameTopBar from '../game-top-bar.svelte';
 
 	const fileSystem = getFileSystemContext();
 	const games = getGamesContext();
@@ -211,8 +212,10 @@
 	}
 </script>
 
-<div class="mx-auto max-w-4xl p-6">
-	<Card.Root>
+<div class="flex min-h-svh flex-col">
+	<GameTopBar/>
+	<div class="mx-auto w-full max-w-4xl p-6">
+		<Card.Root>
 		<Card.Header>
 			<Card.Title class="text-center text-2xl font-bold">
 				{isEditMode ? 'Edit Board Game' : 'Create New Board Game'}
@@ -422,5 +425,6 @@
 				</form>
 			{/key}
 		</Card.Content>
-	</Card.Root>
+		</Card.Root>
+	</div>
 </div>

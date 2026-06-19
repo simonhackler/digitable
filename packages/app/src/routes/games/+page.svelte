@@ -7,6 +7,7 @@
 	import { Plus, FolderOpen } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import CreateGamePopover from './create-game-popover.svelte';
+	import GameTopBar from './game-top-bar.svelte';
 
 	const games = getGamesContext();
 
@@ -15,9 +16,8 @@
 	}
 </script>
 
-<div class="container mx-auto max-w-4xl p-6">
-	<div class="mb-6 flex items-center justify-between">
-		<h1 class="text-3xl font-bold">Board Games</h1>
+<div class="flex min-h-svh flex-col">
+	<GameTopBar>
 		<CreateGamePopover>
 			{#snippet trigger(props)}
 				<Button {...props} class="flex items-center gap-2">
@@ -26,8 +26,9 @@
 				</Button>
 			{/snippet}
 		</CreateGamePopover>
-	</div>
+	</GameTopBar>
 
+	<div class="container mx-auto max-w-4xl p-6">
 	{#if games.existingGames === null}
 		<div class="flex items-center justify-center py-12">
 			<div class="text-muted-foreground">Loading games...</div>
@@ -83,4 +84,5 @@
 			{/each}
 		</div>
 	{/if}
+	</div>
 </div>

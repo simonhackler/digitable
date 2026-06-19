@@ -3,7 +3,6 @@
 	import { ReferenceEditor, type ChangeEvent } from '@svg-table/svgeditor';
 	import type { createEditorController } from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import * as ButtonGroup from '$lib/components/ui/button-group/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -18,6 +17,8 @@
 	import { isEmbeddedImageReference, resolveImageReference } from '../../../data-loader';
 	import ImageSelector from '../../../image-selector.svelte';
 	import { getDeckSideIndexContext, getToLoadSvgsContext } from '../svg-context.svelte';
+	import GameTopBar from '../../../../game-top-bar.svelte';
+	import { Separator } from '$lib/components/ui/separator';
 
 	type Side = 'front' | 'back';
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -418,25 +419,24 @@
 	};
 </script>
 
-<main class="flex h-svh w-full flex-col gap-4 overflow-hidden p-4">
-	<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Layout editor toolbar">
-		<ButtonGroup.Root class="bg-background/70 rounded-xl border p-1 shadow-sm">
-			<Button size="sm" variant="ghost" href={dataPath} title="Open Spreadsheet editor">
-				<Table2 class="size-4" />
-				Spreadsheet
-			</Button>
-			<Button
-				size="sm"
-				variant="ghost"
-				class="w-20 justify-start"
-				onclick={flipSide}
-				title="Flip card side"
-			>
-				<FlipHorizontal2 class="size-4" />
-				{side === 'front' ? 'Back' : 'Front'}
-			</Button>
-		</ButtonGroup.Root>
-	</div>
+<main class="flex h-svh w-full flex-col overflow-hidden">
+	<GameTopBar>
+		<Button size="sm" variant="ghost" href={dataPath} title="Open Spreadsheet editor">
+			<Table2 class="size-4" />
+			Spreadsheet
+		</Button>
+		<Separator orientation="vertical" class="h-5" />
+		<Button
+			size="sm"
+			variant="ghost"
+			class="w-20 justify-start"
+			onclick={flipSide}
+			title="Flip card side"
+		>
+			<FlipHorizontal2 class="size-4" />
+			{side === 'front' ? 'Back' : 'Front'}
+		</Button>
+	</GameTopBar>
 
 	<input
 		bind:this={uploadInput}
@@ -448,7 +448,7 @@
 
 	{#if hasAnySvg && svg}
 		{#key editorKey}
-			<div class="min-h-0 flex-1">
+			<div class="min-h-0 flex-1 p-4">
 				<ReferenceEditor
 					value={editorSvg.value}
 					{config}
@@ -463,7 +463,7 @@
 			</div>
 		{/key}
 	{:else}
-		<Card>
+		<Card class="m-4">
 			<CardContent
 				class="flex min-h-96 flex-col items-center justify-center gap-4 pt-6 text-center"
 			>

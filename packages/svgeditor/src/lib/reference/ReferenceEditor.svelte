@@ -384,15 +384,15 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="bg-background flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
-	<div class="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-		<div class="flex min-h-0 min-w-0 flex-col gap-3">
+<div class="bg-background flex h-full min-h-0 flex-col overflow-hidden">
+	<div class="grid min-h-0 flex-1 gap-2 p-2 lg:grid-cols-[minmax(0,1fr)_260px]">
+		<div class="flex min-h-0 min-w-0 flex-col gap-2">
 			<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-				<div class="bg-muted/40 px-4 py-3">
+				<div class="bg-muted/40 px-2 py-2">
 					<Toolbar {controller} variant="actions" framed={false} {extraActions} />
 				</div>
 				<div class="flex min-h-0 flex-1">
-					<div class="flex w-12 shrink-0 justify-center py-4">
+					<div class="flex w-10 shrink-0 justify-center py-2">
 						<Toolbar
 							{controller}
 							variant="modes"
@@ -402,7 +402,7 @@
 						/>
 					</div>
 					<div class="min-h-0 min-w-0 flex-1">
-						<div class="h-full py-4 pr-4">
+						<div class="h-full py-2 pr-2">
 							<SvgCanvasHost
 								{value}
 								bind:api

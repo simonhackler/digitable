@@ -19,6 +19,7 @@
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndDataForSides } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
+	import GameTopBar from '../../game-top-bar.svelte';
 	import {
 		createHorizontalFlexSlotLayout,
 		createGridSlotLayout,
@@ -529,7 +530,12 @@
 		scheduleAutosave();
 	}
 
-	function parseResizeTableDimension(label: 'Width' | 'Height', value: number | undefined) {
+	type ResizeTableDimensionResult = { value: number } | { error: string };
+
+	function parseResizeTableDimension(
+		label: 'Width' | 'Height',
+		value: number | undefined
+	): ResizeTableDimensionResult {
 		if (value === undefined || !Number.isFinite(value) || value < MIN_TABLE_DIMENSION) {
 			return { error: `${label} must be at least ${MIN_TABLE_DIMENSION}.` };
 		}
@@ -1028,11 +1034,12 @@
 	<title>Table {projectName}</title>
 </svelte:head>
 
-<main class="flex h-svh min-h-0 flex-col gap-3 overflow-hidden p-4">
+<main class="flex h-svh min-h-0 flex-col overflow-hidden">
+	<GameTopBar status={isSaving ? 'Autosaving' : status} statusError={saveError} />
 	<div
 		role="region"
 		aria-label="Table SVG editor"
-		class="min-h-0 flex-1 overflow-hidden rounded-md border bg-emerald-950/10"
+		class="min-h-0 flex-1 overflow-hidden p-2"
 	>
 		{#if isLoading}
 			<div class="text-muted-foreground flex h-full items-center justify-center text-sm">
@@ -1535,10 +1542,4 @@
 			</div>
 		</Dialog.Content>
 	</Dialog.Root>
-	<span class="text-muted-foreground px-2 text-xs" role="status">
-		{isSaving ? 'Autosaving' : status}
-	</span>
-	{#if saveError}
-		<span class="text-destructive px-2 text-xs" role="alert">{saveError}</span>
-	{/if}
 {/snippet}
