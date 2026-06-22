@@ -36,7 +36,9 @@ function playtestReturnPath(playtestId: string, value: string | null) {
 	if (!next) return null;
 
 	const parsed = new URL(next, LOCAL_ORIGIN);
-	if (parsed.pathname !== playtestPath(playtestId)) return null;
+	const basePath = playtestPath(playtestId);
+	const roomPath = new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/rooms/[^/]+$`);
+	if (parsed.pathname !== basePath && !roomPath.test(parsed.pathname)) return null;
 
 	return next;
 }

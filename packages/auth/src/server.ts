@@ -1,4 +1,4 @@
-import { betterAuth } from 'better-auth';
+import { APIError, betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { anonymous } from 'better-auth/plugins';
 
@@ -9,6 +9,7 @@ type AuthPlugin = NonNullable<Parameters<typeof betterAuth>[0]['plugins']>[numbe
 
 type CreateAuthOptions = {
 	baseURL?: string;
+	basePath?: string;
 };
 
 function googleCredentials() {
@@ -40,6 +41,11 @@ function env(name: string, fallback: string) {
 	return fallback;
 }
 
+function normalizeAnonymousName(value: unknown) {
+	if (typeof value !== 'string') return '';
+	return value.trim().replace(/\s+/g, ' ').slice(0, 80);
+}
+
 export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOptions = {}) {
 	const cookieDomain = process.env.AUTH_COOKIE_DOMAIN;
 	const cookiePrefix = process.env.BETTER_AUTH_COOKIE_PREFIX;
@@ -54,7 +60,7 @@ export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOption
 			schema
 		}),
 		baseURL,
-		basePath: '/api/auth',
+		basePath: options.basePath ?? '/api/auth',
 		secret: env('BETTER_AUTH_SECRET', 'dev-only-better-auth-secret-change-me'),
 		trustedOrigins: compact([process.env.WEB_ORIGIN, process.env.SECOND_WEB_ORIGIN, baseURL]),
 		emailAndPassword: {
@@ -71,7 +77,17 @@ export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOption
 			anonymous({
 				disableDeleteAnonymousUser: true,
 				emailDomainName: 'anonymous.digitable.invalid',
-				generateName: () => 'Playtester'
+				generateName: (ctx) => {
+					const name = normalizeAnonymousName(
+						(ctx.body as Record<string, unknown> | undefined)?.name
+					);
+					if (!name) {
+						throw new APIError('BAD_REQUEST', {
+							message: 'Enter your name to join this playtest.'
+						});
+					}
+					return name;
+				}
 			}),
 			...plugins
 		],

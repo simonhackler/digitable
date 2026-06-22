@@ -21,8 +21,9 @@
 	},
 	"homepage": "https://github.com/colyseus/create-colyseus#readme",
 	"devDependencies": {
-		"@colyseus/loadtest": "^0.16.0",
-		"@colyseus/testing": "^0.16.0",
+		"@colyseus/loadtest": "^0.17.8",
+		"@colyseus/sdk": "^0.17.42",
+		"@colyseus/testing": "^0.17.11",
 		"@types/express": "^5.0.6",
 		"@types/mocha": "^10.0.1",
 		"mocha": "^11.7.5",
@@ -31,12 +32,14 @@
 		"typescript": "^5.0.4"
 	},
 	"dependencies": {
-		"@colyseus/monitor": "^0.16.0",
-		"@colyseus/playground": "^0.16.0",
-		"@colyseus/schema": "^3.0.70",
-		"@colyseus/tools": "^0.16.15",
+		"@colyseus/core": "^0.17.43",
+		"@colyseus/monitor": "^0.17.8",
+		"@colyseus/playground": "^0.17.12",
+		"@colyseus/schema": "^4.0.26",
+		"@colyseus/tools": "^0.17.19",
+		"@colyseus/ws-transport": "^0.17.13",
 		"@svg-table/db": "workspace:*",
-		"colyseus": "^0.16.5",
+		"colyseus": "^0.17.10",
 		"debug": "^4.4.3",
 		"express": "^5.2.1"
 	}

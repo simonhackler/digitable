@@ -55,7 +55,7 @@ test.beforeAll(async () => {
 });
 
 async function signInViaAuthApi(page: import('@playwright/test').Page, email: string) {
-	const response = await page.request.post('/api/auth/sign-in/email', {
+	const response = await page.request.post('/app/api/auth/sign-in/email', {
 		data: {
 			email,
 			password
@@ -83,12 +83,13 @@ async function userAcceptances(userId: string) {
 }
 
 async function currentAppSessionUser(page: import('@playwright/test').Page) {
-	const response = await page.request.get('/api/auth/get-session');
+	const response = await page.request.get('/app/api/auth/get-session');
 	expect(response.ok()).toBe(true);
 
 	const session = (await response.json()) as {
 		user?: {
 			id: string;
+			name?: string;
 			isAnonymous?: boolean;
 		};
 	} | null;
@@ -137,7 +138,7 @@ test('missing current policy acceptances redirect to the legal acceptance page',
 }) => {
 	const email = `legal-missing-e2e-${Date.now()}@example.com`;
 
-	const response = await request.post('/api/auth/sign-up/email', {
+	const response = await request.post('/app/api/auth/sign-up/email', {
 		data: {
 			name: 'Legal Missing E2E',
 			email,
@@ -173,6 +174,15 @@ test('missing current policy acceptances redirect to the legal acceptance page',
 	await expect.poll(async () => userAcceptances(user.id)).toHaveLength(2);
 });
 
+test('anonymous sign-in requires a name', async ({ request }) => {
+	const response = await request.post('/app/api/auth/sign-in/anonymous', {
+		data: {}
+	});
+
+	expect(response.status()).toBe(400);
+	expect(await response.text()).toContain('Enter your name to join this playtest.');
+});
+
 test('anonymous playtest legal acceptance records current policy acceptances', async ({ page }) => {
 	const playtestPath = `/app/playtests/${randomUUID()}?e2e=1`;
 
@@ -183,6 +193,7 @@ test('anonymous playtest legal acceptance records current policy acceptances', a
 		page.getByRole('heading', { name: 'Review the current legal documents.' })
 	).toBeVisible();
 
+	await page.getByLabel('Your name').fill('Legal Anonymous');
 	await page.getByRole('checkbox').check();
 	await page.getByRole('button', { name: 'Continue' }).click();
 
@@ -191,6 +202,7 @@ test('anonymous playtest legal acceptance records current policy acceptances', a
 	const anonymousUser = await currentAppSessionUser(page);
 	expect(anonymousUser).toBeTruthy();
 	expect(anonymousUser?.isAnonymous).toBe(true);
+	expect(anonymousUser?.name).toBe('Legal Anonymous');
 
 	await expect
 		.poll(async () => policiesModule.getMissingCurrentPolicies(anonymousUser!.id))

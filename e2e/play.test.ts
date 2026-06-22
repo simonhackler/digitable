@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { seedProjectFiles, useBrowserStorage } from './helpers/opfs';
+import { expect, test, type Page, type Request, type Response } from '@playwright/test';
+import { seedProjectFiles, useBrowserStorage, writeBufferToOPFS } from './helpers/opfs';
 import { pixiClick, pixiDragTo, pixiPoint, pixiState, waitForPixi } from './helpers/pixi';
 
 const playtestAppOrigin = process.env.PLAYTEST_APP_ORIGIN ?? '';
@@ -25,6 +25,32 @@ async function seedPixiProject(page: Page, projectSlug: string) {
 	await useBrowserStorage(page);
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
 	await expect(page.getByRole('main').getByText(projectSlug)).toBeVisible();
+}
+
+async function setProjectPlayerLimits(
+	page: Page,
+	projectSlug: string,
+	minPlayers: number,
+	maxPlayers: number
+) {
+	await writeBufferToOPFS(
+		page,
+		`/${projectSlug}/game.json`,
+		Buffer.from(
+			JSON.stringify(
+				{
+					name: 'Pixi Play Smoke',
+					minPlayers,
+					maxPlayers,
+					description: 'Minimal fixture project for Pixi play E2E coverage.',
+					tags: ['E2E', 'Pixi'],
+					digitableVersion: '0.0.1'
+				},
+				null,
+				2
+			)
+		)
+	);
 }
 
 async function openPixiSmokeTest(page: Page) {
@@ -145,7 +171,77 @@ async function startPlaytestAndGetInvite(page: Page, projectSlug: string) {
 	return inviteInput.inputValue();
 }
 
-async function openAnonymousPlaytestInvite(page: Page, inviteUrl: string) {
+async function openPlaytestRoomList(page: Page, inviteUrl: string) {
+	await page.goto(`${inviteUrl}?e2e=1`);
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
+	await expect(page.getByRole('heading', { name: /Rooms for/ })).toBeVisible();
+}
+
+async function createPlaytestRoom(page: Page, inviteUrl: string, roomName: string) {
+	await openPlaytestRoomList(page, inviteUrl);
+	await page.getByLabel('Room name').fill(roomName);
+	await page.getByRole('button', { name: 'Create room' }).click();
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\/rooms\/[A-Za-z0-9_-]+\?e2e=1$/);
+	await expect(page.getByRole('heading', { name: roomName })).toBeVisible();
+	await expect(page.getByText('Playtest E2E (You)')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Ready up' })).toBeVisible();
+	return page.url();
+}
+
+async function joinPlaytestRoom(page: Page, inviteUrl: string, roomName: string) {
+	await openPlaytestRoomList(page, inviteUrl);
+	await page.getByRole('link', { name: new RegExp(roomName) }).click();
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\/rooms\/[A-Za-z0-9_-]+\?e2e=1$/);
+	await expect(page.getByRole('heading', { name: roomName })).toBeVisible();
+}
+
+async function readyAndWaitForPixi(page: Page) {
+	await page.getByRole('button', { name: 'Ready up' }).click();
+	await waitForPixi(page);
+}
+
+function collectPlaytestStartFailures(...pages: Page[]) {
+	const failures: string[] = [];
+	const matchmakeAfterReady = /\/matchmake\/(?:reconnect|joinById)\//;
+	const cleanup: Array<() => void> = [];
+
+	for (const page of pages) {
+		const onPageError = (error: Error) => {
+			failures.push(`page error: ${error.message}`);
+		};
+		const onRequestFailed = (request: Request) => {
+			if (!matchmakeAfterReady.test(request.url())) return;
+			failures.push(
+				`request failed: ${request.url()} ${request.failure()?.errorText ?? ''}`.trim()
+			);
+		};
+		const onResponse = (response: Response) => {
+			if (!matchmakeAfterReady.test(response.url()) || response.ok()) return;
+			failures.push(`response ${response.status()}: ${response.url()}`);
+		};
+
+		page.on('pageerror', onPageError);
+		page.on('requestfailed', onRequestFailed);
+		page.on('response', onResponse);
+		cleanup.push(() => {
+			page.off('pageerror', onPageError);
+			page.off('requestfailed', onRequestFailed);
+			page.off('response', onResponse);
+		});
+	}
+
+	return {
+		failures,
+		stop: () => cleanup.forEach((remove) => remove())
+	};
+}
+
+async function openAnonymousPlaytestInvite(
+	page: Page,
+	inviteUrl: string,
+	name = 'Anonymous Playtester'
+) {
 	await page.goto(`${inviteUrl}?e2e=1`);
 	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\/join\?next=/);
 	await expect(page.getByRole('heading', { name: 'Join this playtest' })).toBeVisible();
@@ -162,11 +258,12 @@ async function openAnonymousPlaytestInvite(page: Page, inviteUrl: string) {
 	await expect(
 		page.getByRole('heading', { name: 'Review the current legal documents.' })
 	).toBeVisible();
+	await page.getByLabel('Your name').fill(name);
 	await page.getByRole('checkbox').check();
 	await page.getByRole('button', { name: 'Continue' }).click();
 	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/, { timeout: 20_000 });
 	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
-	await waitForPixi(page);
+	await expect(page.getByRole('heading', { name: /Rooms for/ })).toBeVisible();
 }
 
 test('card strokes are synced to the card and can be deleted', async ({ page }) => {
@@ -527,14 +624,11 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
 	await page.evaluate(() => localStorage.setItem('storage-preference', 'directory'));
-	await page.goto(`${inviteUrl}?e2e=1`);
-	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
+	const roomUrl = await createPlaytestRoom(page, inviteUrl, 'Smoke room');
+	await readyAndWaitForPixi(page);
+	await page.goto(roomUrl);
 	await waitForPixi(page);
-	await page.goto(`${inviteUrl}?e2e=1`);
-	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
 	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
-	await waitForPixi(page);
 	await expect
 		.poll(() => page.evaluate(() => localStorage.getItem('storage-preference')))
 		.toBe('directory');
@@ -619,9 +713,50 @@ test('anonymous playtest invitee accepts legal terms and reopens the invite', as
 		await openAnonymousPlaytestInvite(inviteePage, inviteUrl);
 		await inviteePage.goto(`${inviteUrl}?e2e=1`);
 		await expect(inviteePage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-		await waitForPixi(inviteePage);
+		await expect(inviteePage.getByRole('heading', { name: /Rooms for/ })).toBeVisible();
 	} finally {
 		await inviteeContext.close();
+	}
+});
+
+test('playtest room list hides full lobbies based on game player limits', async ({
+	page,
+	browser
+}) => {
+	test.setTimeout(150_000);
+	const secondContext = await browser.newContext({
+		baseURL: test.info().project.use.baseURL as string | undefined
+	});
+	const thirdContext = await browser.newContext({
+		baseURL: test.info().project.use.baseURL as string | undefined
+	});
+	const secondPage = await secondContext.newPage();
+	const thirdPage = await thirdContext.newPage();
+
+	try {
+		await signUp(page);
+		await page.goto(appPath('/games'));
+		await seedProjectFiles(page, 'pixi-play-smoke');
+		await useBrowserStorage(page);
+		await setProjectPlayerLimits(page, 'pixi-play-smoke', 2, 2);
+		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+
+		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
+
+		await createPlaytestRoom(page, inviteUrl, 'Two seats');
+		await openAnonymousPlaytestInvite(secondPage, inviteUrl);
+		await joinPlaytestRoom(secondPage, inviteUrl, 'Two seats');
+
+		await openAnonymousPlaytestInvite(thirdPage, inviteUrl);
+		await expect(thirdPage.getByRole('link', { name: /Two seats/ })).toHaveCount(0);
+		await expect(thirdPage.getByText('No open rooms yet.')).toBeVisible();
+
+		await page.getByRole('button', { name: 'Ready up' }).click();
+		await readyAndWaitForPixi(secondPage);
+		await waitForPixi(page);
+	} finally {
+		await secondContext.close();
+		await thirdContext.close();
 	}
 });
 
@@ -641,12 +776,16 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
-		await page.goto(`${inviteUrl}?e2e=1`);
-		await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-		await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
-		await waitForPixi(page);
+		await createPlaytestRoom(page, inviteUrl, 'Shared room');
 
 		await openAnonymousPlaytestInvite(secondPage, inviteUrl);
+		await joinPlaytestRoom(secondPage, inviteUrl, 'Shared room');
+		const playtestStartFailures = collectPlaytestStartFailures(page, secondPage);
+		await page.getByRole('button', { name: 'Ready up' }).click();
+		await readyAndWaitForPixi(secondPage);
+		await waitForPixi(page);
+		playtestStartFailures.stop();
+		expect(playtestStartFailures.failures).toEqual([]);
 
 		let firstStackId: string | null = null;
 		await expect
@@ -718,7 +857,12 @@ test('playtest invitee notes are imported into the creator game feedback folder'
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
+		await createPlaytestRoom(page, inviteUrl, 'Feedback room');
 		await openAnonymousPlaytestInvite(secondPage, inviteUrl);
+		await joinPlaytestRoom(secondPage, inviteUrl, 'Feedback room');
+		await page.getByRole('button', { name: 'Ready up' }).click();
+		await readyAndWaitForPixi(secondPage);
+		await waitForPixi(page);
 
 		await secondPage.getByRole('button', { name: 'Playtest notes' }).click();
 		await secondPage

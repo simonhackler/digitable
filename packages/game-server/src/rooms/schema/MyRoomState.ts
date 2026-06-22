@@ -5,6 +5,8 @@ export interface InitGamePayload {
 	stacks: { componentIds: string[] }[];
 }
 
+export type RoomPhase = 'lobby' | 'playing';
+
 // Should support different types of positions. For example a position might have differen
 // so for example there might be a board that is a grid (Summonners War), a board that is a freeform x, y (Warhammer) board or
 // a graph based board. So a position has to know for what board type it is and would probably even need a reference to the board itself?
@@ -117,16 +119,24 @@ export class Deck extends Schema {
 
 export class Player extends Schema {
 	@type('string') id: string;
+	@type('string') name: string;
+	@type('boolean') ready: boolean;
 	@type({ set: 'string' }) hand: SetSchema<string>;
 
-	constructor(id: string) {
+	constructor(id: string, name = 'Player') {
 		super();
 		this.id = id;
+		this.name = name;
+		this.ready = false;
 		this.hand = new SetSchema<string>();
 	}
 }
 
 export class BoardGameRoomState extends Schema {
+	@type('string') phase: RoomPhase;
+	@type('string') roomName: string;
+	@type('number') minPlayers: number;
+	@type('number') maxPlayers: number;
 	@type({ map: Component }) components: MapSchema<Component>;
 	@type({ map: Positionable }) positions: MapSchema<Positionable>;
 	@type({ map: Flippable }) flippable: MapSchema<Flippable>;
@@ -136,6 +146,10 @@ export class BoardGameRoomState extends Schema {
 
 	constructor() {
 		super();
+		this.phase = 'playing';
+		this.roomName = '';
+		this.minPlayers = 1;
+		this.maxPlayers = 20;
 		this.components = new MapSchema<Component>();
 		this.positions = new MapSchema<Positionable>();
 		this.flippable = new MapSchema<Flippable>();

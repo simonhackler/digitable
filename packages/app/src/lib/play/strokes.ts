@@ -1,5 +1,4 @@
 import type { SchemaCallbackProxy } from '@colyseus/schema';
-import type { Room } from 'colyseus.js';
 import { Graphics, Point } from 'pixi.js';
 import type { BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import type {
@@ -8,6 +7,7 @@ import type {
 } from 'boardgame-server/src/rooms/schema/stroke-schema';
 import { BoardGameItemNew } from '$lib/pixi/item';
 import type { HandContainer } from './HandContainer';
+import type { PlayRoom } from './room-types';
 
 export type PlayTool = 'select' | 'pen';
 
@@ -156,7 +156,7 @@ export class StrokeLayer {
 		this.selection.zIndex = 10000;
 	}
 
-	connect(room: Room<BoardGameRoomState>, s: SchemaCallbackProxy<BoardGameRoomState>) {
+	connect(room: PlayRoom, s: SchemaCallbackProxy<BoardGameRoomState>) {
 		s(room.state).strokes.onAdd((stroke) => {
 			const view = new StrokeView(stroke);
 			this.views.set(stroke.id, view);

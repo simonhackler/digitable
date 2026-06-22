@@ -6,7 +6,7 @@ import {
 	Stack
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import { type SchemaCallbackProxy } from '@colyseus/schema';
-import type { Room } from 'colyseus.js';
+import type { PlayRoom } from '../room-types';
 
 type Handler<T> = (payload: T) => void;
 
@@ -37,7 +37,7 @@ export class Event<T> {
 
 export interface SharedClientValues {
 	component: Component;
-	room: Room<BoardGameRoomState>;
+	room: PlayRoom;
 	sessionId: string;
 	s: SchemaCallbackProxy<BoardGameRoomState>;
 }
