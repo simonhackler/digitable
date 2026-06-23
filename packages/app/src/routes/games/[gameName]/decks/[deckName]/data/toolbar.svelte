@@ -97,12 +97,12 @@
 	}
 </script>
 
-<GameTopBar {status} {statusError}>
+<GameTopBar aria-label="Spreadsheet editor toolbar" {status} {statusError}>
 	<Button size="sm" variant="ghost" href={editorPath} title="Open Layout editor">
 		<LayoutTemplate class="size-4" />
 		Layout
 	</Button>
-	<Separator orientation="vertical" class="h-5" />
+	<Separator orientation="vertical" class="h-full" />
 	<div class="flex items-center">
 		<Button
 			size="sm"

@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { onNavigate } from '$app/navigation';
-	import { ReferenceEditor, type ChangeEvent } from '@svg-table/svgeditor';
-	import type { createEditorController } from '@svg-table/svgeditor';
+	import {
+		createEditorController,
+		ReferenceEditor,
+		ReferenceEditorToolbar,
+		type ChangeEvent
+	} from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -130,6 +134,7 @@
 	let uploadInput: HTMLInputElement | null = $state(null);
 	let imageSelectorOpen = $state(false);
 	let imagePickerTarget = $state<ImagePickerTarget | null>(null);
+	const editorController = createEditorController();
 
 	const svg = $derived(side === 'front' ? front : back);
 	const editorSvg = $derived(await resolveSvgImagesForEditor(svg, game));
@@ -420,12 +425,12 @@
 </script>
 
 <main class="flex h-svh w-full flex-col overflow-hidden">
-	<GameTopBar>
+	<GameTopBar aria-label="Layout editor toolbar">
 		<Button size="sm" variant="ghost" href={dataPath} title="Open Spreadsheet editor">
 			<Table2 class="size-4" />
 			Spreadsheet
 		</Button>
-		<Separator orientation="vertical" class="h-5" />
+		<Separator orientation="vertical" class="h-12" />
 		<Button
 			size="sm"
 			variant="ghost"
@@ -436,6 +441,14 @@
 			<FlipHorizontal2 class="size-4" />
 			{side === 'front' ? 'Back' : 'Front'}
 		</Button>
+		<ReferenceEditorToolbar
+			controller={editorController}
+			variant="actions"
+			framed={false}
+			wrap={false}
+			imageToolAction={(controller) => openImagePicker('insert', controller)}
+		/>
+		{@render uploadToolbarAction()}
 	</GameTopBar>
 
 	<input
@@ -452,9 +465,10 @@
 				<ReferenceEditor
 					value={editorSvg.value}
 					{config}
+					controller={editorController}
+					showActionToolbar={false}
 					assetBasePath="/svgedit/images/"
 					initialZoom="fit"
-					toolbarActions={uploadToolbarAction}
 					imageToolAction={(controller) => openImagePicker('insert', controller)}
 					selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}
 					selectedImageHrefApplyAction={applySvgEditorImageHref}

@@ -938,6 +938,7 @@ export const createSvgCanvas = ({
 	};
 
 	type SelectorLike = {
+		resize?: () => void;
 		showGrips?: (show: boolean) => void;
 	};
 
@@ -970,9 +971,11 @@ export const createSvgCanvas = ({
 	const correctSetupSelector = (element: Element | null | undefined) => {
 		const setupRoot = setupSelectionRoot(element);
 		if (!setupRoot) return;
+		const manager = canvas.selectorManager as SelectorManagerLike | undefined;
+		const selector = manager?.requestSelector?.(setupRoot);
+		selector?.resize?.();
 		if (!canResizeSelectedSetupElement(setupRoot)) {
-			const manager = canvas.selectorManager as SelectorManagerLike | undefined;
-			manager?.requestSelector?.(setupRoot)?.showGrips?.(false);
+			selector?.showGrips?.(false);
 		}
 	};
 

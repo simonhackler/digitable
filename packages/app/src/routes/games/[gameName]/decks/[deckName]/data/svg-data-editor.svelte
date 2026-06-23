@@ -54,9 +54,16 @@
 		{ template: svgTemplateBack, columnPrefix: 'back_' }
 	]);
 
-	const { svgData, spreadsheetData, imagePaths } = $derived(
-		await loadSvgsAndDataForSides(projectName, cardName, fileSystem, sides, false)
+	const loadedSvgsAndData = $derived(
+		await loadSvgsAndDataForSides(projectName, cardName, fileSystem, sides, false, {
+			missingDataCsv: 'generate'
+		})
 	);
+	const loadedData = $derived.by(() => {
+		if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
+		return loadedSvgsAndData.data;
+	});
+	const { svgData, spreadsheetData, imagePaths } = $derived(loadedData);
 
 	const spreadsheetHeaders = $derived(spreadsheetData.cols.map((c) => c.title as string));
 

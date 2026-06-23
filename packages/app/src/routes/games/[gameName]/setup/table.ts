@@ -80,6 +80,7 @@ export type TableSvgAssets = {
 	placementCardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	placementCardSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
 	cardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
+	cardSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
 	deckTopCardIds?: ReadonlyMap<string, string> | Record<string, string>;
 	deckCardIds?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
 };
@@ -601,6 +602,11 @@ function slotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): 
 	return topCardId ? svgAssetValue(assets.cardSvgs, topCardId) : null;
 }
 
+function slotContentCardId(assets: TableSvgAssets, content: TableSlotContent): string | null {
+	if (content.type === 'card') return content.cardId;
+	return svgAssetValue(assets.deckTopCardIds, content.deckName);
+}
+
 function requireSlotContentCardSvg(assets: TableSvgAssets, content: TableSlotContent): string {
 	const cardSvg = slotContentCardSvg(assets, content);
 	if (cardSvg) return cardSvg;
@@ -632,11 +638,18 @@ function placementVisualSizeFromAssets(
 }
 
 function slotContentVisualSize(content: TableSlotContent, assets: TableSvgAssets): CardVisualSize {
-	return cardSvgSize(slotContentCardSvg(assets, content));
+	const cardId = slotContentCardId(assets, content);
+	return (
+		(cardId ? svgAssetSize(assets.cardSizes, cardId) : null) ??
+		cardSvgSize(slotContentCardSvg(assets, content))
+	);
 }
 
 function cardIdVisualSize(cardId: string, assets: TableSvgAssets): CardVisualSize | null {
-	return svgMarkupLogicalSize(svgAssetValue(assets.cardSvgs, cardId));
+	return (
+		svgAssetSize(assets.cardSizes, cardId) ??
+		svgMarkupLogicalSize(svgAssetValue(assets.cardSvgs, cardId))
+	);
 }
 
 function cardVisualBounds(
@@ -647,7 +660,6 @@ function cardVisualBounds(
 	y: number;
 	width: number;
 	height: number;
-	hasGraphics: boolean;
 } {
 	const graphics = Array.from(group.getElementsByTagName('*')).filter((element) => {
 		const tag = element.tagName.toLowerCase();
@@ -674,8 +686,7 @@ function cardVisualBounds(
 		x,
 		y,
 		width: size.width,
-		height: size.height,
-		hasGraphics: visibleBounds.length > 0 || expectedSize !== null
+		height: size.height
 	};
 }
 
@@ -729,7 +740,6 @@ function svgRootToTable(root: Element, fallback: Table, assets: TableSvgAssets =
 		const transform = transformParts(group.getAttribute('transform'));
 		if (!deckName) return [];
 		const visual = cardVisualBounds(group, placementVisualSizeFromAssets(group, assets));
-		const topLeftGeometry = visual.hasGraphics && visual.x >= 0 && visual.y >= 0;
 		const groupTranslation = transformTranslationForRotationOrigin(transform, {
 			x: visual.x + visual.width / 2,
 			y: visual.y + visual.height / 2
@@ -737,12 +747,8 @@ function svgRootToTable(root: Element, fallback: Table, assets: TableSvgAssets =
 		const base = {
 			id,
 			deckName,
-			x: topLeftGeometry
-				? groupTranslation.x + visual.x * transform.scaleX + (visual.width * transform.scaleX) / 2
-				: groupTranslation.x,
-			y: topLeftGeometry
-				? groupTranslation.y + visual.y * transform.scaleY + (visual.height * transform.scaleY) / 2
-				: groupTranslation.y,
+			x: groupTranslation.x + visual.x * transform.scaleX + (visual.width * transform.scaleX) / 2,
+			y: groupTranslation.y + visual.y * transform.scaleY + (visual.height * transform.scaleY) / 2,
 			rotation: transform.rotation,
 			label: textLabel(group, deckName)
 		};

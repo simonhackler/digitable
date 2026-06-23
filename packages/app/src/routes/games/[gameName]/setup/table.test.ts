@@ -202,7 +202,7 @@ describe('table setup', () => {
 		);
 	});
 
-	it('snaps legacy centered placement coordinates when parsing saved svgs', () => {
+	it('parses saved placement transforms as top-left visual geometry', () => {
 		const setup: Table = {
 			version: 1,
 			table: { presetId: 'custom', width: 800, height: 600 },
@@ -211,15 +211,17 @@ describe('table setup', () => {
 		};
 		const svg = [
 			'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-digitable-table="true" data-preset-id="custom">',
-			'  <g id="deck-1" data-digitable-kind="placement" data-digitable-type="deck" data-deck-name="western" data-card-ids="[&quot;western:1&quot;]" data-label="Western" transform="translate(200 240) rotate(15)">',
-			'    <rect x="-55" y="-75" width="110" height="150" rx="10"/>',
+			'  <g id="deck-1" data-digitable-kind="placement" data-digitable-type="deck" data-deck-name="western" data-card-ids="[&quot;western:1&quot;]" data-label="Western" transform="matrix(1 0 0 1 240 220)">',
+			'    <image x="0" y="0" width="63" height="88"/>',
 			'  </g>',
 			'</svg>'
 		].join('\n');
 
 		const parsed = svgToTable(svg, setup);
 
-		expect(parsed.placements[0]).toEqual(expect.objectContaining({ x: 195, y: 235, rotation: 15 }));
+		expect(parsed.placements[0]).toEqual(
+			expect.objectContaining({ x: 271.5, y: 264, rotation: 0 })
+		);
 	});
 
 	it('renders placement card art as a locked image when card svg is available', () => {

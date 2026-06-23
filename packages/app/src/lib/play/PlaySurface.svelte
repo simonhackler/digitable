@@ -19,7 +19,6 @@
 	import { type BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItemNew } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
-	import { Viewport } from 'pixi-viewport';
 	import { initDevtools } from '@pixi/devtools';
 	import 'pixi.js/math-extras';
 	import { PreviewHelper } from './hover-helpers';
@@ -33,8 +32,7 @@
 	import { PressedKeys } from 'runed';
 	import { initComponent } from './initComponent';
 	import { installPlayE2EBridge } from './e2e-bridge';
-	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
 	import type { Table, TableSlot } from '../../routes/games/[gameName]/setup/table';
 	import {
@@ -724,19 +722,6 @@
 		return true;
 	}
 
-	async function hasPlayableDeckFiles(componentsDir: FsDir, deckName: string) {
-		const deckDir = await componentsDir.openDir(deckName);
-		if (deckDir.error) return false;
-
-		const entries = await deckDir.data.list();
-		if (entries.error) return false;
-
-		const fileNames = new Set(
-			entries.data.filter((entry) => entry.kind === 'file').map((entry) => entry.name)
-		);
-		return fileNames.has('front.svg') && fileNames.has('back.svg') && fileNames.has('data.csv');
-	}
-
 	async function initApp() {
 		const app = new Application();
 		await app.init({
@@ -1171,33 +1156,14 @@
 				() => cameraRotationValue
 			);
 		}
-		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
-		if (error) {
-			throw new Error(error.message);
-		}
-		const entries = await data.list();
-		if (entries.error) {
-			throw new Error(entries.error.message);
-		}
-		const deckEntries = entries.data
-			.filter((entry) => entry.kind === 'directory')
-			.sort((a, b) => a.name.localeCompare(b.name));
 		const tableDeckNames = tableReferencedDeckNames(localTable.table);
-		const playableDeckEntries = (
-			await Promise.all(
-				deckEntries.map(async (entry) => ({
-					entry,
-					playable: await hasPlayableDeckFiles(data, entry.name)
-				}))
-			)
-		)
-			.filter(({ entry, playable }) => playable && tableDeckNames.has(entry.name))
-			.map(({ entry }) => entry);
 		const loadedDecks: LoadedDeck[] = await Promise.all(
-			playableDeckEntries.map(async (entry) => ({
-				deckName: entry.name,
-				cards: await loadAndProcessCards(projectName, entry.name, fileSystem)
-			}))
+			Array.from(tableDeckNames)
+				.sort((a, b) => a.localeCompare(b))
+				.map(async (deckName) => ({
+					deckName,
+					cards: await loadAndProcessCards(projectName, deckName, fileSystem)
+				}))
 		);
 		const allComponentsParsed = loadedDecks.flatMap((deck) => deck.cards);
 		const tablePlayPlan = buildTablePlayPlan(localTable.table, loadedDecks);
@@ -1282,17 +1248,18 @@
 	let localTable: LocalTable;
 	let room: Room<BoardGameRoomState>;
 
-	const { data: tableData, error: tableError } = $derived(
-		await loadRequiredTable({ fileSystem, projectName })
-	);
-	const tableBlockMessage = $derived(tableError?.message);
-    const app = $state(await initApp());
-    const previewer = $derived(new PreviewHelper(app));
-	const viewport = $derived(createViewport(app, {
-			worldWidth: tableData.table.table.width,
-			worldHeight: tableData.table.table.height,
+	const loadedTable = await loadRequiredTable({ fileSystem, projectName });
+	const tableData = loadedTable.data;
+	const tableBlockMessage = loadedTable.error?.message;
+	const app = $state(await initApp());
+	const previewer = $derived(new PreviewHelper(app));
+	const viewport = $derived(
+		createViewport(app, {
+			worldWidth: tableData?.table.table.width ?? 1,
+			worldHeight: tableData?.table.table.height ?? 1,
 			minScale: 0.2
-		}));
+		})
+	);
 
 	if (tableData) {
 		localTable = tableData;

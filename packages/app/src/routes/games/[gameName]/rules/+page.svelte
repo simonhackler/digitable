@@ -189,19 +189,21 @@
 </svelte:head>
 
 <div class="bg-background flex h-full min-h-screen flex-col">
-	<GameTopBar
-		status={saveState === 'saving'
-			? 'Saving'
-			: lastSavedAt
-				? `Saved ${lastSavedAt.toLocaleTimeString()}`
-				: 'Saved'}
-		statusError={saveError}
-	/>
+	<Composer {initialConfig}>
+		<GameTopBar
+			title="Rules"
+			status={saveState === 'saving'
+				? 'Saving'
+				: lastSavedAt
+					? `Saved ${lastSavedAt.toLocaleTimeString()}`
+					: 'Saved'}
+			statusError={saveError}
+		>
+			<RulesMarkdownToolbar />
+		</GameTopBar>
 
-	<div class="flex-1 overflow-auto px-4 py-4 sm:px-6">
-		<Composer {initialConfig}>
+		<div class="flex-1 overflow-auto px-4 py-4 sm:px-6">
 			<div class="editor-shell svelte-lexical rules-editor">
-				<RulesMarkdownToolbar />
 				<div class="editor-container">
 					<div class="editor-scroller">
 						<div class="editor">
@@ -223,8 +225,8 @@
 					/>
 				</div>
 			</div>
-		</Composer>
-	</div>
+		</div>
+	</Composer>
 </div>
 
 <style>

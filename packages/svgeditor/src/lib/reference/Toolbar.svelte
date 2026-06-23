@@ -46,6 +46,7 @@
 		variant = 'full',
 		orientation = 'horizontal',
 		framed = true,
+		wrap = true,
 		extraActions,
 		imageToolAction
 	} = $props<{
@@ -53,6 +54,7 @@
 		variant?: ToolbarVariant;
 		orientation?: ToolbarOrientation;
 		framed?: boolean;
+		wrap?: boolean;
 		extraActions?: Snippet;
 		imageToolAction?: (controller: EditorController) => void | Promise<void>;
 	}>();
@@ -120,7 +122,9 @@
 		const base =
 			orientation === 'vertical'
 				? 'flex flex-col items-center gap-3'
-				: 'flex flex-wrap items-center gap-3';
+				: wrap
+					? 'flex flex-wrap items-center gap-3'
+					: 'flex min-w-max items-center gap-3';
 		const distribute = variant === 'full' && orientation !== 'vertical' ? 'justify-between' : '';
 		return `${base} ${distribute}`.trim();
 	});
@@ -128,15 +132,20 @@
 		framed
 			? orientation === 'vertical'
 				? 'items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
-				: 'flex-wrap items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
+				: wrap
+					? 'flex-wrap items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
+					: 'items-center gap-1 rounded-xl border bg-background/70 p-1 shadow-sm'
 			: orientation === 'vertical'
 				? 'items-center gap-1'
-				: 'flex-wrap items-center gap-1'
+				: wrap
+					? 'flex-wrap items-center gap-1'
+					: 'items-center gap-1'
 	);
-	const actionGroupClass = $derived(
+	const actionWrapClass = $derived(wrap ? 'flex-wrap' : '');
+	const actionGroupClass = $derived.by(() =>
 		framed
-			? 'bg-background/70 flex-wrap items-center gap-1 rounded-xl border p-1 shadow-sm'
-			: 'flex-wrap items-center gap-1'
+			? `bg-background/70 ${actionWrapClass} items-center gap-1 rounded-xl border p-1 shadow-sm`
+			: `${actionWrapClass} items-center gap-1`
 	);
 </script>
 
@@ -163,7 +172,7 @@
 		</ButtonGroup.Root>
 	{/if}
 	{#if showActions}
-		<div class="flex flex-wrap items-center gap-2">
+		<div class={wrap ? 'flex flex-wrap items-center gap-2' : 'flex items-center gap-2'}>
 			<ButtonGroup.Root class={actionGroupClass}>
 				<Button
 					size="sm"

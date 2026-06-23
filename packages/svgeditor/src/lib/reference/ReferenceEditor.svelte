@@ -32,6 +32,8 @@
 		assetBasePath?: string;
 		activePanel?: string;
 		api?: SvgEditorApi | null;
+		controller?: EditorController;
+		showActionToolbar?: boolean;
 		toolbarActions?: () => ReturnType<Snippet>;
 		tablePanel?: () => ReturnType<Snippet>;
 		componentPanel?: () => ReturnType<Snippet>;
@@ -59,6 +61,8 @@
 		assetBasePath,
 		activePanel = $bindable('inspector'),
 		api = $bindable(null),
+		controller = createEditorController(),
+		showActionToolbar = true,
 		toolbarActions,
 		tablePanel,
 		componentPanel,
@@ -71,7 +75,6 @@
 		change: ChangeEvent;
 		selectionchange: SelectionChangeEvent;
 	}>();
-	const controller = createEditorController();
 	const keys = new PressedKeys();
 
 	const interactionDisabled = $derived(disabled || readonly);
@@ -388,9 +391,11 @@
 	<div class="grid min-h-0 flex-1 gap-2 p-2 lg:grid-cols-[minmax(0,1fr)_260px]">
 		<div class="flex min-h-0 min-w-0 flex-col gap-2">
 			<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-				<div class="bg-muted/40 px-2 py-2">
-					<Toolbar {controller} variant="actions" framed={false} {extraActions} />
-				</div>
+				{#if showActionToolbar}
+					<div class="bg-muted/40 px-2 py-2">
+						<Toolbar {controller} variant="actions" framed={false} {extraActions} />
+					</div>
+				{/if}
 				<div class="flex min-h-0 flex-1">
 					<div class="flex w-10 shrink-0 justify-center py-2">
 						<Toolbar

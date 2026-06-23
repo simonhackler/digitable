@@ -53,7 +53,7 @@
 			const svgTemplateFront = loadSvgTemplate(frontFile.data);
 			const svgTemplateBack = loadSvgTemplate(backFile.data);
 
-			const { spreadsheetData, imagePaths } = await loadSvgsAndData(
+			const loadedSvgsAndData = await loadSvgsAndData(
 				projectName,
 				entry.name,
 				fileSystem,
@@ -61,31 +61,27 @@
 				svgTemplateBack,
 				useDataUrls
 			);
+			if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
+			const { spreadsheetData, imagePaths } = loadedSvgsAndData.data;
+			const idIndex = spreadsheetData.cols.findIndex((column) => column.title === 'id');
+			const copiesIndex = spreadsheetData.cols.findIndex((column) => column.title === 'Copies');
+			const headers = spreadsheetData.cols.map((column) => column.title as string);
+			const rows = spreadsheetData.data.filter(
+				(row) => String(row[idIndex] ?? '').trim() !== 'template'
+			);
+			if (rows.length === 0) continue;
 
-			const svgsFront = spreadsheetData.data.flatMap((row) => {
-				const copiesIndex = spreadsheetData.cols.findIndex((c) => c.title === 'Copies');
+			const svgsFront = rows.flatMap((row) => {
 				const copies = row[copiesIndex] ? parseInt(row[copiesIndex]) : 1;
 
 				return Array.from({ length: copies }, () =>
-					generateSvg(
-						svgTemplateFront,
-						spreadsheetData.cols.map((c) => c.title as string),
-						row,
-						imagePaths
-					)
+					generateSvg(svgTemplateFront, headers, row, imagePaths)
 				);
 			});
-			const svgsBack = spreadsheetData.data.flatMap((row) => {
-				const copiesIndex = spreadsheetData.cols.findIndex((c) => c.title === 'Copies');
+			const svgsBack = rows.flatMap((row) => {
 				const copies = row[copiesIndex] ? parseInt(row[copiesIndex]) : 1;
 				return Array.from({ length: copies }, () =>
-					generateSvg(
-						svgTemplateBack,
-						spreadsheetData.cols.map((c) => c.title as string),
-						row,
-						imagePaths,
-						{ columnPrefix: 'back_' }
-					)
+					generateSvg(svgTemplateBack, headers, row, imagePaths, { columnPrefix: 'back_' })
 				);
 			});
 
