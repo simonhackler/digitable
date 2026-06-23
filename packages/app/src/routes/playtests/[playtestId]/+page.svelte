@@ -86,10 +86,10 @@
 			room.reconnection.enabled = false;
 			void room.leave(false);
 			await goto(
-				`${resolve('/playtests/[playtestId]/rooms/[roomId]', {
+				resolve('/playtests/[playtestId]/rooms/[roomId]', {
 					playtestId: data.playtestId,
-					roomId: room.roomId
-				})}${e2e ? '?e2e=1' : ''}`
+					roomId: e2e ? `${room.roomId}?e2e=1` : room.roomId
+				})
 			);
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Could not create room.';
@@ -188,10 +188,10 @@
 			{#each rooms as room (room.roomId)}
 				{@const metadata = room.metadata}
 				<a
-					href={`${resolve('/playtests/[playtestId]/rooms/[roomId]', {
+					href={resolve('/playtests/[playtestId]/rooms/[roomId]', {
 						playtestId: data.playtestId,
-						roomId: room.roomId
-					})}${e2e ? '?e2e=1' : ''}`}
+						roomId: e2e ? `${room.roomId}?e2e=1` : room.roomId
+					})}
 					class="hover:bg-accent flex items-center justify-between gap-4 rounded-lg border p-4"
 				>
 					<span class="flex min-w-0 flex-col gap-1">

@@ -2,3 +2,6 @@
 startup_timeout_sec = 90
 command = "npx"
 args = ["-y", "@sveltejs/mcp"]
+
+[features]
+codex_hooks = true

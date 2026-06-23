@@ -9,4 +9,6 @@
 	const e2e = $derived(page.url.searchParams.has('e2e'));
 </script>
 
-<PlaySurface {projectName} {fileSystem} {e2e} />
+<main class="relative h-svh min-h-0 w-full overflow-hidden">
+	<PlaySurface {projectName} {fileSystem} {e2e} />
+</main>

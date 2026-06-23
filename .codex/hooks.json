@@ -1,0 +1,16 @@
+{
+	"hooks": {
+		"Stop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "sh -c 'repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); exec \"$repo_root/.codex/hooks/run-playwright-on-stop.sh\"'",
+						"statusMessage": "Stop hook validation",
+						"timeout": 1200
+					}
+				]
+			}
+		]
+	}
+}
