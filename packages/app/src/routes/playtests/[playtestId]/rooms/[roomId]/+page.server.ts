@@ -13,8 +13,12 @@ const APP_BASE = '/app';
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {
 	const playtestId = params.playtestId;
+	const roomId = params.roomId;
 	if (!playtestId) {
 		error(400, 'Missing playtest id');
+	}
+	if (!roomId) {
+		error(400, 'Missing room id');
 	}
 
 	if (!locals.user) {
@@ -48,8 +52,10 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
 	return {
 		playtestId: playtest.metadata.id,
+		roomId,
 		projectName: playtest.metadata.projectName,
 		privateRoomId: playtest.metadata.privateRoomId,
+		files: playtest.files,
 		...playtestPlayerLimitsFromFiles(playtest.files)
 	};
 };

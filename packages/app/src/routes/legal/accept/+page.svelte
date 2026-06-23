@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base, resolve } from '$app/paths';
 	import { CheckCircle2 } from '@lucide/svelte';
 
 	let { data, form } = $props();
@@ -42,12 +43,24 @@
 			errorMessage = 'Accept the current Terms & Conditions and acknowledge the Privacy Policy.';
 			return;
 		}
+		const anonymousName = String(formData.get('name') ?? '')
+			.trim()
+			.replace(/\s+/g, ' ')
+			.slice(0, 80);
+		if (!anonymousName) {
+			errorMessage = 'Enter your name to join this playtest.';
+			return;
+		}
 
 		errorMessage = '';
 		isSubmitting = true;
 
-		const signInResponse = await fetch('/api/auth/sign-in/anonymous', {
-			method: 'POST'
+		const signInResponse = await fetch(`${base}/api/auth/sign-in/anonymous`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({ name: anonymousName })
 		});
 		if (!signInResponse.ok) {
 			errorMessage = await readErrorMessage(signInResponse);
@@ -55,7 +68,7 @@
 			return;
 		}
 
-		const policyResponse = await fetch('/api/legal/accept-current', {
+		const policyResponse = await fetch(resolve('/api/legal/accept-current'), {
 			method: 'POST'
 		});
 		if (!policyResponse.ok) {
@@ -114,6 +127,17 @@
 				<input name="next" type="hidden" value={data.next} />
 				{#if data.anonymousMode}
 					<input name="anonymous" type="hidden" value="playtest" />
+					<label class="grid gap-2 text-sm font-medium text-[#3f463b]">
+						Your name
+						<input
+							class="h-11 border border-black/15 bg-white px-3 text-[#171717] outline-none focus:border-[#171717]"
+							name="name"
+							type="text"
+							autocomplete="name"
+							maxlength="80"
+							required
+						/>
+					</label>
 				{/if}
 
 				<label class="flex items-start gap-3 text-sm leading-6 text-[#3f463b]">

@@ -1,5 +1,4 @@
 import type { SchemaCallbackProxy } from '@colyseus/schema';
-import type { Room } from 'colyseus.js';
 import { Container, Sprite, type Texture } from 'pixi.js';
 import { BoardGameItemNew, CardContainer } from '$lib/pixi/item';
 import { assert } from '$lib/utils/assert';
@@ -13,6 +12,7 @@ import {
 	ClientStack,
 	type SharedClientValues
 } from './frontend-components/position';
+import type { PlayRoom } from './room-types';
 
 export interface ParsedSvg {
 	id: string;
@@ -83,7 +83,7 @@ export async function initComponent(
 	component: Component,
 	state: BoardGameRoomState,
 	s: SchemaCallbackProxy<BoardGameRoomState>,
-	room: Room<BoardGameRoomState>
+	room: PlayRoom
 ) {
 	const { boardContainer, boardGameItems, isDragging } = deps;
 

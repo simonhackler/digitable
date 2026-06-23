@@ -24,9 +24,18 @@ import { Command, Dispatcher } from '../command';
 import { randomUUID } from 'crypto';
 import { StrokeCreateCommand, StrokeDeleteCommand } from './stroke-commands';
 
-export class CommandRoom extends Room<BoardGameRoomState> {
+type CommandRoomOptions<Metadata = Record<string, unknown>, Auth = unknown> = {
+	state: BoardGameRoomState;
+	metadata: Metadata;
+	client: Client<{ auth: Auth }>;
+};
+
+export class CommandRoom<Metadata = Record<string, unknown>, Auth = unknown> extends Room<
+	CommandRoomOptions<Metadata, Auth>
+> {
 	dispatcher = new Dispatcher(this);
 	roomCommands = new Map<string, new () => Command<CommandRoom, unknown>>([
+		['ready', ReadyCommand],
 		['flip', FlipCommand],
 		['init', InitCommand],
 		['move', MoveCommand],
@@ -42,6 +51,7 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 	onCreate(_options?: unknown) {
 		logger.info('CommandRoom created');
 		this.state = new BoardGameRoomState();
+		this.state.phase = 'playing';
 		this.onMessage('cmd', (client, message) => {
 			logger.info(`Received command: ${message.commandType} from ${client.sessionId}`);
 			const CommandClass = this.roomCommands.get(message.commandType);
@@ -55,13 +65,44 @@ export class CommandRoom extends Room<BoardGameRoomState> {
 	onJoin(client: Client, _options: unknown, _auth?: unknown) {
 		logger.info('Client joined:', client.sessionId);
 		this.dispatcher.dispatch(new OnJoinCommand(), {
-			sessionId: client.sessionId
+			sessionId: client.sessionId,
+			name: playerNameFromAuth(client.auth)
 		});
+	}
+
+	onLeave(client: Client) {
+		this.removePlayer(client.sessionId);
 	}
 
 	onDispose() {
 		this.dispatcher.stop();
 	}
+
+	protected removePlayer(sessionId: string) {
+		this.state.players.delete(sessionId);
+		void this.onLobbyChanged();
+	}
+
+	async onLobbyChanged() {}
+
+	async tryStartGame() {
+		if (this.state.phase !== 'lobby') return;
+
+		const players = Array.from(this.state.players.values());
+		const hasEnoughPlayers = players.length >= this.state.minPlayers;
+		const allReady = players.length > 0 && players.every((player) => player.ready);
+		if (!hasEnoughPlayers || !allReady) return;
+
+		this.state.phase = 'playing';
+		await this.onLobbyChanged();
+	}
+}
+
+function playerNameFromAuth(auth: unknown) {
+	if (!auth || typeof auth !== 'object' || !('name' in auth)) return 'Player';
+
+	const name = String(auth.name).trim().replace(/\s+/g, ' ').slice(0, 80);
+	return name || 'Player';
 }
 
 function getValidComponent(
@@ -86,11 +127,34 @@ export class OnJoinCommand extends Command<
 	CommandRoom,
 	{
 		sessionId: string;
+		name: string;
 	}
 > {
-	execute({ sessionId } = this.payload) {
-		const player = new Player(sessionId);
+	execute({ sessionId, name } = this.payload) {
+		if (this.state.players.has(sessionId)) return;
+		const player = new Player(sessionId, name);
 		this.state.players.set(sessionId, player);
+		void this.room.onLobbyChanged();
+	}
+}
+
+export class ReadyCommand extends Command<
+	CommandRoom,
+	{
+		sessionId: string;
+	}
+> {
+	execute(payload: this['payload']) {
+		const player = this.state.players.get(payload.sessionId);
+		if (!player) return;
+
+		player.ready = true;
+		return this.room.tryStartGame();
+	}
+
+	validate(payload: this['payload']) {
+		if (this.state.phase !== 'lobby') return false;
+		return this.state.players.has(payload.sessionId);
 	}
 }
 
@@ -124,12 +188,16 @@ export class InitCommand extends Command<
 		initializeGameState(this.state, payload, randomUUID);
 	}
 
-	validate(payload: this['payload']) {
+	validate(_payload: this['payload']) {
+		if (this.state.phase !== 'playing') {
+			console.warn('Game is still in lobby');
+			return false;
+		}
 		if (this.state.components.size !== 0 || this.state.positions.size !== 0) {
 			console.warn('Game already initialized');
 			return false;
 		}
-		return validateGameInitializationPayload(payload);
+		return validateGameInitializationPayload(_payload);
 	}
 }
 

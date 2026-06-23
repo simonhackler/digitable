@@ -3,14 +3,14 @@ import type {
 	Component,
 	Stack
 } from 'boardgame-server/src/rooms/schema/MyRoomState';
-import { Room } from 'colyseus.js';
 import type { BoardGameItemNew } from '$lib/pixi/item';
 import { assert } from '$lib/utils/assert';
+import type { PlayRoom } from '../room-types';
 
 interface StackState {
 	readonly serverStack: Stack;
 	readonly sessionId: string;
-	readonly room: Room<BoardGameRoomState>;
+	readonly room: PlayRoom;
 	readonly component: Component;
 	items: BoardGameItemNew[]; // state;
 	isFaceUp: boolean; // state;

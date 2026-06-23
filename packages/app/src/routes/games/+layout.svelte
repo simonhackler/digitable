@@ -14,8 +14,13 @@
 		migrateProjectLayout,
 		projectMigrationsForVersion
 	} from '$lib/workspace/project-layout';
-	import { readProjectsRootMarker, writeProjectsRootMarker } from '$lib/workspace/projects-root';
+	import {
+		pickProjectsRoot,
+		readProjectsRootMarker,
+		writeProjectsRootMarker
+	} from '$lib/workspace/projects-root';
 	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
+	import { onMount } from 'svelte';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
@@ -27,6 +32,8 @@
 	let migrationError = $state('');
 	let isMigrating = $state(false);
 	let isInspectingProjects = $state(false);
+	let isPickingProjectsFolder = $state(false);
+	let canPickProjectsFolder = $state(false);
 	let migrationDigitableVersion = $state<string | undefined>();
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 
@@ -96,6 +103,9 @@
 	}
 
 	async function onSetOpfsAdapter(adapter: FsDir) {
+		migrationError = '';
+		projectsToMigrate = null;
+		gamesState.existingGames = null;
 		isInspectingProjects = true;
 		fileSystemState.adapter = adapter;
 		await generateAgentFiles(adapter);
@@ -109,6 +119,27 @@
 		projectsToMigrate = migrations;
 		gamesState.existingGames = migrations.length ? null : await getGames(adapter);
 		isInspectingProjects = false;
+	}
+
+	async function selectDifferentProjectsFolder() {
+		if (isPickingProjectsFolder || isMigrating) return;
+
+		isPickingProjectsFolder = true;
+		migrationError = '';
+		try {
+			const root = await pickProjectsRoot({ appVersion });
+			if (root.error) {
+				migrationError = root.error.message;
+				return;
+			}
+
+			await onSetOpfsAdapter(root.data);
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') return;
+			migrationError = error instanceof Error ? error.message : 'Could not select projects folder.';
+		} finally {
+			isPickingProjectsFolder = false;
+		}
 	}
 
 	async function migrateProjects() {
@@ -142,6 +173,10 @@
 	}
 
 	let { children } = $props();
+
+	onMount(() => {
+		canPickProjectsFolder = 'showDirectoryPicker' in window;
+	});
 </script>
 
 <Sidebar.Provider>
@@ -173,8 +208,20 @@
 					{#if migrationError}
 						<p class="text-destructive text-sm" role="alert">{migrationError}</p>
 					{/if}
-					<div class="flex justify-end">
-						<Button onclick={migrateProjects} disabled={isMigrating}>
+					<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+						{#if canPickProjectsFolder}
+							<Button
+								type="button"
+								variant="outline"
+								onclick={selectDifferentProjectsFolder}
+								disabled={isPickingProjectsFolder || isMigrating}
+							>
+								{isPickingProjectsFolder ? 'Selecting...' : 'Select different folder'}
+							</Button>
+						{:else}
+							<span class="hidden sm:block"></span>
+						{/if}
+						<Button onclick={migrateProjects} disabled={isMigrating || isPickingProjectsFolder}>
 							{isMigrating ? 'Migrating...' : 'Migrate projects'}
 						</Button>
 					</div>
