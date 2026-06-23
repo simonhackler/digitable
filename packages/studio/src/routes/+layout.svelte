@@ -80,11 +80,11 @@
 		}
 	}
 
-	let githubStars = $derived(await fetchStars('RightNow-AI', 'openfang'));
-
+	const githubOwner = 'simonhackler';
+	const githubRepo = 'digitable';
 	const discordUrl = 'https://discord.gg/sasxJ5MRWX';
-	const githubUrl = 'https://github.com/your-org/your-repo';
-	// const githubStars = '2.3k';
+	const githubUrl = `https://github.com/${githubOwner}/${githubRepo}`;
+	let githubStars = $derived(await fetchStars(githubOwner, githubRepo));
 </script>
 
 <svelte:head>
