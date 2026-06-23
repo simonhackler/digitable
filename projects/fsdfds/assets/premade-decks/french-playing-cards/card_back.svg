@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+<rect width="63" height="88" rx="4" fill="#172554"/>
+<rect x="5" y="5" width="53" height="78" rx="3" fill="#1d4ed8" stroke="#dbeafe" stroke-width="1.5"/>
+<path d="M 31.5 13 L 51 44 L 31.5 75 L 12 44 Z" fill="none" stroke="#dbeafe" stroke-width="1.2"/>
+<text x="31.5" y="47" text-anchor="middle" font-family="serif" font-size="7" fill="#dbeafe">Digitable</text>
+</svg>

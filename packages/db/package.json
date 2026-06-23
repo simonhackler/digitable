@@ -20,11 +20,11 @@
 	},
 	"dependencies": {
 		"dotenv": "latest",
+		"drizzle-kit": "latest",
 		"drizzle-orm": "latest",
 		"pg": "latest"
 	},
 	"devDependencies": {
-		"@types/pg": "latest",
-		"drizzle-kit": "latest"
+		"@types/pg": "latest"
 	}
 }

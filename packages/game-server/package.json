@@ -27,7 +27,6 @@
 		"@types/mocha": "^10.0.1",
 		"mocha": "^11.7.5",
 		"rimraf": "^6.1.2",
-		"tsx": "^4.21.0",
 		"typescript": "^5.0.4"
 	},
 	"dependencies": {
@@ -38,6 +37,7 @@
 		"@svg-table/db": "workspace:*",
 		"colyseus": "^0.16.5",
 		"debug": "^4.4.3",
-		"express": "^5.2.1"
+		"express": "^5.2.1",
+		"tsx": "^4.21.0"
 	}
 }
