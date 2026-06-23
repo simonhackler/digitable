@@ -11,7 +11,7 @@
 </script>
 
 <main class="flex h-svh min-h-0 w-full flex-col overflow-hidden">
-	<GameTopBar/>
+	<GameTopBar />
 	<div class="relative min-h-0 flex-1 overflow-hidden">
 		<PlaySurface {projectName} {fileSystem} {e2e} />
 	</div>

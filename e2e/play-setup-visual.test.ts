@@ -2,7 +2,12 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openOpfsSeedPage, seedProjectFiles, useBrowserStorage, writeOpfsText } from './helpers/opfs';
+import {
+	openOpfsSeedPage,
+	seedProjectFiles,
+	useBrowserStorage,
+	writeOpfsText
+} from './helpers/opfs';
 import { pixiContentBounds, pixiSlotPoint, pixiState, waitForPixi } from './helpers/pixi';
 
 const here = dirname(fileURLToPath(import.meta.url));

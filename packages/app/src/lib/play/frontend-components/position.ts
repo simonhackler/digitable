@@ -59,7 +59,13 @@ function lerp(start: number, end: number, amount: number): number {
 }
 
 function cloneLayoutNode(position: LayoutNode): LayoutNode {
-	const clone = new LayoutNode(position.id, position.kind, position.x, position.y, position.visible);
+	const clone = new LayoutNode(
+		position.id,
+		position.kind,
+		position.x,
+		position.y,
+		position.visible
+	);
 	clone.parentId = position.parentId;
 	clone.componentId = position.componentId;
 	clone.width = position.width;
