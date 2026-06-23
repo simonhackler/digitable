@@ -214,7 +214,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-HKnw3V0hA1l1x60iZqtNT7buOvu6wYxhfwUVp70QaQs=";
+      outputHash = "sha256-EMirVHrc5VO0ztbUPa7y/eIu37y6SZGSDYH8AHJSznU=";
 
       installPhase = ''
         runHook preInstall
@@ -259,7 +259,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-DjLVoWUXBsaFEI0pr7sdT9tWIntLZF/lAnATd5dOCy4=";
+      outputHash = "sha256-u+ijHa3Y0bLZOxgV1rlnWtldt/LnODkdPzAWA6Pe9SM=";
 
       installPhase = ''
         runHook preInstall
