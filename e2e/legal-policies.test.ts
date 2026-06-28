@@ -42,13 +42,13 @@ test.beforeAll(async () => {
 
 	await policiesModule.syncPolicyVersion({
 		policyType: 'terms',
-		version: '2026-05-13',
+		version: '2026-06-28',
 		content: terms,
 		isCurrent: true
 	});
 	await policiesModule.syncPolicyVersion({
 		policyType: 'privacy_policy',
-		version: '2026-05-13',
+		version: '2026-06-28',
 		content: privacyPolicy,
 		isCurrent: true
 	});

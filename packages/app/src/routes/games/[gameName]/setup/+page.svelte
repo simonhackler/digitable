@@ -517,16 +517,6 @@
 		scheduleAutosave();
 	}
 
-	function applyPresetResizeTable(presetId: TablePresetId) {
-		const preset = tablePresets.find((candidate) => candidate.id === presetId);
-		if (!preset) return;
-		resizeTablePresetId = presetId;
-		resizeTableWidth = preset.width;
-		resizeTableHeight = preset.height;
-		resizeTableError = '';
-		resizeTable({ width: preset.width, height: preset.height, presetId });
-	}
-
 	function applyResizeTable() {
 		const width = parseResizeTableDimension('Width', resizeTableWidth);
 		if ('error' in width) {
@@ -1319,17 +1309,6 @@
 {/snippet}
 
 {#snippet tableToolbarAction()}
-	<select
-		aria-label="Preset"
-		class="border-input bg-background h-8 rounded-md border px-2 text-sm"
-		value={tableInfo.presetId}
-		disabled={isLoading || !editorApi}
-		onchange={(event) => applyPresetResizeTable(event.currentTarget.value as TablePresetId)}
-	>
-		{#each tablePresets as preset (preset.id)}
-			<option value={preset.id}>{preset.name}</option>
-		{/each}
-	</select>
 	<Dialog.Root bind:open={addComponentOpen}>
 		<Dialog.Trigger>
 			{#snippet child({ props })}
