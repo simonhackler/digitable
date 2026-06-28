@@ -1,17 +1,8 @@
+# About
+Digitable is a free and open source board game engine.
 ## Developing
+use devenv
+`devenv up`
 
-Once you've created a project and installed dependencies with `bun install`:
-
-```bash
-bun run dev
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
+> [!WARNING] Some parts of this project are heavily "vibe coded". This mainly involves the svg editors.
+I did this experimenting with agents, but I consider this hands off approach now a mistake. It will take some time to clean up the resulting code
