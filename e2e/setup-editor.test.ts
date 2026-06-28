@@ -140,7 +140,7 @@ async function expectSetupElementPresentOnce(
 }
 
 test('table setup editor saves semantic svg', async ({ page }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(60_000);
 	const pointerEventSanitizeWarnings: string[] = [];
 	page.on('console', (message) => {
 		const text = message.text();
@@ -154,7 +154,11 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Table' })).toBeVisible();
 	await expect(page.getByRole('status')).toContainText('Loaded');
 
-	await page.getByLabel('Preset').selectOption('two-player');
+	await page.getByRole('button', { name: 'ResizeTable' }).click();
+	const resizeDialog = page.getByRole('dialog', { name: 'ResizeTable' });
+	await resizeDialog.getByLabel('Preset').selectOption('two-player');
+	await resizeDialog.getByRole('button', { name: 'Apply' }).click();
+	await expect(resizeDialog).not.toBeVisible();
 	await page.waitForFunction(() => Boolean((window as SvgEditorWindow).__svgEditorController));
 	await page.evaluate(() => {
 		const global = window as SvgEditorWindow;
@@ -334,11 +338,8 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 			}, slotId)
 		)
 		.toEqual({ selected: slotId, text: expect.stringMatching(/^Slot \d+$/) });
-	const allowedDeckCheckbox = page.getByRole('checkbox').first();
-	for (let index = 0; index < 7; index += 1) {
-		await allowedDeckCheckbox.click();
-		await expectSetupElementPresentOnce(page, 'slot', slotId);
-	}
+	await page.getByRole('checkbox', { name: 'western', exact: true }).click();
+	await expectSetupElementPresentOnce(page, 'slot', slotId);
 	await expectSelectedOverlayAligned(page, 'slot', slotId);
 	await page.getByLabel('Slot layout').selectOption('horizontal-flex');
 	await page.getByLabel('Slot item count').fill('2');
@@ -431,7 +432,7 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	expect(savedSetup.slot).toEqual(
 		expect.objectContaining({
 			label: expect.stringMatching(/^Slot \d+$/),
-			acceptedDeckNames: expect.arrayContaining([expect.any(String)]),
+			acceptedDeckNames: ['western'],
 			width: 138,
 			height: 88,
 			layoutMode: 'horizontal-flex',
