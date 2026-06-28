@@ -94,7 +94,6 @@ export type SvgCanvasRawApi = {
 	textActions?: {
 		getCurrentTextElement?: () => Element | null;
 		setCursor?: (index?: number) => void;
-		setInputElem?: (elem: HTMLInputElement) => void;
 		setMultilineInputElem?: (elem: HTMLTextAreaElement) => void;
 	};
 	undoMgr?: {
@@ -119,7 +118,6 @@ export type SvgCanvasRawApi = {
 	};
 	unbind?: (event: string, callback: (...args: unknown[]) => void) => void;
 	updateCanvas?: (width: number, height: number) => { x: number; y: number } | void;
-	useMultilineText?: boolean;
 };
 
 export type ElementTreeNode = {

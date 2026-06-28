@@ -41,7 +41,6 @@ type HistoryCommand = {
 type CreateSvgCanvasArgs = {
 	container: HTMLElement;
 	canvasContainer?: HTMLElement | null;
-	textInput: HTMLInputElement;
 	multilineTextInput: HTMLTextAreaElement;
 	value: string;
 	config?: SvgCanvasConfig;
@@ -209,7 +208,6 @@ const hydrateImportedMultilineText = (svgContent: SVGSVGElement, textElement: SV
 export const createSvgCanvas = ({
 	container,
 	canvasContainer,
-	textInput,
 	multilineTextInput,
 	value,
 	config,
@@ -834,7 +832,7 @@ export const createSvgCanvas = ({
 
 	const enableMultilineTextElements = () => {
 		const svgContent = canvas.getSvgContent?.();
-		if (!svgContent || !canvas.useMultilineText) return;
+		if (!svgContent) return;
 		for (const textElement of svgContent.querySelectorAll('text')) {
 			hydrateImportedMultilineText(svgContent, textElement);
 		}
@@ -1292,8 +1290,6 @@ export const createSvgCanvas = ({
 	canvas.bind?.('selected', selectionHandler);
 	document.addEventListener('modeChange', modeHandler);
 
-	canvas.useMultilineText = true;
-	canvas.textActions?.setInputElem?.(textInput);
 	canvas.textActions?.setMultilineInputElem?.(multilineTextInput);
 	const emitCanvasChange = () => {
 		canvas.call?.('changed', [canvas.getSvgContent?.()]);
@@ -1362,16 +1358,12 @@ export const createSvgCanvas = ({
 		selected.setAttribute('text-align', align);
 	};
 	const forwardTextInput = (event: Event) => {
-		const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
+		const target = event.currentTarget as HTMLTextAreaElement | null;
 		if (!target) return;
 		if (cancelSetupTextEdit(getActiveTextElement())) return;
-		if (target === multilineTextInput) {
-			syncSelectedMultilineAlignment();
-		}
+		syncSelectedMultilineAlignment();
 		canvas.setTextContent?.(target.value);
-		if (target === multilineTextInput) {
-			syncSelectedMultilineText(target.value);
-		}
+		syncSelectedMultilineText(target.value);
 		emitCanvasChange();
 	};
 	const forwardMultilineCursor = (event?: Event) => {
@@ -1410,8 +1402,6 @@ export const createSvgCanvas = ({
 
 		canvas.textActions?.setCursor?.(nextIndex);
 	};
-	textInput.addEventListener('input', forwardTextInput);
-	textInput.addEventListener('keyup', forwardTextInput);
 	multilineTextInput.addEventListener('keydown', handleMultilineEnter);
 	multilineTextInput.addEventListener('input', forwardTextInput);
 	multilineTextInput.addEventListener('keyup', forwardMultilineCursor);
@@ -1496,7 +1486,7 @@ export const createSvgCanvas = ({
 		},
 		setMode(mode) {
 			if (mode === 'text' && cancelSetupTextEdit(canvas.getSelectedElements?.()?.[0])) return;
-			const nextMode = mode === 'text' && canvas.useMultilineText ? 'textmultiline' : mode;
+			const nextMode = mode === 'text' ? 'textmultiline' : mode;
 			canvas.setMode(nextMode);
 
 			if (nextMode !== 'textmultiline') return;
@@ -2030,8 +2020,6 @@ export const createSvgCanvas = ({
 			canvas.unbind?.('changed', changeHandler);
 			canvas.unbind?.('selected', selectionHandler);
 			document.removeEventListener('modeChange', modeHandler);
-			textInput.removeEventListener('input', forwardTextInput);
-			textInput.removeEventListener('keyup', forwardTextInput);
 			multilineTextInput.removeEventListener('keydown', handleMultilineEnter);
 			multilineTextInput.removeEventListener('input', forwardTextInput);
 			multilineTextInput.removeEventListener('keyup', forwardMultilineCursor);
