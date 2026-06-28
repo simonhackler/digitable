@@ -2,7 +2,7 @@
 
 Digitable is a free and open source board game engine.
 
-[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/YOUR_INVITE)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/sasxJ5MRWX)
 
 https://digitable.ink/
 
