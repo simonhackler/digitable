@@ -191,7 +191,7 @@ export async function loadAndProcessCards(
 	const svgTemplateFront = loadSvgTemplate(svgTextFront);
 	const svgTemplateBack = loadSvgTemplate(svgTextBack);
 
-	const { spreadsheetData, imagePaths } = await loadSvgsAndData(
+	const loadedSvgsAndData = await loadSvgsAndData(
 		projectName,
 		cardName,
 		fileSystem,
@@ -199,6 +199,8 @@ export async function loadAndProcessCards(
 		svgTemplateBack,
 		true
 	);
+	if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
+	const { spreadsheetData, imagePaths } = loadedSvgsAndData.data;
 	const idIndex = spreadsheetData.cols.findIndex((x) => x.title == 'id');
 
 	const cards = spreadsheetData.data.map((row) => ({

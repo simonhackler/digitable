@@ -25,7 +25,6 @@ export interface ParsedSvg {
 export interface InitComponentDependencies {
 	boardContainer: Container;
 	boardGameItems: Map<string, BoardGameItemNew>;
-	isDragging: () => boolean;
 	configureItem?: (item: BoardGameItemNew) => void;
 }
 
@@ -70,10 +69,10 @@ function buildStack(isFaceUp: boolean, topItem: BoardGameItemNew) {
 	const topSprite = createStackFace(textures, cardSize);
 
 	const secondSprite = createStackFace(textures, cardSize);
-	secondSprite.position.set(-15, 15);
+	secondSprite.position.set(-5, 5);
 
 	const thirdSprite = createStackFace(textures, cardSize);
-	thirdSprite.position.set(-30, 30);
+	thirdSprite.position.set(-10, 10);
 	return [topSprite, secondSprite, thirdSprite];
 }
 
@@ -85,7 +84,7 @@ export async function initComponent(
 	s: SchemaCallbackProxy<BoardGameRoomState>,
 	room: Room<BoardGameRoomState>
 ) {
-	const { boardContainer, boardGameItems, isDragging } = deps;
+	const { boardContainer, boardGameItems } = deps;
 
 	const sharedClientValues: SharedClientValues = {
 		component,
@@ -114,13 +113,15 @@ export async function initComponent(
 		}
 
 		const stackContainer = new Container();
+		const stackSpriteLayer = new Container();
+		stackContainer.addChild(stackSpriteLayer);
 
 		for (const item of stacks) {
 			item.visible = false;
 			item.renderable = false;
 		}
 		function rebuild(frontendFlip: ClientFlippable | null) {
-			for (const child of stackContainer.removeChildren()) {
+			for (const child of stackSpriteLayer.removeChildren()) {
 				child.destroy({ children: true });
 			}
 
@@ -129,7 +130,7 @@ export async function initComponent(
 			const item = stacks[index];
 			const stackSprites = buildStack(isFaceUp, item);
 			for (const sprite of stackSprites) {
-				stackContainer.addChild(sprite);
+				stackSpriteLayer.addChild(sprite);
 			}
 		}
 
@@ -219,11 +220,5 @@ export async function initComponent(
 	deps.configureItem?.(boardGameItem);
 	boardGameItem.eventMode = 'static';
 	boardGameItem.cursor = 'pointer';
-	boardGameItem.on('pointerover', () => {
-		if (!isDragging()) boardGameItem.tint = 0xcccccc;
-	});
-	boardGameItem.on('pointerout', () => {
-		boardGameItem.tint = 0xffffff;
-	});
 	boardContainer.addChild(boardGameItem);
 }

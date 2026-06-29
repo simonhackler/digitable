@@ -148,7 +148,6 @@
 	{#if fileSystem && games}
 		<AppSidebar {games} {fileSystem} {onSetOpfsAdapter} />
 	{/if}
-	<Sidebar.Trigger class="z-50" />
 	<main class="relative min-w-0 flex-1">
 		{#if !fileSystem}
 			<div class="mt-12 flex w-full flex-col items-center justify-center gap-4 text-xl">

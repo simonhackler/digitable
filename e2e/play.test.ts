@@ -120,6 +120,7 @@ function placementSvg(input: {
 	rotation?: number;
 	cardIds?: string[];
 	cardId?: string;
+	initialShuffle?: boolean;
 }) {
 	const visualX = input.x - 55;
 	const visualY = input.y - 75;
@@ -129,8 +130,9 @@ function placementSvg(input: {
 		input.type === 'deck'
 			? ` data-card-ids="${escapeSvgAttribute(JSON.stringify(input.cardIds ?? []))}"`
 			: '';
+	const shuffleAttr = input.initialShuffle ? ' data-initial-shuffle="true"' : '';
 	return [
-		`  <g id="${escapeSvgAttribute(input.id)}" data-digitable-kind="placement" data-digitable-type="${input.type}" data-deck-name="${escapeSvgAttribute(input.deckName)}"${cardAttr}${deckAttr} data-label="${escapeSvgAttribute(input.label)}" data-svgedit-resizable="false" transform="translate(${visualX} ${visualY}) rotate(${input.rotation ?? 0} 55 75)">`,
+		`  <g id="${escapeSvgAttribute(input.id)}" data-digitable-kind="placement" data-digitable-type="${input.type}" data-deck-name="${escapeSvgAttribute(input.deckName)}"${cardAttr}${deckAttr}${shuffleAttr} data-label="${escapeSvgAttribute(input.label)}" data-svgedit-resizable="false" transform="translate(${visualX} ${visualY}) rotate(${input.rotation ?? 0} 55 75)">`,
 		'    <rect x="0" y="0" width="110" height="150" rx="10"/>',
 		'  </g>'
 	].join('\n');
@@ -175,7 +177,10 @@ function setupSlotSvg(input: {
 	y: number;
 	rotation?: number;
 	acceptedCardIds?: string[];
-	slotContents?: { type: 'card'; deckName: string; cardId: string }[];
+	slotContents?: (
+		| { type: 'card'; deckName: string; cardId: string }
+		| { type: 'deck'; deckName: string; shuffle?: boolean }
+	)[];
 }) {
 	const slotContents = escapeSvgAttribute(JSON.stringify(input.slotContents ?? []));
 	const acceptedCardIds = escapeSvgAttribute(JSON.stringify(input.acceptedCardIds ?? []));
@@ -341,6 +346,77 @@ async function withSetupPlayProject(page: Page, run: (page: Page) => Promise<voi
 	await run(page);
 }
 
+const setupShuffleProjectSlug = 'setup-shuffle-smoke';
+
+function setupShuffleTableSvg() {
+	return [
+		'<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="custom">',
+		placementSvg({
+			id: 'table-stack',
+			type: 'deck',
+			deckName: 'table-deck',
+			cardIds: ['table-deck:table-a', 'table-deck:table-b'],
+			x: 120,
+			y: 120,
+			label: 'Table stack',
+			initialShuffle: true
+		}),
+		setupSlotSvg({
+			id: 'shuffle-slot',
+			label: 'Shuffle slot',
+			x: 300,
+			y: 80,
+			slotContents: [{ type: 'deck', deckName: 'slot-deck', shuffle: true }]
+		}),
+		'</svg>'
+	].join('\n');
+}
+
+async function writeSetupShuffleProject(page: Page) {
+	await openOpfsSeedPage(page);
+	await writeOpfsText(
+		page,
+		`/${setupShuffleProjectSlug}/game.json`,
+		JSON.stringify(
+			{
+				name: 'Setup Shuffle Smoke',
+				minPlayers: 1,
+				maxPlayers: 4,
+				description: 'Minimal fixture project for shuffled setup stacks.',
+				tags: ['E2E', 'Pixi']
+			},
+			null,
+			'\t'
+		)
+	);
+	await writeOpfsText(page, `/${setupShuffleProjectSlug}/rules.md`, '# Setup Shuffle Smoke\n');
+	for (const deck of [
+		{ name: 'table-deck', ids: ['table-a', 'table-b'] },
+		{ name: 'slot-deck', ids: ['slot-a', 'slot-b'] }
+	]) {
+		await writeOpfsText(
+			page,
+			`/${setupShuffleProjectSlug}/components/${deck.name}/front.svg`,
+			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#f7efd9"/></svg>'
+		);
+		await writeOpfsText(
+			page,
+			`/${setupShuffleProjectSlug}/components/${deck.name}/back.svg`,
+			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#2f2419"/></svg>'
+		);
+		await writeOpfsText(
+			page,
+			`/${setupShuffleProjectSlug}/components/${deck.name}/data.csv`,
+			['id,label', ...deck.ids.map((id) => `${id},${id}`)].join('\n')
+		);
+	}
+	await writeOpfsText(page, `/${setupShuffleProjectSlug}/setup/table.svg`, setupShuffleTableSvg());
+	await writeCurrentWorkspaceMarker(page);
+	await saveOpfsStoragePreference(page);
+	await page.goto(`/app/games/${setupShuffleProjectSlug}/play?e2e=1`);
+	await waitForPixi(page);
+}
+
 test('local play blocks when table setup is missing', async ({ page }) => {
 	const projectSlug = 'missing-setup-play';
 	await openOpfsSeedPage(page);
@@ -370,13 +446,40 @@ test('local play blocks when table setup is missing', async ({ page }) => {
 		`/${projectSlug}/components/western/back.svg`,
 		'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#2f2419"/></svg>'
 	);
-	await writeOpfsText(page, `/${projectSlug}/components/western/data.csv`, 'id,label\ncard-1,Card\n');
+	await writeOpfsText(
+		page,
+		`/${projectSlug}/components/western/data.csv`,
+		'id,label\ncard-1,Card\n'
+	);
 	await writeCurrentWorkspaceMarker(page);
 	await saveOpfsStoragePreference(page);
 
 	await page.goto(`/app/games/${projectSlug}/play?e2e=1`);
 	await expect(page.getByRole('heading', { name: 'Table setup required' })).toBeVisible();
 	await expect(page.getByText('setup/table.svg')).toBeVisible();
+});
+
+test('local play shuffles flagged setup stacks at start', async ({ page }) => {
+	await page.addInitScript(() => {
+		Math.random = () => 0;
+	});
+	await writeSetupShuffleProject(page);
+
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				return {
+					tableStack: state.stackComponentIds['table-stack'],
+					slotStack: state.stackComponentIds['shuffle-slot:0:slot-deck']
+				};
+			},
+			{ timeout: 20_000 }
+		)
+		.toEqual({
+			tableStack: ['table-b', 'table-a'],
+			slotStack: ['slot-b', 'slot-a']
+		});
 });
 
 test.describe('setup-play-smoke local setup play project', () => {
@@ -792,12 +895,29 @@ async function canvasPoint(page: Page, point: { x: number; y: number }) {
 	};
 }
 
-async function drawStrokeOnItem(page: Page, id: string) {
+async function setPenWidth(page: Page, width: number) {
+	const slider = page.getByRole('slider', { name: 'Pen width' });
+	await expect(slider).toBeVisible();
+	const current = Number(await slider.inputValue());
+	const step = Number((await slider.getAttribute('step')) ?? '1');
+	const delta = width - current;
+	const steps = Math.round(Math.abs(delta) / step);
+	await slider.focus();
+	for (let i = 0; i < steps; i += 1) {
+		await page.keyboard.press(delta > 0 ? 'ArrowRight' : 'ArrowLeft');
+	}
+	await expect(slider).toHaveValue(String(width));
+}
+
+async function drawStrokeOnItem(page: Page, id: string, width?: number) {
 	const point = await pixiPoint(page, id);
 	const start = await canvasPoint(page, { x: point.x - 10, y: point.y - 8 });
 	const end = await canvasPoint(page, { x: point.x + 10, y: point.y + 8 });
 
 	await page.getByRole('button', { name: 'Pen tool' }).click();
+	if (width !== undefined) {
+		await setPenWidth(page, width);
+	}
 	await page.mouse.move(start.x, start.y);
 	await page.mouse.down();
 	await page.mouse.move(end.x, end.y, { steps: 2 });
@@ -952,7 +1072,7 @@ test('card strokes are synced to the card and can be deleted', async ({ page }) 
 		.toBe(1);
 
 	expect(boardCardId).toBeTruthy();
-	await drawStrokeOnItem(page, boardCardId!);
+	await drawStrokeOnItem(page, boardCardId!, 0.5);
 
 	let strokeId: string | null = null;
 	await expect
@@ -965,7 +1085,8 @@ test('card strokes are synced to the card and can be deleted', async ({ page }) 
 					parentId: stroke.parentId,
 					visible: stroke.visible,
 					face: stroke.face,
-					hasPoints: stroke.points > 1
+					hasPoints: stroke.points > 1,
+					width: stroke.width
 				}));
 			},
 			{ timeout: 20_000 }
@@ -976,7 +1097,8 @@ test('card strokes are synced to the card and can be deleted', async ({ page }) 
 				parentId: boardCardId,
 				visible: true,
 				face: 'back',
-				hasPoints: true
+				hasPoints: true,
+				width: 0.5
 			}
 		]);
 
@@ -1122,6 +1244,26 @@ test('drawing from a 3-card stack keeps the remaining deck visible', async ({ pa
 			visibleStacks: 1,
 			visibleBoardCards: 0,
 			handCards: 1
+		});
+
+	await page.keyboard.press('d');
+
+	await expect
+		.poll(
+			async () => {
+				const state = await pixiState(page);
+				return {
+					visibleStacks: state.visibleStackIds.length,
+					visibleBoardCards: state.visibleBoardCardIds.length,
+					handCards: state.handCardIds.length
+				};
+			},
+			{ timeout: 20_000 }
+		)
+		.toEqual({
+			visibleStacks: 0,
+			visibleBoardCards: 1,
+			handCards: 2
 		});
 });
 

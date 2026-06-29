@@ -87,6 +87,7 @@ export type SvgCanvasRawApi = {
 	setMode: (name: string) => void;
 	setOpacity?: (value: number) => void;
 	setRectRadius?: (value: number) => void;
+	setResolution?: (width: number | string, height: number | string) => boolean;
 	setRotationAngle?: (value: number, preventUndo?: boolean) => void;
 	setSvgString: (xmlString: string, preventUndo?: boolean) => boolean;
 	setTextContent?: (text: string) => void;
@@ -163,6 +164,7 @@ export type EditorError = {
 export type SvgEditorApi = {
 	loadSvg(svg: string, opts?: { preventUndo?: boolean; center?: boolean }): boolean;
 	getSvg(): string;
+	setResolution(width: number, height: number): boolean;
 
 	setMode(mode: EditorMode): void;
 	getMode(): EditorMode;

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import { syncPolicyVersion, type PolicyType } from './policies';
 
-const CURRENT_POLICY_VERSION = '2026-05-13';
+const CURRENT_POLICY_VERSION = '2026-06-28';
 
 const policies: Array<{
 	policyType: PolicyType;

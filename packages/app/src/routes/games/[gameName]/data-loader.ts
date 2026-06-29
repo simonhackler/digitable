@@ -1,6 +1,8 @@
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 import type { Column } from 'jspreadsheet-ce';
+import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
+import { Err, Ok, tryAsync, type Result } from 'wellcrafted/result';
 import { parseCsvFile } from './csv-helper';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import { getSvgDataMapForSides, type SvgDataSide } from './svg-helpers';
@@ -10,6 +12,57 @@ const LOCAL_ASSET_MARKER = `/${ASSETS_DIR}/`;
 export const TRANSPARENT_IMAGE =
 	'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E';
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.avif']);
+
+const DataLoaderError = defineErrors({
+	DataCsvMissing: ({ path, deckName }: { path: string; deckName: string }) => ({
+		message: `Component "${deckName}" is missing data.csv.`,
+		path,
+		deckName
+	}),
+	DataCsvReadFailed: ({
+		path,
+		deckName,
+		cause
+	}: {
+		path: string;
+		deckName: string;
+		cause: unknown;
+	}) => ({
+		message: `Could not read data.csv for component "${deckName}": ${extractErrorMessage(cause)}`,
+		path,
+		deckName,
+		cause
+	}),
+	DataCsvParseFailed: ({
+		path,
+		deckName,
+		cause
+	}: {
+		path: string;
+		deckName: string;
+		cause: unknown;
+	}) => ({
+		message: `Could not parse data.csv for component "${deckName}": ${extractErrorMessage(cause)}`,
+		path,
+		deckName,
+		cause
+	})
+});
+export type DataLoaderError = InferErrors<typeof DataLoaderError>;
+type DataLoaderResult<T> = Result<T, DataLoaderError>;
+type LoadSpreadsheetDataOptions = {
+	missingDataCsv?: 'error' | 'generate';
+};
+type SpreadsheetData = {
+	cols: Column[];
+	data: string[][];
+	generatedFromTemplates: boolean;
+};
+type LoadedSvgsAndData = {
+	svgData: Map<string, ColumnWithData>;
+	spreadsheetData: SpreadsheetData;
+	imagePaths: Map<string, string>;
+};
 
 const blobToDataUrl = (blob: Blob) =>
 	new Promise<string>((resolve) => {
@@ -92,91 +145,112 @@ export async function listProjectImageFiles(fileSystem: FsDir, projectName: stri
 	return images.sort((a, b) => a.localeCompare(b));
 }
 
+function spreadsheetDataFromCsv(
+	svgData: Map<string, ColumnWithData>,
+	csvData: { header: string[]; data: string[][] }
+): SpreadsheetData {
+	const idCol: Column = { type: 'hidden', title: 'id' };
+	const csvHeaders = csvData.header.filter((x) => x !== 'id');
+	const csvHeaderSet = new Set(csvData.header);
+	const csvCols: Column[] = csvHeaders.map((header) => {
+		const svgCol = svgData.get(header);
+		if (svgCol) {
+			return {
+				title: svgCol.title,
+				type: svgCol.type
+			} as Column;
+		}
+
+		return { title: header, type: 'text' } as Column;
+	});
+	const missingSvgCols: Column[] = Array.from(svgData.values())
+		.filter((col) => !csvHeaderSet.has(col.title))
+		.map(
+			(col) =>
+				({
+					title: col.title,
+					type: col.type
+				}) as Column
+		);
+
+	const newCols: Column[] = [...csvCols, ...missingSvgCols];
+	newCols.unshift(idCol);
+
+	const idIndexInCsv = csvData.header.indexOf('id');
+
+	const data = csvData.data.map((row) => {
+		const idValue =
+			idIndexInCsv >= 0 && row[idIndexInCsv] != null && String(row[idIndexInCsv]).trim() !== ''
+				? row[idIndexInCsv]
+				: crypto.randomUUID();
+
+		const rest = newCols.slice(1).map((h) => {
+			const title = h.title as string;
+			const idx = csvData.header.indexOf(title);
+			if (idx >= 0) return row[idx] ?? '';
+			return svgData.get(title)?.data[0] || '';
+		});
+
+		return [idValue, ...rest];
+	});
+
+	return {
+		cols: newCols,
+		data,
+		generatedFromTemplates: false
+	};
+}
+
+function generatedSpreadsheetData(svgData: Map<string, ColumnWithData>): SpreadsheetData {
+	const idCol: Column = { type: 'hidden', title: 'id' };
+	return {
+		cols: [
+			idCol,
+			...Array.from(svgData.values()).map(
+				(c) =>
+					({
+						title: c.title,
+						type: c.type
+					}) as Column
+			)
+		],
+		data: [
+			['template', ...Array.from(svgData.keys()).map((key) => svgData.get(key)?.data[0] || '')]
+		],
+		generatedFromTemplates: true
+	};
+}
+
 export async function loadSpreadsheetData(
 	svgData: Map<string, ColumnWithData>,
 	currentProject: string,
 	currentCard: string,
-	fileSystem: FsDir
-) {
-	const csvTextResult = await fileSystem.readText(
-		joinFsPath(currentProject, COMPONENTS_DIR, currentCard, 'data.csv')
-	);
-	const csvFile = csvTextResult.error
-		? null
-		: new File([csvTextResult.data], 'data.csv', { type: 'text/csv' });
-	const csvData = csvFile ? await parseCsvFile(csvFile) : null;
-	const idCol: Column = { type: 'hidden', title: 'id' };
-	if (csvData) {
-		const csvHeaders = csvData.header.filter((x) => x !== 'id');
-		const csvHeaderSet = new Set(csvData.header);
-		const csvCols: Column[] = csvHeaders.map((header) => {
-			const svgCol = svgData.get(header);
-			if (svgCol) {
-				return {
-					title: svgCol.title,
-					type: svgCol.type
-				} as Column;
-			}
-
-			return { title: header, type: 'text' } as Column;
+	fileSystem: FsDir,
+	options: LoadSpreadsheetDataOptions = {}
+): Promise<DataLoaderResult<SpreadsheetData>> {
+	const path = joinFsPath(currentProject, COMPONENTS_DIR, currentCard, 'data.csv');
+	const csvTextResult = await fileSystem.readText(path);
+	if (csvTextResult.error) {
+		if (csvTextResult.error.name === 'NotFoundError') {
+			return options.missingDataCsv === 'generate'
+				? Ok(generatedSpreadsheetData(svgData))
+				: DataLoaderError.DataCsvMissing({ path, deckName: currentCard });
+		}
+		return DataLoaderError.DataCsvReadFailed({
+			path,
+			deckName: currentCard,
+			cause: csvTextResult.error
 		});
-		const missingSvgCols: Column[] = Array.from(svgData.values())
-			.filter((col) => !csvHeaderSet.has(col.title))
-			.map(
-				(col) =>
-					({
-						title: col.title,
-						type: col.type
-					}) as Column
-			);
-
-		const newCols: Column[] = [...csvCols, ...missingSvgCols];
-		newCols.unshift(idCol);
-
-		const idIndexInCsv = csvData.header.indexOf('id');
-
-		const data = csvData.data.map((row) => {
-			const idValue =
-				idIndexInCsv >= 0 && row[idIndexInCsv] != null && String(row[idIndexInCsv]).trim() !== ''
-					? row[idIndexInCsv]
-					: crypto.randomUUID();
-
-			const rest = newCols.slice(1).map((h) => {
-				const title = h.title as string;
-				const idx = csvData.header.indexOf(title);
-				if (idx >= 0) return row[idx] ?? '';
-				return svgData.get(title)?.data[0] || '';
-			});
-
-			return [idValue, ...rest];
-		});
-
-		return {
-			cols: newCols,
-			data,
-			generatedFromTemplates: false
-		};
-	} else {
-		return {
-			cols: [
-				idCol,
-				...Array.from(svgData.values()).map(
-					(c) =>
-						({
-							title: c.title,
-							type: c.type
-						}) as Column
-				)
-			],
-			data: [
-				[
-					crypto.randomUUID(),
-					...Array.from(svgData.keys()).map((key) => svgData.get(key)?.data[0] || '')
-				]
-			],
-			generatedFromTemplates: true
-		};
 	}
+
+	const csvFile = new File([csvTextResult.data], 'data.csv', { type: 'text/csv' });
+	const csvData = await tryAsync({
+		try: () => parseCsvFile(csvFile),
+		catch: (cause) => DataLoaderError.DataCsvParseFailed({ path, deckName: currentCard, cause })
+	});
+	if (csvData.error) return Err(csvData.error);
+
+	return Ok(spreadsheetDataFromCsv(svgData, csvData.data));
 }
 
 export async function loadImagePaths(
@@ -219,14 +293,16 @@ export async function loadSvgsAndData(
 	fileSystem: FsDir,
 	svgTemplateFront: SVGSVGElement,
 	svgTemplateBack: SVGSVGElement,
-	useDataUrls = true
-) {
+	useDataUrls = true,
+	options: LoadSpreadsheetDataOptions = {}
+): Promise<DataLoaderResult<LoadedSvgsAndData>> {
 	return loadSvgsAndDataForSides(
 		projectName,
 		cardName,
 		fileSystem,
 		[{ template: svgTemplateFront }, { template: svgTemplateBack, columnPrefix: 'back_' }],
-		useDataUrls
+		useDataUrls,
+		options
 	);
 }
 
@@ -235,14 +311,28 @@ export async function loadSvgsAndDataForSides(
 	cardName: string,
 	fileSystem: FsDir,
 	sides: SvgDataSide[],
-	useDataUrls = true
-) {
+	useDataUrls = true,
+	options: LoadSpreadsheetDataOptions = {}
+): Promise<DataLoaderResult<LoadedSvgsAndData>> {
 	const svgData = getSvgDataMapForSides(sides);
-	const spreadsheetData = await loadSpreadsheetData(svgData, projectName, cardName, fileSystem);
-	const imagePaths = await loadImagePaths(spreadsheetData, fileSystem, projectName, useDataUrls);
-	return {
+	const spreadsheetData = await loadSpreadsheetData(
 		svgData,
-		spreadsheetData,
+		projectName,
+		cardName,
+		fileSystem,
+		options
+	);
+	if (spreadsheetData.error) return Err(spreadsheetData.error);
+
+	const imagePaths = await loadImagePaths(
+		spreadsheetData.data,
+		fileSystem,
+		projectName,
+		useDataUrls
+	);
+	return Ok({
+		svgData,
+		spreadsheetData: spreadsheetData.data,
 		imagePaths
-	};
+	});
 }

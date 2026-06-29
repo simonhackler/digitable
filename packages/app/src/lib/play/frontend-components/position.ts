@@ -10,6 +10,9 @@ import type { Room } from 'colyseus.js';
 
 type Handler<T> = (payload: T) => void;
 
+const POSITION_EPSILON = 0.001;
+const POSITION_INTERPOLATION = 0.2;
+
 export type ClientPlacement = {
 	x: number;
 	y: number;
@@ -18,12 +21,69 @@ export type ClientPlacement = {
 	visible?: boolean;
 };
 
+type PositionSnapshot = {
+	x: number;
+	y: number;
+	rotation: number;
+	parentId: string;
+	visible: boolean;
+};
+
+type PendingPrediction = PositionSnapshot & {
+	reconcileOnRelease: boolean;
+};
+
 function arraysEqual<T>(a: ArrayLike<T>, b: ArrayLike<T>): boolean {
 	if (a.length !== b.length) return false;
 	for (let i = 0; i < a.length; i += 1) {
 		if (a[i] !== b[i]) return false;
 	}
 	return true;
+}
+
+function samePoint(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+	return Math.abs(a.x - b.x) <= POSITION_EPSILON && Math.abs(a.y - b.y) <= POSITION_EPSILON;
+}
+
+function samePosition(a: PositionSnapshot, b: PositionSnapshot): boolean {
+	return (
+		samePoint(a, b) &&
+		Math.abs(a.rotation - b.rotation) <= POSITION_EPSILON &&
+		a.parentId === b.parentId &&
+		a.visible === b.visible
+	);
+}
+
+function lerp(start: number, end: number, amount: number): number {
+	return start + (end - start) * amount;
+}
+
+function cloneLayoutNode(position: LayoutNode): LayoutNode {
+	const clone = new LayoutNode(
+		position.id,
+		position.kind,
+		position.x,
+		position.y,
+		position.visible
+	);
+	clone.parentId = position.parentId;
+	clone.componentId = position.componentId;
+	clone.width = position.width;
+	clone.height = position.height;
+	clone.rotation = position.rotation;
+	clone.locked = position.locked;
+	clone.layout = position.layout;
+	return clone;
+}
+
+function positionSnapshot(position: LayoutNode): PositionSnapshot {
+	return {
+		x: position.x,
+		y: position.y,
+		rotation: position.rotation,
+		parentId: position.parentId,
+		visible: position.visible
+	};
 }
 
 export class Event<T> {
@@ -56,39 +116,104 @@ export class ClientPosition {
 	sharedValues: SharedClientValues;
 	clientPositionState: LayoutNode;
 	onPositionChanged: Event<LayoutNode> = new Event();
+	private serverPositionState: LayoutNode;
+	private pendingPrediction: PendingPrediction | null = null;
 
 	constructor(sharedValues: SharedClientValues, position: LayoutNode) {
 		this.sharedValues = sharedValues;
-		this.clientPositionState = new LayoutNode(
-			position.id,
-			position.kind,
-			position.x,
-			position.y,
-			position.visible
-		);
-		this.clientPositionState.rotation = position.rotation;
-		this.clientPositionState.parentId = position.parentId;
+		this.clientPositionState = cloneLayoutNode(position);
+		this.serverPositionState = position;
 
 		sharedValues.s(position).onChange(() => {
-			this.applyLocalPlacement({
-				x: position.x,
-				y: position.y,
-				rotation: position.rotation,
-				parentId: position.parentId,
-				visible: position.visible
-			});
+			this.handleServerPositionChanged();
+		});
+		sharedValues.s(sharedValues.component).onChange(() => {
+			this.handleServerPositionChanged();
 		});
 	}
 
-	applyLocalPlacement(placement: ClientPlacement) {
-		this.clientPositionState.x = placement.x;
-		this.clientPositionState.y = placement.y;
-		this.clientPositionState.rotation = placement.rotation;
-		this.clientPositionState.parentId = placement.parentId;
-		if (placement.visible !== undefined) {
-			this.clientPositionState.visible = placement.visible;
+	private placementSnapshot(placement: ClientPlacement): PositionSnapshot {
+		return {
+			x: placement.x,
+			y: placement.y,
+			rotation: placement.rotation,
+			parentId: placement.parentId,
+			visible: placement.visible ?? this.clientPositionState.visible
+		};
+	}
+
+	private applyClientPosition(next: PositionSnapshot): boolean {
+		const current = positionSnapshot(this.clientPositionState);
+		if (samePosition(current, next)) {
+			return false;
 		}
+		this.clientPositionState.x = next.x;
+		this.clientPositionState.y = next.y;
+		this.clientPositionState.rotation = next.rotation;
+		this.clientPositionState.parentId = next.parentId;
+		this.clientPositionState.visible = next.visible;
 		this.onPositionChanged.emit(this.clientPositionState);
+		return true;
+	}
+
+	private handleServerPositionChanged() {
+		const serverPosition = positionSnapshot(this.serverPositionState);
+		if (!this.pendingPrediction) {
+			if (samePoint(this.clientPositionState, serverPosition)) {
+				this.applyClientPosition(serverPosition);
+			} else {
+				this.applyClientPosition({
+					...serverPosition,
+					x: this.clientPositionState.x,
+					y: this.clientPositionState.y
+				});
+			}
+			return;
+		}
+
+		if (samePosition(this.pendingPrediction, serverPosition)) {
+			this.pendingPrediction = null;
+			this.applyClientPosition(serverPosition);
+			return;
+		}
+
+		const owner = this.sharedValues.component.owner;
+		const ownedByAnotherPlayer = owner !== '' && owner !== this.sharedValues.sessionId;
+		const releasedAfterMoveEnd = this.pendingPrediction.reconcileOnRelease && owner === '';
+
+		if (ownedByAnotherPlayer || releasedAfterMoveEnd) {
+			this.pendingPrediction = null;
+			this.applyClientPosition(serverPosition);
+		}
+	}
+
+	tick(): boolean {
+		if (this.pendingPrediction) {
+			return false;
+		}
+		const serverPosition = positionSnapshot(this.serverPositionState);
+		if (samePoint(this.clientPositionState, serverPosition)) {
+			return false;
+		}
+
+		const next = {
+			...serverPosition,
+			x: lerp(this.clientPositionState.x, serverPosition.x, POSITION_INTERPOLATION),
+			y: lerp(this.clientPositionState.y, serverPosition.y, POSITION_INTERPOLATION)
+		};
+		if (samePoint(next, serverPosition)) {
+			next.x = serverPosition.x;
+			next.y = serverPosition.y;
+		}
+		return this.applyClientPosition(next);
+	}
+
+	// IDEA: Refactor these functions into the commands itself. A command should then handle execution on the server and the client
+	// Or I will need a frontend command or something like that?
+	// I somehow want to tightly couple server and frontend commands
+	// How will the commands then have to look like?
+	applyLocalPlacement(placement: ClientPlacement) {
+		return this.applyClientPosition(this.placementSnapshot(placement));
 	}
 
 	moveTo(placement: ClientPlacement) {
@@ -101,7 +226,11 @@ export class ClientPosition {
 			);
 			return;
 		}
-		this.applyLocalPlacement(placement);
+		this.pendingPrediction = {
+			...this.placementSnapshot(placement),
+			reconcileOnRelease: false
+		};
+		this.applyClientPosition(this.pendingPrediction);
 
 		this.sharedValues.room.send('cmd', {
 			commandType: 'move',
@@ -116,7 +245,11 @@ export class ClientPosition {
 	}
 
 	moveEnd(placement: ClientPlacement) {
-		this.applyLocalPlacement(placement);
+		this.pendingPrediction = {
+			...this.placementSnapshot(placement),
+			reconcileOnRelease: true
+		};
+		this.applyClientPosition(this.pendingPrediction);
 		this.sharedValues.room.send('cmd', {
 			commandType: 'moveend',
 			payload: {
@@ -126,6 +259,24 @@ export class ClientPosition {
 				rotation: placement.rotation,
 				targetNodeId: placement.parentId
 			}
+		});
+	}
+
+	predictPlacement(placement: ClientPlacement) {
+		this.pendingPrediction = {
+			...this.placementSnapshot(placement),
+			reconcileOnRelease: true
+		};
+		this.applyClientPosition(this.pendingPrediction);
+	}
+
+	predictPosition(x: number, y: number, visible: boolean) {
+		this.predictPlacement({
+			x,
+			y,
+			rotation: this.clientPositionState.rotation,
+			parentId: this.clientPositionState.parentId,
+			visible
 		});
 	}
 }
