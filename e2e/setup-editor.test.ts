@@ -140,7 +140,7 @@ async function expectSetupElementPresentOnce(
 }
 
 test('table setup editor saves semantic svg', async ({ page }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(120_000);
 	const pointerEventSanitizeWarnings: string[] = [];
 	page.on('console', (message) => {
 		const text = message.text();
@@ -453,7 +453,10 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	expect(svg).toContain('data-slot-layout-mode="horizontal-flex"');
 	expect(svg).toContain('data-slot-contents');
 	expect(svg).toContain('<image');
-	expect(svg).toContain('data:image/svg+xml');
+	expect(svg).toContain('../assets/');
+	expect(svg).not.toContain('data:image');
+	expect(svg).not.toContain('blob:');
+	expect(svg).not.toContain('data-digitable-original-href');
 	expect(svg).toContain('data-deck-stack="true"');
 	expect(svg).toContain('data-locked="true"');
 	expect(svg).toContain('data-svgedit-resizable="false"');

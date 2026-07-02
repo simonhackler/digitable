@@ -20,10 +20,16 @@
 	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { useDebounce } from 'runed';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { getFileSystemContext } from '../../context';
-	import { loadSvgsAndDataForSides } from '../data-loader';
-	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
+	import {
+		getProjectFilePath,
+		isEmbeddedImageReference,
+		loadSpreadsheetData,
+		resolveImageReference
+	} from '../data-loader';
+	import { generateSvg, getSvgDataMapForSides, loadSvgTemplate } from '../svg-helpers';
+	import { ImageEditor } from '../decks/[deckName]/data/custom-image';
 	import GameTopBar from '../../game-top-bar.svelte';
 	import {
 		createHorizontalFlexSlotLayout,
@@ -43,12 +49,16 @@
 		type TableSlotLayout,
 		type TableSvgAssets,
 		type TableSvgElementJson,
+		type TableSvgJson,
 		type TableSlot,
 		type TablePresetId,
 		type Table
 	} from './table';
 
 	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
+	const SVG_MIME_TYPE = 'image/svg+xml';
+	const SVG_NS = 'http://www.w3.org/2000/svg';
+	const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 	type CardEntry = {
 		id: string;
@@ -56,6 +66,7 @@
 		deckName: string;
 		label: string;
 		frontSvg: string;
+		linkedFrontSvg: string;
 		size: { width: number; height: number } | null;
 	};
 
@@ -87,6 +98,40 @@
 		return `<svg xmlns="http://www.w3.org/2000/svg" width="${table.width}" height="${table.height}" viewBox="0 0 ${table.width} ${table.height}" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="${table.presetId}"></svg>`;
 	}
 
+	const getImageHref = (image: SVGImageElement) =>
+		image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
+
+	const setImageHref = (image: SVGImageElement, value: string) => {
+		const svgRoot =
+			image.ownerSVGElement ??
+			(image.ownerDocument.documentElement as unknown as SVGSVGElement | null);
+		if (svgRoot && !svgRoot.hasAttribute('xmlns:xlink')) {
+			svgRoot.setAttribute('xmlns:xlink', XLINK_NS);
+		}
+		image.setAttribute('href', value);
+		image.setAttributeNS(XLINK_NS, 'xlink:href', value);
+	};
+
+	async function resolveSvgImagesForEditor(value: string, projectName: string) {
+		if (!value) return value;
+
+		const doc = new DOMParser().parseFromString(value, SVG_MIME_TYPE);
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+
+		await Promise.all(
+			Array.from(root.querySelectorAll<SVGImageElement>('image')).map(async (image) => {
+				const href = getImageHref(image).trim();
+				if (!href || isEmbeddedImageReference(href)) return;
+
+				const resolvedHref = await resolveImageReference(fileSystem, projectName, href, true);
+				setImageHref(image, resolvedHref);
+			})
+		);
+
+		return serializeSvg(root);
+	}
+
 	function applyTableRootMetadata(root: Element, table: TableInfo) {
 		root.setAttribute('role', 'img');
 		root.setAttribute('aria-label', 'Digitable table setup');
@@ -101,53 +146,76 @@
 		applyTableRootMetadata(root, table);
 	}
 
-	function updateSerializedTableRoot(svg: string, table: TableInfo) {
-		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-		const root = doc.documentElement;
-		if (!root || root.tagName.toLowerCase() !== 'svg') return emptyTableSvg(table);
-		applyTableRootInfo(root, table);
-		return serializeSvg(root);
-	}
-
 	function stringifyAttributes(attributes: Record<string, string | number | null>) {
 		return Object.fromEntries(
 			Object.entries(attributes).map(([key, value]) => [key, value === null ? null : String(value)])
 		);
 	}
 
+	function setupAssetHref(value: string) {
+		const projectFilePath = getProjectFilePath(projectName, value);
+		if (!projectFilePath) return value.trim();
+		const assetPrefix = `/${projectName}/${ASSETS_DIR}/`;
+		if (!projectFilePath.startsWith(assetPrefix)) return value.trim();
+		return `../${ASSETS_DIR}/${projectFilePath.slice(assetPrefix.length)}`;
+	}
+
+	function linkedImagePaths(spreadsheetData: {
+		cols: Array<{ type?: unknown }>;
+		data: string[][];
+	}) {
+		const imageColumnIndexes = spreadsheetData.cols.flatMap((column, index) =>
+			column.type === ImageEditor ? [index] : []
+		);
+		return new Map(
+			Array.from(
+				new Set(
+					spreadsheetData.data.flatMap((row) =>
+						imageColumnIndexes.map((index) => row[index]).filter((value) => value?.trim())
+					)
+				)
+			).map((value) => [value, setupAssetHref(value)])
+		);
+	}
+
 	async function loadDeckEntry(deckName: string, frontSvgText: string): Promise<DeckEntry> {
 		const frontTemplate = loadSvgTemplate(frontSvgText);
-		const loadedSvgsAndData = await loadSvgsAndDataForSides(
+		const svgData = getSvgDataMapForSides([{ template: frontTemplate }]);
+		const loadedSpreadsheetData = await loadSpreadsheetData(
+			svgData,
 			projectName,
 			deckName,
-			fileSystem,
-			[{ template: frontTemplate }],
-			true
+			fileSystem
 		);
-		if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
-		const { spreadsheetData, imagePaths } = loadedSvgsAndData.data;
+		if (loadedSpreadsheetData.error) throw new Error(loadedSpreadsheetData.error.message);
+		const spreadsheetData = loadedSpreadsheetData.data;
+		const imagePaths = linkedImagePaths(spreadsheetData);
 		const headers = spreadsheetData.cols.map((column) => String(column.title));
 		const idIndex = headers.indexOf('id');
 		const labelIndex = headers.findIndex((header) => header !== 'id');
 		if (idIndex < 0) {
 			throw new Error(`Component "${deckName}" is missing an id column.`);
 		}
-		const cards = spreadsheetData.data.map((row, index) => {
-			const rowId = String(row[idIndex] ?? '').trim();
-			if (!rowId) {
-				throw new Error(`Component "${deckName}" has an empty id in row ${index + 1}.`);
-			}
-			const label = String(labelIndex >= 0 ? row[labelIndex] : '');
-			const frontSvg = serializeSvg(generateSvg(frontTemplate, headers, row, imagePaths));
-			return {
-				id: `${deckName}:${rowId}`,
-				rowId,
-				deckName,
-				label,
-				frontSvg,
-				size: svgMarkupLogicalSize(frontSvg)
-			};
-		});
+		const cards = await Promise.all(
+			spreadsheetData.data.map(async (row, index) => {
+				const rowId = String(row[idIndex] ?? '').trim();
+				if (!rowId) {
+					throw new Error(`Component "${deckName}" has an empty id in row ${index + 1}.`);
+				}
+				const label = String(labelIndex >= 0 ? row[labelIndex] : '');
+				const linkedFrontSvg = serializeSvg(generateSvg(frontTemplate, headers, row, imagePaths));
+				const frontSvg = await resolveSvgImagesForEditor(linkedFrontSvg, projectName);
+				return {
+					id: `${deckName}:${rowId}`,
+					rowId,
+					deckName,
+					label,
+					frontSvg,
+					linkedFrontSvg,
+					size: svgMarkupLogicalSize(frontSvg)
+				};
+			})
+		);
 		return { name: deckName, cards };
 	}
 
@@ -179,7 +247,7 @@
 		if (svgRead.error) {
 			return emptyTableSvg(createDefaultTable().table);
 		}
-		return svgRead.data;
+		return resolveSvgImagesForEditor(svgRead.data, projectName);
 	}
 
 	const fallbackTable = createDefaultTable();
@@ -256,10 +324,6 @@
 		return editorApi?.getSvg() ?? editorSvg;
 	}
 
-	function currentEditorSvgForSave() {
-		return updateSerializedTableRoot(currentEditorSvg(), tableInfo);
-	}
-
 	function currentEditorSvgElement() {
 		return editorApi?._unsafe?.rawCanvas()?.getSvgContent?.() ?? null;
 	}
@@ -281,6 +345,71 @@
 	function currentEditorTable() {
 		if (typeof DOMParser === 'undefined') return fallbackTableWithRoot(tableInfo);
 		return svgToTable(currentEditorSvg(), fallbackTableWithRoot(tableInfo));
+	}
+
+	function linkedDeckLibrary(sourceDecks = decks): DeckEntry[] {
+		return sourceDecks.map((deck) => ({
+			...deck,
+			cards: deck.cards.map((card) => ({
+				...card,
+				frontSvg: card.linkedFrontSvg
+			}))
+		}));
+	}
+
+	function appendSvgJson(parent: Element, svgJson: TableSvgJson, doc: Document) {
+		if (typeof svgJson === 'string') {
+			parent.appendChild(doc.createTextNode(svgJson));
+			return;
+		}
+		const element = doc.createElementNS(SVG_NS, svgJson.element);
+		for (const [key, value] of Object.entries(svgJson.attr ?? {})) {
+			element.setAttribute(key, String(value));
+		}
+		for (const child of svgJson.children ?? []) {
+			appendSvgJson(element, child, doc);
+		}
+		parent.appendChild(element);
+	}
+
+	function tableSvgForSave() {
+		const table = currentEditorTable();
+		if (typeof DOMParser === 'undefined') return emptyTableSvg(table.table);
+		const linkedDecks = linkedDeckLibrary();
+
+		const doc = new DOMParser().parseFromString(emptyTableSvg(table.table), SVG_MIME_TYPE);
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return emptyTableSvg(table.table);
+		applyTableRootInfo(root, table.table);
+
+		const layer = doc.createElementNS(SVG_NS, 'g');
+		layer.setAttribute('class', 'layer');
+		const title = doc.createElementNS(SVG_NS, 'title');
+		title.textContent = 'Layer 1';
+		layer.appendChild(title);
+		for (const slot of table.slots) {
+			appendSvgJson(
+				layer,
+				withCurrentTransform(
+					slot.id,
+					slotToSvgElementJson(slot, svgAssetsForSlot(slot, linkedDecks))
+				),
+				doc
+			);
+		}
+		for (const placement of table.placements) {
+			appendSvgJson(
+				layer,
+				withCurrentTransform(
+					placement.id,
+					placementToSvgElementJson(placement, svgAssetsForPlacement(placement, linkedDecks))
+				),
+				doc
+			);
+		}
+		root.appendChild(layer);
+
+		return serializeSvg(root);
 	}
 
 	function selectSlot(slot: TableSlot | null) {
@@ -853,7 +982,7 @@
 		if (isLoading) return;
 		saveError = '';
 		status = 'Autosaving';
-		const svg = currentEditorSvgForSave();
+		const svg = tableSvgForSave();
 		await saveTableSvg(svg);
 		status = 'Autosaved';
 	}
