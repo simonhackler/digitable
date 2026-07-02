@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onNavigate } from '$app/navigation';
+	import { asset } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -15,8 +17,9 @@
 		type SvgEditorApi
 	} from '@svg-table/svgeditor';
 	import { Maximize2, Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { useDebounce } from 'runed';
 	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { getFileSystemContext } from '../../context';
 	import { loadSvgsAndDataForSides } from '../data-loader';
@@ -44,6 +47,8 @@
 		type TablePresetId,
 		type Table
 	} from './table';
+
+	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
 
 	type CardEntry = {
 		id: string;
@@ -197,20 +202,11 @@
 	let editorSvg = $state(emptyTableSvg(fallbackTable.table));
 	let editorApi = $state<SvgEditorApi | null>(null);
 	let editorPanel = $state('component');
-	let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-	let autosaveIdleHandle: number | null = null;
-	let saveGeneration = 0;
-	let saveInFlight = false;
-	let pendingSaveGeneration: number | null = null;
+	let activeSavePromises = $state<Promise<void>[]>([]);
+	let tableSaveChain: Promise<void> = Promise.resolve();
 	const editorController = createEditorController();
 
-	type WindowWithIdleCallback = Window & {
-		requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
-		cancelIdleCallback?: (handle: number) => void;
-	};
-
 	const AUTOSAVE_DELAY_MS = 800;
-	const AUTOSAVE_IDLE_TIMEOUT_MS = 2000;
 	const MIN_TABLE_DIMENSION = 100;
 	const selectedSlotLayout = $derived<TableSlotLayout>(selectedSlot?.layout ?? { mode: 'free' });
 	const selectedSlotContents = $derived(selectedSlot?.contents ?? []);
@@ -222,7 +218,7 @@
 			: [];
 	});
 	const config = $derived({
-		imgPath: '/svgedit/images/',
+		imgPath: SVG_EDITOR_ASSET_BASE_PATH,
 		baseUnit: 'px',
 		pageBorderSnapping: true,
 		showGrid: true,
@@ -255,26 +251,6 @@
 				status = 'Load failed';
 			});
 	});
-
-	onDestroy(() => {
-		cancelQueuedAutosave();
-	});
-
-	function cancelQueuedAutosave() {
-		if (autosaveTimer) {
-			clearTimeout(autosaveTimer);
-			autosaveTimer = null;
-		}
-		if (autosaveIdleHandle !== null && typeof window !== 'undefined') {
-			const browser = window as WindowWithIdleCallback;
-			if (browser.cancelIdleCallback) {
-				browser.cancelIdleCallback(autosaveIdleHandle);
-			} else {
-				clearTimeout(autosaveIdleHandle);
-			}
-			autosaveIdleHandle = null;
-		}
-	}
 
 	function currentEditorSvg() {
 		return editorApi?.getSvg() ?? editorSvg;
@@ -860,93 +836,59 @@
 
 	function scheduleAutosave() {
 		if (isLoading) return;
-		saveGeneration += 1;
 		status = 'Unsaved';
-		queueAutosave(saveGeneration);
+		saveError = '';
+		const save = saveTableDebounced();
+		void save.catch(() => {});
 	}
 
-	function queueAutosave(generation: number) {
-		cancelQueuedAutosave();
-		autosaveTimer = setTimeout(() => {
-			autosaveTimer = null;
-			if (typeof window === 'undefined') {
-				void saveTable(generation);
-				return;
-			}
-			const browser = window as WindowWithIdleCallback;
-			if (browser.requestIdleCallback) {
-				autosaveIdleHandle = browser.requestIdleCallback(
-					() => {
-						autosaveIdleHandle = null;
-						void saveTable(generation);
-					},
-					{ timeout: AUTOSAVE_IDLE_TIMEOUT_MS }
-				);
-				return;
-			}
-			autosaveIdleHandle = window.setTimeout(() => {
-				autosaveIdleHandle = null;
-				void saveTable(generation);
-			}, 0);
-		}, AUTOSAVE_DELAY_MS);
+	async function saveTableSvg(svg: string): Promise<void> {
+		const tableDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
+		if (tableDir.error) throw new Error(tableDir.error.message);
+		const svgWrite = await tableDir.data.write('table.svg', svg);
+		if (svgWrite.error) throw new Error(svgWrite.error.message);
 	}
 
-	async function saveTableSvg(svg: string, generation: number): Promise<boolean> {
-		try {
-			const tableDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
-			if (tableDir.error) {
-				if (generation === saveGeneration) {
-					saveError = tableDir.error.message;
-					status = 'Autosave failed';
-				}
-				return false;
-			}
-			const svgWrite = await tableDir.data.write('table.svg', svg);
-			if (svgWrite.error && generation === saveGeneration) {
-				saveError = svgWrite.error.message;
-				status = 'Autosave failed';
-				return false;
-			}
-			return !svgWrite.error;
-		} catch (error) {
-			if (generation === saveGeneration) {
-				saveError = error instanceof Error ? error.message : 'Failed to save table SVG';
-				status = 'Autosave failed';
-			}
-			return false;
-		}
-	}
-
-	async function saveTable(generation = saveGeneration) {
+	async function saveLatestTable() {
 		if (isLoading) return;
-		if (saveInFlight) {
-			pendingSaveGeneration = generation;
-			return;
-		}
-		saveInFlight = true;
-		isSaving = true;
 		saveError = '';
 		status = 'Autosaving';
-		try {
-			const svg = currentEditorSvgForSave();
-			const saved = await saveTableSvg(svg, generation);
-			if (saved && generation === saveGeneration) {
-				status = 'Autosaved';
-			}
-		} finally {
-			isSaving = false;
-			saveInFlight = false;
-			const queuedGeneration = pendingSaveGeneration;
-			pendingSaveGeneration = null;
-			if (
-				(queuedGeneration !== null || generation !== saveGeneration) &&
-				!autosaveTimer &&
-				autosaveIdleHandle === null
-			) {
-				queueAutosave(saveGeneration);
-			}
-		}
+		const svg = currentEditorSvgForSave();
+		await saveTableSvg(svg);
+		status = 'Autosaved';
 	}
+
+	function saveTableAndTrack() {
+		const save = tableSaveChain.then(saveLatestTable);
+		tableSaveChain = save.catch(() => {});
+		const trackedSave = save
+			.catch((error) => {
+				console.error('Failed to save table.svg', error);
+				saveError = error instanceof Error ? error.message : 'Failed to save table SVG';
+				status = 'Autosave failed';
+			})
+			.finally(() => {
+				activeSavePromises = activeSavePromises.filter((activeSave) => activeSave !== trackedSave);
+				if (activeSavePromises.length === 0) isSaving = false;
+			});
+		activeSavePromises = [...activeSavePromises, trackedSave];
+		isSaving = true;
+		return trackedSave;
+	}
+
+	const saveTableDebounced = useDebounce(saveTableAndTrack, AUTOSAVE_DELAY_MS);
+
+	async function flushPendingSaves() {
+		await saveTableDebounced.runScheduledNow();
+		await Promise.allSettled(activeSavePromises);
+	}
+
+	onNavigate(() => {
+		if (!saveTableDebounced.pending && activeSavePromises.length === 0) {
+			return;
+		}
+		return flushPendingSaves();
+	});
 </script>
 
 <svelte:head>
@@ -976,7 +918,7 @@
 				showActionToolbar={false}
 				{config}
 				bind:activePanel={editorPanel}
-				assetBasePath="/svgedit/images/"
+				assetBasePath={SVG_EDITOR_ASSET_BASE_PATH}
 				emitChangeSvg={false}
 				selectedElementId={selectedTableElementId}
 				componentPanel={tableComponentPanel}
