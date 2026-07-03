@@ -28,6 +28,7 @@
 				sm: 'h-8 gap-1.5 rounded-md px-3 text-sm has-[>svg]:px-2.5',
 				lg: 'h-11 rounded-md px-6 text-lg has-[>svg]:px-4',
 				xl: 'h-12 rounded-md px-7 text-xl has-[>svg]:px-5',
+				huge: 'h-18 rounded-md px-7 text-2xl has-[>svg]:px-5',
 				icon: 'size-9',
 				'icon-sm': 'size-8',
 				'icon-lg': 'size-10',

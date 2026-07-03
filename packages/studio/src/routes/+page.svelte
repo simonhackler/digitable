@@ -3,6 +3,7 @@
 	import SubscribeForm from './subscribe/SubscribeForm.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import { DISCORD_URL, GITHUB_URL } from './constants';
 
 	let { data }: { data: PageData } = $props();
 
@@ -191,54 +192,68 @@
 				<p class="text-xl text-[#4b4b57]">Design, playtest, and publish your next boardgame.</p>
 			</div>
 
-			<div class="reveal grid gap-4">
-				<Tabs.Root bind:value={activeTab} class="mx-auto w-full max-w-[720px] gap-4">
-					<Tabs.List
-						class="grid h-auto w-full grid-cols-3 rounded-[2rem] bg-white/85 p-2 shadow-[inset_0_0_0_1px_rgba(36,36,42,0.1)]"
-						aria-label="Primary actions"
+			<div class="flex flex-wrap justify-start gap-4 md:justify-center">
+				<Button href={DISCORD_URL} variant="pill-outline" size="huge">
+					<svg
+						viewBox="0 0 256 199"
+						class="h-5 w-5 text-[#1c1c20] transition group-hover:text-[#0d0d0f]"
+						aria-hidden="true"
 					>
-						{#each tabIds as tab (tab)}
-							<Tabs.Trigger
-								value={tab}
-								class="h-auto rounded-full px-2 py-3 text-sm font-semibold text-[#33363f] data-[state=active]:bg-[#121212] data-[state=active]:text-[#f6f6f6] data-[state=active]:shadow-[0_8px_18px_rgba(0,0,0,0.2)] sm:px-4 sm:text-base"
-							>
-								{tab === 'design' ? '1. Design' : tab === 'playtest' ? '2. Playtest' : '3. Publish'}
-							</Tabs.Trigger>
-						{/each}
-					</Tabs.List>
-				</Tabs.Root>
+						<path
+							fill="currentColor"
+							d="M216.856 16.597A208.502 208.502 0 0 0 164.042 0c-2.275 4.113-4.856 9.602-6.681 13.904a192.286 192.286 0 0 0-57.722 0C97.814 9.602 95.208 4.113 92.908 0a207.5 207.5 0 0 0-52.81 16.597C6.337 67.332-2.741 117.336.718 166.658a208.09 208.09 0 0 0 62.63 32.272c5.042-6.906 9.546-14.279 13.65-21.95a134.93 134.93 0 0 1-21.56-10.31c1.814-1.324 3.58-2.684 5.303-4.08c41.438 19.431 86.51 19.431 127.34 0c1.723 1.396 3.489 2.756 5.303 4.08a134.67 134.67 0 0 1-21.56 10.31c4.104 7.67 8.608 15.043 13.65 21.95a208.041 208.041 0 0 0 62.63-32.272c4.015-56.733-6.15-106.374-38.053-150.06ZM85.474 135.635c-12.645 0-23.021-11.468-23.021-25.608c0-14.14 10.18-25.608 23.021-25.608c12.84 0 23.216 11.468 23.021 25.608c0 14.14-10.18 25.608-23.021 25.608Zm85.064 0c-12.645 0-23.021-11.468-23.021-25.608c0-14.14 10.18-25.608 23.021-25.608c12.84 0 23.216 11.468 23.021 25.608c0 14.14-10.18 25.608-23.021 25.608Z"
+						/>
+					</svg>
 
-				<div
-					class={`relative overflow-hidden rounded-[26px] p-5 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-7 ${
-						activeTab === 'design'
-							? 'bg-[linear-gradient(130deg,#0c0f1a_0%,#2d3554_45%,#f2b04f_120%)]'
-							: activeTab === 'playtest'
-								? 'bg-[linear-gradient(130deg,#0d1220_0%,#27465f_50%,#9fe1c2_120%)]'
-								: 'bg-[linear-gradient(130deg,#1a1015_0%,#5b2a3a_50%,#f7c26c_120%)]'
-					}`}
+					Join the discord</Button
 				>
-					{@render previewScene(activeTab, true)}
-					<div class="preview-glow" aria-hidden="true"></div>
-				</div>
+				<Button href="/app/games" variant="hero" size="huge">Create now</Button>
 			</div>
 
-			<div class="reveal mx-auto grid max-w-[720px] gap-5 text-left md:text-center">
-				<p class="text-xl text-[#4b4b57]">{current.subtitle}</p>
-				<ul
-					class="hidden flex-wrap justify-start gap-3 text-xl text-[#2d2d36] sm:flex md:justify-center md:gap-x-6"
-				>
-					{#each current.bullets as bullet (bullet)}
-						<li class="flex items-center gap-2">
-							<span class="h-2.5 w-2.5 rounded-full bg-[#f2b04f]"></span>
-							{bullet}
-						</li>
-					{/each}
-				</ul>
-				<div class="flex flex-wrap justify-start gap-4 md:justify-center">
-					<Button href="/sign-in" variant="pill-outline" size="xl">Sign in</Button>
-					<Button href="/app/games" variant="hero" size="xl">Create now</Button>
-				</div>
-			</div>
+			<!-- <div class="reveal grid gap-4"> -->
+			<!-- 	<Tabs.Root bind:value={activeTab} class="mx-auto w-full max-w-[720px] gap-4"> -->
+			<!-- 		<Tabs.List -->
+			<!-- 			class="grid h-auto w-full grid-cols-3 rounded-[2rem] bg-white/85 p-2 shadow-[inset_0_0_0_1px_rgba(36,36,42,0.1)]" -->
+			<!-- 			aria-label="Primary actions" -->
+			<!-- 		> -->
+			<!-- 			{#each tabIds as tab (tab)} -->
+			<!-- 				<Tabs.Trigger -->
+			<!-- 					value={tab} -->
+			<!-- 					class="h-auto rounded-full px-2 py-3 text-sm font-semibold text-[#33363f] data-[state=active]:bg-[#121212] data-[state=active]:text-[#f6f6f6] data-[state=active]:shadow-[0_8px_18px_rgba(0,0,0,0.2)] sm:px-4 sm:text-base" -->
+			<!-- 				> -->
+			<!-- 					{tab === 'design' ? '1. Design' : tab === 'playtest' ? '2. Playtest' : '3. Publish'} -->
+			<!-- 				</Tabs.Trigger> -->
+			<!-- 			{/each} -->
+			<!-- 		</Tabs.List> -->
+			<!-- 	</Tabs.Root> -->
+			<!---->
+			<!-- 	<div -->
+			<!-- 		class={`relative overflow-hidden rounded-[26px] p-5 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-7 ${ -->
+			<!-- 			activeTab === 'design' -->
+			<!-- 				? 'bg-[linear-gradient(130deg,#0c0f1a_0%,#2d3554_45%,#f2b04f_120%)]' -->
+			<!-- 				: activeTab === 'playtest' -->
+			<!-- 					? 'bg-[linear-gradient(130deg,#0d1220_0%,#27465f_50%,#9fe1c2_120%)]' -->
+			<!-- 					: 'bg-[linear-gradient(130deg,#1a1015_0%,#5b2a3a_50%,#f7c26c_120%)]' -->
+			<!-- 		}`} -->
+			<!-- 	> -->
+			<!-- 		{@render previewScene(activeTab, true)} -->
+			<!-- 		<div class="preview-glow" aria-hidden="true"></div> -->
+			<!-- 	</div> -->
+			<!-- </div> -->
+
+			<!-- <div class="reveal mx-auto grid max-w-[720px] gap-5 text-left md:text-center"> -->
+				<!-- <p class="text-xl text-[#4b4b57]">{current.subtitle}</p> -->
+				<!-- <ul -->
+				<!-- 	class="hidden flex-wrap justify-start gap-3 text-xl text-[#2d2d36] sm:flex md:justify-center md:gap-x-6" -->
+				<!-- > -->
+				<!-- 	{#each current.bullets as bullet (bullet)} -->
+				<!-- 		<li class="flex items-center gap-2"> -->
+				<!-- 			<span class="h-2.5 w-2.5 rounded-full bg-[#f2b04f]"></span> -->
+				<!-- 			{bullet} -->
+				<!-- 		</li> -->
+				<!-- 	{/each} -->
+				<!-- </ul> -->
+			<!-- </div> -->
 		</div>
 	</section>
 
@@ -336,6 +351,50 @@
 		</div>
 	</section>
 
+	<section class="section-open-source py-16 sm:py-20">
+		<div class="reveal mx-auto grid max-w-[760px] justify-items-center gap-6 px-6 text-center">
+			<svg viewBox="0 0 24 24" class="h-8 w-8 text-primary" aria-hidden="true">
+				<path fill="currentColor" d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z" />
+			</svg>
+			<div class="grid gap-4">
+				<h2 class="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+					Free &amp; open source
+				</h2>
+				<p class="mx-auto max-w-[560px] text-xl leading-relaxed text-[#6d6660]">
+					Built in the open. Issues, pull requests and stars welcome.
+				</p>
+			</div>
+
+			<div class="grid w-full max-w-[560px] gap-3 sm:grid-cols-2 sm:gap-4">
+				<Button href="/app/games" variant="hero" size="huge" class="h-14 rounded-xl text-xl sm:h-16">
+					Create for free
+					<svg viewBox="0 0 24 24" class="h-5 w-5" aria-hidden="true">
+						<path
+							fill="currentColor"
+							d="M12 3a1 1 0 0 1 1 1v11.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V4a1 1 0 0 1 1-1Z"
+						/>
+					</svg>
+				</Button>
+				<Button
+					href={GITHUB_URL}
+					variant="pill-outline"
+					size="huge"
+					class="h-14 rounded-xl bg-white text-xl shadow-none sm:h-16"
+					target="_blank"
+					rel="noreferrer"
+				>
+					<svg viewBox="0 0 24 24" class="h-5 w-5 text-primary" aria-hidden="true">
+						<path
+							fill="currentColor"
+							d="M12 2l2.866 5.808 6.41.93-4.638 4.52 1.094 6.376L12 16.97l-5.732 3.663 1.094-6.376L2.724 8.738l6.41-.93L12 2z"
+						/>
+					</svg>
+					Star on GitHub
+				</Button>
+			</div>
+		</div>
+	</section>
+
 	<!-- TODO join the Community. Github/Discord. I am always open to feature requests, feedback and suggestions. -->
 </main>
 
@@ -385,6 +444,10 @@
 
 	.section-soft.section-publish {
 		background: #f2c9d1;
+	}
+
+	.section-open-source {
+		background: #f8f2ec;
 	}
 
 	@keyframes rise {

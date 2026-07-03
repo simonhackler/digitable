@@ -10,6 +10,7 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import '../app.css';
+	import { GITHUB_URL, GITHUB_REPO, GITHUB_OWNER, DISCORD_URL } from './constants.js';
 
 	let { children, data } = $props();
 	let mobileMenuOpen = $state(false);
@@ -80,11 +81,7 @@
 		}
 	}
 
-	const githubOwner = 'simonhackler';
-	const githubRepo = 'digitable';
-	const discordUrl = 'https://discord.gg/sasxJ5MRWX';
-	const githubUrl = `https://github.com/${githubOwner}/${githubRepo}`;
-	let githubStars = $derived(await fetchStars(githubOwner, githubRepo));
+	let githubStars = $derived(await fetchStars(GITHUB_OWNER, GITHUB_REPO));
 </script>
 
 <svelte:head>
@@ -110,7 +107,7 @@
 					</a>
 					<div class="flex items-center gap-2">
 						<a
-							href={discordUrl}
+							href={DISCORD_URL}
 							class="group inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/80 shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] transition hover:-translate-y-0.5 hover:bg-white"
 							aria-label="Join the Digitable Discord"
 							rel="noreferrer"
@@ -128,7 +125,7 @@
 							</svg>
 						</a>
 						<a
-							href={githubUrl}
+							href={GITHUB_URL}
 							class="group inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-white/80 px-3 text-sm font-semibold text-[#1c1c20] shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] transition hover:-translate-y-0.5 hover:bg-white hover:text-[#0d0d0f]"
 							aria-label="View the Digitable GitHub repository"
 							rel="noreferrer"
@@ -220,7 +217,7 @@
 				</nav>
 				<div class="flex items-center justify-end gap-3">
 					<a
-						href={discordUrl}
+						href={DISCORD_URL}
 						class="group inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/70 shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] transition hover:-translate-y-0.5 hover:bg-white"
 						aria-label="Join the Digitable Discord"
 						rel="noreferrer"
@@ -238,7 +235,7 @@
 						</svg>
 					</a>
 					<a
-						href={githubUrl}
+						href={GITHUB_URL}
 						class="group inline-flex items-center gap-2 rounded-full bg-white/70 px-3.5 py-2 text-sm font-semibold text-[#1c1c20] shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] transition hover:-translate-y-0.5 hover:bg-white hover:text-[#0d0d0f]"
 						aria-label="View the Digitable GitHub repository"
 						rel="noreferrer"
