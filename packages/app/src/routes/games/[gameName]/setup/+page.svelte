@@ -254,6 +254,8 @@
 	let decks = $state<DeckEntry[]>([]);
 	let tableInfo = $state<TableInfo>(fallbackTable.table);
 	const cards = $derived(decks.flatMap((deck) => deck.cards));
+	let tableSlots = $state<TableSlot[]>([]);
+	let tablePlacements = $state<TablePlacement[]>([]);
 	let selectedSlot = $state<TableSlot | null>(null);
 	let selectedPlacement = $state<TablePlacement | null>(null);
 	let status = $state('Loading');
@@ -285,6 +287,7 @@
 			? cards.filter((card) => card.deckName === placement.deckName)
 			: [];
 	});
+	const deckLookup = $derived.by(() => createDeckLookup(decks));
 	const config = $derived({
 		imgPath: SVG_EDITOR_ASSET_BASE_PATH,
 		baseUnit: 'px',
@@ -307,6 +310,8 @@
 				decks = loadedDecks;
 				const loadedTable = tableViewFromSvg(loadedSvg);
 				tableInfo = loadedTable.table;
+				tableSlots = loadedTable.slots;
+				tablePlacements = loadedTable.placements;
 				editorSvg = loadedSvg;
 				selectSlot(loadedTable.slots[0] ?? null);
 				isLoading = false;
@@ -319,10 +324,6 @@
 				status = 'Load failed';
 			});
 	});
-
-	function currentEditorSvg() {
-		return editorApi?.getSvg() ?? editorSvg;
-	}
 
 	function currentEditorSvgElement() {
 		return editorApi?._unsafe?.rawCanvas()?.getSvgContent?.() ?? null;
@@ -342,9 +343,37 @@
 		return svgToTable(svg, fallbackTableWithRoot());
 	}
 
-	function currentEditorTable() {
-		if (typeof DOMParser === 'undefined') return fallbackTableWithRoot(tableInfo);
-		return svgToTable(currentEditorSvg(), fallbackTableWithRoot(tableInfo));
+	function createDeckLookup(sourceDecks: DeckEntry[]) {
+		const deckByName = new Map<string, DeckEntry>();
+		const cardById = new Map<string, CardEntry>();
+		const cardSizes = new Map<string, { width: number; height: number }>();
+		const deckTopCardIds = new Map<string, string>();
+		const deckCardIds = new Map<string, string[]>();
+		const deckSizes = new Map<string, { width: number; height: number }>();
+		for (const deck of sourceDecks) {
+			deckByName.set(deck.name, deck);
+			const ids = deck.cards.map((card) => card.id);
+			deckCardIds.set(deck.name, ids);
+			const firstCard = deck.cards[0];
+			if (firstCard) deckTopCardIds.set(deck.name, firstCard.id);
+			const sizes = deck.cards.flatMap((card) => {
+				cardById.set(card.id, card);
+				if (!card.size) return [];
+				cardSizes.set(card.id, card.size);
+				return [card.size];
+			});
+			if (sizes.length > 0) {
+				deckSizes.set(deck.name, {
+					width: Math.max(...sizes.map((size) => size.width)),
+					height: Math.max(...sizes.map((size) => size.height))
+				});
+			}
+		}
+		return { deckByName, cardById, cardSizes, deckTopCardIds, deckCardIds, deckSizes };
+	}
+
+	function lookupForDecks(sourceDecks: DeckEntry[]) {
+		return sourceDecks === decks ? deckLookup : createDeckLookup(sourceDecks);
 	}
 
 	function linkedDeckLibrary(sourceDecks = decks): DeckEntry[] {
@@ -373,7 +402,13 @@
 	}
 
 	function tableSvgForSave() {
-		const table = currentEditorTable();
+		const liveElement = (id: string) => !editorApi || Boolean(editorApi.getElementById(id));
+		const table: Table = {
+			version: 1,
+			table: { ...tableInfo },
+			slots: tableSlots.filter((slot) => liveElement(slot.id)),
+			placements: tablePlacements.filter((placement) => liveElement(placement.id))
+		};
 		if (typeof DOMParser === 'undefined') return emptyTableSvg(table.table);
 		const linkedDecks = linkedDeckLibrary();
 
@@ -423,11 +458,11 @@
 	}
 
 	function cardById(cardId: string, sourceDecks = decks) {
-		return sourceDecks.flatMap((deck) => deck.cards).find((card) => card.id === cardId) ?? null;
+		return lookupForDecks(sourceDecks).cardById.get(cardId) ?? null;
 	}
 
 	function deckByName(deckName: string, sourceDecks = decks) {
-		return sourceDecks.find((deck) => deck.name === deckName) ?? null;
+		return lookupForDecks(sourceDecks).deckByName.get(deckName) ?? null;
 	}
 
 	function placementCardSvg(placement: TablePlacement, sourceDecks = decks): string | null {
@@ -458,59 +493,39 @@
 	}
 
 	function svgAssetsForSlot(slot: TableSlot, sourceDecks = decks): TableSvgAssets {
-		const cardSvgs = new SvelteMap<string, string>();
-		const cardSizes = new SvelteMap<string, { width: number; height: number }>();
-		const deckTopCardIds = new SvelteMap<string, string>();
-		const deckCardIds = new SvelteMap<string, string[]>();
-		const deckNames = new Set(slot.acceptedDeckNames);
+		const lookup = lookupForDecks(sourceDecks);
+		const cardSvgs = new Map<string, string>();
 		const previewDeckNames = new Set(
 			(slot.contents ?? [])
 				.filter((content) => content.type === 'deck')
 				.map((content) => content.deckName)
 		);
-		const addCard = (card: CardEntry | null, includeSvg: boolean) => {
+		const addCardSvg = (card: CardEntry | null) => {
 			if (!card) return;
-			if (card.size) cardSizes.set(card.id, card.size);
-			if (includeSvg) cardSvgs.set(card.id, card.frontSvg);
+			cardSvgs.set(card.id, card.frontSvg);
 		};
 
 		for (const content of slot.contents ?? []) {
 			if (content.type === 'deck') {
-				deckNames.add(content.deckName);
+				const topCardId = lookup.deckTopCardIds.get(content.deckName);
+				addCardSvg(topCardId ? (lookup.cardById.get(topCardId) ?? null) : null);
 				continue;
 			}
-			const card = cardById(content.cardId, sourceDecks);
-			if (card) {
-				deckNames.add(card.deckName);
-				addCard(card, true);
-			}
+			addCardSvg(lookup.cardById.get(content.cardId) ?? null);
 		}
 
-		for (const cardId of slot.acceptedCardIds) {
-			const card = cardById(cardId, sourceDecks);
-			if (card) {
-				deckNames.add(card.deckName);
-				addCard(card, false);
-			}
+		for (const deckName of previewDeckNames) {
+			const topCardId = lookup.deckTopCardIds.get(deckName);
+			addCardSvg(topCardId ? (lookup.cardById.get(topCardId) ?? null) : null);
 		}
 
-		for (const deck of sourceDecks) {
-			if (!deckNames.has(deck.name)) continue;
-			const firstCard = deck.cards[0];
-			if (firstCard) {
-				deckTopCardIds.set(deck.name, firstCard.id);
-				addCard(firstCard, previewDeckNames.has(deck.name));
-			}
-			deckCardIds.set(
-				deck.name,
-				deck.cards.map((card) => card.id)
-			);
-			for (const card of deck.cards) {
-				addCard(card, false);
-			}
-		}
-
-		return { cardSvgs, cardSizes, deckTopCardIds, deckCardIds };
+		return {
+			cardSvgs,
+			cardSizes: lookup.cardSizes,
+			deckSizes: lookup.deckSizes,
+			deckTopCardIds: lookup.deckTopCardIds,
+			deckCardIds: lookup.deckCardIds
+		};
 	}
 
 	function svgAssetsForPlacement(placement: TablePlacement, sourceDecks = decks): TableSvgAssets {
@@ -548,11 +563,15 @@
 		};
 	}
 
-	function updateTableElement(elementId: string, element: TableSvgElementJson): boolean {
+	function updateTableElement(
+		elementId: string,
+		element: TableSvgElementJson,
+		historyLabel = 'Update table element'
+	): boolean {
 		const updated =
 			editorApi?.updateSvgElement(elementId, element, {
 				select: true,
-				historyLabel: 'Update table element'
+				historyLabel
 			}) ?? false;
 		if (!updated) return false;
 		scheduleAutosave();
@@ -676,12 +695,13 @@
 		) {
 			return;
 		}
+		tablePlacements = [...tablePlacements, placement];
 		selectPlacement(placement);
 		editorPanel = 'component';
 	}
 
 	function quickPlace(payload: DragPayload) {
-		const offset = currentEditorTable().placements.length * 36;
+		const offset = tablePlacements.length * 36;
 		addPlacement(payload, 160 + offset, 160 + offset);
 	}
 
@@ -691,13 +711,11 @@
 	}
 
 	function addSlot() {
-		const currentTable = currentEditorTable();
-		const table = currentTable.table;
 		const slot: TableSlot = {
 			id: crypto.randomUUID(),
-			label: `Slot ${currentTable.slots.length + 1}`,
-			x: Math.round(table.width / 2 - 120),
-			y: Math.round(table.height / 2 - 160),
+			label: `Slot ${tableSlots.length + 1}`,
+			x: Math.round(tableInfo.width / 2 - 120),
+			y: Math.round(tableInfo.height / 2 - 160),
 			rotation: 0,
 			width: 240,
 			height: 320,
@@ -707,11 +725,16 @@
 			contents: []
 		};
 		if (!insertTableElement(slot.id, slotToSvgElementJson(slot, svgAssetsForSlot(slot)))) return;
+		tableSlots = [...tableSlots, slot];
 		selectSlot(slot);
 		editorPanel = 'component';
 	}
 
-	function updateSlot(slotId: string, patch: Partial<TableSlot>) {
+	function updateSlot(
+		slotId: string,
+		patch: Partial<TableSlot>,
+		historyLabel = 'Update table element'
+	) {
 		if (!selectedSlot || selectedSlot.id !== slotId) return;
 		const candidate = normalizeTableSlot({ ...selectedSlot, ...patch });
 		const assets = svgAssetsForSlot(candidate);
@@ -719,30 +742,18 @@
 		if (
 			!updateTableElement(
 				slotId,
-				withCurrentTransform(slotId, slotToSvgElementJson(nextSlot, assets))
+				withCurrentTransform(slotId, slotToSvgElementJson(nextSlot, assets)),
+				historyLabel
 			)
 		) {
 			return;
 		}
+		tableSlots = tableSlots.map((slot) => (slot.id === slotId ? nextSlot : slot));
 		selectSlot(nextSlot);
 	}
 
 	function updateSlotRules(slotId: string, patch: Partial<TableSlot>) {
-		if (!selectedSlot || selectedSlot.id !== slotId) return;
-		const next = normalizeTableSlot({ ...selectedSlot, ...patch });
-		if (
-			!updateTableElementAttributes(
-				slotId,
-				{
-					'data-accepted-deck-names': JSON.stringify(sortedUniqueStrings(next.acceptedDeckNames)),
-					'data-accepted-card-ids': JSON.stringify(sortedUniqueStrings(next.acceptedCardIds))
-				},
-				'Update slot rules'
-			)
-		) {
-			return;
-		}
-		selectSlot(next);
+		updateSlot(slotId, patch, 'Update slot rules');
 	}
 
 	function slotContentKey(content: TableSlotContent) {
@@ -871,6 +882,9 @@
 		}
 		if (Object.keys(attributes).length === 0) return;
 		if (!updateTableElementAttributes(placementId, attributes, 'Update component metadata')) return;
+		tablePlacements = tablePlacements.map((placement) =>
+			placement.id === placementId ? nextPlacement : placement
+		);
 		selectPlacement(nextPlacement);
 	}
 
@@ -908,6 +922,7 @@
 
 	function removeSlot(slotId: string) {
 		removeTableElement(slotId);
+		tableSlots = tableSlots.filter((slot) => slot.id !== slotId);
 		if (selectedSlot?.id === slotId) {
 			selectSlot(null);
 		}
@@ -915,11 +930,18 @@
 
 	function removePlacement(placementId: string) {
 		removeTableElement(placementId);
+		tablePlacements = tablePlacements.filter((placement) => placement.id !== placementId);
 		if (selectedPlacement?.id === placementId) selectPlacement(null);
 	}
 
 	function handleEditorChange(event: CustomEvent<ChangeEvent>) {
 		if (event.detail.source !== 'user') return;
+		if (editorApi) {
+			tableSlots = tableSlots.filter((slot) => editorApi?.getElementById(slot.id));
+			tablePlacements = tablePlacements.filter((placement) =>
+				editorApi?.getElementById(placement.id)
+			);
+		}
 		if (selectedPlacement && !editorApi?.getElementById(selectedPlacement.id)) {
 			selectPlacement(null);
 		}
@@ -951,14 +973,13 @@
 		if (selected.selectedElement !== selected.tableElement) {
 			requestAnimationFrame(() => editorApi?.selectElementById(selectedId));
 		}
-		const table = currentEditorTable();
 		if (selected.kind === 'slot') {
-			selectSlot(table.slots.find((slot) => slot.id === selectedId) ?? null);
+			selectSlot(tableSlots.find((slot) => slot.id === selectedId) ?? null);
 			editorPanel = 'component';
 			return;
 		}
 		if (selected.kind === 'placement') {
-			selectPlacement(table.placements.find((placement) => placement.id === selectedId) ?? null);
+			selectPlacement(tablePlacements.find((placement) => placement.id === selectedId) ?? null);
 			editorPanel = 'component';
 		}
 	}

@@ -81,6 +81,7 @@ export type TableSvgAssets = {
 	placementCardSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
 	cardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	cardSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
+	deckSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
 	deckTopCardIds?: ReadonlyMap<string, string> | Record<string, string>;
 	deckCardIds?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
 };
@@ -841,37 +842,35 @@ export function svgToTable(
 	return svgElementToTable(doc.documentElement, fallback, assets);
 }
 
-function concreteSlotCardIds(slot: TableSlot, assets: TableSvgAssets): string[] {
-	const cardIds = new Set<string>();
-	for (const cardId of slot.acceptedCardIds) {
-		cardIds.add(cardId);
-	}
-	for (const deckName of slot.acceptedDeckNames) {
-		for (const cardId of svgAssetList(assets.deckCardIds, deckName)) {
-			cardIds.add(cardId);
+function fixedSlotContentSize(slot: TableSlot, assets: TableSvgAssets): CardVisualSize | null {
+	const sizes: CardVisualSize[] = [];
+	const addCardSize = (cardId: string) => {
+		const size = cardIdVisualSize(cardId, assets);
+		if (size) sizes.push(size);
+	};
+	const addDeckSize = (deckName: string) => {
+		const deckSize = svgAssetSize(assets.deckSizes, deckName);
+		if (deckSize) {
+			sizes.push(deckSize);
+			return;
 		}
-	}
+		const deckIds = svgAssetList(assets.deckCardIds, deckName);
+		if (deckIds.length > 0) {
+			for (const cardId of deckIds) addCardSize(cardId);
+			return;
+		}
+		const topCardId = svgAssetValue(assets.deckTopCardIds, deckName);
+		if (topCardId) addCardSize(topCardId);
+	};
+	for (const cardId of slot.acceptedCardIds) addCardSize(cardId);
+	for (const deckName of slot.acceptedDeckNames) addDeckSize(deckName);
 	for (const content of slot.contents ?? []) {
 		if (content.type === 'card') {
-			cardIds.add(content.cardId);
+			addCardSize(content.cardId);
 			continue;
 		}
-		const deckIds = svgAssetList(assets.deckCardIds, content.deckName);
-		if (deckIds.length > 0) {
-			for (const cardId of deckIds) cardIds.add(cardId);
-			continue;
-		}
-		const topCardId = svgAssetValue(assets.deckTopCardIds, content.deckName);
-		if (topCardId) cardIds.add(topCardId);
+		addDeckSize(content.deckName);
 	}
-	return [...cardIds];
-}
-
-function fixedSlotContentSize(slot: TableSlot, assets: TableSvgAssets): CardVisualSize | null {
-	const sizes = concreteSlotCardIds(slot, assets).flatMap((cardId) => {
-		const size = cardIdVisualSize(cardId, assets);
-		return size ? [size] : [];
-	});
 	if (sizes.length === 0) return null;
 	return {
 		width: Math.max(...sizes.map((size) => size.width)),
