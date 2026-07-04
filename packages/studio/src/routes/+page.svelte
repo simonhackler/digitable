@@ -242,17 +242,17 @@
 			<!-- </div> -->
 
 			<!-- <div class="reveal mx-auto grid max-w-[720px] gap-5 text-left md:text-center"> -->
-				<!-- <p class="text-xl text-[#4b4b57]">{current.subtitle}</p> -->
-				<!-- <ul -->
-				<!-- 	class="hidden flex-wrap justify-start gap-3 text-xl text-[#2d2d36] sm:flex md:justify-center md:gap-x-6" -->
-				<!-- > -->
-				<!-- 	{#each current.bullets as bullet (bullet)} -->
-				<!-- 		<li class="flex items-center gap-2"> -->
-				<!-- 			<span class="h-2.5 w-2.5 rounded-full bg-[#f2b04f]"></span> -->
-				<!-- 			{bullet} -->
-				<!-- 		</li> -->
-				<!-- 	{/each} -->
-				<!-- </ul> -->
+			<!-- <p class="text-xl text-[#4b4b57]">{current.subtitle}</p> -->
+			<!-- <ul -->
+			<!-- 	class="hidden flex-wrap justify-start gap-3 text-xl text-[#2d2d36] sm:flex md:justify-center md:gap-x-6" -->
+			<!-- > -->
+			<!-- 	{#each current.bullets as bullet (bullet)} -->
+			<!-- 		<li class="flex items-center gap-2"> -->
+			<!-- 			<span class="h-2.5 w-2.5 rounded-full bg-[#f2b04f]"></span> -->
+			<!-- 			{bullet} -->
+			<!-- 		</li> -->
+			<!-- 	{/each} -->
+			<!-- </ul> -->
 			<!-- </div> -->
 		</div>
 	</section>
@@ -353,11 +353,11 @@
 
 	<section class="section-open-source py-16 sm:py-20">
 		<div class="reveal mx-auto grid max-w-[760px] justify-items-center gap-6 px-6 text-center">
-			<svg viewBox="0 0 24 24" class="h-8 w-8 text-primary" aria-hidden="true">
+			<svg viewBox="0 0 24 24" class="text-primary h-8 w-8" aria-hidden="true">
 				<path fill="currentColor" d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z" />
 			</svg>
 			<div class="grid gap-4">
-				<h2 class="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+				<h2 class="font-['Newsreader'] text-4xl font-medium tracking-tight sm:text-5xl md:text-6xl">
 					Free &amp; open source
 				</h2>
 				<p class="mx-auto max-w-[560px] text-xl leading-relaxed text-[#6d6660]">
@@ -366,7 +366,12 @@
 			</div>
 
 			<div class="grid w-full max-w-[560px] gap-3 sm:grid-cols-2 sm:gap-4">
-				<Button href="/app/games" variant="hero" size="huge" class="h-14 rounded-xl text-xl sm:h-16">
+				<Button
+					href="/app/games"
+					variant="hero"
+					size="huge"
+					class="h-14 rounded-xl text-xl sm:h-16"
+				>
 					Create for free
 					<svg viewBox="0 0 24 24" class="h-5 w-5" aria-hidden="true">
 						<path
@@ -383,7 +388,7 @@
 					target="_blank"
 					rel="noreferrer"
 				>
-					<svg viewBox="0 0 24 24" class="h-5 w-5 text-primary" aria-hidden="true">
+					<svg viewBox="0 0 24 24" class="text-primary h-5 w-5" aria-hidden="true">
 						<path
 							fill="currentColor"
 							d="M12 2l2.866 5.808 6.41.93-4.638 4.52 1.094 6.376L12 16.97l-5.732 3.663 1.094-6.376L2.724 8.738l6.41-.93L12 2z"
