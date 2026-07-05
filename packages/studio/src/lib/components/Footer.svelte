@@ -17,17 +17,16 @@
 				<span class="text-lg font-semibold tracking-[0.02em]">Digitable Studio</span>
 			</div>
 			<p class="max-w-sm text-sm text-white/70">
-				Design, playtest, and publish tabletop games with a visual editor built for iteration.
+				Design, playtest, and publish tabletop games.
 			</p>
 			<p class="text-xs tracking-[0.25em] text-white/50 uppercase">© {year} Digitable</p>
 		</div>
 
 		<nav class="grid gap-3 text-sm" aria-label="Product">
 			<p class="text-xs font-semibold tracking-[0.3em] text-white/50 uppercase">Product</p>
-			<a class="text-white/80 transition hover:text-white" href={resolve('/showcase')}>
-				Showcase
+			<a class="text-white/80 transition hover:text-white" href={resolve('/games')}>
+				Games
 			</a>
-			<a class="text-white/80 transition hover:text-white" href={resolve('/roadmap')}> Roadmap </a>
 			<a class="text-white/80 transition hover:text-white" href={resolve('/blog')}> Blog </a>
 		</nav>
 
