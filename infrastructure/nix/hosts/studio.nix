@@ -96,6 +96,8 @@ in {
     secrets.s3-access-key-id = {};
     secrets.s3-secret-access-key = {};
     secrets.kit-api-key = {};
+    secrets.google-client-id = {};
+    secrets.google-client-secret = {};
 
     templates."app.env".content = ''
       REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
@@ -105,6 +107,8 @@ in {
 
     templates."studio.env".content = ''
       KIT_API_KEY=${config.sops.placeholder.kit-api-key}
+      GOOGLE_CLIENT_ID=${config.sops.placeholder.google-client-id}
+      GOOGLE_CLIENT_SECRET=${config.sops.placeholder.google-client-secret}
     '';
   };
 

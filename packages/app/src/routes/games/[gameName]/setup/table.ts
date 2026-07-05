@@ -653,6 +653,53 @@ function cardIdVisualSize(cardId: string, assets: TableSvgAssets): CardVisualSiz
 	);
 }
 
+const NON_RENDERED_SVG_CONTAINERS = new Set([
+	'defs',
+	'clippath',
+	'pattern',
+	'mask',
+	'symbol',
+	'marker',
+	'metadata',
+	'title',
+	'desc',
+	'filter',
+	'lineargradient',
+	'radialgradient'
+]);
+
+function isCardVisualElement(element: Element) {
+	const tag = element.tagName.toLowerCase();
+	return (
+		(tag === 'rect' || tag === 'image' || tag === 'svg') &&
+		element.getAttribute(DECK_STACK_ATTR) !== 'true'
+	);
+}
+
+function hasNonRenderedSvgAncestor(element: Element, stopAt: Element) {
+	let parent = element.parentNode;
+	while (parent && parent !== stopAt) {
+		if (parent.nodeType === 1) {
+			const tag = (parent as Element).tagName.toLowerCase();
+			if (NON_RENDERED_SVG_CONTAINERS.has(tag)) return true;
+		}
+		parent = parent.parentNode;
+	}
+	return false;
+}
+
+function directCardVisualElements(group: Element) {
+	return Array.from(group.childNodes).filter(
+		(child): child is Element => child.nodeType === 1 && isCardVisualElement(child as Element)
+	);
+}
+
+function fallbackCardVisualElements(group: Element) {
+	return Array.from(group.getElementsByTagName('*')).filter(
+		(element) => isCardVisualElement(element) && !hasNonRenderedSvgAncestor(element, group)
+	);
+}
+
 function cardVisualBounds(
 	group: Element,
 	expectedSize: CardVisualSize | null = null
@@ -662,13 +709,8 @@ function cardVisualBounds(
 	width: number;
 	height: number;
 } {
-	const graphics = Array.from(group.getElementsByTagName('*')).filter((element) => {
-		const tag = element.tagName.toLowerCase();
-		return (
-			(tag === 'rect' || tag === 'image' || tag === 'svg') &&
-			element.getAttribute(DECK_STACK_ATTR) !== 'true'
-		);
-	});
+	const directGraphics = directCardVisualElements(group);
+	const graphics = directGraphics.length > 0 ? directGraphics : fallbackCardVisualElements(group);
 	const bounds = graphics.map((element) => {
 		const x = parseNumberAttribute(element, 'x', 0);
 		const y = parseNumberAttribute(element, 'y', 0);

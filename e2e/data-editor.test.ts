@@ -85,8 +85,8 @@ async function seedProjectImageColumn(page: Page) {
 	const frontSvg = await readOpfsText(page, frontPath);
 	if (!frontSvg.includes('id="portrait"')) {
 		const svgWithImageField = frontSvg.replace(
-			'<text data-svgedit-line-height',
-			'<image id="portrait" href="../../assets/portrait.svg" x="2" y="2" width="10" height="10"/>\n   <text data-svgedit-line-height'
+			/(<text\b[^>]*\bid="effect_zone")/,
+			'<image id="portrait" href="../../assets/portrait.svg" x="2" y="2" width="10" height="10"/>\n   $1'
 		);
 		await writeOpfsText(page, frontPath, svgWithImageField);
 	}
@@ -162,18 +162,22 @@ test.describe.serial('data editor', () => {
 	});
 
 	dataEditorTest('generated fallback spreadsheet data is saved to csv', async (page) => {
+		const frontSvg = await readOpfsText(page, '/map/components/map/front.svg');
+		const expectedColumn = frontSvg.match(/<text\b[^>]*\bid="([^"]+)"/)?.[1];
+		expect(expectedColumn).toBeTruthy();
+
 		await removeOpfsFile(page, '/map/components/map/data.csv');
 		await expect(await opfsEntryExists(page, '/map/components/map/data.csv')).toBe(false);
 
 		await page.goto('/app/games/map/decks/map/data');
 		await expect(page).toHaveURL(/\/app\/games\/map\/decks\/map\/data/);
-		await expect.poll(() => spreadsheetHeaders(page)).toContain('text56');
+		await expect.poll(() => spreadsheetHeaders(page)).toContain(expectedColumn);
 		await expect(page.getByText('Saved')).toBeVisible();
 
 		await expect.poll(() => opfsEntryExists(page, '/map/components/map/data.csv')).toBe(true);
 		const csv = await readOpfsText(page, '/map/components/map/data.csv');
 		expect(csv).toContain('id');
-		expect(csv).toContain('text56');
+		expect(csv).toContain(expectedColumn);
 	});
 
 	dataEditorTest('spreadsheet editor toolbar opens layout editor', async (page) => {
@@ -194,21 +198,30 @@ test.describe.serial('data editor', () => {
 	});
 
 	dataEditorTest('appends missing svg columns after csv columns', async (page) => {
-		const frontSvg = await readOpfsText(page, '/western-cards/components/western/front.svg');
-		const svgWithExtraField = frontSvg.replace(
-			'</svg>',
-			'<text id="late_svg_field" x="5" y="5">Late Field</text>\n</svg>'
-		);
-		await writeOpfsText(page, '/western-cards/components/western/front.svg', svgWithExtraField);
+		const frontPath = '/western-cards/components/western/front.svg';
+		const dataPath = '/western-cards/components/western/data.csv';
+		const frontSvg = await readOpfsText(page, frontPath);
+		const dataCsv = await readOpfsText(page, dataPath);
 
-		await page.getByRole('main').getByText('western-cards').click();
-		await page.getByRole('button', { name: 'Decks' }).click();
-		await page.getByRole('link', { name: 'western', exact: true }).click();
-		await page.getByRole('link', { name: 'Spreadsheet' }).click();
+		try {
+			const svgWithExtraField = frontSvg.replace(
+				'</svg>',
+				'<text id="late_svg_field" x="5" y="5">Late Field</text>\n</svg>'
+			);
+			await writeOpfsText(page, frontPath, svgWithExtraField);
 
-		await expect.poll(() => spreadsheetHeaders(page)).toContain('late_svg_field');
-		const headers = await spreadsheetHeaders(page);
-		expect(headers.indexOf('late_svg_field')).toBeGreaterThan(headers.indexOf('text1'));
+			await page.getByRole('main').getByText('western-cards').click();
+			await page.getByRole('button', { name: 'Decks' }).click();
+			await page.getByRole('link', { name: 'western', exact: true }).click();
+			await page.getByRole('link', { name: 'Spreadsheet' }).click();
+
+			await expect.poll(() => spreadsheetHeaders(page)).toContain('late_svg_field');
+			const headers = await spreadsheetHeaders(page);
+			expect(headers.indexOf('late_svg_field')).toBeGreaterThan(headers.indexOf('text1'));
+		} finally {
+			await writeOpfsText(page, frontPath, frontSvg);
+			await writeOpfsText(page, dataPath, dataCsv);
+		}
 	});
 
 	dataEditorTest('editing data shows save state and persists after navigation', async (page) => {

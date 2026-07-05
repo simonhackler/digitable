@@ -2,42 +2,10 @@
 	import type { PageData } from './$types';
 	import SubscribeForm from './subscribe/SubscribeForm.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { DISCORD_URL, GITHUB_URL } from './constants';
 	import { Star } from '@lucide/svelte';
 
 	let { data }: { data: PageData } = $props();
-
-	const tabIds = ['design', 'playtest', 'publish'] as const;
-	type TabId = (typeof tabIds)[number];
-
-	const tabCopy: Record<
-		TabId,
-		{
-			title: string;
-			subtitle: string;
-			bullets: string[];
-		}
-	> = {
-		design: {
-			title: 'Design with intent',
-			subtitle: 'Build components, boards, decks, and rules with a visual editor.',
-			bullets: ['Snap-to-grid layouts', 'Card and token builders', 'Reusable components']
-		},
-		playtest: {
-			title: 'Playtest fast',
-			subtitle: 'Run sessions in minutes and capture feedback in-context.',
-			bullets: ['Live turn tracking', 'Session notes', 'Instant reset']
-		},
-		publish: {
-			title: 'Publish everywhere',
-			subtitle: 'Package your game for web, print, or tabletop simulators.',
-			bullets: ['Print-ready exports', 'Rulebook generator', 'Shareable links']
-		}
-	};
-
-	let activeTab = $state<TabId>('design');
-	const current = $derived(tabCopy[activeTab]);
 </script>
 
 {#snippet previewScene(tab: TabId, compact: boolean)}
@@ -220,51 +188,6 @@
 					class="block w-full rounded-b-lg border border-[#ded8cf] object-cover sm:rounded-b-xl"
 				/>
 			</figure>
-
-			<!-- <div class="reveal grid gap-4"> -->
-			<!-- 	<Tabs.Root bind:value={activeTab} class="mx-auto w-full max-w-[720px] gap-4"> -->
-			<!-- 		<Tabs.List -->
-			<!-- 			class="grid h-auto w-full grid-cols-3 rounded-[2rem] bg-white/85 p-2 shadow-[inset_0_0_0_1px_rgba(36,36,42,0.1)]" -->
-			<!-- 			aria-label="Primary actions" -->
-			<!-- 		> -->
-			<!-- 			{#each tabIds as tab (tab)} -->
-			<!-- 				<Tabs.Trigger -->
-			<!-- 					value={tab} -->
-			<!-- 					class="h-auto rounded-full px-2 py-3 text-sm font-semibold text-[#33363f] data-[state=active]:bg-[#121212] data-[state=active]:text-[#f6f6f6] data-[state=active]:shadow-[0_8px_18px_rgba(0,0,0,0.2)] sm:px-4 sm:text-base" -->
-			<!-- 				> -->
-			<!-- 					{tab === 'design' ? '1. Design' : tab === 'playtest' ? '2. Playtest' : '3. Publish'} -->
-			<!-- 				</Tabs.Trigger> -->
-			<!-- 			{/each} -->
-			<!-- 		</Tabs.List> -->
-			<!-- 	</Tabs.Root> -->
-			<!---->
-			<!-- 	<div -->
-			<!-- 		class={`relative overflow-hidden rounded-[26px] p-5 text-[#f5f5f5] shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-7 ${ -->
-			<!-- 			activeTab === 'design' -->
-			<!-- 				? 'bg-[linear-gradient(130deg,#0c0f1a_0%,#2d3554_45%,#f2b04f_120%)]' -->
-			<!-- 				: activeTab === 'playtest' -->
-			<!-- 					? 'bg-[linear-gradient(130deg,#0d1220_0%,#27465f_50%,#9fe1c2_120%)]' -->
-			<!-- 					: 'bg-[linear-gradient(130deg,#1a1015_0%,#5b2a3a_50%,#f7c26c_120%)]' -->
-			<!-- 		}`} -->
-			<!-- 	> -->
-			<!-- 		{@render previewScene(activeTab, true)} -->
-			<!-- 		<div class="preview-glow" aria-hidden="true"></div> -->
-			<!-- 	</div> -->
-			<!-- </div> -->
-
-			<!-- <div class="reveal mx-auto grid max-w-[720px] gap-5 text-left md:text-center"> -->
-			<!-- <p class="text-xl text-[#4b4b57]">{current.subtitle}</p> -->
-			<!-- <ul -->
-			<!-- 	class="hidden flex-wrap justify-start gap-3 text-xl text-[#2d2d36] sm:flex md:justify-center md:gap-x-6" -->
-			<!-- > -->
-			<!-- 	{#each current.bullets as bullet (bullet)} -->
-			<!-- 		<li class="flex items-center gap-2"> -->
-			<!-- 			<span class="h-2.5 w-2.5 rounded-full bg-[#f2b04f]"></span> -->
-			<!-- 			{bullet} -->
-			<!-- 		</li> -->
-			<!-- 	{/each} -->
-			<!-- </ul> -->
-			<!-- </div> -->
 		</div>
 	</section>
 
@@ -425,7 +348,8 @@
 				<p class="mb-4 text-lg text-[#4b4b57]">
 					If you want to chat with me about games, game design or software development feel free to
 					contact me on <a class="text-blue-500" href={DISCORD_URL}>discord</a> or send me a
-					<a class="text-blue-500" href="mail:to">mail</a>. And now design some great games!
+					<a class="text-blue-500" href="mailto:simon.hackler@protonmail.com">mail</a>. And now
+					design some great games!
 				</p>
 				<p class="mb-1 text-lg text-[#4b4b57]">Best,</p>
 				<p class="text-lg text-[#4b4b57]">Simon</p>
