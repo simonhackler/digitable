@@ -14,8 +14,7 @@
 			<TermsContent />
 		</article>
 		<div class="mt-6 flex flex-wrap items-center gap-3">
-			<Button href="/contact" variant="default" size="lg">Contact us</Button>
-			<Button href="/" variant="ghost" size="lg">Back to Studio</Button>
+			<Button href="/" variant="default" size="lg">Back to Studio</Button>
 		</div>
 	</div>
 </main>

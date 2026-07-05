@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { DISCORD_URL, GITHUB_URL } from './constants';
+	import { Star } from '@lucide/svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -184,7 +185,7 @@
 
 <main class="page min-h-screen text-[#151515]">
 	<section class="py-5 sm:py-6">
-		<div class="mx-auto grid max-w-[1120px] gap-6 px-6 sm:gap-7">
+		<div class="mx-auto grid max-w-[1280px] gap-6 px-6 sm:gap-7">
 			<div class="reveal mx-auto grid max-w-[720px] gap-3 text-left md:text-center">
 				<h1 class="font-['Newsreader'] text-4xl md:text-5xl lg:text-6xl">
 					<span class="block">A free and open source boardgame engine.</span>
@@ -209,6 +210,16 @@
 				>
 				<Button href="/app/games" variant="hero" size="huge">Create now</Button>
 			</div>
+
+			<figure
+				class="reveal mx-auto mt-2 w-full max-w-[1280px] overflow-hidden rounded-xl bg-[#f7f4ef] p-1.5 shadow-[0_24px_70px_rgba(21,21,21,0.18),0_0_0_1px_rgba(21,21,21,0.08)] sm:rounded-2xl sm:p-2"
+			>
+				<img
+					src="/screenshots/hero-image-2.png"
+					alt="Screenshot of the Digitable editor"
+					class="block w-full rounded-b-lg border border-[#ded8cf] object-cover sm:rounded-b-xl"
+				/>
+			</figure>
 
 			<!-- <div class="reveal grid gap-4"> -->
 			<!-- 	<Tabs.Root bind:value={activeTab} class="mx-auto w-full max-w-[720px] gap-4"> -->
@@ -262,12 +273,12 @@
 			class="mx-auto grid max-w-[1120px] [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))] items-center gap-10 px-6"
 		>
 			<div class="reveal order-2 md:order-1">
-				<div
-					class="relative overflow-hidden rounded-[26px] bg-[linear-gradient(130deg,#0c0f1a_0%,#2d3554_45%,#f2b04f_120%)] p-6 text-white shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-10"
-				>
-					<div class="mb-4 text-base tracking-[0.2em] text-white/75 uppercase">Design preview</div>
-					{@render previewScene('design', false)}
-				</div>
+				<img
+					src="/screenshots/design-shot.png"
+					alt="Screenshot of designing cards in Digitable"
+					loading="lazy"
+					class="block w-full rounded-[26px] shadow-[0_30px_60px_rgba(12,12,20,0.25)]"
+				/>
 			</div>
 			<div class="reveal order-1 md:order-2">
 				<h2 class="mb-4 text-3xl font-semibold">Design</h2>
@@ -301,14 +312,12 @@
 				</p>
 			</div>
 			<div class="reveal order-2 md:order-2">
-				<div
-					class="relative overflow-hidden rounded-[26px] bg-[linear-gradient(130deg,#0d1220_0%,#27465f_50%,#9fe1c2_120%)] p-6 text-white shadow-[0_30px_60px_rgba(12,12,20,0.25)] sm:p-10"
-				>
-					<div class="mb-4 text-base tracking-[0.2em] text-white/75 uppercase">
-						Playtest preview
-					</div>
-					{@render previewScene('playtest', false)}
-				</div>
+				<img
+					src="/screenshots/playtest-shot.png"
+					alt="Screenshot of a Digitable playtest session"
+					loading="lazy"
+					class="block w-full rounded-[26px] shadow-[0_30px_60px_rgba(12,12,20,0.25)]"
+				/>
 			</div>
 		</div>
 	</section>
@@ -336,71 +345,93 @@
 	</section>
 
 	<section id="newsletter" class="section-soft py-16">
-		<div class="mx-auto grid max-w-[1120px] items-center gap-10 px-6 md:grid-cols-[1.05fr_0.95fr]">
-			<div class="reveal">
-				<p class="text-sm tracking-[0.35em] text-[#4b4b57] uppercase">Newsletter</p>
+		<div class="mx-auto grid max-w-[760px] justify-items-center gap-10 px-6 text-center">
+			<div class="reveal w-full">
 				<h2 class="mt-2 text-3xl font-semibold md:text-4xl">
 					Stay up to date with the development
 				</h2>
 				<p class="mt-4 mb-2 text-xl text-[#4b4b57]">
-					I send out a monthly Newsletter for updates on digitable. 100% written by me. No lazy ai
-					content.
+					I send out a monthly Newsletter for updates on digitable.
 				</p>
 				<SubscribeForm {data} />
 			</div>
 		</div>
 	</section>
 
-	<section class="section-open-source py-16 sm:py-20">
+	<section class="section-community py-16 sm:py-20">
 		<div class="reveal mx-auto grid max-w-[760px] justify-items-center gap-6 px-6 text-center">
-			<svg viewBox="0 0 24 24" class="text-primary h-8 w-8" aria-hidden="true">
-				<path fill="currentColor" d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z" />
-			</svg>
 			<div class="grid gap-4">
 				<h2 class="font-['Newsreader'] text-4xl font-medium tracking-tight sm:text-5xl md:text-6xl">
-					Free &amp; open source
+					Join the community
 				</h2>
 				<p class="mx-auto max-w-[560px] text-xl leading-relaxed text-[#6d6660]">
-					Built in the open. Issues, pull requests and stars welcome.
+					Digitable is built in the open. Feedback, ideas, suggestions and pull requests are
+					welcome.
 				</p>
 			</div>
 
 			<div class="grid w-full max-w-[560px] gap-3 sm:grid-cols-2 sm:gap-4">
 				<Button
-					href="/app/games"
-					variant="hero"
-					size="huge"
-					class="h-14 rounded-xl text-xl sm:h-16"
-				>
-					Create for free
-					<svg viewBox="0 0 24 24" class="h-5 w-5" aria-hidden="true">
-						<path
-							fill="currentColor"
-							d="M12 3a1 1 0 0 1 1 1v11.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V4a1 1 0 0 1 1-1Z"
-						/>
-					</svg>
-				</Button>
-				<Button
-					href={GITHUB_URL}
+					href={DISCORD_URL}
 					variant="pill-outline"
 					size="huge"
 					class="h-14 rounded-xl bg-white text-xl shadow-none sm:h-16"
 					target="_blank"
 					rel="noreferrer"
 				>
-					<svg viewBox="0 0 24 24" class="text-primary h-5 w-5" aria-hidden="true">
+					<svg viewBox="0 0 256 199" class="text-primary h-5 w-5" aria-hidden="true">
 						<path
 							fill="currentColor"
-							d="M12 2l2.866 5.808 6.41.93-4.638 4.52 1.094 6.376L12 16.97l-5.732 3.663 1.094-6.376L2.724 8.738l6.41-.93L12 2z"
+							d="M216.856 16.597A208.502 208.502 0 0 0 164.042 0c-2.275 4.113-4.856 9.602-6.681 13.904a192.286 192.286 0 0 0-57.722 0C97.814 9.602 95.208 4.113 92.908 0a207.5 207.5 0 0 0-52.81 16.597C6.337 67.332-2.741 117.336.718 166.658a208.09 208.09 0 0 0 62.63 32.272c5.042-6.906 9.546-14.279 13.65-21.95a134.93 134.93 0 0 1-21.56-10.31c1.814-1.324 3.58-2.684 5.303-4.08c41.438 19.431 86.51 19.431 127.34 0c1.723 1.396 3.489 2.756 5.303 4.08a134.67 134.67 0 0 1-21.56 10.31c4.104 7.67 8.608 15.043 13.65 21.95a208.041 208.041 0 0 0 62.63-32.272c4.015-56.733-6.15-106.374-38.053-150.06ZM85.474 135.635c-12.645 0-23.021-11.468-23.021-25.608c0-14.14 10.18-25.608 23.021-25.608c12.84 0 23.216 11.468 23.021 25.608c0 14.14-10.18 25.608-23.021 25.608Zm85.064 0c-12.645 0-23.021-11.468-23.021-25.608c0-14.14 10.18-25.608 23.021-25.608c12.84 0 23.216 11.468 23.021 25.608c0 14.14-10.18 25.608-23.021 25.608Z"
 						/>
 					</svg>
+					Join the Discord
+				</Button>
+				<Button
+					href={GITHUB_URL}
+					variant="hero"
+					size="huge"
+					class="h-14 rounded-xl text-xl sm:h-16"
+					target="_blank"
+					rel="noreferrer"
+				>
+					<Star></Star>
 					Star on GitHub
 				</Button>
 			</div>
 		</div>
 	</section>
 
-	<!-- TODO join the Community. Github/Discord. I am always open to feature requests, feedback and suggestions. -->
+	<section id="about" class="section-soft py-16 sm:py-20">
+		<div
+			class="mx-auto grid max-w-[1120px] [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))] items-center gap-10 px-6"
+		>
+			<div class="reveal">
+				<img
+					src="/myself.jpg"
+					alt="Simon playing a board game"
+					loading="lazy"
+					class="block w-full rounded-[26px] object-cover shadow-[0_30px_60px_rgba(12,12,20,0.2)]"
+				/>
+			</div>
+			<div class="reveal">
+				<h2 class="mb-4 text-3xl font-semibold">About</h2>
+				<p class="mb-4 text-lg leading-relaxed text-[#4b4b57]">Hi,</p>
+				<p class="text-lg text-[#4b4b57]">
+					I am Simon, I made Digitable because I couldn't find the open source board game design
+					tool I wanted. I am making digitable to be my personal dream boardgame software. I hope
+					digitable can be useful to you as well and can help you make your dream game.
+				</p>
+				<p class="mb-4 text-lg text-[#4b4b57]">
+					If you want to chat with me about games, game design or software development feel free to
+					contact me on <a class="text-blue-500" href={DISCORD_URL}>discord</a> or send me a
+					<a class="text-blue-500" href="mail:to">mail</a>. And now design some great games!
+				</p>
+				<p class="mb-1 text-lg text-[#4b4b57]">Best,</p>
+				<p class="text-lg text-[#4b4b57]">Simon</p>
+			</div>
+		</div>
+	</section>
 </main>
 
 <style>
@@ -451,7 +482,7 @@
 		background: #f2c9d1;
 	}
 
-	.section-open-source {
+	.section-community {
 		background: #f8f2ec;
 	}
 

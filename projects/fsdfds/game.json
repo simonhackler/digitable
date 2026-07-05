@@ -1,10 +1,10 @@
 {
-	"name": "fsdfds",
-	"minPlayers": 1,
-	"maxPlayers": 4,
-	"description": "fds",
-	"tags": [
-		"Medieval"
-	],
-	"digitableVersion": "0.0.1"
+  "name": "The best card game",
+  "minPlayers": 1,
+  "maxPlayers": 4,
+  "description": "fds",
+  "tags": [
+    "Medieval"
+  ],
+  "digitableVersion": "0.0.1"
 }
