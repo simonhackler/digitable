@@ -13,7 +13,10 @@
 	let acceptedPolicies = $state(false);
 	let errorMessage = $state('');
 	let isSubmitting = $state(false);
+	let isDiscordSubmitting = $state(false);
 	let isGoogleSubmitting = $state(false);
+	const isSocialSubmitting = $derived(isDiscordSubmitting || isGoogleSubmitting);
+	const hasSocialAuth = $derived(data.discordAuthEnabled || data.googleAuthEnabled);
 
 	async function readErrorMessage(response: Response) {
 		const contentType = response.headers.get('content-type') ?? '';
@@ -49,7 +52,7 @@
 
 		isSubmitting = true;
 
-		const response = await fetch(resolve('/api/auth/sign-up/email'), {
+		const response = await fetch('/api/auth/sign-up/email', {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json'
@@ -80,25 +83,27 @@
 		window.location.assign('/app/games');
 	}
 
-	async function handleGoogleSignIn() {
+	async function handleSocialSignIn(provider: 'discord' | 'google') {
 		errorMessage = '';
-		isGoogleSubmitting = true;
+		if (provider === 'discord') isDiscordSubmitting = true;
+		if (provider === 'google') isGoogleSubmitting = true;
 
-		const response = await fetch(resolve('/api/auth/sign-in/social'), {
+		const response = await fetch('/api/auth/sign-in/social', {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json'
 			},
 			body: JSON.stringify({
-				provider: 'google',
+				provider,
 				callbackURL: '/app/games',
-				errorCallbackURL: '/sign-in?error=google'
+				errorCallbackURL: `/sign-in?error=${provider}`
 			})
 		});
 
 		if (!response.ok) {
 			errorMessage = await readErrorMessage(response);
-			isGoogleSubmitting = false;
+			if (provider === 'discord') isDiscordSubmitting = false;
+			if (provider === 'google') isGoogleSubmitting = false;
 			return;
 		}
 
@@ -109,8 +114,9 @@
 			return;
 		}
 
-		errorMessage = 'Google sign in did not return a redirect URL.';
-		isGoogleSubmitting = false;
+		errorMessage = `${provider === 'discord' ? 'Discord' : 'Google'} sign in did not return a redirect URL.`;
+		if (provider === 'discord') isDiscordSubmitting = false;
+		if (provider === 'google') isGoogleSubmitting = false;
 	}
 </script>
 
@@ -157,8 +163,8 @@
 							type="button"
 							variant="outline"
 							size="lg"
-							disabled={isSubmitting || isGoogleSubmitting}
-							onclick={handleGoogleSignIn}
+							disabled={isSubmitting || isSocialSubmitting}
+							onclick={() => handleSocialSignIn('google')}
 						>
 							<svg class="size-5" viewBox="0 0 24 24" aria-hidden="true">
 								<path
@@ -180,7 +186,22 @@
 							</svg>
 							{isGoogleSubmitting ? 'Opening Google...' : 'Continue with Google'}
 						</Button>
+					{/if}
 
+					{#if data.discordAuthEnabled}
+						<Button
+							class="w-full justify-center border-black/10 bg-[#5865f2] text-white hover:bg-[#4752c4]"
+							type="button"
+							variant="outline"
+							size="lg"
+							disabled={isSubmitting || isSocialSubmitting}
+							onclick={() => handleSocialSignIn('discord')}
+						>
+							{isDiscordSubmitting ? 'Opening Discord...' : 'Continue with Discord'}
+						</Button>
+					{/if}
+
+					{#if hasSocialAuth}
 						<div class="flex items-center gap-3 text-xs font-medium text-[#6f695f]">
 							<div class="h-px flex-1 bg-black/10"></div>
 							<span>or</span>

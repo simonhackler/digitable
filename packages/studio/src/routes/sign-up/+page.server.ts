@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { isGoogleAuthEnabled } from '@svg-table/auth/server';
+import { isDiscordAuthEnabled, isGoogleAuthEnabled } from '@svg-table/auth/server';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
@@ -8,6 +8,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	}
 
 	return {
+		discordAuthEnabled: isDiscordAuthEnabled(),
 		googleAuthEnabled: isGoogleAuthEnabled()
 	};
 };
