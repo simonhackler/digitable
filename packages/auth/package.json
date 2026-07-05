@@ -13,8 +13,8 @@
 		"db:seed": "bun ./src/seed-demo-users.ts"
 	},
 	"dependencies": {
-		"@better-auth/drizzle-adapter": "latest",
+		"@better-auth/drizzle-adapter": "1.6.23",
 		"@svg-table/db": "workspace:*",
-		"better-auth": "latest"
+		"better-auth": "1.6.23"
 	}
 }

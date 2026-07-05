@@ -46,7 +46,7 @@
 		"@types/papaparse": "^5.5.1",
 		"@types/wicg-file-system-access": "^2023.10.7",
 		"@zumer/snapdom": "^2.0.1",
-		"better-auth": "latest",
+		"better-auth": "1.6.23",
 		"boardgame-server": "workspace:*",
 		"client-zip": "^2.5.0",
 		"colyseus.js": "^0.16.22",
@@ -84,8 +84,8 @@
 		"@tanstack/table-core": "^8.21.3",
 		"@tracewayapp/sourcemap-upload": "^1.1.0",
 		"@types/node": "^24.10.1",
-		"@vitest/browser": "latest",
-		"@vitest/coverage-v8": "latest",
+		"@vitest/browser": "4.1.9",
+		"@vitest/coverage-v8": "4.1.9",
 		"@xmldom/xmldom": "^0.8.13",
 		"bits-ui": "^2.16.2",
 		"clsx": "^2.1.1",
@@ -110,7 +110,7 @@
 		"typescript": "^5.9.2",
 		"typescript-eslint": "^8.48.1",
 		"vite": "^7.2.6",
-		"vitest": "latest",
+		"vitest": "4.1.9",
 		"zod": "4.4.1"
 	}
 }

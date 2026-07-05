@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    bun-nixpkgs.url = "github:NixOS/nixpkgs/b86751bc4085f48661017fa226dee99fab6c651b";
     deploy-rs.url = "github:serokell/deploy-rs";
     deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
     disko.url = "github:nix-community/disko";
@@ -14,7 +15,7 @@
     };
   };
 
-  outputs = {
+  outputs = inputs @ {
     self,
     nixpkgs,
     deploy-rs,
@@ -25,6 +26,10 @@
     system = "x86_64-linux";
     lib = nixpkgs.lib;
     pkgs = import nixpkgs {inherit system;};
+    bunPkgs = import inputs."bun-nixpkgs" {inherit system;};
+    packageJson = builtins.fromJSON (builtins.readFile ../../package.json);
+    expectedBunVersion = lib.removePrefix "bun@" packageJson.packageManager;
+    bunPackage = assert lib.assertMsg (bunPkgs.bun.version == expectedBunVersion) "Deploy Bun ${bunPkgs.bun.version} does not match package.json ${packageJson.packageManager}"; bunPkgs.bun;
     repoRoot = builtins.toString ../..;
     repoRootPath = /. + repoRoot;
     adminPublicKeys = [
@@ -204,7 +209,7 @@
       src = dependencySource;
 
       nativeBuildInputs = [
-        pkgs.bun
+        bunPackage
         pkgs.nodejs
         pkgs.python3
       ];
@@ -214,7 +219,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-EMirVHrc5VO0ztbUPa7y/eIu37y6SZGSDYH8AHJSznU=";
+      outputHash = "sha256-BOazZCG2A2NWoFoEbW+vT1io7GpYWexemM+hH7vZ4IE=";
 
       installPhase = ''
         runHook preInstall
@@ -249,7 +254,7 @@
       src = dependencySource;
 
       nativeBuildInputs = [
-        pkgs.bun
+        bunPackage
         pkgs.nodejs
         pkgs.python3
       ];
@@ -259,7 +264,7 @@
       dontFixup = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
-      outputHash = "sha256-u+ijHa3Y0bLZOxgV1rlnWtldt/LnODkdPzAWA6Pe9SM=";
+      outputHash = "sha256-NF0VpJXkrDoms+9vtei2hCVLI8s/n8h0R0m1Kghyrxo=";
 
       installPhase = ''
         runHook preInstall
@@ -584,7 +589,7 @@
       src = runtimeWorkspaceSource;
 
       nativeBuildInputs = [
-        pkgs.bun
+        bunPackage
         pkgs.nodejs
       ];
 
@@ -663,6 +668,7 @@
           inherit
             adminPublicKeys
             appPort
+            bunPackage
             enableAppSecrets
             gameServerPort
             gameServerPublicPort

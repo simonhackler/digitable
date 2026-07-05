@@ -5,6 +5,7 @@
   lib,
   modulesPath,
   appPort,
+  bunPackage,
   enableAppSecrets ? true,
   gameServerPort,
   gameServerPublicPort,
@@ -195,7 +196,7 @@ in {
     serviceConfig = {
       Type = "oneshot";
       WorkingDirectory = "${studioPackage}/packages/db";
-      ExecStart = "${pkgs.bun}/bin/bun run db:migrate";
+      ExecStart = "${bunPackage}/bin/bun run db:migrate";
       RemainAfterExit = true;
     };
   };
