@@ -21,22 +21,13 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 500
-    },
-    "tags": {
-      "minItems": 1,
-      "maxItems": 10,
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
     }
   },
   "required": [
     "name",
     "minPlayers",
     "maxPlayers",
-    "description",
-    "tags"
+    "description"
   ],
   "additionalProperties": false
 }

@@ -6,10 +6,8 @@
 	import { Input } from '$lib/components/ui/input';
 	import { superForm, defaults } from 'sveltekit-superforms';
 	import { zod4 } from 'sveltekit-superforms/adapters';
-	import TagSelector from './tag-selector.svelte';
 	import { createGameSchema, type CreateGameForm } from '../schemas.js';
 	import { getFileSystemContext, getGamesContext } from '../context.js';
-	import { Upload, Image } from '@lucide/svelte';
 	import { CircleCheck } from '@lucide/svelte';
 	import { requireParam } from '$lib/utils/assert';
 	import { page } from '$app/state';
@@ -30,7 +28,6 @@
 	): Promise<{
 		data: CreateGameForm;
 		isEditMode: boolean;
-		thumbnailUrl?: string;
 	}> {
 		try {
 			const gameDir = await fileSystem.openDir(gameNameParsed);
@@ -41,18 +38,7 @@
 			if (!gameFileResult.error) {
 				const gameData = JSON.parse(gameFileResult.data);
 
-				// Try to load existing thumbnail
-				let thumbnailUrl: string | undefined;
-				try {
-					const thumbnailResult = await gameDir.data.read('thumbnail.jpg');
-					if (!thumbnailResult.error) {
-						thumbnailUrl = URL.createObjectURL(thumbnailResult.data);
-					}
-				} catch {
-					// No thumbnail exists
-				}
-
-				return { data: gameData, isEditMode: true, thumbnailUrl };
+				return { data: gameData, isEditMode: true };
 			}
 		} catch (error) {
 			if (
@@ -67,18 +53,13 @@
 				name: gameName,
 				minPlayers: 1,
 				maxPlayers: 4,
-				description: '',
-				tags: []
+				description: ''
 			},
 			isEditMode: false
 		};
 	}
 
-	const {
-		data: initialData,
-		isEditMode,
-		thumbnailUrl: initialThumbnailUrl
-	} = $derived(await loadGameData(gameNameParsed, gameName));
+	const { data: initialData, isEditMode } = $derived(await loadGameData(gameNameParsed, gameName));
 
 	const form = $derived(
 		superForm(defaults(initialData, zod4(createGameSchema)), {
@@ -90,7 +71,6 @@
 					showSuccessMessage = false;
 
 					const data: CreateGameForm = { ...form.data };
-					const folderName = data.name.replace(/\s+/g, '_');
 					const gameData = JSON.stringify(data, null, 2);
 					const gameFile = new File([gameData], 'game.json', { type: 'application/json' });
 
@@ -108,23 +88,6 @@
 						return;
 					}
 
-					if (selectedThumbnail) {
-						const thumbnailDir =
-							folderName === gameNameParsed ? gameDir : await fileSystem.ensureDir(folderName);
-						if (thumbnailDir.error) {
-							console.error('Failed to open thumbnail folder:', thumbnailDir.error);
-							isSubmitting = false;
-							return;
-						}
-						const thumbnailWrite = await thumbnailDir.data.write(
-							selectedThumbnail.name,
-							selectedThumbnail
-						);
-						if (thumbnailWrite.error) {
-							console.error('Failed to save thumbnail:', thumbnailWrite.error);
-						}
-					}
-
 					syncSavedGame(data);
 					isSubmitting = false;
 					showSuccessMessage = true;
@@ -137,9 +100,6 @@
 	);
 	const { form: formData, enhance } = $derived(form);
 
-	let selectedTags = $derived<string[]>(initialData.tags || []);
-	let selectedThumbnail = $state<File | null>(null);
-	let thumbnailPreviewUrl = $derived<string | null>(initialThumbnailUrl || null);
 	let showSuccessMessage = $state(false);
 	let isSubmitting = $state(false);
 
@@ -150,51 +110,12 @@
 		const savedGame = {
 			name: gameNameParsed,
 			decks: existingGame?.decks ?? [],
-			description: data.description,
-			tags: data.tags
+			description: data.description
 		};
 
 		games.existingGames = existingGame
 			? games.existingGames.map((game) => (game.name === gameNameParsed ? savedGame : game))
 			: [...games.existingGames, savedGame].sort((a, b) => a.name.localeCompare(b.name));
-	}
-
-	function handleTagsChange(tags: string[]) {
-		selectedTags = tags;
-		$formData.tags = selectedTags;
-	}
-
-	function handleThumbnailChange(event: Event) {
-		const input = event.target as HTMLInputElement;
-		const file = input.files?.[0];
-
-		if (file) {
-			if (!file.type.startsWith('image/')) {
-				alert('Please select an image file');
-				return;
-			}
-
-			selectedThumbnail = new File([file], 'thumbnail.jpg', { type: 'image/jpeg' });
-
-			if (thumbnailPreviewUrl) {
-				URL.revokeObjectURL(thumbnailPreviewUrl);
-			}
-			thumbnailPreviewUrl = URL.createObjectURL(file);
-		}
-	}
-
-	function removeThumbnail() {
-		selectedThumbnail = null;
-		if (thumbnailPreviewUrl) {
-			URL.revokeObjectURL(thumbnailPreviewUrl);
-		}
-		thumbnailPreviewUrl = null;
-
-		// Reset the file input
-		const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-		if (input) {
-			input.value = '';
-		}
 	}
 
 	async function deleteGame() {
@@ -330,77 +251,6 @@
 							</Form.Description>
 							<Form.FieldErrors />
 						</Form.Field>
-
-						<TagSelector {form} {selectedTags} onTagsChange={handleTagsChange} />
-
-						<!-- Thumbnail Upload -->
-						<div class="space-y-2">
-							<div class="text-base font-medium">Game Thumbnail</div>
-							<div class="space-y-4">
-								<!-- Image Preview -->
-								<div class="relative">
-									<div
-										class="border-input bg-muted/50 w-full overflow-hidden rounded-lg border-2 border-dashed"
-										style="aspect-ratio: 920 / 430;"
-									>
-										{#if thumbnailPreviewUrl}
-											<img
-												src={thumbnailPreviewUrl}
-												alt="Game thumbnail preview"
-												class="h-full w-full object-cover"
-											/>
-											<button
-												aria-label="Remove thumbnail"
-												type="button"
-												onclick={removeThumbnail}
-												class="bg-destructive text-destructive-foreground hover:bg-destructive/90 absolute top-2 right-2 rounded-full p-1"
-											>
-												<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														stroke-width="2"
-														d="M6 18L18 6M6 6l12 12"
-													/>
-												</svg>
-											</button>
-										{:else}
-											<div
-												class="text-muted-foreground flex h-full flex-col items-center justify-center"
-											>
-												<Image class="mb-2 h-12 w-12" />
-												<p class="text-sm">920px × 430px thumbnail</p>
-												<p class="text-xs">Will be stretched to fill</p>
-											</div>
-										{/if}
-									</div>
-								</div>
-
-								<!-- File Input -->
-								<div class="flex items-center gap-2">
-									<Input
-										type="file"
-										accept="image/*"
-										onchange={handleThumbnailChange}
-										class="flex-1"
-									/>
-									<Button
-										type="button"
-										onclick={() =>
-											(document.querySelector('input[type="file"]') as HTMLInputElement)?.click()}
-										variant="outline"
-										size="sm"
-									>
-										<Upload class="mr-2 h-4 w-4" />
-										Browse
-									</Button>
-								</div>
-
-								<p class="text-muted-foreground text-xs">
-									Recommended size: 920px × 430px. Larger images will be scaled to fit.
-								</p>
-							</div>
-						</div>
 
 						<div class="pt-4">
 							<!-- Success Message -->
