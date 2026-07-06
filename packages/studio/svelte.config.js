@@ -13,6 +13,13 @@ const config = {
 	},
 	kit: {
 		adapter: adapter(),
+		prerender: {
+			handleHttpError: ({ path, status, message }) => {
+				if (status === 404 && (path === '/app' || path.startsWith('/app/'))) return;
+
+				throw new Error(message);
+			}
+		},
 		experimental: {
 			instrumentation: {
 				server: true

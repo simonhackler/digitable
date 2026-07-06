@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onNavigate } from '$app/navigation';
+	import { asset } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -15,12 +17,19 @@
 		type SvgEditorApi
 	} from '@svg-table/svgeditor';
 	import { Maximize2, Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import { useDebounce } from 'runed';
+	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { getFileSystemContext } from '../../context';
-	import { loadSvgsAndDataForSides } from '../data-loader';
-	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
+	import {
+		getProjectFilePath,
+		isEmbeddedImageReference,
+		loadSpreadsheetData,
+		resolveImageReference
+	} from '../data-loader';
+	import { generateSvg, getSvgDataMapForSides, loadSvgTemplate } from '../svg-helpers';
+	import { ImageEditor } from '../decks/[deckName]/data/custom-image';
 	import GameTopBar from '../../game-top-bar.svelte';
 	import {
 		createHorizontalFlexSlotLayout,
@@ -40,10 +49,16 @@
 		type TableSlotLayout,
 		type TableSvgAssets,
 		type TableSvgElementJson,
+		type TableSvgJson,
 		type TableSlot,
 		type TablePresetId,
 		type Table
 	} from './table';
+
+	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
+	const SVG_MIME_TYPE = 'image/svg+xml';
+	const SVG_NS = 'http://www.w3.org/2000/svg';
+	const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 	type CardEntry = {
 		id: string;
@@ -51,6 +66,7 @@
 		deckName: string;
 		label: string;
 		frontSvg: string;
+		linkedFrontSvg: string;
 		size: { width: number; height: number } | null;
 	};
 
@@ -82,6 +98,40 @@
 		return `<svg xmlns="http://www.w3.org/2000/svg" width="${table.width}" height="${table.height}" viewBox="0 0 ${table.width} ${table.height}" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="${table.presetId}"></svg>`;
 	}
 
+	const getImageHref = (image: SVGImageElement) =>
+		image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
+
+	const setImageHref = (image: SVGImageElement, value: string) => {
+		const svgRoot =
+			image.ownerSVGElement ??
+			(image.ownerDocument.documentElement as unknown as SVGSVGElement | null);
+		if (svgRoot && !svgRoot.hasAttribute('xmlns:xlink')) {
+			svgRoot.setAttribute('xmlns:xlink', XLINK_NS);
+		}
+		image.setAttribute('href', value);
+		image.setAttributeNS(XLINK_NS, 'xlink:href', value);
+	};
+
+	async function resolveSvgImagesForEditor(value: string, projectName: string) {
+		if (!value) return value;
+
+		const doc = new DOMParser().parseFromString(value, SVG_MIME_TYPE);
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+
+		await Promise.all(
+			Array.from(root.querySelectorAll<SVGImageElement>('image')).map(async (image) => {
+				const href = getImageHref(image).trim();
+				if (!href || isEmbeddedImageReference(href)) return;
+
+				const resolvedHref = await resolveImageReference(fileSystem, projectName, href, true);
+				setImageHref(image, resolvedHref);
+			})
+		);
+
+		return serializeSvg(root);
+	}
+
 	function applyTableRootMetadata(root: Element, table: TableInfo) {
 		root.setAttribute('role', 'img');
 		root.setAttribute('aria-label', 'Digitable table setup');
@@ -96,53 +146,76 @@
 		applyTableRootMetadata(root, table);
 	}
 
-	function updateSerializedTableRoot(svg: string, table: TableInfo) {
-		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-		const root = doc.documentElement;
-		if (!root || root.tagName.toLowerCase() !== 'svg') return emptyTableSvg(table);
-		applyTableRootInfo(root, table);
-		return serializeSvg(root);
-	}
-
 	function stringifyAttributes(attributes: Record<string, string | number | null>) {
 		return Object.fromEntries(
 			Object.entries(attributes).map(([key, value]) => [key, value === null ? null : String(value)])
 		);
 	}
 
+	function setupAssetHref(value: string) {
+		const projectFilePath = getProjectFilePath(projectName, value);
+		if (!projectFilePath) return value.trim();
+		const assetPrefix = `/${projectName}/${ASSETS_DIR}/`;
+		if (!projectFilePath.startsWith(assetPrefix)) return value.trim();
+		return `../${ASSETS_DIR}/${projectFilePath.slice(assetPrefix.length)}`;
+	}
+
+	function linkedImagePaths(spreadsheetData: {
+		cols: Array<{ type?: unknown }>;
+		data: string[][];
+	}) {
+		const imageColumnIndexes = spreadsheetData.cols.flatMap((column, index) =>
+			column.type === ImageEditor ? [index] : []
+		);
+		return new Map(
+			Array.from(
+				new Set(
+					spreadsheetData.data.flatMap((row) =>
+						imageColumnIndexes.map((index) => row[index]).filter((value) => value?.trim())
+					)
+				)
+			).map((value) => [value, setupAssetHref(value)])
+		);
+	}
+
 	async function loadDeckEntry(deckName: string, frontSvgText: string): Promise<DeckEntry> {
 		const frontTemplate = loadSvgTemplate(frontSvgText);
-		const loadedSvgsAndData = await loadSvgsAndDataForSides(
+		const svgData = getSvgDataMapForSides([{ template: frontTemplate }]);
+		const loadedSpreadsheetData = await loadSpreadsheetData(
+			svgData,
 			projectName,
 			deckName,
-			fileSystem,
-			[{ template: frontTemplate }],
-			true
+			fileSystem
 		);
-		if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
-		const { spreadsheetData, imagePaths } = loadedSvgsAndData.data;
+		if (loadedSpreadsheetData.error) throw new Error(loadedSpreadsheetData.error.message);
+		const spreadsheetData = loadedSpreadsheetData.data;
+		const imagePaths = linkedImagePaths(spreadsheetData);
 		const headers = spreadsheetData.cols.map((column) => String(column.title));
 		const idIndex = headers.indexOf('id');
 		const labelIndex = headers.findIndex((header) => header !== 'id');
 		if (idIndex < 0) {
 			throw new Error(`Component "${deckName}" is missing an id column.`);
 		}
-		const cards = spreadsheetData.data.map((row, index) => {
-			const rowId = String(row[idIndex] ?? '').trim();
-			if (!rowId) {
-				throw new Error(`Component "${deckName}" has an empty id in row ${index + 1}.`);
-			}
-			const label = String(labelIndex >= 0 ? row[labelIndex] : '');
-			const frontSvg = serializeSvg(generateSvg(frontTemplate, headers, row, imagePaths));
-			return {
-				id: `${deckName}:${rowId}`,
-				rowId,
-				deckName,
-				label,
-				frontSvg,
-				size: svgMarkupLogicalSize(frontSvg)
-			};
-		});
+		const cards = await Promise.all(
+			spreadsheetData.data.map(async (row, index) => {
+				const rowId = String(row[idIndex] ?? '').trim();
+				if (!rowId) {
+					throw new Error(`Component "${deckName}" has an empty id in row ${index + 1}.`);
+				}
+				const label = String(labelIndex >= 0 ? row[labelIndex] : '');
+				const linkedFrontSvg = serializeSvg(generateSvg(frontTemplate, headers, row, imagePaths));
+				const frontSvg = await resolveSvgImagesForEditor(linkedFrontSvg, projectName);
+				return {
+					id: `${deckName}:${rowId}`,
+					rowId,
+					deckName,
+					label,
+					frontSvg,
+					linkedFrontSvg,
+					size: svgMarkupLogicalSize(frontSvg)
+				};
+			})
+		);
 		return { name: deckName, cards };
 	}
 
@@ -174,13 +247,15 @@
 		if (svgRead.error) {
 			return emptyTableSvg(createDefaultTable().table);
 		}
-		return svgRead.data;
+		return resolveSvgImagesForEditor(svgRead.data, projectName);
 	}
 
 	const fallbackTable = createDefaultTable();
 	let decks = $state<DeckEntry[]>([]);
 	let tableInfo = $state<TableInfo>(fallbackTable.table);
 	const cards = $derived(decks.flatMap((deck) => deck.cards));
+	let tableSlots = $state<TableSlot[]>([]);
+	let tablePlacements = $state<TablePlacement[]>([]);
 	let selectedSlot = $state<TableSlot | null>(null);
 	let selectedPlacement = $state<TablePlacement | null>(null);
 	let status = $state('Loading');
@@ -197,20 +272,11 @@
 	let editorSvg = $state(emptyTableSvg(fallbackTable.table));
 	let editorApi = $state<SvgEditorApi | null>(null);
 	let editorPanel = $state('component');
-	let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-	let autosaveIdleHandle: number | null = null;
-	let saveGeneration = 0;
-	let saveInFlight = false;
-	let pendingSaveGeneration: number | null = null;
+	let activeSavePromises = $state<Promise<void>[]>([]);
+	let tableSaveChain: Promise<void> = Promise.resolve();
 	const editorController = createEditorController();
 
-	type WindowWithIdleCallback = Window & {
-		requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
-		cancelIdleCallback?: (handle: number) => void;
-	};
-
 	const AUTOSAVE_DELAY_MS = 800;
-	const AUTOSAVE_IDLE_TIMEOUT_MS = 2000;
 	const MIN_TABLE_DIMENSION = 100;
 	const selectedSlotLayout = $derived<TableSlotLayout>(selectedSlot?.layout ?? { mode: 'free' });
 	const selectedSlotContents = $derived(selectedSlot?.contents ?? []);
@@ -221,8 +287,9 @@
 			? cards.filter((card) => card.deckName === placement.deckName)
 			: [];
 	});
+	const deckLookup = $derived.by(() => createDeckLookup(decks));
 	const config = $derived({
-		imgPath: '/svgedit/images/',
+		imgPath: SVG_EDITOR_ASSET_BASE_PATH,
 		baseUnit: 'px',
 		pageBorderSnapping: true,
 		showGrid: true,
@@ -243,6 +310,8 @@
 				decks = loadedDecks;
 				const loadedTable = tableViewFromSvg(loadedSvg);
 				tableInfo = loadedTable.table;
+				tableSlots = loadedTable.slots;
+				tablePlacements = loadedTable.placements;
 				editorSvg = loadedSvg;
 				selectSlot(loadedTable.slots[0] ?? null);
 				isLoading = false;
@@ -255,34 +324,6 @@
 				status = 'Load failed';
 			});
 	});
-
-	onDestroy(() => {
-		cancelQueuedAutosave();
-	});
-
-	function cancelQueuedAutosave() {
-		if (autosaveTimer) {
-			clearTimeout(autosaveTimer);
-			autosaveTimer = null;
-		}
-		if (autosaveIdleHandle !== null && typeof window !== 'undefined') {
-			const browser = window as WindowWithIdleCallback;
-			if (browser.cancelIdleCallback) {
-				browser.cancelIdleCallback(autosaveIdleHandle);
-			} else {
-				clearTimeout(autosaveIdleHandle);
-			}
-			autosaveIdleHandle = null;
-		}
-	}
-
-	function currentEditorSvg() {
-		return editorApi?.getSvg() ?? editorSvg;
-	}
-
-	function currentEditorSvgForSave() {
-		return updateSerializedTableRoot(currentEditorSvg(), tableInfo);
-	}
 
 	function currentEditorSvgElement() {
 		return editorApi?._unsafe?.rawCanvas()?.getSvgContent?.() ?? null;
@@ -302,9 +343,108 @@
 		return svgToTable(svg, fallbackTableWithRoot());
 	}
 
-	function currentEditorTable() {
-		if (typeof DOMParser === 'undefined') return fallbackTableWithRoot(tableInfo);
-		return svgToTable(currentEditorSvg(), fallbackTableWithRoot(tableInfo));
+	function createDeckLookup(sourceDecks: DeckEntry[]) {
+		const deckByName = new Map<string, DeckEntry>();
+		const cardById = new Map<string, CardEntry>();
+		const cardSizes = new Map<string, { width: number; height: number }>();
+		const deckTopCardIds = new Map<string, string>();
+		const deckCardIds = new Map<string, string[]>();
+		const deckSizes = new Map<string, { width: number; height: number }>();
+		for (const deck of sourceDecks) {
+			deckByName.set(deck.name, deck);
+			const ids = deck.cards.map((card) => card.id);
+			deckCardIds.set(deck.name, ids);
+			const firstCard = deck.cards[0];
+			if (firstCard) deckTopCardIds.set(deck.name, firstCard.id);
+			const sizes = deck.cards.flatMap((card) => {
+				cardById.set(card.id, card);
+				if (!card.size) return [];
+				cardSizes.set(card.id, card.size);
+				return [card.size];
+			});
+			if (sizes.length > 0) {
+				deckSizes.set(deck.name, {
+					width: Math.max(...sizes.map((size) => size.width)),
+					height: Math.max(...sizes.map((size) => size.height))
+				});
+			}
+		}
+		return { deckByName, cardById, cardSizes, deckTopCardIds, deckCardIds, deckSizes };
+	}
+
+	function lookupForDecks(sourceDecks: DeckEntry[]) {
+		return sourceDecks === decks ? deckLookup : createDeckLookup(sourceDecks);
+	}
+
+	function linkedDeckLibrary(sourceDecks = decks): DeckEntry[] {
+		return sourceDecks.map((deck) => ({
+			...deck,
+			cards: deck.cards.map((card) => ({
+				...card,
+				frontSvg: card.linkedFrontSvg
+			}))
+		}));
+	}
+
+	function appendSvgJson(parent: Element, svgJson: TableSvgJson, doc: Document) {
+		if (typeof svgJson === 'string') {
+			parent.appendChild(doc.createTextNode(svgJson));
+			return;
+		}
+		const element = doc.createElementNS(SVG_NS, svgJson.element);
+		for (const [key, value] of Object.entries(svgJson.attr ?? {})) {
+			element.setAttribute(key, String(value));
+		}
+		for (const child of svgJson.children ?? []) {
+			appendSvgJson(element, child, doc);
+		}
+		parent.appendChild(element);
+	}
+
+	function tableSvgForSave() {
+		const liveElement = (id: string) => !editorApi || Boolean(editorApi.getElementById(id));
+		const table: Table = {
+			version: 1,
+			table: { ...tableInfo },
+			slots: tableSlots.filter((slot) => liveElement(slot.id)),
+			placements: tablePlacements.filter((placement) => liveElement(placement.id))
+		};
+		if (typeof DOMParser === 'undefined') return emptyTableSvg(table.table);
+		const linkedDecks = linkedDeckLibrary();
+
+		const doc = new DOMParser().parseFromString(emptyTableSvg(table.table), SVG_MIME_TYPE);
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return emptyTableSvg(table.table);
+		applyTableRootInfo(root, table.table);
+
+		const layer = doc.createElementNS(SVG_NS, 'g');
+		layer.setAttribute('class', 'layer');
+		const title = doc.createElementNS(SVG_NS, 'title');
+		title.textContent = 'Layer 1';
+		layer.appendChild(title);
+		for (const slot of table.slots) {
+			appendSvgJson(
+				layer,
+				withCurrentTransform(
+					slot.id,
+					slotToSvgElementJson(slot, svgAssetsForSlot(slot, linkedDecks))
+				),
+				doc
+			);
+		}
+		for (const placement of table.placements) {
+			appendSvgJson(
+				layer,
+				withCurrentTransform(
+					placement.id,
+					placementToSvgElementJson(placement, svgAssetsForPlacement(placement, linkedDecks))
+				),
+				doc
+			);
+		}
+		root.appendChild(layer);
+
+		return serializeSvg(root);
 	}
 
 	function selectSlot(slot: TableSlot | null) {
@@ -318,11 +458,11 @@
 	}
 
 	function cardById(cardId: string, sourceDecks = decks) {
-		return sourceDecks.flatMap((deck) => deck.cards).find((card) => card.id === cardId) ?? null;
+		return lookupForDecks(sourceDecks).cardById.get(cardId) ?? null;
 	}
 
 	function deckByName(deckName: string, sourceDecks = decks) {
-		return sourceDecks.find((deck) => deck.name === deckName) ?? null;
+		return lookupForDecks(sourceDecks).deckByName.get(deckName) ?? null;
 	}
 
 	function placementCardSvg(placement: TablePlacement, sourceDecks = decks): string | null {
@@ -353,59 +493,39 @@
 	}
 
 	function svgAssetsForSlot(slot: TableSlot, sourceDecks = decks): TableSvgAssets {
-		const cardSvgs = new SvelteMap<string, string>();
-		const cardSizes = new SvelteMap<string, { width: number; height: number }>();
-		const deckTopCardIds = new SvelteMap<string, string>();
-		const deckCardIds = new SvelteMap<string, string[]>();
-		const deckNames = new Set(slot.acceptedDeckNames);
+		const lookup = lookupForDecks(sourceDecks);
+		const cardSvgs = new Map<string, string>();
 		const previewDeckNames = new Set(
 			(slot.contents ?? [])
 				.filter((content) => content.type === 'deck')
 				.map((content) => content.deckName)
 		);
-		const addCard = (card: CardEntry | null, includeSvg: boolean) => {
+		const addCardSvg = (card: CardEntry | null) => {
 			if (!card) return;
-			if (card.size) cardSizes.set(card.id, card.size);
-			if (includeSvg) cardSvgs.set(card.id, card.frontSvg);
+			cardSvgs.set(card.id, card.frontSvg);
 		};
 
 		for (const content of slot.contents ?? []) {
 			if (content.type === 'deck') {
-				deckNames.add(content.deckName);
+				const topCardId = lookup.deckTopCardIds.get(content.deckName);
+				addCardSvg(topCardId ? (lookup.cardById.get(topCardId) ?? null) : null);
 				continue;
 			}
-			const card = cardById(content.cardId, sourceDecks);
-			if (card) {
-				deckNames.add(card.deckName);
-				addCard(card, true);
-			}
+			addCardSvg(lookup.cardById.get(content.cardId) ?? null);
 		}
 
-		for (const cardId of slot.acceptedCardIds) {
-			const card = cardById(cardId, sourceDecks);
-			if (card) {
-				deckNames.add(card.deckName);
-				addCard(card, false);
-			}
+		for (const deckName of previewDeckNames) {
+			const topCardId = lookup.deckTopCardIds.get(deckName);
+			addCardSvg(topCardId ? (lookup.cardById.get(topCardId) ?? null) : null);
 		}
 
-		for (const deck of sourceDecks) {
-			if (!deckNames.has(deck.name)) continue;
-			const firstCard = deck.cards[0];
-			if (firstCard) {
-				deckTopCardIds.set(deck.name, firstCard.id);
-				addCard(firstCard, previewDeckNames.has(deck.name));
-			}
-			deckCardIds.set(
-				deck.name,
-				deck.cards.map((card) => card.id)
-			);
-			for (const card of deck.cards) {
-				addCard(card, false);
-			}
-		}
-
-		return { cardSvgs, cardSizes, deckTopCardIds, deckCardIds };
+		return {
+			cardSvgs,
+			cardSizes: lookup.cardSizes,
+			deckSizes: lookup.deckSizes,
+			deckTopCardIds: lookup.deckTopCardIds,
+			deckCardIds: lookup.deckCardIds
+		};
 	}
 
 	function svgAssetsForPlacement(placement: TablePlacement, sourceDecks = decks): TableSvgAssets {
@@ -443,11 +563,15 @@
 		};
 	}
 
-	function updateTableElement(elementId: string, element: TableSvgElementJson): boolean {
+	function updateTableElement(
+		elementId: string,
+		element: TableSvgElementJson,
+		historyLabel = 'Update table element'
+	): boolean {
 		const updated =
 			editorApi?.updateSvgElement(elementId, element, {
 				select: true,
-				historyLabel: 'Update table element'
+				historyLabel
 			}) ?? false;
 		if (!updated) return false;
 		scheduleAutosave();
@@ -571,12 +695,13 @@
 		) {
 			return;
 		}
+		tablePlacements = [...tablePlacements, placement];
 		selectPlacement(placement);
 		editorPanel = 'component';
 	}
 
 	function quickPlace(payload: DragPayload) {
-		const offset = currentEditorTable().placements.length * 36;
+		const offset = tablePlacements.length * 36;
 		addPlacement(payload, 160 + offset, 160 + offset);
 	}
 
@@ -586,13 +711,11 @@
 	}
 
 	function addSlot() {
-		const currentTable = currentEditorTable();
-		const table = currentTable.table;
 		const slot: TableSlot = {
 			id: crypto.randomUUID(),
-			label: `Slot ${currentTable.slots.length + 1}`,
-			x: Math.round(table.width / 2 - 120),
-			y: Math.round(table.height / 2 - 160),
+			label: `Slot ${tableSlots.length + 1}`,
+			x: Math.round(tableInfo.width / 2 - 120),
+			y: Math.round(tableInfo.height / 2 - 160),
 			rotation: 0,
 			width: 240,
 			height: 320,
@@ -602,11 +725,16 @@
 			contents: []
 		};
 		if (!insertTableElement(slot.id, slotToSvgElementJson(slot, svgAssetsForSlot(slot)))) return;
+		tableSlots = [...tableSlots, slot];
 		selectSlot(slot);
 		editorPanel = 'component';
 	}
 
-	function updateSlot(slotId: string, patch: Partial<TableSlot>) {
+	function updateSlot(
+		slotId: string,
+		patch: Partial<TableSlot>,
+		historyLabel = 'Update table element'
+	) {
 		if (!selectedSlot || selectedSlot.id !== slotId) return;
 		const candidate = normalizeTableSlot({ ...selectedSlot, ...patch });
 		const assets = svgAssetsForSlot(candidate);
@@ -614,30 +742,18 @@
 		if (
 			!updateTableElement(
 				slotId,
-				withCurrentTransform(slotId, slotToSvgElementJson(nextSlot, assets))
+				withCurrentTransform(slotId, slotToSvgElementJson(nextSlot, assets)),
+				historyLabel
 			)
 		) {
 			return;
 		}
+		tableSlots = tableSlots.map((slot) => (slot.id === slotId ? nextSlot : slot));
 		selectSlot(nextSlot);
 	}
 
 	function updateSlotRules(slotId: string, patch: Partial<TableSlot>) {
-		if (!selectedSlot || selectedSlot.id !== slotId) return;
-		const next = normalizeTableSlot({ ...selectedSlot, ...patch });
-		if (
-			!updateTableElementAttributes(
-				slotId,
-				{
-					'data-accepted-deck-names': JSON.stringify(sortedUniqueStrings(next.acceptedDeckNames)),
-					'data-accepted-card-ids': JSON.stringify(sortedUniqueStrings(next.acceptedCardIds))
-				},
-				'Update slot rules'
-			)
-		) {
-			return;
-		}
-		selectSlot(next);
+		updateSlot(slotId, patch, 'Update slot rules');
 	}
 
 	function slotContentKey(content: TableSlotContent) {
@@ -766,6 +882,9 @@
 		}
 		if (Object.keys(attributes).length === 0) return;
 		if (!updateTableElementAttributes(placementId, attributes, 'Update component metadata')) return;
+		tablePlacements = tablePlacements.map((placement) =>
+			placement.id === placementId ? nextPlacement : placement
+		);
 		selectPlacement(nextPlacement);
 	}
 
@@ -803,6 +922,7 @@
 
 	function removeSlot(slotId: string) {
 		removeTableElement(slotId);
+		tableSlots = tableSlots.filter((slot) => slot.id !== slotId);
 		if (selectedSlot?.id === slotId) {
 			selectSlot(null);
 		}
@@ -810,11 +930,18 @@
 
 	function removePlacement(placementId: string) {
 		removeTableElement(placementId);
+		tablePlacements = tablePlacements.filter((placement) => placement.id !== placementId);
 		if (selectedPlacement?.id === placementId) selectPlacement(null);
 	}
 
 	function handleEditorChange(event: CustomEvent<ChangeEvent>) {
 		if (event.detail.source !== 'user') return;
+		if (editorApi) {
+			tableSlots = tableSlots.filter((slot) => editorApi?.getElementById(slot.id));
+			tablePlacements = tablePlacements.filter((placement) =>
+				editorApi?.getElementById(placement.id)
+			);
+		}
 		if (selectedPlacement && !editorApi?.getElementById(selectedPlacement.id)) {
 			selectPlacement(null);
 		}
@@ -846,107 +973,72 @@
 		if (selected.selectedElement !== selected.tableElement) {
 			requestAnimationFrame(() => editorApi?.selectElementById(selectedId));
 		}
-		const table = currentEditorTable();
 		if (selected.kind === 'slot') {
-			selectSlot(table.slots.find((slot) => slot.id === selectedId) ?? null);
+			selectSlot(tableSlots.find((slot) => slot.id === selectedId) ?? null);
 			editorPanel = 'component';
 			return;
 		}
 		if (selected.kind === 'placement') {
-			selectPlacement(table.placements.find((placement) => placement.id === selectedId) ?? null);
+			selectPlacement(tablePlacements.find((placement) => placement.id === selectedId) ?? null);
 			editorPanel = 'component';
 		}
 	}
 
 	function scheduleAutosave() {
 		if (isLoading) return;
-		saveGeneration += 1;
 		status = 'Unsaved';
-		queueAutosave(saveGeneration);
+		saveError = '';
+		const save = saveTableDebounced();
+		void save.catch(() => {});
 	}
 
-	function queueAutosave(generation: number) {
-		cancelQueuedAutosave();
-		autosaveTimer = setTimeout(() => {
-			autosaveTimer = null;
-			if (typeof window === 'undefined') {
-				void saveTable(generation);
-				return;
-			}
-			const browser = window as WindowWithIdleCallback;
-			if (browser.requestIdleCallback) {
-				autosaveIdleHandle = browser.requestIdleCallback(
-					() => {
-						autosaveIdleHandle = null;
-						void saveTable(generation);
-					},
-					{ timeout: AUTOSAVE_IDLE_TIMEOUT_MS }
-				);
-				return;
-			}
-			autosaveIdleHandle = window.setTimeout(() => {
-				autosaveIdleHandle = null;
-				void saveTable(generation);
-			}, 0);
-		}, AUTOSAVE_DELAY_MS);
+	async function saveTableSvg(svg: string): Promise<void> {
+		const tableDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
+		if (tableDir.error) throw new Error(tableDir.error.message);
+		const svgWrite = await tableDir.data.write('table.svg', svg);
+		if (svgWrite.error) throw new Error(svgWrite.error.message);
 	}
 
-	async function saveTableSvg(svg: string, generation: number): Promise<boolean> {
-		try {
-			const tableDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
-			if (tableDir.error) {
-				if (generation === saveGeneration) {
-					saveError = tableDir.error.message;
-					status = 'Autosave failed';
-				}
-				return false;
-			}
-			const svgWrite = await tableDir.data.write('table.svg', svg);
-			if (svgWrite.error && generation === saveGeneration) {
-				saveError = svgWrite.error.message;
-				status = 'Autosave failed';
-				return false;
-			}
-			return !svgWrite.error;
-		} catch (error) {
-			if (generation === saveGeneration) {
-				saveError = error instanceof Error ? error.message : 'Failed to save table SVG';
-				status = 'Autosave failed';
-			}
-			return false;
-		}
-	}
-
-	async function saveTable(generation = saveGeneration) {
+	async function saveLatestTable() {
 		if (isLoading) return;
-		if (saveInFlight) {
-			pendingSaveGeneration = generation;
-			return;
-		}
-		saveInFlight = true;
-		isSaving = true;
 		saveError = '';
 		status = 'Autosaving';
-		try {
-			const svg = currentEditorSvgForSave();
-			const saved = await saveTableSvg(svg, generation);
-			if (saved && generation === saveGeneration) {
-				status = 'Autosaved';
-			}
-		} finally {
-			isSaving = false;
-			saveInFlight = false;
-			const queuedGeneration = pendingSaveGeneration;
-			pendingSaveGeneration = null;
-			if (
-				(queuedGeneration !== null || generation !== saveGeneration) &&
-				!autosaveTimer &&
-				autosaveIdleHandle === null
-			) {
-				queueAutosave(saveGeneration);
-			}
-		}
+		const svg = tableSvgForSave();
+		await saveTableSvg(svg);
+		status = 'Autosaved';
 	}
+
+	function saveTableAndTrack() {
+		const save = tableSaveChain.then(saveLatestTable);
+		tableSaveChain = save.catch(() => {});
+		const trackedSave = save
+			.catch((error) => {
+				console.error('Failed to save table.svg', error);
+				saveError = error instanceof Error ? error.message : 'Failed to save table SVG';
+				status = 'Autosave failed';
+			})
+			.finally(() => {
+				activeSavePromises = activeSavePromises.filter((activeSave) => activeSave !== trackedSave);
+				if (activeSavePromises.length === 0) isSaving = false;
+			});
+		activeSavePromises = [...activeSavePromises, trackedSave];
+		isSaving = true;
+		return trackedSave;
+	}
+
+	const saveTableDebounced = useDebounce(saveTableAndTrack, AUTOSAVE_DELAY_MS);
+
+	async function flushPendingSaves() {
+		await saveTableDebounced.runScheduledNow();
+		await Promise.allSettled(activeSavePromises);
+	}
+
+	onNavigate(() => {
+		if (!saveTableDebounced.pending && activeSavePromises.length === 0) {
+			return;
+		}
+		return flushPendingSaves();
+	});
 </script>
 
 <svelte:head>
@@ -976,7 +1068,7 @@
 				showActionToolbar={false}
 				{config}
 				bind:activePanel={editorPanel}
-				assetBasePath="/svgedit/images/"
+				assetBasePath={SVG_EDITOR_ASSET_BASE_PATH}
 				emitChangeSvg={false}
 				selectedElementId={selectedTableElementId}
 				componentPanel={tableComponentPanel}

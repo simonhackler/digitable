@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onNavigate } from '$app/navigation';
+	import { asset } from '$app/paths';
 	import {
 		createEditorController,
 		ReferenceEditor,
@@ -23,6 +24,8 @@
 	import { getDeckSideIndexContext, getToLoadSvgsContext } from '../svg-context.svelte';
 	import GameTopBar from '../../../../game-top-bar.svelte';
 	import { Separator } from '$lib/components/ui/separator';
+
+	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
 
 	type Side = 'front' | 'back';
 	type EditorController = ReturnType<typeof createEditorController>;
@@ -145,7 +148,7 @@
 			getSvgCanvasSize(backMeta) ?? { width: blankWidth, height: blankHeight }
 	);
 	const config = $derived.by(() => ({
-		imgPath: '/svgedit/images/',
+		imgPath: SVG_EDITOR_ASSET_BASE_PATH,
 		initFill: { color: 'FFFFFF', opacity: 1 },
 		initStroke: { color: '000000', opacity: 1, width: 1 },
 		text: {
@@ -467,7 +470,7 @@
 					{config}
 					controller={editorController}
 					showActionToolbar={false}
-					assetBasePath="/svgedit/images/"
+					assetBasePath={SVG_EDITOR_ASSET_BASE_PATH}
 					initialZoom="fit"
 					imageToolAction={(controller) => openImagePicker('insert', controller)}
 					selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}

@@ -82,7 +82,3 @@ Nothing in these terms excludes liability where the law does not allow exclusion
 ## Changes to these terms
 
 We may update these terms from time to time. When we make material changes, we may ask account users to accept the current version before continuing to use the app.
-
-## Contact
-
-Contact Digitable through the [contact page](/contact) with questions about these terms.

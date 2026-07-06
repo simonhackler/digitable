@@ -81,6 +81,7 @@ export type TableSvgAssets = {
 	placementCardSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
 	cardSvgs?: ReadonlyMap<string, string> | Record<string, string>;
 	cardSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
+	deckSizes?: ReadonlyMap<string, CardVisualSize> | Record<string, CardVisualSize>;
 	deckTopCardIds?: ReadonlyMap<string, string> | Record<string, string>;
 	deckCardIds?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
 };
@@ -652,6 +653,53 @@ function cardIdVisualSize(cardId: string, assets: TableSvgAssets): CardVisualSiz
 	);
 }
 
+const NON_RENDERED_SVG_CONTAINERS = new Set([
+	'defs',
+	'clippath',
+	'pattern',
+	'mask',
+	'symbol',
+	'marker',
+	'metadata',
+	'title',
+	'desc',
+	'filter',
+	'lineargradient',
+	'radialgradient'
+]);
+
+function isCardVisualElement(element: Element) {
+	const tag = element.tagName.toLowerCase();
+	return (
+		(tag === 'rect' || tag === 'image' || tag === 'svg') &&
+		element.getAttribute(DECK_STACK_ATTR) !== 'true'
+	);
+}
+
+function hasNonRenderedSvgAncestor(element: Element, stopAt: Element) {
+	let parent = element.parentNode;
+	while (parent && parent !== stopAt) {
+		if (parent.nodeType === 1) {
+			const tag = (parent as Element).tagName.toLowerCase();
+			if (NON_RENDERED_SVG_CONTAINERS.has(tag)) return true;
+		}
+		parent = parent.parentNode;
+	}
+	return false;
+}
+
+function directCardVisualElements(group: Element) {
+	return Array.from(group.childNodes).filter(
+		(child): child is Element => child.nodeType === 1 && isCardVisualElement(child as Element)
+	);
+}
+
+function fallbackCardVisualElements(group: Element) {
+	return Array.from(group.getElementsByTagName('*')).filter(
+		(element) => isCardVisualElement(element) && !hasNonRenderedSvgAncestor(element, group)
+	);
+}
+
 function cardVisualBounds(
 	group: Element,
 	expectedSize: CardVisualSize | null = null
@@ -661,10 +709,8 @@ function cardVisualBounds(
 	width: number;
 	height: number;
 } {
-	const graphics = Array.from(group.getElementsByTagName('*')).filter((element) => {
-		const tag = element.tagName.toLowerCase();
-		return (tag === 'rect' || tag === 'image') && element.getAttribute(DECK_STACK_ATTR) !== 'true';
-	});
+	const directGraphics = directCardVisualElements(group);
+	const graphics = directGraphics.length > 0 ? directGraphics : fallbackCardVisualElements(group);
 	const bounds = graphics.map((element) => {
 		const x = parseNumberAttribute(element, 'x', 0);
 		const y = parseNumberAttribute(element, 'y', 0);
@@ -838,37 +884,35 @@ export function svgToTable(
 	return svgElementToTable(doc.documentElement, fallback, assets);
 }
 
-function concreteSlotCardIds(slot: TableSlot, assets: TableSvgAssets): string[] {
-	const cardIds = new Set<string>();
-	for (const cardId of slot.acceptedCardIds) {
-		cardIds.add(cardId);
-	}
-	for (const deckName of slot.acceptedDeckNames) {
-		for (const cardId of svgAssetList(assets.deckCardIds, deckName)) {
-			cardIds.add(cardId);
+function fixedSlotContentSize(slot: TableSlot, assets: TableSvgAssets): CardVisualSize | null {
+	const sizes: CardVisualSize[] = [];
+	const addCardSize = (cardId: string) => {
+		const size = cardIdVisualSize(cardId, assets);
+		if (size) sizes.push(size);
+	};
+	const addDeckSize = (deckName: string) => {
+		const deckSize = svgAssetSize(assets.deckSizes, deckName);
+		if (deckSize) {
+			sizes.push(deckSize);
+			return;
 		}
-	}
+		const deckIds = svgAssetList(assets.deckCardIds, deckName);
+		if (deckIds.length > 0) {
+			for (const cardId of deckIds) addCardSize(cardId);
+			return;
+		}
+		const topCardId = svgAssetValue(assets.deckTopCardIds, deckName);
+		if (topCardId) addCardSize(topCardId);
+	};
+	for (const cardId of slot.acceptedCardIds) addCardSize(cardId);
+	for (const deckName of slot.acceptedDeckNames) addDeckSize(deckName);
 	for (const content of slot.contents ?? []) {
 		if (content.type === 'card') {
-			cardIds.add(content.cardId);
+			addCardSize(content.cardId);
 			continue;
 		}
-		const deckIds = svgAssetList(assets.deckCardIds, content.deckName);
-		if (deckIds.length > 0) {
-			for (const cardId of deckIds) cardIds.add(cardId);
-			continue;
-		}
-		const topCardId = svgAssetValue(assets.deckTopCardIds, content.deckName);
-		if (topCardId) cardIds.add(topCardId);
+		addDeckSize(content.deckName);
 	}
-	return [...cardIds];
-}
-
-function fixedSlotContentSize(slot: TableSlot, assets: TableSvgAssets): CardVisualSize | null {
-	const sizes = concreteSlotCardIds(slot, assets).flatMap((cardId) => {
-		const size = cardIdVisualSize(cardId, assets);
-		return size ? [size] : [];
-	});
 	if (sizes.length === 0) return null;
 	return {
 		width: Math.max(...sizes.map((size) => size.width)),
@@ -897,28 +941,84 @@ export function resolveTableSlotSize(slot: TableSlot, assets: TableSvgAssets = {
 	};
 }
 
-function cardImageHref(cardSvg: string): string {
-	return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`;
+function safeSvgIdPrefix(value: string) {
+	return value.replace(/[^A-Za-z0-9_-]/g, '_');
 }
 
-function cardImageElementJson(
+function rewriteLocalSvgReferences(value: string, idMap: Map<string, string>) {
+	let next = value.replace(/url\(\s*(['"]?)#([^'")\s]+)\1\s*\)/g, (match, quote, id) => {
+		const replacement = idMap.get(id);
+		return replacement ? `url(${quote}#${replacement}${quote})` : match;
+	});
+	if (next.startsWith('#')) {
+		const replacement = idMap.get(next.slice(1));
+		if (replacement) next = `#${replacement}`;
+	}
+	return next;
+}
+
+function prefixSvgIds(root: Element, idPrefix: string) {
+	const prefix = safeSvgIdPrefix(idPrefix);
+	const descendants = Array.from(root.getElementsByTagName('*'));
+	const idMap = new Map<string, string>();
+	for (const element of descendants) {
+		const id = element.getAttribute('id');
+		if (id) idMap.set(id, `${prefix}__${id}`);
+	}
+	for (const [id, replacement] of idMap) {
+		const element = descendants.find((candidate) => candidate.getAttribute('id') === id);
+		element?.setAttribute('id', replacement);
+	}
+	for (const element of [root, ...descendants]) {
+		for (const attribute of Array.from(element.attributes)) {
+			const nextValue = rewriteLocalSvgReferences(attribute.value, idMap);
+			if (nextValue !== attribute.value) element.setAttribute(attribute.name, nextValue);
+		}
+	}
+	root.removeAttribute('id');
+}
+
+function svgElementToJson(element: Element): TableSvgElementJson {
+	const attr = Object.fromEntries(
+		Array.from(element.attributes).map((attribute) => [attribute.name, attribute.value])
+	);
+	const children = Array.from(element.childNodes).flatMap((child): TableSvgJson[] => {
+		if (child.nodeType === 1) return [svgElementToJson(child as Element)];
+		if (child.nodeType === 3) {
+			const text = child.textContent ?? '';
+			return text ? [text] : [];
+		}
+		return [];
+	});
+	return {
+		element: element.tagName,
+		...(Object.keys(attr).length > 0 ? { attr } : {}),
+		...(children.length > 0 ? { children } : {})
+	};
+}
+
+function cardSvgElementJson(
 	cardSvg: string,
 	size: CardVisualSize,
 	x = 0,
-	y = 0
+	y = 0,
+	idPrefix = 'card'
 ): TableSvgElementJson {
-	return {
-		element: 'image',
-		attr: {
-			x,
-			y,
-			width: size.width,
-			height: size.height,
-			preserveAspectRatio: 'xMidYMid meet',
-			href: cardImageHref(cardSvg),
-			...lockedAttrs()
-		}
-	};
+	const doc = new DOMParser().parseFromString(cardSvg, 'image/svg+xml');
+	const root = doc.documentElement;
+	if (!root || root.tagName.toLowerCase() !== 'svg') {
+		throw new Error('Missing SVG root for table card preview.');
+	}
+	prefixSvgIds(root, idPrefix);
+	root.setAttribute('x', String(x));
+	root.setAttribute('y', String(y));
+	root.setAttribute('width', String(size.width));
+	root.setAttribute('height', String(size.height));
+	root.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+	for (const [key, value] of Object.entries(lockedAttrs())) {
+		root.setAttribute(key, value);
+	}
+	return svgElementToJson(root);
 }
 
 function stackOffset(size: CardVisualSize) {
@@ -1043,13 +1143,14 @@ function slotContentElementsJson(
 	content: TableSlotContent,
 	assets: TableSvgAssets,
 	x: number,
-	y: number
+	y: number,
+	idPrefix: string
 ): TableSvgElementJson[] {
 	const cardSvg = requireSlotContentCardSvg(assets, content);
 	const size = slotContentVisualSize(content, assets);
 	return [
 		...(content.type === 'deck' ? boundedDeckStackElementsJson(size, x, y) : []),
-		cardImageElementJson(cardSvg, size, x, y)
+		cardSvgElementJson(cardSvg, size, x, y, idPrefix)
 	];
 }
 
@@ -1142,7 +1243,13 @@ function fixedSlotChildrenJson(item: TableSlot, assets: TableSvgAssets): TableSv
 		})),
 		...(slot.contents ?? []).flatMap((content, index) => {
 			const position = fixedSlotCellPosition(slot, content.cellIndex ?? index);
-			return slotContentElementsJson(content, assets, position.x, position.y);
+			return slotContentElementsJson(
+				content,
+				assets,
+				position.x,
+				position.y,
+				`${slot.id}__content_${index}`
+			);
 		})
 	];
 }
@@ -1221,7 +1328,7 @@ export function placementToSvgElementJson(
 	}
 	const visual = [
 		...(placement.type === 'deck' ? deckStackElementsJson(size) : []),
-		cardImageElementJson(cardSvg, size)
+		cardSvgElementJson(cardSvg, size, 0, 0, placement.id)
 	];
 
 	return {

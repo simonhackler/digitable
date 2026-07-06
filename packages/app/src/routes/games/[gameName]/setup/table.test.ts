@@ -19,6 +19,10 @@ function elementChildren(node: TableSvgElementJson): TableSvgElementJson[] {
 	);
 }
 
+function elementDescendants(node: TableSvgElementJson): TableSvgElementJson[] {
+	return elementChildren(node).flatMap((child) => [child, ...elementDescendants(child)]);
+}
+
 function hasDeckStack(node: TableSvgElementJson) {
 	return elementChildren(node).some((child) => child.attr?.['data-deck-stack'] === 'true');
 }
@@ -134,7 +138,10 @@ describe('table setup', () => {
 			},
 			{
 				cardSvgs: new Map([
-					['western:1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Ace</text></svg>']
+					[
+						'western:1',
+						'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88"><image href="../assets/top.png" width="63" height="88"/><text>Ace</text></svg>'
+					]
 				]),
 				deckTopCardIds: new Map([['western', 'western:1']])
 			}
@@ -145,8 +152,11 @@ describe('table setup', () => {
 		expect(slot.attr?.['data-svgedit-resizable']).toBe('false');
 		expect(slot.attr?.['data-slot-layout-mode']).toBe('horizontal-flex');
 		expect(String(slot.attr?.['data-slot-contents'])).toContain('western:1');
-		expect(rects[0]?.attr).toEqual(expect.objectContaining({ width: 240, height: 150 }));
-		expect(children.some((child) => child.element === 'image')).toBe(true);
+		expect(rects[0]?.attr).toEqual(expect.objectContaining({ width: 146, height: 88 }));
+		expect(children.some((child) => child.element === 'svg')).toBe(true);
+		expect(elementDescendants(slot).some((child) => child.attr?.href === '../assets/top.png')).toBe(
+			true
+		);
 		expect(hasDeckStack(slot)).toBe(true);
 		expect(children.some((child) => child.attr?.['data-locked'] === 'true')).toBe(true);
 	});
@@ -224,7 +234,7 @@ describe('table setup', () => {
 		);
 	});
 
-	it('renders placement card art as a locked image when card svg is available', () => {
+	it('renders placement card art as a locked inline svg when card svg is available', () => {
 		const placement: TablePlacement = {
 			id: 'deck-1',
 			type: 'deck',
@@ -237,18 +247,33 @@ describe('table setup', () => {
 		};
 		const group = placementToSvgElementJson(placement, {
 			placementCardSvgs: new Map([
-				['deck-1', '<svg xmlns="http://www.w3.org/2000/svg"><text>Top card</text></svg>']
+				[
+					'deck-1',
+					'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63 88"><image href="../assets/top.png" width="63" height="88"/><text>Top card</text></svg>'
+				]
 			])
 		});
 		const children = elementChildren(group);
+		const preview = children.find((child) => child.element === 'svg');
 
-		expect(children.some((child) => child.element === 'image')).toBe(true);
+		expect(preview).toEqual(
+			expect.objectContaining({
+				attr: expect.objectContaining({
+					width: '63',
+					height: '88',
+					'data-locked': 'true',
+					'data-svgedit-resizable': 'false'
+				})
+			})
+		);
 		expect(
-			children.some((child) => String(child.attr?.href).startsWith('data:image/svg+xml'))
+			elementDescendants(group).some((child) => child.attr?.href === '../assets/top.png')
 		).toBe(true);
+		expect(
+			elementDescendants(group).some((child) => String(child.attr?.href).startsWith('data:'))
+		).toBe(false);
 		expect(hasDeckStack(group)).toBe(true);
 		expect(children.some((child) => child.attr?.['data-locked'] === 'true')).toBe(true);
-		expect(children.some((child) => child.element === 'text')).toBe(false);
 	});
 
 	it('renders decks as stacks and individual cards as one card face', () => {

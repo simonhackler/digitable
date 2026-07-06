@@ -6,7 +6,7 @@ This Privacy Policy explains how Digitable handles personal information when you
 
 ## Who is responsible for your information
 
-Digitable is responsible for the processing described in this policy. You can contact Digitable through the [contact page](/contact).
+Digitable is responsible for the processing described in this policy.
 
 ## Information we collect
 
@@ -64,7 +64,7 @@ Depending on where you live, you may have rights to request access to your perso
 
 California residents may have rights to know, access, delete, correct, opt out of sale or sharing, limit use of sensitive personal information, and receive non-discriminatory treatment for exercising privacy rights. Digitable does not currently sell personal information or share it for cross-context behavioral advertising.
 
-To make a privacy request, contact Digitable through the [contact page](/contact). We may need to verify your request before acting on it.
+To make a privacy request, contact Digitable. We may need to verify your request before acting on it.
 
 ## Children
 

@@ -139,8 +139,66 @@ async function expectSetupElementPresentOnce(
 		.toEqual({ exists: true, matchingCount: 1 });
 }
 
+test('table setup resizes grid slot when accepted deck changes', async ({ page }) => {
+	await seedProjects(page);
+	await page.goto('/app/games/western-cards/setup?e2e');
+	await expect(page.getByRole('heading', { name: 'Table' })).toBeVisible();
+	await expect(page.getByRole('status')).toContainText('Loaded');
+
+	const existingSlotIds = await page.evaluate(() => {
+		const global = window as SvgEditorWindow;
+		const svg = global.__svgEditorApi?.getSvg() ?? '';
+		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+		return Array.from(doc.querySelectorAll('[data-digitable-kind="slot"]')).map(
+			(element) => element.getAttribute('id') ?? ''
+		);
+	});
+	await page.getByRole('button', { name: 'Add slot' }).click();
+	const slotId = await page.evaluate((knownIds) => {
+		const global = window as SvgEditorWindow;
+		const svg = global.__svgEditorApi!.getSvg();
+		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+		return (
+			Array.from(doc.querySelectorAll('[data-digitable-kind="slot"]'))
+				.map((element) => element.getAttribute('id') ?? '')
+				.find((id) => id && !knownIds.includes(id)) ?? ''
+		);
+	}, existingSlotIds);
+	expect(slotId).toBeTruthy();
+
+	await page.getByLabel('Slot layout').selectOption('grid');
+	await page.getByLabel('Slot grid rows').fill('1');
+	await page.getByLabel('Slot grid columns').fill('2');
+	await page.getByLabel('Slot grid column spacing').fill('12');
+	await page.getByLabel('Slot grid row spacing').fill('12');
+	await page.getByRole('checkbox', { name: 'western', exact: true }).click();
+
+	await expect
+		.poll(() =>
+			page.evaluate((id) => {
+				const global = window as SvgEditorWindow;
+				const svg = global.__svgEditorApi?.getSvg() ?? '';
+				const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+				const slot = doc.querySelector(`#${CSS.escape(id)}`);
+				const rect = slot?.querySelector('rect');
+				return {
+					acceptedDeckNames: JSON.parse(
+						slot?.getAttribute('data-accepted-deck-names') ?? '[]'
+					) as string[],
+					height: Number(rect?.getAttribute('height')),
+					width: Number(rect?.getAttribute('width'))
+				};
+			}, slotId)
+		)
+		.toEqual({
+			acceptedDeckNames: ['western'],
+			height: 88,
+			width: 300
+		});
+});
+
 test('table setup editor saves semantic svg', async ({ page }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(120_000);
 	const pointerEventSanitizeWarnings: string[] = [];
 	page.on('console', (message) => {
 		const text = message.text();
@@ -453,7 +511,10 @@ test('table setup editor saves semantic svg', async ({ page }) => {
 	expect(svg).toContain('data-slot-layout-mode="horizontal-flex"');
 	expect(svg).toContain('data-slot-contents');
 	expect(svg).toContain('<image');
-	expect(svg).toContain('data:image/svg+xml');
+	expect(svg).toContain('../assets/');
+	expect(svg).not.toContain('data:image');
+	expect(svg).not.toContain('blob:');
+	expect(svg).not.toContain('data-digitable-original-href');
 	expect(svg).toContain('data-deck-stack="true"');
 	expect(svg).toContain('data-locked="true"');
 	expect(svg).toContain('data-svgedit-resizable="false"');

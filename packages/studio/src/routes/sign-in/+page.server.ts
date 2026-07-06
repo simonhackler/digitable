@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { isGoogleAuthEnabled } from '@svg-table/auth/server';
+import { isDiscordAuthEnabled, isGoogleAuthEnabled } from '@svg-table/auth/server';
 import type { PageServerLoad } from './$types';
 
 const DEFAULT_NEXT = '/app/games';
@@ -34,10 +34,13 @@ export const load: PageServerLoad = ({ locals, url }) => {
 
 	return {
 		next,
+		discordAuthEnabled: isDiscordAuthEnabled(),
 		googleAuthEnabled: isGoogleAuthEnabled(),
-		googleError:
+		socialError:
 			url.searchParams.get('error') === 'google'
 				? 'Google sign in failed. Try again in a moment.'
-				: ''
+				: url.searchParams.get('error') === 'discord'
+					? 'Discord sign in failed. Try again in a moment.'
+					: ''
 	};
 };

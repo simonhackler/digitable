@@ -18,8 +18,27 @@ function googleCredentials() {
 	return clientId && clientSecret ? { clientId, clientSecret } : null;
 }
 
+function discordCredentials() {
+	const clientId = process.env.DISCORD_CLIENT_ID;
+	const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+
+	return clientId && clientSecret
+		? {
+				clientId,
+				clientSecret,
+				mapProfileToUser: (profile: { email?: string | null; id: string }) => ({
+					email: profile.email ?? `${profile.id}@discord.digitable.invalid`
+				})
+			}
+		: null;
+}
+
 export function isGoogleAuthEnabled() {
 	return googleCredentials() !== null;
+}
+
+export function isDiscordAuthEnabled() {
+	return discordCredentials() !== null;
 }
 
 function compact(values: Array<string | undefined>) {
@@ -44,6 +63,11 @@ export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOption
 	const cookieDomain = process.env.AUTH_COOKIE_DOMAIN;
 	const cookiePrefix = process.env.BETTER_AUTH_COOKIE_PREFIX;
 	const google = googleCredentials();
+	const discord = discordCredentials();
+	const socialProviders = {
+		...(google ? { google } : {}),
+		...(discord ? { discord } : {})
+	};
 	const baseURL =
 		options.baseURL ?? env('BETTER_AUTH_URL', `http://localhost:${process.env.PORT ?? '5173'}/app`);
 
@@ -60,11 +84,9 @@ export function createAuth(plugins: AuthPlugin[] = [], options: CreateAuthOption
 		emailAndPassword: {
 			enabled: true
 		},
-		...(google
+		...(Object.keys(socialProviders).length > 0
 			? {
-					socialProviders: {
-						google
-					}
+					socialProviders
 				}
 			: {}),
 		plugins: [

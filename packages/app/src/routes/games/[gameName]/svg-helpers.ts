@@ -124,6 +124,8 @@ const getHighlightBounds = (svg: SVGSVGElement, el: SVGGraphicsElement) => {
 function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string) {
 	const frameBounds = getTextFrameBounds(svg, text);
 	const fontSize = getTextFontSize(text);
+	const tspanPosition = firstDirectTspanPosition(text);
+	if (text.getAttribute('data-svgedit-raw-text') === data && tspanPosition) return;
 
 	if (frameBounds) {
 		text.setAttribute('x', frameBounds.x);
@@ -133,13 +135,11 @@ function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string
 		if (frameBounds.shapeId) {
 			text.setAttribute('data-svgedit-shape-inside-ref', `#${frameBounds.shapeId}`);
 		}
+	} else if (tspanPosition) {
+		text.setAttribute('x', tspanPosition.x);
+		text.setAttribute('y', tspanPosition.y);
 	} else if (!text.getAttribute('x') || !text.getAttribute('y')) {
-		const tspanPosition = firstDirectTspanPosition(text);
-		if (!tspanPosition) {
-			throw new Error(`Element ${text.id} is missing x or y attributes`);
-		}
-		if (!text.getAttribute('x')) text.setAttribute('x', tspanPosition.x);
-		if (!text.getAttribute('y')) text.setAttribute('y', tspanPosition.y);
+		throw new Error(`Element ${text.id} is missing x or y attributes`);
 	}
 
 	applyPretextSvgText(text, data);
