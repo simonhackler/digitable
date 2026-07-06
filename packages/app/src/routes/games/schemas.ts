@@ -26,7 +26,6 @@ export const createGameSchema = z
 			.max(20, 'Maximum players cannot exceed 20'),
 		description: z
 			.string()
-			.min(1, 'Description must be at least 50 characters')
 			.max(500, 'Description must be 500 characters or less')
 	})
 	.refine((data) => data.minPlayers <= data.maxPlayers, {

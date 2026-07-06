@@ -246,7 +246,7 @@
 								{/snippet}
 							</Form.Control>
 							<Form.Description class="text-muted-foreground flex justify-between text-xs">
-								<span>up to 500 characters · required</span>
+								<span>up to 500 characters · optional</span>
 								<span>{$formData.description?.length || 0}/500</span>
 							</Form.Description>
 							<Form.FieldErrors />
