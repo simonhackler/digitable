@@ -347,7 +347,9 @@
 				</p>
 				<p class="mb-4 text-lg text-[#4b4b57]">
 					If you want to chat with me about games, game design or software development feel free to
+					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					contact me on <a class="text-blue-500" href={DISCORD_URL}>discord</a> or send me a
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					<a class="text-blue-500" href="mailto:simon.hackler@protonmail.com">mail</a>. And now
 					design some great games!
 				</p>
