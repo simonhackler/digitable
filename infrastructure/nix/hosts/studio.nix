@@ -227,6 +227,7 @@ in {
       OTEL_SERVICE_NAME = "digitable-studio";
       OTEL_SERVICE_VERSION = tracewayAppVersion;
       PUBLIC_APP_VERSION = tracewayAppVersion;
+      PUBLIC_DOCS_URL = "https://docs.digitable.ink";
       PUBLIC_TRACEWAY_CONNECTION = "${tracewayProjectToken}@${tracewayUrl}/api/report";
       TRACEWAY_PROJECT_TOKEN = tracewayProjectToken;
       TRACEWAY_URL = tracewayUrl;

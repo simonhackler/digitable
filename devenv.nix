@@ -44,26 +44,26 @@
     fi
   '';
   caddyfile = pkgs.writeText "digitable-devenv.Caddyfile" ''
-        {
-          admin off
-        }
+    {
+      admin off
+    }
 
-        http://docs.localhost:${toString sitePort} {
-            encode zstd gzip
-            reverse_proxy 127.0.0.1:${toString docsPort}
-        }
+    http://docs.localhost:${toString sitePort} {
+        encode zstd gzip
+        reverse_proxy 127.0.0.1:${toString docsPort}
+    }
 
-        http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
-          encode zstd gzip
+    http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
+      encode zstd gzip
 
-          handle /app* {
-            reverse_proxy 127.0.0.1:${toString appPort}
-          }
+      handle /app* {
+        reverse_proxy 127.0.0.1:${toString appPort}
+      }
 
-          handle {
-            reverse_proxy 127.0.0.1:${toString studioPort}
-          }
-        }
+      handle {
+        reverse_proxy 127.0.0.1:${toString studioPort}
+      }
+    }
   '';
   playwrightPreCommit = pkgs.writeShellScriptBin "playwright-pre-commit" ''
     if [ -w /dev/tty ]; then
@@ -157,6 +157,7 @@ in {
     DISCORD_CLIENT_SECRET = discordClientSecret;
     WEB_ORIGIN = studioOrigin;
     SECOND_WEB_ORIGIN = "";
+    PUBLIC_DOCS_URL = "http://docs.localhost:${toString sitePort}";
     AUTH_COOKIE_DOMAIN = "";
     REPLICATE_API_TOKEN = "tmp";
 
@@ -243,6 +244,7 @@ in {
       ports.http.allocate = 5174;
       exec = "bun run --filter=studio dev -- --host 127.0.0.1 --port ${toString studioPort} --strictPort";
       env.ORIGIN = studioOrigin;
+      env.PUBLIC_DOCS_URL = "http://docs.localhost:${toString sitePort}";
     };
 
     app = {

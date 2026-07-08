@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { env } from '$env/dynamic/public';
-	import favicon from '$lib/assets/favicon.svg';
+	import favicon from '$lib/assets/favicon.png';
 	import mascot from '$lib/assets/mascot.png';
 	import { Menu, X } from '@lucide/svelte';
 	import { setupTraceway, useTracewayAttributes } from '@tracewayapp/svelte';
@@ -51,6 +51,7 @@
 
 	const primaryLinks = [
 		{ href: '/games', label: 'Games' },
+		{ href: env.PUBLIC_DOCS_URL ?? 'https://docs.digitable.ink', label: 'Docs' },
 		{ href: '/blog', label: 'Blog' }
 	] as const;
 
@@ -82,7 +83,7 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" href={favicon} type="image/png" />
 </svelte:head>
 
 {#if showChrome}
@@ -182,15 +183,9 @@
 				{/if}
 			</div>
 
-			<div
-				class="hidden items-center gap-8 md:grid md:grid-cols-[auto_1fr_auto]"
-			>
+			<div class="hidden items-center gap-8 md:grid md:grid-cols-[auto_1fr_auto]">
 				<div class="flex items-center gap-6">
-					<a
-						href={resolve('/')}
-						class="flex items-center gap-3.5"
-						aria-label="Digitable home"
-					>
+					<a href={resolve('/')} class="flex items-center gap-3.5" aria-label="Digitable home">
 						<img
 							src={mascot}
 							alt=""

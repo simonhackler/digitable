@@ -13,7 +13,7 @@ export const GET: RequestHandler = async () => {
 		id: `${siteUrl}/blog`,
 		link: `${siteUrl}/blog`,
 		language: 'en',
-		favicon: `${siteUrl}/favicon.svg`,
+		favicon: `${siteUrl}/favicon.png`,
 		updated: posts.length ? new Date(posts[0].date) : new Date(),
 		author: {
 			name: site.name
