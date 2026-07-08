@@ -10,6 +10,7 @@
   dbPort = 54329;
   sitePort = config.processes.proxy.ports.http.value;
   appPort = config.processes.app.ports.http.value;
+  docsPort = config.processes.docs.ports.http.value;
   studioPort = config.processes.studio.ports.http.value;
   serverPort = config.processes.game-server.ports.http.value;
   postgresPort = config.processes.postgres.ports.main.value;
@@ -43,21 +44,26 @@
     fi
   '';
   caddyfile = pkgs.writeText "digitable-devenv.Caddyfile" ''
-    {
-      admin off
-    }
+        {
+          admin off
+        }
 
-    http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
-      encode zstd gzip
+        http://docs.localhost:${toString sitePort} {
+            encode zstd gzip
+            reverse_proxy 127.0.0.1:${toString docsPort}
+        }
 
-      handle /app* {
-        reverse_proxy 127.0.0.1:${toString appPort}
-      }
+        http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
+          encode zstd gzip
 
-      handle {
-        reverse_proxy 127.0.0.1:${toString studioPort}
-      }
-    }
+          handle /app* {
+            reverse_proxy 127.0.0.1:${toString appPort}
+          }
+
+          handle {
+            reverse_proxy 127.0.0.1:${toString studioPort}
+          }
+        }
   '';
   playwrightPreCommit = pkgs.writeShellScriptBin "playwright-pre-commit" ''
     if [ -w /dev/tty ]; then
@@ -245,6 +251,11 @@ in {
       env.PORT = toString appPort;
       env.ORIGIN = studioOrigin;
       env.PUBLIC_GAME_SERVER_URL = "ws://localhost:${toString serverPort}";
+    };
+
+    docs = {
+      ports.http.allocate = 4321;
+      exec = "bun run --filter=@digitable/docs dev -- --host 127.0.0.1 --port ${toString docsPort} --strictPort";
     };
 
     game-server = {
