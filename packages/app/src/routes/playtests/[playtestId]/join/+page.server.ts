@@ -65,7 +65,6 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
 	return {
 		projectName: playtest.metadata.projectName,
-		signInUrl: `/sign-in?next=${encodeURIComponent(next)}`,
-		anonymousUrl: `${APP_BASE}/legal/accept?anonymous=playtest&next=${encodeURIComponent(next)}`
+		next
 	};
 };

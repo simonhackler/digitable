@@ -104,6 +104,7 @@
 						<span class="truncate text-lg font-bold tracking-[0.02em]">Digitable</span>
 					</a>
 					<div class="flex items-center gap-2">
+						<!-- eslint-disable svelte/no-navigation-without-resolve -->
 						<a
 							href={DISCORD_URL}
 							class="group inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/80 shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] transition hover:-translate-y-0.5 hover:bg-white"
@@ -122,6 +123,8 @@
 								/>
 							</svg>
 						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
+						<!-- eslint-disable svelte/no-navigation-without-resolve -->
 						<a
 							href={GITHUB_URL}
 							class="group inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-white/80 px-3 text-sm font-semibold text-[#1c1c20] shadow-[0_14px_28px_rgba(21,21,21,0.08),inset_0_0_0_1px_rgba(32,32,36,0.08)] transition hover:-translate-y-0.5 hover:bg-white hover:text-[#0d0d0f]"
@@ -142,6 +145,7 @@
 							<span class="leading-none">{githubStars}</span>
 							<span class="sr-only">GitHub stars</span>
 						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 						<Button
 							type="button"
 							variant="outline"
@@ -208,6 +212,7 @@
 					</nav>
 				</div>
 				<div class="flex items-center justify-end gap-2">
+					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					<a
 						href={DISCORD_URL}
 						class="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-base font-semibold text-[#1c1c20] transition hover:-translate-y-0.5 hover:bg-black/10 hover:text-[#0d0d0f]"
@@ -222,6 +227,8 @@
 						</svg>
 						Discord
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
+					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					<a
 						href={GITHUB_URL}
 						class="group inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3.5 py-2 text-sm font-semibold text-[#1c1c20] transition hover:-translate-y-0.5 hover:bg-[#f8f6f1] hover:text-[#0d0d0f]"
@@ -243,6 +250,7 @@
 						<span class="leading-none">{githubStars}</span>
 						<span class="sr-only">GitHub stars</span>
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					<Button href="/app/games" size="unset" class="rounded-lg px-4 py-2 text-sm">
 						Create now
 					</Button>
