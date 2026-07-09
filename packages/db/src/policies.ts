@@ -40,10 +40,7 @@ export async function syncPolicyVersion(input: SyncPolicyInput) {
 		.select()
 		.from(policyVersion)
 		.where(
-			and(
-				eq(policyVersion.policyType, input.policyType),
-				eq(policyVersion.contentSha256, contentSha256)
-			)
+			and(eq(policyVersion.policyType, input.policyType), eq(policyVersion.version, input.version))
 		)
 		.limit(1);
 
@@ -59,7 +56,7 @@ export async function syncPolicyVersion(input: SyncPolicyInput) {
 			await tx
 				.update(policyVersion)
 				.set({
-					version: input.version,
+					contentSha256,
 					content,
 					isCurrent: input.isCurrent
 				})

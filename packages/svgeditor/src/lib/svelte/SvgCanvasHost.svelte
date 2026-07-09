@@ -55,7 +55,6 @@
 
 	let workarea: HTMLDivElement | null = null;
 	let canvasRoot: HTMLDivElement | null = null;
-	let textInput: HTMLInputElement | null = null;
 	let multilineTextInput: HTMLTextAreaElement | null = null;
 	let rulerFrame: HTMLDivElement | null = null;
 	let rulerX: HTMLDivElement | null = null;
@@ -102,9 +101,8 @@
 	onMount(async () => {
 		const workareaEl = workarea;
 		const canvasRootEl = canvasRoot;
-		const textInputEl = textInput;
 		const multilineTextInputEl = multilineTextInput;
-		if (!workareaEl || !canvasRootEl || !textInputEl || !multilineTextInputEl) return;
+		if (!workareaEl || !canvasRootEl || !multilineTextInputEl) return;
 
 		multilineTextInputEl.spellcheck = false;
 		multilineTextInputEl.setAttribute('autocomplete', 'off');
@@ -127,7 +125,6 @@
 			controller = createSvgCanvas({
 				container: workareaEl,
 				canvasContainer: canvasRootEl,
-				textInput: textInputEl,
 				multilineTextInput: multilineTextInputEl,
 				value: normalizedInitial,
 				config: resolvedConfig,
@@ -316,14 +313,6 @@
 			<div class="svgcanvas-canvas" id="svgcanvas" bind:this={canvasRoot}></div>
 		</div>
 	</div>
-	<input
-		id="text"
-		class="svgcanvas-text-input"
-		type="text"
-		bind:this={textInput}
-		aria-hidden="true"
-		tabindex="-1"
-	/>
 	<textarea
 		id="text_multiline"
 		class="svgcanvas-text-multiline"
@@ -428,14 +417,6 @@
 		vertical-align: middle;
 	}
 
-	.svgcanvas-text-input {
-		position: absolute;
-		width: 0;
-		height: 0;
-		opacity: 0;
-		pointer-events: none;
-	}
-
 	.svgcanvas-text-multiline {
 		display: none;
 		visibility: hidden;
@@ -466,6 +447,5 @@
 		position: absolute;
 		top: 0;
 		left: 0;
-		overflow: hidden;
 	}
 </style>

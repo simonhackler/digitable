@@ -28,7 +28,7 @@
 					bind:value={$form.email}
 					aria-label="Email"
 					placeholder="you@domain.com"
-					class="text-lg md:text-base"
+					class="mx-auto h-14 max-w-sm rounded-xl px-5 text-lg md:text-base"
 				/>
 			{/snippet}
 		</Control>
@@ -43,7 +43,7 @@
 					bind:value={$form.firstName}
 					aria-label="First name"
 					placeholder="First name (optional)"
-					class="text-lg md:text-base"
+					class="mx-auto h-14 max-w-sm rounded-xl px-5 text-lg md:text-base"
 				/>
 			{/snippet}
 		</Control>
@@ -58,7 +58,7 @@
 		bind:value={$form.company}
 	/>
 
-	<FormButton variant="pill-dark" size="lg" class="w-full">Subscribe</FormButton>
+	<FormButton size="lg" class="mx-auto h-14 w-full max-w-sm rounded-xl">Subscribe</FormButton>
 
 	{#if $message}
 		<p

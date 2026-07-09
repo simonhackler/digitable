@@ -1,8 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" role="img" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="custom">
-  <g id="three-card-deck" data-digitable-kind="placement" data-digitable-type="deck" data-deck-name="western" data-card-ids="[&quot;western:western-card-1&quot;,&quot;western:western-card-2&quot;,&quot;western:western-card-3&quot;]" data-label="western" data-svgedit-resizable="false" transform="translate(395 225) rotate(0 55 75)">
-    <rect x="14" y="14" width="110" height="150" rx="10" fill="#0f172a" fill-opacity="0.28" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" data-deck-stack="true" data-svgedit-resizable="false" data-locked="true"/>
-    <rect x="7" y="7" width="110" height="150" rx="10" fill="#f8fafc" stroke="#334155" stroke-opacity="0.65" stroke-width="2" data-deck-stack="true" data-svgedit-resizable="false" data-locked="true"/>
-    <rect x="0" y="0" width="110" height="150" rx="10" fill="#fef3c7" stroke="#92400e" stroke-width="2" data-svgedit-resizable="false" data-locked="true"/>
-    <text x="55" y="82" fill="#111827" font-family="system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle" data-svgedit-resizable="false" data-locked="true" style="pointer-events:none;user-select:none">western</text>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="900" height="600" aria-label="Digitable table setup" data-digitable-table="true" data-preset-id="custom" viewBox="0 0 900 600" role="img">
+ <g class="layer">
+  <title>Layer 1</title>
+  <g data-card-ids="[&quot;western:western-card-1&quot;,&quot;western:western-card-2&quot;,&quot;western:western-card-3&quot;]" data-deck-name="western" data-digitable-kind="placement" data-digitable-type="deck" data-label="western" data-svgedit-resizable="false" id="three-card-deck" transform="translate(395 225) rotate(0 55 75)">
+   <rect data-deck-stack="true" data-locked="true" data-svgedit-resizable="false" fill="#0f172a" fill-opacity="0.28" height="150" id="svg_1" rx="10" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" width="110" x="14" y="14"/>
+   <rect data-deck-stack="true" data-locked="true" data-svgedit-resizable="false" fill="#f8fafc" height="150" id="svg_2" rx="10" stroke="#334155" stroke-opacity="0.65" stroke-width="2" width="110" x="7" y="7"/>
+   <rect data-locked="true" data-svgedit-resizable="false" fill="#fef3c7" height="150" id="svg_3" rx="10" stroke="#92400e" stroke-width="2" width="110" x="0" y="0"/>
+   <text data-locked="true" data-svgedit-raw-text="western" data-svgedit-resizable="false" fill="#111827" font-family="system-ui, sans-serif" font-size="18" font-weight="700" id="svg_4" text-anchor="middle" x="55" y="82">western</text>
   </g>
+  <g data-card-ids="[&quot;western:western-card-1&quot;,&quot;western:western-card-2&quot;,&quot;western:western-card-3&quot;]" data-deck-name="western" data-digitable-kind="placement" data-digitable-type="deck" data-label="western" data-svgedit-resizable="false" id="6636ecbc-4f92-4654-9904-a473507802c1" transform="translate(160 160) rotate(0 31.5 44)">
+   <rect data-deck-stack="true" data-locked="true" data-svgedit-resizable="false" fill="#0f172a" fill-opacity="0.28" height="88" rx="10" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2" width="63" x="8" y="8"/>
+   <rect data-deck-stack="true" data-locked="true" data-svgedit-resizable="false" fill="#f8fafc" height="88" rx="10" stroke="#334155" stroke-opacity="0.65" stroke-width="2" width="63" x="4" y="4"/>
+   <image data-locked="true" data-svgedit-resizable="false" height="88" href="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2263mm%22%20height%3D%2288mm%22%20viewBox%3D%220%200%2063%2088%22%20id%3D%22generated-svg-1781899742635-7jih7py%22%20style%3D%22contain%3A%20layout%20style%20paint%3B%22%3E%0A%20%3Crect%20width%3D%2263%22%20height%3D%2288%22%20fill%3D%22%23f7efd9%22%2F%3E%0A%20%3Crect%20x%3D%224%22%20y%3D%224%22%20width%3D%2255%22%20height%3D%2280%22%20rx%3D%224%22%20fill%3D%22%23fffdf7%22%20stroke%3D%22%232f2419%22%20stroke-width%3D%222%22%2F%3E%0A%20%3Ctext%20x%3D%2231.5%22%20y%3D%2244%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%20font-size%3D%228%22%20fill%3D%22%232f2419%22%3EFront%3C%2Ftext%3E%0A%3C%2Fsvg%3E" preserveAspectRatio="xMidYMid meet" width="63" x="0" y="0"/>
+  </g>
+ </g>
 </svg>

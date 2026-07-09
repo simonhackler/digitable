@@ -87,6 +87,7 @@ export type SvgCanvasRawApi = {
 	setMode: (name: string) => void;
 	setOpacity?: (value: number) => void;
 	setRectRadius?: (value: number) => void;
+	setResolution?: (width: number | string, height: number | string) => boolean;
 	setRotationAngle?: (value: number, preventUndo?: boolean) => void;
 	setSvgString: (xmlString: string, preventUndo?: boolean) => boolean;
 	setTextContent?: (text: string) => void;
@@ -94,7 +95,6 @@ export type SvgCanvasRawApi = {
 	textActions?: {
 		getCurrentTextElement?: () => Element | null;
 		setCursor?: (index?: number) => void;
-		setInputElem?: (elem: HTMLInputElement) => void;
 		setMultilineInputElem?: (elem: HTMLTextAreaElement) => void;
 	};
 	undoMgr?: {
@@ -119,7 +119,6 @@ export type SvgCanvasRawApi = {
 	};
 	unbind?: (event: string, callback: (...args: unknown[]) => void) => void;
 	updateCanvas?: (width: number, height: number) => { x: number; y: number } | void;
-	useMultilineText?: boolean;
 };
 
 export type ElementTreeNode = {
@@ -165,6 +164,7 @@ export type EditorError = {
 export type SvgEditorApi = {
 	loadSvg(svg: string, opts?: { preventUndo?: boolean; center?: boolean }): boolean;
 	getSvg(): string;
+	setResolution(width: number, height: number): boolean;
 
 	setMode(mode: EditorMode): void;
 	getMode(): EditorMode;

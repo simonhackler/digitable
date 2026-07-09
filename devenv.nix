@@ -28,6 +28,8 @@
   worktreeId = builtins.substring 0 8 (builtins.hashString "sha256" worktreePath);
   googleClientId = builtins.getEnv "GOOGLE_CLIENT_ID";
   googleClientSecret = builtins.getEnv "GOOGLE_CLIENT_SECRET";
+  discordClientId = builtins.getEnv "DISCORD_CLIENT_ID";
+  discordClientSecret = builtins.getEnv "DISCORD_CLIENT_SECRET";
   playwrightChromium = pkgs.runCommand "playwright-chromium-executable" {} ''
     chromium_dir="$(echo ${pkgs.playwright-driver.browsers}/chromium-*)"
 
@@ -144,6 +146,9 @@ in {
     # Google OAuth local redirect URI: ${studioOrigin}/api/auth/callback/google
     GOOGLE_CLIENT_ID = googleClientId;
     GOOGLE_CLIENT_SECRET = googleClientSecret;
+    # Discord OAuth local redirect URI: ${studioOrigin}/api/auth/callback/discord
+    DISCORD_CLIENT_ID = discordClientId;
+    DISCORD_CLIENT_SECRET = discordClientSecret;
     WEB_ORIGIN = studioOrigin;
     SECOND_WEB_ORIGIN = "";
     AUTH_COOKIE_DOMAIN = "";

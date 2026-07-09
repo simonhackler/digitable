@@ -9,6 +9,7 @@ import { tableSlotCellPose } from './table-geometry';
 
 export interface PlayE2EState {
 	visibleStackIds: string[];
+	stackComponentIds: Record<string, string[]>;
 	visibleBoardCardIds: string[];
 	handCardIds: string[];
 	parentIds: Record<string, string>;
@@ -33,6 +34,7 @@ export interface PlayE2EState {
 		visible: boolean;
 		parentId: string | null;
 		points: number;
+		width: number;
 	}[];
 }
 
@@ -151,6 +153,7 @@ export function installPlayE2EBridge(
 	const bridge: PlayE2EBridge = {
 		state() {
 			const visibleStackIds: string[] = [];
+			const stackComponentIds: PlayE2EState['stackComponentIds'] = {};
 			const visibleBoardCardIds: string[] = [];
 			const handCardIds: string[] = [];
 			const parentIds: PlayE2EState['parentIds'] = {};
@@ -179,6 +182,7 @@ export function installPlayE2EBridge(
 
 				if (item.clientStack) {
 					visibleStackIds.push(id);
+					stackComponentIds[id] = [...item.clientStack.clientStackState.componentIds];
 				} else {
 					visibleBoardCardIds.push(id);
 				}
@@ -186,6 +190,7 @@ export function installPlayE2EBridge(
 
 			return {
 				visibleStackIds,
+				stackComponentIds,
 				visibleBoardCardIds,
 				handCardIds,
 				parentIds,

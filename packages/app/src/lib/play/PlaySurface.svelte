@@ -19,7 +19,6 @@
 	import { type BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { BoardGameItemNew } from '$lib/pixi/item';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
-	import { Viewport } from 'pixi-viewport';
 	import { initDevtools } from '@pixi/devtools';
 	import 'pixi.js/math-extras';
 	import { PreviewHelper } from './hover-helpers';
@@ -33,8 +32,7 @@
 	import { PressedKeys } from 'runed';
 	import { initComponent } from './initComponent';
 	import { installPlayE2EBridge } from './e2e-bridge';
-	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
 	import type { Table, TableSlot } from '../../routes/games/[gameName]/setup/table';
 	import {
@@ -186,18 +184,21 @@
 	let movingCardLayer: RenderLayer | null = null;
 	let tableWorldOffset = { x: 0, y: 0 };
 
-	let viewport: Viewport;
+	// let viewport: Viewport;
 	let tableItemMetadata: Map<string, TableItemMetadata> = new SvelteMap();
 
 	let hoverItem: BoardGameItemNew | null = null;
 	let selectionManager = new SelectionManager();
 	let activeTool = $state<PlayTool>('select');
+	const penWidthMin = 0.25;
+	const penWidthMax = 10;
+	const penWidthStep = 0.25;
+	let penWidth = $state(currentStrokeStyle.width);
 	let selectedStrokeId = $state<string | null>(null);
 	let notesOpen = $state(false);
 	let notesHaveDraft = $state(false);
 	let cameraRotationValue = 0;
 	let cameraRotation = $state(0);
-	let playReady = false;
 	const keys = new PressedKeys();
 
 	function selectTool(tool: PlayTool) {
@@ -209,6 +210,22 @@
 		} else {
 			strokeLayer?.cancelDraft();
 		}
+	}
+
+	function setPenWidth(value: number) {
+		if (!Number.isFinite(value)) return;
+		const stepped = Math.round(value / penWidthStep) * penWidthStep;
+		penWidth = Math.round(Math.min(Math.max(stepped, penWidthMin), penWidthMax) * 100) / 100;
+	}
+
+	function handlePenWidthInput(event: Event) {
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement)) return;
+		setPenWidth(input.valueAsNumber);
+	}
+
+	function penStrokeStyle() {
+		return { ...currentStrokeStyle, width: penWidth };
 	}
 
 	function deleteSelectedStroke() {
@@ -224,23 +241,18 @@
 		selectTool('select');
 	});
 	keys.onKeys('F', () => {
-		if (!playReady) return;
 		selectionManager.forEach((item) => handleFlipCard(item));
 	});
 	keys.onKeys('D', () => {
-		if (!playReady) return;
-		selectionManager.forEach((item) => handleDrawCard(item));
+		handleDrawSelection();
 	});
 	keys.onKeys('S', () => {
-		if (!playReady) return;
 		selectionManager.forEach((item) => handleShuffleStack(item));
 	});
 	keys.onKeys('Q', () => {
-		if (!playReady) return;
 		rotateSelectedItems(-90);
 	});
 	keys.onKeys('E', () => {
-		if (!playReady) return;
 		rotateSelectedItems(90);
 	});
 	keys.onKeys('P', () => {
@@ -253,7 +265,7 @@
 		deleteSelectedStroke();
 	});
 	keys.onKeys('alt', () => {
-		if (playReady && hoverItem) {
+		if (hoverItem) {
 			previewer.showPreview(hoverItem);
 		}
 	});
@@ -712,19 +724,6 @@
 		return true;
 	}
 
-	async function hasPlayableDeckFiles(componentsDir: FsDir, deckName: string) {
-		const deckDir = await componentsDir.openDir(deckName);
-		if (deckDir.error) return false;
-
-		const entries = await deckDir.data.list();
-		if (entries.error) return false;
-
-		const fileNames = new Set(
-			entries.data.filter((entry) => entry.kind === 'file').map((entry) => entry.name)
-		);
-		return fileNames.has('front.svg') && fileNames.has('back.svg') && fileNames.has('data.csv');
-	}
-
 	async function initApp() {
 		const app = new Application();
 		await app.init({
@@ -743,11 +742,12 @@
 	}
 
 	async function initEditor(app: Application<Renderer>, previewer: PreviewHelper) {
-		viewport = createViewport(app, {
-			worldWidth: localTable.table.table.width,
-			worldHeight: localTable.table.table.height,
-			minScale: 0.2
-		});
+		// viewport = createViewport(app, {
+		// 	worldWidth: localTable.table.table.width,
+		// 	worldHeight: localTable.table.table.height,
+		// 	minScale: 0.2
+		// });
+
 		app.stage.eventMode = 'static';
 
 		function resizeViewportToScreen() {
@@ -789,6 +789,12 @@
 		handContainer = new HandContainer(app);
 		screenContainer.addChild(handContainer.container);
 		strokeLayer = new StrokeLayer(boardGameItems, handContainer);
+		app.ticker.add(() => {
+			for (const item of boardGameItems.values()) {
+				if (item.isInHand) continue;
+				item.clientPosition?.tick();
+			}
+		});
 
 		const width = 200;
 		const height = 200;
@@ -920,6 +926,7 @@
 			} else {
 				hoverItem = null;
 			}
+			selectionManager.setHover(drag || strokeLayer?.isDrawing ? null : hoverItem);
 			if (hoverItem && keys.has('Alt')) {
 				previewer.showPreview(hoverItem);
 			} else {
@@ -1053,9 +1060,10 @@
 				if (!target) return;
 
 				selectionManager.clear();
+				selectionManager.setHover(null);
 				strokeLayer.select(null);
 				selectedStrokeId = null;
-				strokeLayer.beginDraft(target, e.global, currentStrokeStyle);
+				strokeLayer.beginDraft(target, e.global, penStrokeStyle());
 				drag = {
 					originGlobalX: e.global.x,
 					originGlobalY: e.global.y,
@@ -1150,33 +1158,14 @@
 				() => cameraRotationValue
 			);
 		}
-		const { data, error } = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
-		if (error) {
-			throw new Error(error.message);
-		}
-		const entries = await data.list();
-		if (entries.error) {
-			throw new Error(entries.error.message);
-		}
-		const deckEntries = entries.data
-			.filter((entry) => entry.kind === 'directory')
-			.sort((a, b) => a.name.localeCompare(b.name));
 		const tableDeckNames = tableReferencedDeckNames(localTable.table);
-		const playableDeckEntries = (
-			await Promise.all(
-				deckEntries.map(async (entry) => ({
-					entry,
-					playable: await hasPlayableDeckFiles(data, entry.name)
-				}))
-			)
-		)
-			.filter(({ entry, playable }) => playable && tableDeckNames.has(entry.name))
-			.map(({ entry }) => entry);
 		const loadedDecks: LoadedDeck[] = await Promise.all(
-			playableDeckEntries.map(async (entry) => ({
-				deckName: entry.name,
-				cards: await loadAndProcessCards(projectName, entry.name, fileSystem)
-			}))
+			Array.from(tableDeckNames)
+				.sort((a, b) => a.localeCompare(b))
+				.map(async (deckName) => ({
+					deckName,
+					cards: await loadAndProcessCards(projectName, deckName, fileSystem)
+				}))
 		);
 		const allComponentsParsed = loadedDecks.flatMap((deck) => deck.cards);
 		const tablePlayPlan = buildTablePlayPlan(localTable.table, loadedDecks);
@@ -1235,7 +1224,6 @@
 				{
 					boardContainer,
 					boardGameItems,
-					isDragging: () => drag !== null,
 					configureItem: configureTableItem
 				},
 				allComponentsParsed,
@@ -1253,6 +1241,8 @@
 		s(room.state).components.onRemove((component, _key) => {
 			const boardItem = boardGameItems.get(component.id);
 			if (!boardItem) return;
+			selectionManager.setHover(null);
+			selectionManager.deselect(boardItem);
 			fixedSlotLayout?.forgetItem(boardItem);
 			boardItem.parent?.removeChild(boardItem);
 			boardItem.destroy({ children: true });
@@ -1264,25 +1254,25 @@
 	}
 
 	let localTable: LocalTable;
-	let app = $state<Application<Renderer>>(undefined!);
-	let previewer: PreviewHelper;
 	let room: Room<BoardGameRoomState>;
-	let tableBlockMessage = $state<string | null>(null);
-	const tableLoad = await (() => loadRequiredTable({ fileSystem, projectName }))();
-	if (tableLoad.error) {
-		if ('cause' in tableLoad.error) {
-			console.warn(tableLoad.error.message, tableLoad.error.cause);
-		}
-		tableBlockMessage = tableLoad.error.message;
-	} else {
-		localTable = tableLoad.data;
-		const initializedApp = await initApp();
-		app = initializedApp;
-		// passing app here feels wrong. It is needed to render textures. Ideally classes in here shouldn't have to know about app
-		previewer = new PreviewHelper(initializedApp);
-		await initEditor(initializedApp, previewer);
+
+	const loadedTable = await loadRequiredTable({ fileSystem, projectName });
+	const tableData = loadedTable.data;
+	const tableBlockMessage = loadedTable.error?.message;
+	const app = $state(await initApp());
+	const previewer = $derived(new PreviewHelper(app));
+	const viewport = $derived(
+		createViewport(app, {
+			worldWidth: tableData?.table.table.width ?? 1,
+			worldHeight: tableData?.table.table.height ?? 1,
+			minScale: 0.2
+		})
+	);
+
+	if (tableData) {
+		localTable = tableData;
+		await initEditor(app, previewer);
 		room = await createRoom();
-		playReady = true;
 	}
 
 	function attachApp(app: Application): Attachment {
@@ -1314,8 +1304,8 @@
 		e.preventDefault();
 	}
 
+	// TODO Why is this here and not in the keys stuff?
 	function handleCameraShortcut(e: KeyboardEvent) {
-		if (!playReady) return;
 		const target = e.target;
 		if (
 			target instanceof HTMLInputElement ||
@@ -1346,6 +1336,38 @@
 		window.removeEventListener('keydown', handleCameraShortcut);
 	});
 
+	function selectionAfterStackDraw(item: BoardGameItemNew): BoardGameItemNew | null {
+		const stack = item.clientStack;
+		if (!stack) return null;
+
+		const componentIds = stack.clientStackState.componentIds;
+		if (componentIds.length > 2) return item;
+		if (componentIds.length !== 2) return null;
+
+		const drawIndex = item.clientFlippable?.clientFlippableState.isFaceUp
+			? 0
+			: componentIds.length - 1;
+		const remainingId = componentIds[drawIndex === 0 ? 1 : 0];
+		const remainingItem = boardGameItems.get(remainingId);
+		assert(remainingItem, 'Remaining stack item is missing');
+		return remainingItem;
+	}
+
+	function handleDrawSelection() {
+		const selectedItems = [...selectionManager.values()];
+		const nextSelection = selectedItems
+			.map((item) => selectionAfterStackDraw(item))
+			.filter((item): item is BoardGameItemNew => item !== null);
+
+		selectionManager.clear();
+		for (const item of selectedItems) {
+			handleDrawCard(item);
+		}
+		for (const item of nextSelection) {
+			if (!item.destroyed && !handContainer.hasItem(item)) selectionManager.select(item);
+		}
+	}
+
 	function handleDrawCard(item: BoardGameItemNew) {
 		const stack = item.clientStack;
 		const ogId = item.id;
@@ -1363,7 +1385,6 @@
 		} else {
 			fixedSlotLayout?.forgetItem(item);
 		}
-		selectionManager.clear();
 		handContainer.addItem(item);
 		sendCmd(room, 'draw', { cardId: ogId });
 		strokeLayer.refreshAll();
@@ -1378,7 +1399,7 @@
 		item.visible = true;
 		item.renderable = true;
 		const placement = tableItemPlacement(item, parentId);
-		item.clientPosition?.applyLocalPlacement({ ...placement, visible: true });
+		item.clientPosition?.predictPlacement({ ...placement, visible: true });
 		sendCmd(room, 'play', {
 			cardId: item.id,
 			x: placement.x,
@@ -1423,16 +1444,37 @@
 			>
 				<MousePointer2Icon class="size-4" />
 			</button>
-			<button
-				type="button"
-				aria-label="Pen tool"
-				aria-pressed={activeTool === 'pen'}
-				title="Pen"
-				class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
-				onclick={() => selectTool('pen')}
-			>
-				<PenLineIcon class="size-4" />
-			</button>
+			<div class="relative flex items-center">
+				<button
+					type="button"
+					aria-label="Pen tool"
+					aria-pressed={activeTool === 'pen'}
+					title="Pen"
+					class="text-foreground hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground rounded-sm p-2 aria-pressed:shadow-sm"
+					onclick={() => selectTool('pen')}
+				>
+					<PenLineIcon class="size-4" />
+				</button>
+				{#if activeTool === 'pen'}
+					<div
+						class="bg-background/95 absolute top-full left-1/2 mt-2 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-2 shadow-sm backdrop-blur"
+					>
+						<input
+							type="range"
+							aria-label="Pen width"
+							min={penWidthMin}
+							max={penWidthMax}
+							step={penWidthStep}
+							value={penWidth}
+							class="accent-primary h-4 w-28"
+							oninput={handlePenWidthInput}
+						/>
+						<span class="text-muted-foreground min-w-8 text-right text-xs tabular-nums"
+							>{penWidth}px</span
+						>
+					</div>
+				{/if}
+			</div>
 			<button
 				type="button"
 				aria-label="Delete selected stroke"
@@ -1517,11 +1559,12 @@
 				strategy="absolute"
 				style="top: {contextMenuPosition.y}px; z-index: 1000;"
 			>
+				<!-- TODO properly expose functionalities of an item. E.g should only have draw if drawable etc. -->
 				<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleFlipCard(item))}
 					>Flip Card
 					<ContextMenu.Shortcut>F</ContextMenu.Shortcut>
 				</ContextMenu.Item>
-				<ContextMenu.Item onclick={() => selectionManager.forEach((item) => handleDrawCard(item))}
+				<ContextMenu.Item onclick={handleDrawSelection}
 					>Draw Card
 					<ContextMenu.Shortcut>D</ContextMenu.Shortcut>
 				</ContextMenu.Item>

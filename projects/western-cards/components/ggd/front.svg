@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="63mm" height="88mm" viewBox="0 0 63 88">
  <g class="layer">
   <title>Layer 1</title>
-  <image height="90" href="/placeholder.svg" id="background" transform="translate(10 30) matrix(0.553086 0 0 0.553086 10.6667 -21.3333)" width="60" x="-40" y="-20"/>
+  <image xmlns:xlink="http://www.w3.org/1999/xlink" height="90" href="/placeholder.svg" id="background" transform="translate(-0.181018 -0.179297) scale(0.930972 0.930972) translate(0.181018 0.179297) matrix(1.04582 0 0 1.04582 41.9486 21.0339)" width="60" x="-40" y="-20" xlink:href="/placeholder.svg"/>
  </g>
 </svg>

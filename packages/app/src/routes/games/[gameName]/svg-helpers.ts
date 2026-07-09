@@ -89,6 +89,17 @@ const toNumber = (value: string | null | undefined) => {
 
 const stringifyNumber = (value: number) => Number.parseFloat(value.toFixed(6)).toString();
 
+const firstDirectTspanPosition = (text: SVGTextElement) => {
+	const tspan = getDirectTspans(text).find(
+		(candidate) => candidate.getAttribute('x') && candidate.getAttribute('y')
+	);
+	if (!tspan) return null;
+	return {
+		x: tspan.getAttribute('x')!,
+		y: tspan.getAttribute('y')!
+	};
+};
+
 const getHighlightBounds = (svg: SVGSVGElement, el: SVGGraphicsElement) => {
 	if (el.tagName.toLowerCase() === 'text') {
 		const frameBounds = getTextFrameBounds(svg, el as SVGTextElement);
@@ -113,6 +124,8 @@ const getHighlightBounds = (svg: SVGSVGElement, el: SVGGraphicsElement) => {
 function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string) {
 	const frameBounds = getTextFrameBounds(svg, text);
 	const fontSize = getTextFontSize(text);
+	const tspanPosition = firstDirectTspanPosition(text);
+	if (text.getAttribute('data-svgedit-raw-text') === data && tspanPosition) return;
 
 	if (frameBounds) {
 		text.setAttribute('x', frameBounds.x);
@@ -122,6 +135,9 @@ function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string
 		if (frameBounds.shapeId) {
 			text.setAttribute('data-svgedit-shape-inside-ref', `#${frameBounds.shapeId}`);
 		}
+	} else if (tspanPosition) {
+		text.setAttribute('x', tspanPosition.x);
+		text.setAttribute('y', tspanPosition.y);
 	} else if (!text.getAttribute('x') || !text.getAttribute('y')) {
 		throw new Error(`Element ${text.id} is missing x or y attributes`);
 	}

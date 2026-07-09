@@ -35,7 +35,7 @@
 			</h1>
 			<p class="mt-4 max-w-2xl text-lg text-[#49424c]">{site.tagline}</p>
 			<div class="mt-6 flex flex-wrap items-center gap-4 text-sm font-semibold">
-				<Button href={resolve('/rss.xml')} variant="pill-dark" size="default">RSS feed</Button>
+				<Button href={resolve('/rss.xml')} size="default">RSS feed</Button>
 			</div>
 		</div>
 	</header>

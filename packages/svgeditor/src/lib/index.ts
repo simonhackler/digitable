@@ -3,3 +3,4 @@ export { createEditorController } from './svelte/createEditorController.svelte.t
 export { createSvgCanvas } from './core/createSvgCanvas';
 export type * from './core/types';
 export { default as ReferenceEditor } from './reference/ReferenceEditor.svelte';
+export { default as ReferenceEditorToolbar } from './reference/Toolbar.svelte';

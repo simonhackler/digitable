@@ -29,7 +29,7 @@ export type StrokeTarget = {
 
 export const currentStrokeStyle: StrokeStyleDraft = {
 	color: 0x111111,
-	width: 8,
+	width: 1.5,
 	alpha: 1,
 	cap: 'round',
 	join: 'round'
@@ -206,7 +206,7 @@ export class StrokeLayer {
 		this.isDrawing = true;
 		this.draftTarget = target;
 		this.draftItem = target.item;
-		this.draftStyle = style;
+		this.draftStyle = { ...style };
 		this.draftPoints = [roundPoint(target.item.toLocal(global))];
 		target.item.addChild(this.draft);
 		this.draft.zIndex = 9998;
@@ -217,7 +217,7 @@ export class StrokeLayer {
 
 		const next = roundPoint(this.draftItem.toLocal(global));
 		const last = this.draftPoints[this.draftPoints.length - 1];
-		if (last && distSq(last, next) < 4) return;
+		if (last && distSq(last, next) < 1) return;
 
 		this.draftPoints.push(next);
 		drawPolyline(this.draft, this.draftPoints, this.draftStyle);
@@ -287,6 +287,7 @@ export class StrokeLayer {
 			visible: boolean;
 			parentId: string | null;
 			points: number;
+			width: number;
 		}[] = [];
 
 		for (const view of this.views.values()) {
@@ -297,7 +298,8 @@ export class StrokeLayer {
 				face: view.state.face,
 				visible: view.visible && Boolean(view.parent),
 				parentId: item && 'id' in item && typeof item.id === 'string' ? item.id : null,
-				points: view.state.points.length
+				points: view.state.points.length,
+				width: view.state.style.width
 			});
 		}
 		return snapshots;

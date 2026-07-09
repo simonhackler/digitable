@@ -1,0 +1,3 @@
+French playing cards
+Source: https://github.com/Webisso/playing-cards
+License: MIT

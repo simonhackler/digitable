@@ -24,14 +24,7 @@ export const createGameSchema = z
 			.int()
 			.min(1, 'Maximum players must be at least 1')
 			.max(20, 'Maximum players cannot exceed 20'),
-		description: z
-			.string()
-			.min(1, 'Description must be at least 50 characters')
-			.max(500, 'Description must be 500 characters or less'),
-		tags: z
-			.array(z.string())
-			.min(1, 'At least one tag is required')
-			.max(10, 'Maximum 10 tags allowed')
+		description: z.string().max(500, 'Description must be 500 characters or less')
 	})
 	.refine((data) => data.minPlayers <= data.maxPlayers, {
 		message: 'Minimum players must be less than or equal to maximum players',

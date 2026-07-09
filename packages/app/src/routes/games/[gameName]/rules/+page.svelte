@@ -35,6 +35,7 @@
 	import { getFileSystemContext } from '../../context.js';
 	import { requireParam } from '$lib/utils/assert';
 	import RulesMarkdownToolbar from './rules-markdown-toolbar.svelte';
+	import GameTopBar from '../../game-top-bar.svelte';
 
 	const RULES_FILE = 'rules.md';
 	const fileSystem = getFileSystemContext();
@@ -188,30 +189,21 @@
 </svelte:head>
 
 <div class="bg-background flex h-full min-h-screen flex-col">
-	<header class="border-b px-4 py-3 sm:px-6">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<div>
-				<h1 class="text-xl font-semibold">Rules</h1>
-				<p class="text-muted-foreground text-sm">{gameName}</p>
-			</div>
-			<div class="text-muted-foreground text-sm" aria-live="polite">
-				{#if saveError}
-					<span class="text-destructive">{saveError}</span>
-				{:else if saveState === 'saving'}
-					<span>Saving</span>
-				{:else if lastSavedAt}
-					<span>Saved {lastSavedAt.toLocaleTimeString()}</span>
-				{:else}
-					<span>Saved</span>
-				{/if}
-			</div>
-		</div>
-	</header>
+	<Composer {initialConfig}>
+		<GameTopBar
+			title="Rules"
+			status={saveState === 'saving'
+				? 'Saving'
+				: lastSavedAt
+					? `Saved ${lastSavedAt.toLocaleTimeString()}`
+					: 'Saved'}
+			statusError={saveError}
+		>
+			<RulesMarkdownToolbar />
+		</GameTopBar>
 
-	<div class="flex-1 overflow-auto px-4 py-4 sm:px-6">
-		<Composer {initialConfig}>
+		<div class="flex-1 overflow-auto px-4 py-4 sm:px-6">
 			<div class="editor-shell svelte-lexical rules-editor">
-				<RulesMarkdownToolbar />
 				<div class="editor-container">
 					<div class="editor-scroller">
 						<div class="editor">
@@ -233,8 +225,8 @@
 					/>
 				</div>
 			</div>
-		</Composer>
-	</div>
+		</div>
+	</Composer>
 </div>
 
 <style>

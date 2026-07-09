@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { LogIn, UserRound } from '@lucide/svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+	const next = $derived(encodeURIComponent(data.next));
 </script>
 
 <svelte:head>
@@ -27,14 +29,16 @@
 			<div class="mt-8 grid gap-3 sm:grid-cols-2">
 				<a
 					class="inline-flex min-h-12 items-center justify-center gap-2 bg-[#171717] px-5 text-sm font-semibold text-white transition hover:bg-[#303030]"
-					href={data.signInUrl}
+					href={resolve(`/sign-in?next=${next}` as `/sign-in?next=${string}`)}
 				>
 					<LogIn class="h-4 w-4" />
 					<span>Sign in</span>
 				</a>
 				<a
 					class="inline-flex min-h-12 items-center justify-center gap-2 border border-black/15 bg-white px-5 text-sm font-semibold text-[#171717] transition hover:bg-[#f3f5f0]"
-					href={data.anonymousUrl}
+					href={resolve(
+						`/legal/accept?anonymous=playtest&next=${next}` as `/legal/accept?anonymous=playtest&next=${string}`
+					)}
 				>
 					<UserRound class="h-4 w-4" />
 					<span>Continue as anonymous user</span>

@@ -5,6 +5,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import type { PaperSize, Orientation } from './export-pages.svelte';
+	import GameTopBar from '../../game-top-bar.svelte';
 
 	interface Props {
 		paperSize: PaperSize;
@@ -35,10 +36,9 @@
 	}
 </script>
 
-<div class="bg-background flex items-center gap-4 rounded-lg border p-4">
+<GameTopBar>
 	<!-- Paper size selector -->
 	<div class="flex items-center gap-2">
-		<div class="text-sm font-medium">Paper size:</div>
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				<Button variant="outline" class="min-w-[120px] justify-between">
@@ -56,12 +56,10 @@
 		</DropdownMenu.Root>
 	</div>
 
-	<!-- Orientation toggle -->
 	<div class="flex items-center gap-2">
-		<div class="text-sm font-medium">Orientation:</div>
 		<Button variant="outline" onclick={toggleOrientation}>
 			{orientation}
-			{orientation === 'Portrait' ? '⇄' : '⇄'}
+			⇄
 		</Button>
 	</div>
 
@@ -91,4 +89,4 @@
 
 	<!-- Print button -->
 	<Button onclick={handlePrint} class="ml-auto">Print</Button>
-</div>
+</GameTopBar>

@@ -134,6 +134,18 @@ function resolveCardIds(
 	return resolved;
 }
 
+function shuffledCardIds(cardIds: string[], shuffle: boolean | undefined): string[] {
+	if (!shuffle) return cardIds;
+	const ids = [...cardIds];
+	for (let i = ids.length - 1; i > 0; i -= 1) {
+		const j = Math.floor(Math.random() * (i + 1));
+		const temp = ids[i];
+		ids[i] = ids[j];
+		ids[j] = temp;
+	}
+	return ids;
+}
+
 function placementToItem(
 	placement: TablePlacement,
 	deckCards: Map<string, string[]>,
@@ -174,18 +186,21 @@ function placementToItem(
 			: [];
 	}
 
-	const componentIds = resolveCardIds(
-		{
-			deckName: placement.deckName,
-			cardIds: placement.cardIds,
-			fallbackToDeck: true,
-			knownCards,
-			deckCards,
-			usedCardIds,
-			silentDuplicateCardIds,
-			context: `placement "${placement.label}"`
-		},
-		warn
+	const componentIds = shuffledCardIds(
+		resolveCardIds(
+			{
+				deckName: placement.deckName,
+				cardIds: placement.cardIds,
+				fallbackToDeck: true,
+				knownCards,
+				deckCards,
+				usedCardIds,
+				silentDuplicateCardIds,
+				context: `placement "${placement.label}"`
+			},
+			warn
+		),
+		placement.shuffle
 	);
 	return componentIds.length > 0
 		? [
@@ -250,17 +265,20 @@ function slotContentToItem(
 			: [];
 	}
 
-	const componentIds = resolveCardIds(
-		{
-			deckName: content.deckName,
-			cardIds: [],
-			fallbackToDeck: true,
-			knownCards,
-			deckCards,
-			usedCardIds,
-			context: `slot "${slot.label}"`
-		},
-		warn
+	const componentIds = shuffledCardIds(
+		resolveCardIds(
+			{
+				deckName: content.deckName,
+				cardIds: [],
+				fallbackToDeck: true,
+				knownCards,
+				deckCards,
+				usedCardIds,
+				context: `slot "${slot.label}"`
+			},
+			warn
+		),
+		content.shuffle
 	);
 	return componentIds.length > 0
 		? [

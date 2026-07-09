@@ -5,6 +5,7 @@
   lib,
   modulesPath,
   appPort,
+  bunPackage,
   enableAppSecrets ? true,
   gameServerPort,
   gameServerPublicPort,
@@ -17,10 +18,18 @@
   databaseUser = "app";
   databaseUrl = "postgresql:///${databaseName}?host=/run/postgresql&user=${databaseUser}";
   isDirectHost =
-    studioDomain == "localhost"
+    studioDomain
+    == "localhost"
     || builtins.match "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" studioDomain != null;
-  studioOrigin = "${if isDirectHost then "http" else "https"}://${studioDomain}";
-  caddySiteAddress = if isDirectHost then ":80" else studioDomain;
+  studioOrigin = "${
+    if isDirectHost
+    then "http"
+    else "https"
+  }://${studioDomain}";
+  caddySiteAddress =
+    if isDirectHost
+    then ":80"
+    else studioDomain;
   gameServerOrigin =
     if isDirectHost
     then "http://${studioDomain}:${toString gameServerPublicPort}"
@@ -57,19 +66,21 @@
     after = ["network-online.target" "db-migrate.service"];
     wants = ["network-online.target"];
     requires = ["db-migrate.service"];
+    path = [pkgs.nodejs];
 
-    environment = {
-      HOST = "127.0.0.1";
-      PORT = toString port;
-      ORIGIN = studioOrigin;
-      NODE_ENV = "production";
-      BETTER_AUTH_SECRET = "%m";
-      DATABASE_URL = databaseUrl;
-      PUBLIC_GAME_SERVER_URL = gameServerOrigin;
-      WEB_ORIGIN = studioOrigin;
-      SECOND_WEB_ORIGIN = "${studioOrigin}/app";
-    }
-    // extraEnvironment;
+    environment =
+      {
+        HOST = "127.0.0.1";
+        PORT = toString port;
+        ORIGIN = studioOrigin;
+        NODE_ENV = "production";
+        BETTER_AUTH_SECRET = "%m";
+        DATABASE_URL = databaseUrl;
+        PUBLIC_GAME_SERVER_URL = gameServerOrigin;
+        WEB_ORIGIN = studioOrigin;
+        SECOND_WEB_ORIGIN = "${studioOrigin}/app";
+      }
+      // extraEnvironment;
 
     serviceConfig =
       {
@@ -94,6 +105,10 @@ in {
     secrets.s3-access-key-id = {};
     secrets.s3-secret-access-key = {};
     secrets.kit-api-key = {};
+    secrets.google-client-id = {};
+    secrets.google-client-secret = {};
+    secrets.discord-client-id = {};
+    secrets.discord-client-secret = {};
 
     templates."app.env".content = ''
       REPLICATE_API_TOKEN=${config.sops.placeholder.replicate-api-token}
@@ -103,6 +118,10 @@ in {
 
     templates."studio.env".content = ''
       KIT_API_KEY=${config.sops.placeholder.kit-api-key}
+      GOOGLE_CLIENT_ID=${config.sops.placeholder.google-client-id}
+      GOOGLE_CLIENT_SECRET=${config.sops.placeholder.google-client-secret}
+      DISCORD_CLIENT_ID=${config.sops.placeholder.discord-client-id}
+      DISCORD_CLIENT_SECRET=${config.sops.placeholder.discord-client-secret}
     '';
   };
 
@@ -194,7 +213,7 @@ in {
     serviceConfig = {
       Type = "oneshot";
       WorkingDirectory = "${studioPackage}/packages/db";
-      ExecStart = "${pkgs.bun}/bin/bun run db:migrate";
+      ExecStart = "${bunPackage}/bin/bun run db:migrate";
       RemainAfterExit = true;
     };
   };

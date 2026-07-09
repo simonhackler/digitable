@@ -145,14 +145,9 @@
 <style>
 	.markdown-toolbar :global(.toolbar) {
 		display: flex;
-		min-height: 2.75rem;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.25rem;
-		border-bottom: 1px solid hsl(var(--border));
-		border-radius: 8px 8px 0 0;
-		background: hsl(var(--muted) / 0.35);
-		padding: 0.375rem 0.5rem;
 	}
 
 	.markdown-toolbar :global(.toolbar button) {

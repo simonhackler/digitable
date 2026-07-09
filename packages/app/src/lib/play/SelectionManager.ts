@@ -1,25 +1,47 @@
 import { Graphics } from 'pixi.js';
 import { BoardGameItemNew } from '$lib/pixi/item';
 
+type BorderStyle = {
+	alpha: number;
+	color: number;
+	width: number;
+	zIndex: number;
+};
+
+const hoverBorderStyle: BorderStyle = {
+	alpha: 0.72,
+	color: 0xd97706,
+	width: 1,
+	zIndex: 9998
+};
+
+const selectionBorderStyle: BorderStyle = {
+	alpha: 1,
+	color: 0x3b82f6,
+	width: 3,
+	zIndex: 9999
+};
+
 export class SelectionManager {
 	private selectedItems = new Set<BoardGameItemNew>();
 	private selectionBorders = new Map<BoardGameItemNew, Graphics>();
+	private hoveredItem: BoardGameItemNew | null = null;
+	private hoverBorder: Graphics | null = null;
 
 	select(item: BoardGameItemNew) {
 		if (this.selectedItems.has(item)) return;
 		this.selectedItems.add(item);
-		this.createSelectionBorder(item);
+		this.syncHoverBorder();
+		this.selectionBorders.set(item, this.createBorder(item, selectionBorderStyle));
 	}
 
 	deselect(item: BoardGameItemNew) {
 		if (!this.selectedItems.has(item)) return;
 		this.selectedItems.delete(item);
 		const border = this.selectionBorders.get(item);
-		if (border) {
-			item.itemContainer.removeChild(border);
-			border.destroy();
-			this.selectionBorders.delete(item);
-		}
+		this.destroyBorder(border);
+		this.selectionBorders.delete(item);
+		this.syncHoverBorder();
 	}
 
 	selectOnly(item: BoardGameItemNew) {
@@ -47,28 +69,51 @@ export class SelectionManager {
 		return this.selectedItems.size;
 	}
 
-	private createSelectionBorder(item: BoardGameItemNew) {
+	setHover(item: BoardGameItemNew | null) {
+		if (this.hoveredItem === item) return;
+
+		this.destroyHoverBorder();
+		this.hoveredItem = item;
+		this.syncHoverBorder();
+	}
+
+	private syncHoverBorder() {
+		const item = this.hoveredItem;
+		if (!item || item.destroyed || this.selectedItems.has(item)) {
+			this.destroyHoverBorder();
+			return;
+		}
+
+		if (this.hoverBorder) return;
+		this.hoverBorder = this.createBorder(item, hoverBorderStyle);
+	}
+
+	private destroyHoverBorder() {
+		this.destroyBorder(this.hoverBorder);
+		this.hoverBorder = null;
+	}
+
+	private createBorder(item: BoardGameItemNew, style: BorderStyle) {
 		const b = item.contentLocalBounds();
-		const pad = Math.min(Math.max(Math.min(b.width, b.height) * 0.02, 2), 8); // 2–8px padding
-		const radius = Math.min(Math.max(Math.min(b.width, b.height) * 0.06, 6), 20); // rounded corners
+		const edge = Math.min(b.width, b.height);
+		const pad = Math.min(Math.max(edge * 0.015, 1.5), 4);
+		const radius = Math.min(Math.max(edge * 0.05, 4), 12);
 
 		const g = new Graphics();
 		g.eventMode = 'none';
-		g.zIndex = 9999;
-		// Outer blue ring
+		g.zIndex = style.zIndex;
 		g.roundRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2, radius).stroke({
-			width: 16,
-			color: 0x3b82f6,
-			alpha: 1
-		});
-		// Subtle inner hairline for a "crisp" look
-		g.roundRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2, radius).stroke({
-			width: 4,
-			color: 0xffffff,
-			alpha: 0.9
+			width: style.width,
+			color: style.color,
+			alpha: style.alpha
 		});
 
 		item.itemContainer.addChild(g);
-		this.selectionBorders.set(item, g);
+		return g;
+	}
+
+	private destroyBorder(border: Graphics | null | undefined) {
+		border?.parent?.removeChild(border);
+		border?.destroy();
 	}
 }
