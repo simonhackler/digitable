@@ -58,9 +58,7 @@
 		bind:value={$form.company}
 	/>
 
-	<FormButton size="lg" class="mx-auto h-14 w-full max-w-sm rounded-xl">
-		Subscribe
-	</FormButton>
+	<FormButton size="lg" class="mx-auto h-14 w-full max-w-sm rounded-xl">Subscribe</FormButton>
 
 	{#if $message}
 		<p
