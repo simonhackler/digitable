@@ -5,6 +5,11 @@
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import PlaySurface from '$lib/play/PlaySurface.svelte';
+	import {
+		clearPlaytestReconnectToken,
+		getPlaytestReconnectToken,
+		setPlaytestReconnectToken
+	} from '$lib/play/playtest-room-helpers';
 	import type { PlayRoom } from '$lib/play/room-types';
 	import { importPlaytestProject, playtestImportFolderName } from '$lib/playtests/project-transfer';
 	import { Client, getStateCallbacks } from '@colyseus/sdk';
@@ -32,32 +37,11 @@
 		fileSystem: FsDir;
 	} | null>(null);
 	let playReady = $state(false);
-	let transitioningToPlay = false;
 	const e2e = $derived(page.url.searchParams.has('e2e'));
 	const gameServerUrl = env.PUBLIC_GAME_SERVER_URL;
-	const reconnectTokenPrefix = 'svg-table:playtest-reconnect-token:';
 	const currentPlayer = $derived(players.find((player) => player.id === room?.sessionId) ?? null);
 	const readyCount = $derived(players.filter((player) => player.ready).length);
 	const canReady = $derived(phase === 'lobby' && Boolean(currentPlayer) && !currentPlayer?.ready);
-
-	function reconnectTokenKey() {
-		return `${reconnectTokenPrefix}${data.privateRoomId}:${data.roomId}`;
-	}
-
-	function getReconnectToken() {
-		if (typeof sessionStorage === 'undefined') return null;
-		return sessionStorage.getItem(reconnectTokenKey());
-	}
-
-	function setReconnectToken(playRoom: PlayRoom) {
-		if (typeof sessionStorage === 'undefined') return;
-		sessionStorage.setItem(reconnectTokenKey(), playRoom.reconnectionToken);
-	}
-
-	function clearReconnectToken() {
-		if (typeof sessionStorage === 'undefined') return;
-		sessionStorage.removeItem(reconnectTokenKey());
-	}
 
 	async function getGameTicket() {
 		const response = await fetch(resolve('/api/game-ticket'), {
@@ -104,12 +88,12 @@
 
 		const client = new Client(gameServerUrl);
 		let playRoom: PlayRoom | null = null;
-		const reconnectToken = getReconnectToken();
+		const reconnectToken = getPlaytestReconnectToken(data.privateRoomId, data.roomId);
 		if (reconnectToken) {
 			try {
 				playRoom = await client.reconnect<BoardGameRoomState>(reconnectToken);
 			} catch {
-				clearReconnectToken();
+				clearPlaytestReconnectToken(data.privateRoomId, data.roomId);
 			}
 		}
 
@@ -121,7 +105,7 @@
 		}
 
 		room = playRoom;
-		setReconnectToken(playRoom);
+		setPlaytestReconnectToken(data.privateRoomId, data.roomId, playRoom.reconnectionToken);
 		const callbacks = getStateCallbacks(playRoom);
 		callbacks(playRoom.state).onChange(() => refreshLobbyState(playRoom));
 		callbacks(playRoom.state).players.onAdd((player) => {
@@ -148,11 +132,9 @@
 	}
 
 	async function enterPlayIfReady() {
-		if (transitioningToPlay || playReady || !room || !importedPlaytest || phase !== 'playing')
-			return;
+		if (playReady || !room || !importedPlaytest || phase !== 'playing') return;
 
-		transitioningToPlay = true;
-		setReconnectToken(room);
+		setPlaytestReconnectToken(data.privateRoomId, data.roomId, room.reconnectionToken);
 		playReady = true;
 	}
 

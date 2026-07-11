@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { env } from '$env/dynamic/public';
+	import { playtestRoomHref, setPlaytestReconnectToken } from '$lib/play/playtest-room-helpers';
 	import type { LobbyRoom } from '$lib/play/room-types';
 	import { Client, type RoomAvailable } from '@colyseus/sdk';
 	import type { BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
@@ -29,11 +30,6 @@
 	let lobby: LobbyRoom | null = null;
 	const e2e = $derived(page.url.searchParams.has('e2e'));
 	const gameServerUrl = env.PUBLIC_GAME_SERVER_URL;
-	const reconnectTokenPrefix = 'svg-table:playtest-reconnect-token:';
-
-	function reconnectTokenKey(roomId: string) {
-		return `${reconnectTokenPrefix}${data.privateRoomId}:${roomId}`;
-	}
 
 	function setRooms(nextRooms: RoomAvailable<PlaytestRoomMetadata>[]) {
 		rooms = nextRooms
@@ -82,15 +78,10 @@
 				minPlayers: data.minPlayers,
 				maxPlayers: data.maxPlayers
 			});
-			sessionStorage.setItem(reconnectTokenKey(room.roomId), room.reconnectionToken);
+			setPlaytestReconnectToken(data.privateRoomId, room.roomId, room.reconnectionToken);
 			room.reconnection.enabled = false;
 			void room.leave(false);
-			await goto(
-				resolve('/playtests/[playtestId]/rooms/[roomId]', {
-					playtestId: data.playtestId,
-					roomId: e2e ? `${room.roomId}?e2e=1` : room.roomId
-				})
-			);
+			await goto(playtestRoomHref({ playtestId: data.playtestId, roomId: room.roomId, e2e }));
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Could not create room.';
 		} finally {
@@ -188,10 +179,7 @@
 			{#each rooms as room (room.roomId)}
 				{@const metadata = room.metadata}
 				<a
-					href={resolve('/playtests/[playtestId]/rooms/[roomId]', {
-						playtestId: data.playtestId,
-						roomId: e2e ? `${room.roomId}?e2e=1` : room.roomId
-					})}
+					href={playtestRoomHref({ playtestId: data.playtestId, roomId: room.roomId, e2e })}
 					class="hover:bg-accent flex items-center justify-between gap-4 rounded-lg border p-4"
 				>
 					<span class="flex min-w-0 flex-col gap-1">

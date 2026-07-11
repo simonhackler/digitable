@@ -83,6 +83,11 @@
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import {
+		clearPlaytestReconnectToken,
+		getPlaytestReconnectToken,
+		setPlaytestReconnectToken
+	} from './playtest-room-helpers';
 	import type { PlayRoom } from './room-types';
 
 	type PlayRoomConnection =
@@ -117,32 +122,9 @@
 	}
 	const client = new Client(gameServerUrl);
 	let playE2EBridge: ReturnType<typeof installPlayE2EBridge> | null = null;
-	const privatePlaytestReconnectTokenPrefix = 'svg-table:playtest-reconnect-token:';
 
 	function isE2EMode() {
 		return e2e;
-	}
-
-	function privatePlaytestReconnectTokenKey(privateRoomId: string, roomId: string) {
-		return `${privatePlaytestReconnectTokenPrefix}${privateRoomId}:${roomId}`;
-	}
-
-	function getPrivatePlaytestReconnectToken(privateRoomId: string, roomId: string) {
-		if (typeof sessionStorage === 'undefined') return null;
-		return sessionStorage.getItem(privatePlaytestReconnectTokenKey(privateRoomId, roomId));
-	}
-
-	function setPrivatePlaytestReconnectToken(privateRoomId: string, roomId: string, room: PlayRoom) {
-		if (typeof sessionStorage === 'undefined') return;
-		sessionStorage.setItem(
-			privatePlaytestReconnectTokenKey(privateRoomId, roomId),
-			room.reconnectionToken
-		);
-	}
-
-	function clearPrivatePlaytestReconnectToken(privateRoomId: string, roomId: string) {
-		if (typeof sessionStorage === 'undefined') return;
-		sessionStorage.removeItem(privatePlaytestReconnectTokenKey(privateRoomId, roomId));
 	}
 
 	let boardGameItems: SvelteMap<string, BoardGameItemNew> = new SvelteMap();
@@ -1177,7 +1159,7 @@
 		} else {
 			room = privatePlaytest.room ?? null;
 			if (!room) {
-				const reconnectToken = getPrivatePlaytestReconnectToken(
+				const reconnectToken = getPlaytestReconnectToken(
 					privatePlaytest.privateRoomId,
 					privatePlaytest.roomId
 				);
@@ -1185,10 +1167,7 @@
 					try {
 						room = await client.reconnect<BoardGameRoomState>(reconnectToken);
 					} catch {
-						clearPrivatePlaytestReconnectToken(
-							privatePlaytest.privateRoomId,
-							privatePlaytest.roomId
-						);
+						clearPlaytestReconnectToken(privatePlaytest.privateRoomId, privatePlaytest.roomId);
 					}
 				}
 				if (!room) {
@@ -1198,7 +1177,11 @@
 					});
 				}
 			}
-			setPrivatePlaytestReconnectToken(privatePlaytest.privateRoomId, privatePlaytest.roomId, room);
+			setPlaytestReconnectToken(
+				privatePlaytest.privateRoomId,
+				privatePlaytest.roomId,
+				room.reconnectionToken
+			);
 		}
 		let s = getStateCallbacks(room);
 		strokeLayer.connect(room, s);
@@ -1254,7 +1237,7 @@
 	}
 
 	let localTable: LocalTable;
-	let room: Room<BoardGameRoomState>;
+	let room: PlayRoom;
 
 	const loadedTable = await loadRequiredTable({ fileSystem, projectName });
 	const tableData = loadedTable.data;

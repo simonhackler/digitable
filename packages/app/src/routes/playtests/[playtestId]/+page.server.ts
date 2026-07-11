@@ -46,10 +46,15 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		});
 	}
 
+	const playerLimits = playtestPlayerLimitsFromFiles(playtest.files);
+	if (playerLimits.error) {
+		error(400, playerLimits.error.message);
+	}
+
 	return {
 		playtestId: playtest.metadata.id,
 		projectName: playtest.metadata.projectName,
 		privateRoomId: playtest.metadata.privateRoomId,
-		...playtestPlayerLimitsFromFiles(playtest.files)
+		...playerLimits.data
 	};
 };

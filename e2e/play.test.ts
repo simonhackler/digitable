@@ -1766,14 +1766,13 @@ test('playtest invitees sync fixed slot parenting when another player moves a ca
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, setupPlayProjectSlug);
 
-		await page.goto(`${inviteUrl}?e2e=1`);
-		await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-		await waitForPixi(page);
+		await createPlaytestRoom(page, inviteUrl, 'Fixed slot room');
 
 		await signUp(secondPage);
-		await secondPage.goto(`${inviteUrl}?e2e=1`);
-		await expect(secondPage).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
-		await waitForPixi(secondPage);
+		await joinPlaytestRoom(secondPage, inviteUrl, 'Fixed slot room');
+		await page.getByRole('button', { name: 'Ready up' }).click();
+		await readyAndWaitForPixi(secondPage);
+		await waitForPixi(page);
 
 		await expect
 			.poll(async () => (await pixiState(page)).visibleStackIds, { timeout: 20_000 })

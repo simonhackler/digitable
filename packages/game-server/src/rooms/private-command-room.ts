@@ -5,6 +5,7 @@ import { CommandRoom } from './command-room';
 import type { RoomPhase } from './schema/MyRoomState';
 
 const PRIVATE_ROOM_RECONNECTION_SECONDS = 60;
+const MAX_PLAYERS = 20;
 
 type JoinOptions = {
 	privateRoomId?: string;
@@ -34,8 +35,10 @@ type PrivateRoomMetadata = {
 
 type PrivateCommandRoomClient = Client<{ auth: PrivateRoomAuth }>;
 
-function normalizePlayerLimit(value: number | undefined, fallback: number) {
-	if (!Number.isInteger(value) || value < 1 || value > 20) return fallback;
+function requirePlayerLimit(value: number | undefined, label: string) {
+	if (!Number.isInteger(value) || value < 1 || value > MAX_PLAYERS) {
+		throw new ServerError(400, `${label} must be an integer from 1 to ${MAX_PLAYERS}`);
+	}
 	return value;
 }
 
@@ -86,8 +89,11 @@ export class PrivateCommandRoom extends CommandRoom<PrivateRoomMetadata, Private
 
 		this.privateRoomId = options.privateRoomId;
 		this.playtestId = options.playtestId;
-		const minPlayers = normalizePlayerLimit(options.minPlayers, 1);
-		const maxPlayers = Math.max(minPlayers, normalizePlayerLimit(options.maxPlayers, 4));
+		const minPlayers = requirePlayerLimit(options.minPlayers, 'minPlayers');
+		const maxPlayers = requirePlayerLimit(options.maxPlayers, 'maxPlayers');
+		if (maxPlayers < minPlayers) {
+			throw new ServerError(400, 'maxPlayers must be greater than or equal to minPlayers');
+		}
 		const roomName = normalizeRoomName(options.roomName);
 		this.maxClients = maxPlayers;
 
@@ -101,6 +107,13 @@ export class PrivateCommandRoom extends CommandRoom<PrivateRoomMetadata, Private
 	}
 
 	onJoin(client: PrivateCommandRoomClient, options: JoinOptions, auth?: PrivateRoomAuth) {
+		if (
+			options.privateRoomId !== this.privateRoomId ||
+			auth?.privateRoomId !== this.privateRoomId
+		) {
+			throw new ServerError(403, 'Invalid private room');
+		}
+
 		if (auth) {
 			client.auth = auth;
 		}
