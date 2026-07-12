@@ -11,6 +11,7 @@ import { savePlaytestProject, type IncomingPlaytestFile } from '$lib/server/play
 type CreatePlaytestBody = {
 	projectName?: unknown;
 	files?: unknown;
+	password?: unknown;
 };
 
 function validateFile(file: unknown): IncomingPlaytestFile {
@@ -51,6 +52,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (!Array.isArray(body.files) || body.files.length === 0) {
 		error(400, 'Missing project files');
 	}
+	if (body.password !== undefined && typeof body.password !== 'string') {
+		error(400, 'Invalid password');
+	}
 
 	const playtestId = randomUUID();
 	const files = body.files.map(validateFile);
@@ -61,7 +65,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const room = await createPrivateRoom({
 		ownerUserId: locals.user.id,
-		inviteCode: playtestId
+		inviteCode: playtestId,
+		password: body.password
 	});
 
 	await savePlaytestProject({

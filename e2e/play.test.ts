@@ -1026,12 +1026,17 @@ async function signUp(page: Page) {
 	await expect(page).toHaveURL(/\/app\/games$/, { timeout: 20_000 });
 }
 
-async function startPlaytestAndGetInvite(page: Page, projectSlug: string) {
+async function startPlaytestAndGetInvite(page: Page, projectSlug: string, password = '') {
 	await page.goto(appPath(`/games/${projectSlug}`));
 	await page.getByRole('link', { name: 'Playtests' }).click();
 	await expect(page).toHaveURL(new RegExp(`/app/games/${projectSlug}/playtests`));
 	await expect(page.getByRole('heading', { name: 'Playtests' })).toBeVisible();
 	await page.getByRole('button', { name: 'Start playtest' }).click();
+	const dialog = page.getByRole('dialog');
+	if (password) {
+		await dialog.getByLabel('Password').fill(password);
+	}
+	await dialog.getByRole('button', { name: 'Start playtest' }).click();
 	const inviteInput = page.getByLabel('Playtest invite link');
 	await expect(inviteInput).toHaveValue(/\/app\/playtests\/[0-9a-f-]+/);
 	await expect(page.getByRole('link', { name: 'Open' }).first()).toHaveAttribute(
@@ -1048,10 +1053,26 @@ async function openPlaytestRoomList(page: Page, inviteUrl: string) {
 	await expect(page.getByRole('heading', { name: /Rooms for/ })).toBeVisible();
 }
 
-async function createPlaytestRoom(page: Page, inviteUrl: string, roomName: string) {
+async function unlockPlaytestInvite(page: Page, inviteUrl: string, password: string) {
+	await page.goto(`${inviteUrl}?e2e=1`);
+	await expect(page.getByRole('heading', { name: /Rooms for|Join this playtest/ })).toBeVisible();
+	if (await page.getByRole('heading', { name: /Rooms for/ }).isVisible()) return;
+
+	await page.getByLabel('Playtest password').fill(password);
+	await page.getByRole('button', { name: 'Continue' }).click();
+	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\?e2e=1$/);
+	await expect(page.getByRole('heading', { name: /Rooms for/ })).toBeVisible();
+}
+
+async function createPlaytestRoom(page: Page, inviteUrl: string, roomName: string, password = '') {
 	await openPlaytestRoomList(page, inviteUrl);
-	await page.getByLabel('Room name').fill(roomName);
 	await page.getByRole('button', { name: 'Create room' }).click();
+	const dialog = page.getByRole('dialog');
+	await dialog.getByLabel('Room name').fill(roomName);
+	if (password) {
+		await dialog.getByLabel('Password').fill(password);
+	}
+	await dialog.getByRole('button', { name: 'Create room' }).click();
 	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\/rooms\/[A-Za-z0-9_-]+\?e2e=1$/);
 	await expect(page.getByRole('heading', { name: roomName })).toBeVisible();
 	await expect(page.getByText('Playtest E2E (You)')).toBeVisible();
@@ -1059,9 +1080,14 @@ async function createPlaytestRoom(page: Page, inviteUrl: string, roomName: strin
 	return page.url();
 }
 
-async function joinPlaytestRoom(page: Page, inviteUrl: string, roomName: string) {
+async function joinPlaytestRoom(page: Page, inviteUrl: string, roomName: string, password = '') {
 	await openPlaytestRoomList(page, inviteUrl);
-	await page.getByRole('link', { name: new RegExp(roomName) }).click();
+	await page.getByRole('button', { name: new RegExp(roomName) }).click();
+	if (password) {
+		const dialog = page.getByRole('dialog');
+		await dialog.getByLabel('Password').fill(password);
+		await dialog.getByRole('button', { name: 'Join room' }).click();
+	}
 	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\/rooms\/[A-Za-z0-9_-]+\?e2e=1$/);
 	await expect(page.getByRole('heading', { name: roomName })).toBeVisible();
 }
@@ -1533,11 +1559,19 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	await signUp(page);
 	await seedPixiProject(page, 'pixi-play-smoke');
 
-	const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
+	const playtestPassword = 'playtest-correct-horse-battery-staple';
+	const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke', playtestPassword);
 
 	await page.evaluate(() => localStorage.setItem('storage-preference', 'directory'));
-	const roomUrl = await createPlaytestRoom(page, inviteUrl, 'Smoke room');
+	await unlockPlaytestInvite(page, inviteUrl, playtestPassword);
+	const roomPassword = 'correct-horse-battery-staple';
+	const roomUrl = await createPlaytestRoom(page, inviteUrl, 'Smoke room', roomPassword);
+	const secondPage = await page.context().newPage();
+	await unlockPlaytestInvite(secondPage, inviteUrl, playtestPassword);
+	await joinPlaytestRoom(secondPage, inviteUrl, 'Smoke room', roomPassword);
+	await secondPage.getByRole('button', { name: 'Ready up' }).click();
 	await readyAndWaitForPixi(page);
+	await secondPage.close();
 	await page.goto(roomUrl);
 	await waitForPixi(page);
 	await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
@@ -1670,6 +1704,40 @@ test('playtest room list hides full lobbies based on game player limits', async 
 	} finally {
 		await secondContext.close();
 		await thirdContext.close();
+	}
+});
+
+test('playtest room lets known players rejoin after start but rejects new players', async ({
+	page,
+	browser
+}) => {
+	test.setTimeout(150_000);
+	const unknownContext = await browser.newContext({
+		baseURL: test.info().project.use.baseURL as string | undefined
+	});
+	const unknownPage = await unknownContext.newPage();
+
+	try {
+		await signUp(page);
+		await seedPixiProject(page, 'pixi-play-smoke');
+
+		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
+		const roomUrl = await createPlaytestRoom(page, inviteUrl, 'Rejoin room');
+		await readyAndWaitForPixi(page);
+
+		await page.evaluate(() => sessionStorage.clear());
+		await page.goto(appPath('/games'));
+		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+
+		await page.goto(roomUrl);
+		await waitForPixi(page);
+		await expect(page.getByRole('alert')).toHaveCount(0);
+
+		await openAnonymousPlaytestInvite(unknownPage, inviteUrl, 'Late Playtester');
+		await unknownPage.goto(roomUrl);
+		await expect(unknownPage.getByRole('alert')).toContainText('Playtest already started');
+	} finally {
+		await unknownContext.close();
 	}
 });
 

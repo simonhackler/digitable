@@ -4,6 +4,7 @@ export const privateRooms = pgTable('private_room', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	ownerUserId: text('owner_user_id').notNull(),
 	inviteCode: text('invite_code').unique(),
+	passwordHash: text('password_hash'),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 });
 

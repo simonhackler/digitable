@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { enhance } from '$app/forms';
 	import { LogIn, UserRound } from '@lucide/svelte';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 	const next = $derived(encodeURIComponent(data.next));
+	const passwordError = $derived(form?.passwordError ?? data.passwordError);
 </script>
 
 <svelte:head>
@@ -26,24 +28,52 @@
 				</p>
 			</div>
 
-			<div class="mt-8 grid gap-3 sm:grid-cols-2">
-				<a
-					class="inline-flex min-h-12 items-center justify-center gap-2 bg-[#171717] px-5 text-sm font-semibold text-white transition hover:bg-[#303030]"
-					href={resolve(`/sign-in?next=${next}` as `/sign-in?next=${string}`)}
-				>
-					<LogIn class="h-4 w-4" />
-					<span>Sign in</span>
-				</a>
-				<a
-					class="inline-flex min-h-12 items-center justify-center gap-2 border border-black/15 bg-white px-5 text-sm font-semibold text-[#171717] transition hover:bg-[#f3f5f0]"
-					href={resolve(
-						`/legal/accept?anonymous=playtest&next=${next}` as `/legal/accept?anonymous=playtest&next=${string}`
-					)}
-				>
-					<UserRound class="h-4 w-4" />
-					<span>Continue as anonymous user</span>
-				</a>
-			</div>
+			{#if data.requiresPassword}
+				<form method="POST" use:enhance class="mt-8 grid gap-4">
+					<label class="grid gap-2 text-sm font-semibold" for="playtest-password">
+						Playtest password
+						<input
+							id="playtest-password"
+							name="password"
+							type="password"
+							autocomplete="current-password"
+							class="min-h-12 border border-black/15 px-4 text-sm font-normal outline-none focus:border-[#171717]"
+							aria-invalid={passwordError ? 'true' : undefined}
+							aria-describedby={passwordError ? 'playtest-password-error' : undefined}
+						/>
+					</label>
+					{#if passwordError}
+						<p id="playtest-password-error" class="text-sm text-red-700" role="alert">
+							{passwordError}
+						</p>
+					{/if}
+					<button
+						type="submit"
+						class="inline-flex min-h-12 items-center justify-center bg-[#171717] px-5 text-sm font-semibold text-white transition hover:bg-[#303030]"
+					>
+						Continue
+					</button>
+				</form>
+			{:else}
+				<div class="mt-8 grid gap-3 sm:grid-cols-2">
+					<a
+						class="inline-flex min-h-12 items-center justify-center gap-2 bg-[#171717] px-5 text-sm font-semibold text-white transition hover:bg-[#303030]"
+						href={resolve(`/sign-in?next=${next}` as `/sign-in?next=${string}`)}
+					>
+						<LogIn class="h-4 w-4" />
+						<span>Sign in</span>
+					</a>
+					<a
+						class="inline-flex min-h-12 items-center justify-center gap-2 border border-black/15 bg-white px-5 text-sm font-semibold text-[#171717] transition hover:bg-[#f3f5f0]"
+						href={resolve(
+							`/legal/accept?anonymous=playtest&next=${next}` as `/legal/accept?anonymous=playtest&next=${string}`
+						)}
+					>
+						<UserRound class="h-4 w-4" />
+						<span>Continue as anonymous user</span>
+					</a>
+				</div>
+			{/if}
 		</div>
 	</section>
 </main>

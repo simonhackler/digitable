@@ -193,13 +193,15 @@ export class Deck extends Schema {
 
 export class Player extends Schema {
 	@type('string') id: string;
+	@type('string') userId: string;
 	@type('string') name: string;
 	@type('boolean') ready: boolean;
 	@type({ set: 'string' }) hand: SetSchema<string>;
 
-	constructor(id: string, name = 'Player') {
+	constructor(id: string, name = 'Player', userId = '') {
 		super();
 		this.id = id;
+		this.userId = userId;
 		this.name = name;
 		this.ready = false;
 		this.hand = new SetSchema<string>();

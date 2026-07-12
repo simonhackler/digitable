@@ -4,6 +4,7 @@ import {
 	getActiveMembership,
 	getPrivateRoomByInviteCode
 } from '@svg-table/db/private-rooms';
+import { hasPlaytestAccess } from '$lib/server/playtest-access';
 import { playtestPlayerLimitsFromFiles } from '$lib/server/playtest-player-limits';
 import { loadPlaytestProject } from '$lib/server/playtest-storage';
 import type { PageServerLoad } from './$types';
@@ -11,7 +12,7 @@ import type { PageServerLoad } from './$types';
 export const ssr = false;
 const APP_BASE = '/app';
 
-export const load: PageServerLoad = async ({ locals, params, url }) => {
+export const load: PageServerLoad = async ({ cookies, locals, params, url }) => {
 	const playtestId = params.playtestId;
 	const roomId = params.roomId;
 	if (!playtestId) {
@@ -35,6 +36,19 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	const room = await getPrivateRoomByInviteCode(playtestId);
 	if (!room || room.id !== playtest.metadata.privateRoomId) {
 		error(404, 'Playtest room not found');
+	}
+
+	if (
+		!hasPlaytestAccess({
+			cookies,
+			playtestId,
+			privateRoomId: room.id,
+			passwordHash: room.passwordHash
+		})
+	) {
+		const next = `${url.pathname}${url.search}`;
+		const joinPath = `${APP_BASE}/playtests/${encodeURIComponent(playtestId)}/join`;
+		redirect(303, `${joinPath}?next=${encodeURIComponent(next)}`);
 	}
 
 	const membership = await getActiveMembership({

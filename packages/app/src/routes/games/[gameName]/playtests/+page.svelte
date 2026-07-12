@@ -4,6 +4,7 @@
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Input } from '$lib/components/ui/input';
 	import {
 		importRegisteredPlaytestFeedback,
@@ -34,6 +35,8 @@
 	let loadingFeedback = $state<Record<string, boolean>>({});
 	let isStartingPlaytest = $state(false);
 	let isImportingFeedback = $state(false);
+	let startPlaytestOpen = $state(false);
+	let playtestPassword = $state('');
 	let statusMessage = $state<string | null>(null);
 	let errorMessage = $state<string | null>(null);
 	let origin = $state('');
@@ -138,6 +141,7 @@
 
 	async function startPlaytest() {
 		if (isStartingPlaytest) return;
+		const password = playtestPassword.trim();
 
 		isStartingPlaytest = true;
 		statusMessage = null;
@@ -154,7 +158,8 @@
 					},
 					body: JSON.stringify({
 						projectName,
-						files
+						files,
+						password: password || undefined
 					})
 				});
 
@@ -180,6 +185,8 @@
 		}
 
 		statusMessage = 'Playtest started';
+		startPlaytestOpen = false;
+		playtestPassword = '';
 		await loadPlaytests();
 	}
 
@@ -227,10 +234,53 @@
 			<p class="text-muted-foreground text-sm">{projectName}</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
-			<Button onclick={startPlaytest} disabled={isStartingPlaytest}>
-				<Share2 class="mr-2 h-4 w-4" />
-				{isStartingPlaytest ? 'Starting...' : 'Start playtest'}
-			</Button>
+			<Dialog.Root bind:open={startPlaytestOpen}>
+				<Dialog.Trigger>
+					{#snippet child({ props })}
+						<Button {...props} disabled={isStartingPlaytest}>
+							<Share2 class="mr-2 h-4 w-4" />
+							{isStartingPlaytest ? 'Starting...' : 'Start playtest'}
+						</Button>
+					{/snippet}
+				</Dialog.Trigger>
+				<Dialog.Content>
+					<Dialog.Header>
+						<Dialog.Title>Start playtest</Dialog.Title>
+						<Dialog.Description>
+							Create an invite link for this game. Add a password if only invited players should
+							access it.
+						</Dialog.Description>
+					</Dialog.Header>
+					<form
+						class="flex flex-col gap-4"
+						onsubmit={(event) => {
+							event.preventDefault();
+							void startPlaytest();
+						}}
+					>
+						<label class="text-sm font-medium" for="playtest-password">
+							Password <span class="text-muted-foreground font-normal">Optional</span>
+						</label>
+						<Input
+							id="playtest-password"
+							type="password"
+							bind:value={playtestPassword}
+							autocomplete="new-password"
+							placeholder="Leave blank for no password"
+						/>
+						<Dialog.Footer>
+							<Dialog.Close>
+								{#snippet child({ props })}
+									<Button {...props} variant="outline" disabled={isStartingPlaytest}>Cancel</Button>
+								{/snippet}
+							</Dialog.Close>
+							<Button type="submit" disabled={isStartingPlaytest}>
+								{isStartingPlaytest ? 'Starting...' : 'Start playtest'}
+							</Button>
+						</Dialog.Footer>
+					</form>
+				</Dialog.Content>
+			</Dialog.Root>
 		</div>
 	</div>
 

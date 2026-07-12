@@ -11,6 +11,7 @@ type JoinOptions = {
 	privateRoomId?: string;
 	playtestId?: string;
 	roomName?: string;
+	password?: string;
 	minPlayers?: number;
 	maxPlayers?: number;
 };
@@ -31,6 +32,7 @@ type PrivateRoomMetadata = {
 	minPlayers: number;
 	maxPlayers: number;
 	isFull: boolean;
+	hasPassword: boolean;
 };
 
 type PrivateCommandRoomClient = Client<{ auth: PrivateRoomAuth }>;
@@ -50,9 +52,14 @@ function normalizeRoomName(value: string | undefined) {
 	return roomName;
 }
 
+function normalizePassword(value: string | undefined) {
+	return value?.trim() ?? '';
+}
+
 export class PrivateCommandRoom extends CommandRoom<PrivateRoomMetadata, PrivateRoomAuth> {
 	private privateRoomId = '';
 	private playtestId = '';
+	private password = '';
 
 	static async onAuth(
 		token: string,
@@ -95,6 +102,7 @@ export class PrivateCommandRoom extends CommandRoom<PrivateRoomMetadata, Private
 			throw new ServerError(400, 'maxPlayers must be greater than or equal to minPlayers');
 		}
 		const roomName = normalizeRoomName(options.roomName);
+		this.password = normalizePassword(options.password);
 		this.maxClients = maxPlayers;
 
 		super.onCreate();
@@ -107,17 +115,36 @@ export class PrivateCommandRoom extends CommandRoom<PrivateRoomMetadata, Private
 	}
 
 	onJoin(client: PrivateCommandRoomClient, options: JoinOptions, auth?: PrivateRoomAuth) {
-		if (
-			options.privateRoomId !== this.privateRoomId ||
-			auth?.privateRoomId !== this.privateRoomId
-		) {
-			throw new ServerError(403, 'Invalid private room');
+		if (!auth) {
+			throw new ServerError(401, 'Missing private room auth');
 		}
 
-		if (auth) {
-			client.auth = auth;
+		if (options.privateRoomId !== this.privateRoomId || auth.privateRoomId !== this.privateRoomId) {
+			throw new ServerError(403, 'Invalid private room');
+		}
+		if (this.password && normalizePassword(options.password) !== this.password) {
+			throw new ServerError(403, 'Invalid room password');
+		}
+
+		const previousSessionId = this.sessionIdForUser(auth.userId);
+		if (this.state.phase === 'playing' && !previousSessionId) {
+			throw new ServerError(403, 'Playtest already started');
+		}
+
+		client.auth = auth;
+		if (previousSessionId && previousSessionId !== client.sessionId) {
+			this.movePlayerSession(previousSessionId, client.sessionId);
 		}
 		super.onJoin(client, options);
+	}
+
+	onLeave(client: PrivateCommandRoomClient) {
+		if (this.state.phase === 'playing') {
+			void this.onLobbyChanged();
+			return;
+		}
+
+		super.onLeave(client);
 	}
 
 	async onDrop(client: PrivateCommandRoomClient) {
@@ -129,10 +156,36 @@ export class PrivateCommandRoom extends CommandRoom<PrivateRoomMetadata, Private
 	}
 
 	async onLobbyChanged() {
-		if (this.state.phase === 'playing' && !this.locked) {
-			await this.lock();
+		if (this.state.phase === 'playing') {
+			// Participant access is enforced by userId after start; extra transport seats allow rejoin
+			// to replace stale sessions or reconnection reservations.
+			this.maxClients = MAX_PLAYERS;
+			this.autoDispose = false;
 		}
 		await this.updateListingMetadata();
+	}
+
+	private sessionIdForUser(userId: string) {
+		for (const [sessionId, player] of this.state.players.entries()) {
+			if (player.userId === userId) return sessionId;
+		}
+
+		return null;
+	}
+
+	private movePlayerSession(previousSessionId: string, nextSessionId: string) {
+		const player = this.state.players.get(previousSessionId);
+		if (!player) return;
+
+		this.state.players.delete(previousSessionId);
+		player.id = nextSessionId;
+		this.state.players.set(nextSessionId, player);
+
+		for (const component of this.state.components.values()) {
+			if (component.owner === previousSessionId) {
+				component.owner = nextSessionId;
+			}
+		}
 	}
 
 	private async updateListingMetadata() {
@@ -145,7 +198,8 @@ export class PrivateCommandRoom extends CommandRoom<PrivateRoomMetadata, Private
 			playerCount,
 			minPlayers: this.state.minPlayers,
 			maxPlayers: this.state.maxPlayers,
-			isFull: playerCount >= this.state.maxPlayers
+			isFull: playerCount >= this.state.maxPlayers,
+			hasPassword: Boolean(this.password)
 		});
 	}
 }

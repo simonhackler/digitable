@@ -1,6 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="63mm" height="88mm" viewBox="0 0 63 88">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">
  <g class="layer">
   <title>Layer 1</title>
-  <image xmlns:xlink="http://www.w3.org/1999/xlink" height="90" href="/placeholder.svg" id="background" transform="translate(-0.181018 -0.179297) scale(0.930972 0.930972) translate(0.181018 0.179297) matrix(1.04582 0 0 1.04582 41.9486 21.0339)" width="60" x="-40" y="-20" xlink:href="/placeholder.svg"/>
+  <text data-svgedit-line-height="9.92" data-svgedit-multiline="true" data-svgedit-raw-text=" fdsf fds fsd  zht" data-svgedit-shape-inside-ref="#svg_1" data-svgedit-text-overflow="false" data-svgedit-wrap-height="30" data-svgedit-wrap-width="32.26" fill="#000000" font-family="serif" font-size="6" id="svg_2" stroke="#000000" stroke-width="0" text-anchor="start" x="0" xml:space="preserve" y="61">
+   <tspan x="6.42" y="61">fdsf fds fsd  zht</tspan>
+  </text>
  </g>
+ <defs>
+  <rect data-svgedit-frame-for="shape-inside" data-svgedit-text-frame="true" fill="none" height="30" id="svg_1" opacity="0.5" width="32.26" x="0" y="58"/>
+ </defs>
 </svg>

@@ -1317,6 +1317,7 @@
 	onDestroy(() => {
 		document.removeEventListener('contextmenu', blockNativeContextMenu);
 		window.removeEventListener('keydown', handleCameraShortcut);
+		room.leave();
 	});
 
 	function selectionAfterStackDraw(item: BoardGameItemNew): BoardGameItemNew | null {

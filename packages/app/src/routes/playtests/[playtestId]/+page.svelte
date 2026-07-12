@@ -3,7 +3,14 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { env } from '$env/dynamic/public';
-	import { playtestRoomHref, setPlaytestReconnectToken } from '$lib/play/playtest-room-helpers';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import {
+		playtestRoomHref,
+		setPlaytestReconnectToken,
+		setPlaytestRoomPassword
+	} from '$lib/play/playtest-room-helpers';
 	import type { LobbyRoom } from '$lib/play/room-types';
 	import { Client, type RoomAvailable } from '@colyseus/sdk';
 	import type { BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
@@ -19,11 +26,17 @@
 		minPlayers: number;
 		maxPlayers: number;
 		isFull: boolean;
+		hasPassword: boolean;
 	};
 
 	let { data }: PageProps = $props();
 	let rooms = $state<RoomAvailable<PlaytestRoomMetadata>[]>([]);
 	let roomName = $state('');
+	let roomPassword = $state('');
+	let createRoomOpen = $state(false);
+	let selectedRoom = $state<RoomAvailable<PlaytestRoomMetadata> | null>(null);
+	let joinRoomOpen = $state(false);
+	let joinPassword = $state('');
 	let status = $state('Loading rooms...');
 	let errorMessage = $state('');
 	let creating = $state(false);
@@ -57,6 +70,7 @@
 
 	async function createRoom() {
 		const trimmedRoomName = roomName.trim().replace(/\s+/g, ' ');
+		const trimmedPassword = roomPassword.trim();
 		if (!trimmedRoomName) {
 			errorMessage = 'Enter a room name.';
 			return;
@@ -75,9 +89,13 @@
 				privateRoomId: data.privateRoomId,
 				playtestId: data.playtestId,
 				roomName: trimmedRoomName,
+				password: trimmedPassword || undefined,
 				minPlayers: data.minPlayers,
 				maxPlayers: data.maxPlayers
 			});
+			if (trimmedPassword) {
+				setPlaytestRoomPassword(data.privateRoomId, room.roomId, trimmedPassword);
+			}
 			setPlaytestReconnectToken(data.privateRoomId, room.roomId, room.reconnectionToken);
 			room.reconnection.enabled = false;
 			void room.leave(false);
@@ -87,6 +105,23 @@
 		} finally {
 			creating = false;
 		}
+	}
+
+	async function joinRoom(room: RoomAvailable<PlaytestRoomMetadata>) {
+		const href = playtestRoomHref({ playtestId: data.playtestId, roomId: room.roomId, e2e });
+		if (room.metadata?.hasPassword) {
+			selectedRoom = room;
+			joinPassword = '';
+			joinRoomOpen = true;
+			return;
+		}
+		await goto(href);
+	}
+
+	async function joinSelectedRoom() {
+		if (!selectedRoom) return;
+		setPlaytestRoomPassword(data.privateRoomId, selectedRoom.roomId, joinPassword);
+		await goto(playtestRoomHref({ playtestId: data.playtestId, roomId: selectedRoom.roomId, e2e }));
 	}
 
 	onMount(async () => {
@@ -142,30 +177,57 @@
 			</p>
 		</header>
 
-		<form
-			class="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row"
-			onsubmit={(event) => {
-				event.preventDefault();
-				void createRoom();
-			}}
-		>
-			<label class="flex flex-1 flex-col gap-1 text-sm font-medium">
-				Room name
-				<input
-					class="border-input bg-background rounded-md border px-3 py-2 text-sm"
-					bind:value={roomName}
-					maxlength="80"
-					placeholder="Friday test"
-				/>
-			</label>
-			<button
-				type="submit"
-				disabled={creating}
-				class="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-50 sm:self-end"
-			>
-				{creating ? 'Creating...' : 'Create room'}
-			</button>
-		</form>
+		<Dialog.Root bind:open={createRoomOpen}>
+			<Dialog.Trigger>
+				{#snippet child({ props })}
+					<Button {...props} class="self-start" disabled={creating}>
+						{creating ? 'Creating...' : 'Create room'}
+					</Button>
+				{/snippet}
+			</Dialog.Trigger>
+			<Dialog.Content>
+				<Dialog.Header>
+					<Dialog.Title>Create room</Dialog.Title>
+					<Dialog.Description>
+						Create a lobby for this playtest. Add a password if only invited players should join.
+					</Dialog.Description>
+				</Dialog.Header>
+				<form
+					class="flex flex-col gap-4"
+					onsubmit={(event) => {
+						event.preventDefault();
+						void createRoom();
+					}}
+				>
+					<label class="flex flex-col gap-1.5 text-sm font-medium" for="room-name">
+						Room name
+					</label>
+					<Input id="room-name" bind:value={roomName} maxlength={80} placeholder="Friday test" />
+
+					<label class="flex flex-col gap-1.5 text-sm font-medium" for="room-password">
+						Password <span class="text-muted-foreground font-normal">Optional</span>
+					</label>
+					<Input
+						id="room-password"
+						type="password"
+						bind:value={roomPassword}
+						autocomplete="new-password"
+						placeholder="Leave blank for no password"
+					/>
+
+					<Dialog.Footer>
+						<Dialog.Close>
+							{#snippet child({ props })}
+								<Button {...props} variant="outline" disabled={creating}>Cancel</Button>
+							{/snippet}
+						</Dialog.Close>
+						<Button type="submit" disabled={creating}>
+							{creating ? 'Creating...' : 'Create room'}
+						</Button>
+					</Dialog.Footer>
+				</form>
+			</Dialog.Content>
+		</Dialog.Root>
 
 		{#if errorMessage}
 			<p class="text-destructive text-sm" role="alert">{errorMessage}</p>
@@ -178,20 +240,55 @@
 
 			{#each rooms as room (room.roomId)}
 				{@const metadata = room.metadata}
-				<a
-					href={playtestRoomHref({ playtestId: data.playtestId, roomId: room.roomId, e2e })}
-					class="hover:bg-accent flex items-center justify-between gap-4 rounded-lg border p-4"
+				<button
+					type="button"
+					onclick={() => void joinRoom(room)}
+					class="hover:bg-accent flex items-center justify-between gap-4 rounded-lg border p-4 text-left"
 				>
 					<span class="flex min-w-0 flex-col gap-1">
 						<span class="truncate font-medium">{metadata?.roomName ?? 'Room'}</span>
 						<span class="text-muted-foreground text-sm">
 							{metadata?.playerCount ?? room.clients} / {metadata?.maxPlayers ?? room.maxClients}
-							players
+							players{metadata?.hasPassword ? ' · Password required' : ''}
 						</span>
 					</span>
 					<span class="text-primary text-sm font-medium">Join</span>
-				</a>
+				</button>
 			{/each}
 		</section>
+
+		<Dialog.Root bind:open={joinRoomOpen}>
+			<Dialog.Content>
+				<Dialog.Header>
+					<Dialog.Title>Enter room password</Dialog.Title>
+					<Dialog.Description>
+						{selectedRoom?.metadata?.roomName ?? 'This room'} requires a password to join.
+					</Dialog.Description>
+				</Dialog.Header>
+				<form
+					class="flex flex-col gap-4"
+					onsubmit={(event) => {
+						event.preventDefault();
+						void joinSelectedRoom();
+					}}
+				>
+					<label class="text-sm font-medium" for="join-room-password">Password</label>
+					<Input
+						id="join-room-password"
+						type="password"
+						bind:value={joinPassword}
+						autocomplete="current-password"
+					/>
+					<Dialog.Footer>
+						<Dialog.Close>
+							{#snippet child({ props })}
+								<Button {...props} variant="outline">Cancel</Button>
+							{/snippet}
+						</Dialog.Close>
+						<Button type="submit">Join room</Button>
+					</Dialog.Footer>
+				</form>
+			</Dialog.Content>
+		</Dialog.Root>
 	</div>
 </main>

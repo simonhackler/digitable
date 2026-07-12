@@ -7,7 +7,9 @@
 	import PlaySurface from '$lib/play/PlaySurface.svelte';
 	import {
 		clearPlaytestReconnectToken,
+		clearPlaytestRoomPassword,
 		getPlaytestReconnectToken,
+		getPlaytestRoomPassword,
 		setPlaytestReconnectToken
 	} from '$lib/play/playtest-room-helpers';
 	import type { PlayRoom } from '$lib/play/room-types';
@@ -99,8 +101,10 @@
 
 		if (!playRoom) {
 			client.auth.token = await getGameTicket();
+			const password = getPlaytestRoomPassword(data.privateRoomId, data.roomId);
 			playRoom = await client.joinById<BoardGameRoomState>(data.roomId, {
-				privateRoomId: data.privateRoomId
+				privateRoomId: data.privateRoomId,
+				password: password || undefined
 			});
 		}
 
@@ -156,6 +160,7 @@
 		try {
 			await Promise.all([connectRoom(), importProject()]);
 		} catch (error) {
+			clearPlaytestRoomPassword(data.privateRoomId, data.roomId);
 			failure = error instanceof Error ? error.message : 'Could not join room';
 			status = '';
 		}

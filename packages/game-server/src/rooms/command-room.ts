@@ -66,7 +66,8 @@ export class CommandRoom<Metadata = Record<string, unknown>, Auth = unknown> ext
 		logger.info('Client joined:', client.sessionId);
 		this.dispatcher.dispatch(new OnJoinCommand(), {
 			sessionId: client.sessionId,
-			name: playerNameFromAuth(client.auth)
+			name: playerNameFromAuth(client.auth),
+			userId: playerUserIdFromAuth(client.auth)
 		});
 	}
 
@@ -105,6 +106,12 @@ function playerNameFromAuth(auth: unknown) {
 	return name || 'Player';
 }
 
+function playerUserIdFromAuth(auth: unknown) {
+	if (!auth || typeof auth !== 'object' || !('userId' in auth)) return '';
+
+	return String(auth.userId);
+}
+
 function getValidComponent(
 	state: BoardGameRoomState,
 	componentId: string,
@@ -128,11 +135,12 @@ export class OnJoinCommand extends Command<
 	{
 		sessionId: string;
 		name: string;
+		userId: string;
 	}
 > {
-	execute({ sessionId, name } = this.payload) {
+	execute({ sessionId, name, userId } = this.payload) {
 		if (this.state.players.has(sessionId)) return;
-		const player = new Player(sessionId, name);
+		const player = new Player(sessionId, name, userId);
 		this.state.players.set(sessionId, player);
 		void this.room.onLobbyChanged();
 	}
