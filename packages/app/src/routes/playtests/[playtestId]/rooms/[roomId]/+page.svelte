@@ -43,7 +43,7 @@
 	const gameServerUrl = env.PUBLIC_GAME_SERVER_URL;
 	const currentPlayer = $derived(players.find((player) => player.id === room?.sessionId) ?? null);
 	const readyCount = $derived(players.filter((player) => player.ready).length);
-	const canReady = $derived(phase === 'lobby' && Boolean(currentPlayer) && !currentPlayer?.ready);
+	const canReady = $derived(phase === 'lobby' && Boolean(currentPlayer));
 
 	async function getGameTicket() {
 		const response = await fetch(resolve('/api/game-ticket'), {

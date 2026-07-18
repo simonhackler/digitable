@@ -156,7 +156,7 @@ export class ReadyCommand extends Command<
 		const player = this.state.players.get(payload.sessionId);
 		if (!player) return;
 
-		player.ready = true;
+		player.ready = !player.ready;
 		return this.room.tryStartGame();
 	}
 
