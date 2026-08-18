@@ -18,6 +18,8 @@
 	import type { BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { onDestroy, onMount } from 'svelte';
 	import type { PageProps } from './$types';
+	import { Button } from '$lib/components/ui/button';
+	import { ArrowLeftFromLine } from '@lucide/svelte';
 
 	type LobbyPlayer = {
 		id: string;
@@ -189,7 +191,13 @@
 	<main class="bg-background flex min-h-screen w-full items-center justify-center p-6">
 		<div class="flex w-full max-w-lg flex-col gap-5 rounded-lg border p-6 shadow-sm">
 			<header class="flex flex-col gap-2">
-				<p class="text-muted-foreground text-sm">Playtest lobby</p>
+				<div class="flex justify-between">
+					<p class="text-muted-foreground text-sm">Playtest lobby</p>
+					<Button href={`/playtests/${data.playtestId}`} variant="ghost">
+						<ArrowLeftFromLine />
+						Back to rooms</Button
+					>
+				</div>
 				<h1 class="text-2xl font-semibold">{roomName}</h1>
 				<p class="text-muted-foreground text-sm">
 					{players.length} / {data.maxPlayers} players, minimum {data.minPlayers}
@@ -232,7 +240,7 @@
 					class="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-50"
 					onclick={readyUp}
 				>
-					{currentPlayer?.ready ? 'Ready' : 'Ready up'}
+					{currentPlayer?.ready ? 'Not Ready' : 'Ready'}
 				</button>
 			{/if}
 		</div>

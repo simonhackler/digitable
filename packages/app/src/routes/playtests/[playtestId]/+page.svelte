@@ -16,6 +16,7 @@
 	import type { BoardGameRoomState } from 'boardgame-server/src/rooms/schema/MyRoomState';
 	import { onDestroy, onMount } from 'svelte';
 	import type { PageProps } from './$types';
+	import CreateRoomModal from './create-room-modal.svelte';
 
 	type PlaytestRoomMetadata = {
 		privateRoomId: string;
@@ -31,15 +32,10 @@
 
 	let { data }: PageProps = $props();
 	let rooms = $state<RoomAvailable<PlaytestRoomMetadata>[]>([]);
-	let roomName = $state('');
-	let roomPassword = $state('');
-	let createRoomOpen = $state(false);
 	let selectedRoom = $state<RoomAvailable<PlaytestRoomMetadata> | null>(null);
 	let joinRoomOpen = $state(false);
 	let joinPassword = $state('');
-	let status = $state('Loading rooms...');
 	let errorMessage = $state('');
-	let creating = $state(false);
 	let lobby: LobbyRoom | null = null;
 	const e2e = $derived(page.url.searchParams.has('e2e'));
 	const gameServerUrl = env.PUBLIC_GAME_SERVER_URL;
@@ -48,7 +44,6 @@
 		rooms = nextRooms
 			.filter((room) => room.metadata?.phase === 'lobby' && room.metadata.isFull === false)
 			.sort((a, b) => (a.metadata?.roomName ?? '').localeCompare(b.metadata?.roomName ?? ''));
-		status = rooms.length === 0 ? 'No open rooms yet.' : '';
 	}
 
 	async function getGameTicket() {
@@ -68,9 +63,9 @@
 		return ticket;
 	}
 
-	async function createRoom() {
-		const trimmedRoomName = roomName.trim().replace(/\s+/g, ' ');
-		const trimmedPassword = roomPassword.trim();
+	async function createRoom(name: string, password?: string) {
+		const trimmedRoomName = name.trim().replace(/\s+/g, ' ');
+		const trimmedPassword = password?.trim();
 		if (!trimmedRoomName) {
 			errorMessage = 'Enter a room name.';
 			return;
@@ -80,7 +75,6 @@
 			return;
 		}
 
-		creating = true;
 		errorMessage = '';
 		try {
 			const client = new Client(gameServerUrl);
@@ -103,7 +97,6 @@
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Could not create room.';
 		} finally {
-			creating = false;
 		}
 	}
 
@@ -127,7 +120,6 @@
 	onMount(async () => {
 		if (!gameServerUrl) {
 			errorMessage = 'Game server URL is not configured.';
-			status = '';
 			return;
 		}
 
@@ -157,7 +149,6 @@
 				setRooms(rooms.filter((room) => room.roomId !== roomId));
 			});
 		} catch (error) {
-			status = '';
 			errorMessage = error instanceof Error ? error.message : 'Could not load rooms.';
 		}
 	});
@@ -177,67 +168,18 @@
 			</p>
 		</header>
 
-		<Dialog.Root bind:open={createRoomOpen}>
-			<Dialog.Trigger>
-				{#snippet child({ props })}
-					<Button {...props} class="self-start" disabled={creating}>
-						{creating ? 'Creating...' : 'Create room'}
-					</Button>
-				{/snippet}
-			</Dialog.Trigger>
-			<Dialog.Content>
-				<Dialog.Header>
-					<Dialog.Title>Create room</Dialog.Title>
-					<Dialog.Description>
-						Create a lobby for this playtest. Add a password if only invited players should join.
-					</Dialog.Description>
-				</Dialog.Header>
-				<form
-					class="flex flex-col gap-4"
-					onsubmit={(event) => {
-						event.preventDefault();
-						void createRoom();
-					}}
-				>
-					<label class="flex flex-col gap-1.5 text-sm font-medium" for="room-name">
-						Room name
-					</label>
-					<Input id="room-name" bind:value={roomName} maxlength={80} placeholder="Friday test" />
-
-					<label class="flex flex-col gap-1.5 text-sm font-medium" for="room-password">
-						Password <span class="text-muted-foreground font-normal">Optional</span>
-					</label>
-					<Input
-						id="room-password"
-						type="password"
-						bind:value={roomPassword}
-						autocomplete="new-password"
-						placeholder="Leave blank for no password"
-					/>
-
-					<Dialog.Footer>
-						<Dialog.Close>
-							{#snippet child({ props })}
-								<Button {...props} variant="outline" disabled={creating}>Cancel</Button>
-							{/snippet}
-						</Dialog.Close>
-						<Button type="submit" disabled={creating}>
-							{creating ? 'Creating...' : 'Create room'}
-						</Button>
-					</Dialog.Footer>
-				</form>
-			</Dialog.Content>
-		</Dialog.Root>
+		<CreateRoomModal
+			onSubmit={createRoom}
+			title="Create Room"
+			actionName="Create Room"
+			creatingName="Creating..."
+		/>
 
 		{#if errorMessage}
 			<p class="text-destructive text-sm" role="alert">{errorMessage}</p>
 		{/if}
 
 		<section class="flex flex-col gap-3" aria-label="Open rooms">
-			{#if status}
-				<p class="text-muted-foreground text-sm">{status}</p>
-			{/if}
-
 			{#each rooms as room (room.roomId)}
 				{@const metadata = room.metadata}
 				<button

@@ -4,7 +4,6 @@
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card/index.js';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Input } from '$lib/components/ui/input';
 	import {
 		importRegisteredPlaytestFeedback,
@@ -15,10 +14,11 @@
 	} from '$lib/playtests/feedback';
 	import { exportProjectForPlaytest } from '$lib/playtests/project-transfer';
 	import { requireParam } from '$lib/utils/assert';
-	import { Clipboard, ExternalLink, Share2 } from '@lucide/svelte';
+	import { Clipboard, ExternalLink } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { Err, tryAsync } from 'wellcrafted/result';
 	import { getFileSystemContext } from '../../context';
+	import CreateRoomModal from '../../../playtests/[playtestId]/create-room-modal.svelte';
 
 	type RegisteredPlaytest = PlaytestFeedbackRegistry['playtests'][number];
 
@@ -35,8 +35,6 @@
 	let loadingFeedback = $state<Record<string, boolean>>({});
 	let isStartingPlaytest = $state(false);
 	let isImportingFeedback = $state(false);
-	let startPlaytestOpen = $state(false);
-	let playtestPassword = $state('');
 	let statusMessage = $state<string | null>(null);
 	let errorMessage = $state<string | null>(null);
 	let origin = $state('');
@@ -139,9 +137,9 @@
 		await importFeedback();
 	}
 
-	async function startPlaytest() {
+	async function startPlaytest(name: string, playtestPassword?: string) {
 		if (isStartingPlaytest) return;
-		const password = playtestPassword.trim();
+		const password = playtestPassword?.trim();
 
 		isStartingPlaytest = true;
 		statusMessage = null;
@@ -151,6 +149,7 @@
 			try: async () => {
 				const gameDir = await openGameDir();
 				const files = await exportProjectForPlaytest(fileSystem, projectName);
+				// TODO: This shouldn't be an untyped api call.
 				const response = await fetch(resolve('/api/playtests'), {
 					method: 'POST',
 					headers: {
@@ -185,7 +184,6 @@
 		}
 
 		statusMessage = 'Playtest started';
-		startPlaytestOpen = false;
 		playtestPassword = '';
 		await loadPlaytests();
 	}
@@ -234,53 +232,12 @@
 			<p class="text-muted-foreground text-sm">{projectName}</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
-			<Dialog.Root bind:open={startPlaytestOpen}>
-				<Dialog.Trigger>
-					{#snippet child({ props })}
-						<Button {...props} disabled={isStartingPlaytest}>
-							<Share2 class="mr-2 h-4 w-4" />
-							{isStartingPlaytest ? 'Starting...' : 'Start playtest'}
-						</Button>
-					{/snippet}
-				</Dialog.Trigger>
-				<Dialog.Content>
-					<Dialog.Header>
-						<Dialog.Title>Start playtest</Dialog.Title>
-						<Dialog.Description>
-							Create an invite link for this game. Add a password if only invited players should
-							access it.
-						</Dialog.Description>
-					</Dialog.Header>
-					<form
-						class="flex flex-col gap-4"
-						onsubmit={(event) => {
-							event.preventDefault();
-							void startPlaytest();
-						}}
-					>
-						<label class="text-sm font-medium" for="playtest-password">
-							Password <span class="text-muted-foreground font-normal">Optional</span>
-						</label>
-						<Input
-							id="playtest-password"
-							type="password"
-							bind:value={playtestPassword}
-							autocomplete="new-password"
-							placeholder="Leave blank for no password"
-						/>
-						<Dialog.Footer>
-							<Dialog.Close>
-								{#snippet child({ props })}
-									<Button {...props} variant="outline" disabled={isStartingPlaytest}>Cancel</Button>
-								{/snippet}
-							</Dialog.Close>
-							<Button type="submit" disabled={isStartingPlaytest}>
-								{isStartingPlaytest ? 'Starting...' : 'Start playtest'}
-							</Button>
-						</Dialog.Footer>
-					</form>
-				</Dialog.Content>
-			</Dialog.Root>
+			<CreateRoomModal
+				onSubmit={startPlaytest}
+				title="Create Playtest"
+				actionName="Create Playtest"
+				creatingName="Creating..."
+			/>
 		</div>
 	</div>
 
