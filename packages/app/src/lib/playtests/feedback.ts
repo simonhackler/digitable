@@ -10,6 +10,7 @@ const REGISTRY_PATH = 'feedback/playtests.json';
 export type PlaytestFeedbackRegistry = {
 	version: 1;
 	playtests: {
+		name: string;
 		playtestId: string;
 		createdAt: string;
 		importedFeedbackIds: string[];
@@ -96,6 +97,8 @@ async function writePlaytestFeedbackRegistry(
 	gameDir: FsDir,
 	registry: PlaytestFeedbackRegistry
 ): Promise<Result<void, FsError>> {
+	console.log('writing:');
+	console.log(registry);
 	const written = await gameDir.write(REGISTRY_PATH, JSON.stringify(registry, null, 2));
 	if (written.error) {
 		return Err(written.error);
@@ -105,7 +108,8 @@ async function writePlaytestFeedbackRegistry(
 
 export async function registerPlaytestFeedbackImport(
 	gameDir: FsDir,
-	playtestId: string
+	playtestId: string,
+	playtestName: string
 ): Promise<Result<void, FsError>> {
 	const registry = await readPlaytestFeedbackRegistry(gameDir);
 	if (registry.error) return Err(registry.error);
@@ -119,6 +123,7 @@ export async function registerPlaytestFeedbackImport(
 			...registry.data.playtests,
 			{
 				playtestId,
+				name: playtestName,
 				createdAt: new Date().toISOString(),
 				importedFeedbackIds: []
 			}

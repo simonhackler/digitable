@@ -141,6 +141,11 @@ async function expectSetupElementPresentOnce(
 
 test('table setup resizes grid slot when accepted deck changes', async ({ page }) => {
 	await seedProjects(page);
+	await writeOpfsText(
+		page,
+		'/western-cards/setup/table.svg',
+		'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500" data-digitable-table="true" data-preset-id="custom"></svg>'
+	);
 	await page.goto('/app/games/western-cards/setup?e2e');
 	await expect(page.getByRole('heading', { name: 'Table' })).toBeVisible();
 	await expect(page.getByRole('status')).toContainText('Loaded');
@@ -193,7 +198,7 @@ test('table setup resizes grid slot when accepted deck changes', async ({ page }
 		.toEqual({
 			acceptedDeckNames: ['western'],
 			height: 88,
-			width: 300
+			width: 138
 		});
 });
 

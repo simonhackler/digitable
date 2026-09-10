@@ -1,8 +1,4 @@
-import type {
-	BoardGameRoomState,
-	Component,
-	Stack
-} from 'boardgame-server/src/rooms/schema/MyRoomState';
+import type { Component, Stack } from 'boardgame-server/src/rooms/schema/MyRoomState';
 import type { BoardGameItemNew } from '$lib/pixi/item';
 import { assert } from '$lib/utils/assert';
 import type { PlayRoom } from '../room-types';

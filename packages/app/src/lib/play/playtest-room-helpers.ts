@@ -1,13 +1,16 @@
-import { resolve } from '$app/paths';
-
 const reconnectTokenPrefix = 'svg-table:playtest-reconnect-token:';
 const roomPasswordPrefix = 'svg-table:playtest-room-password:';
+type PlaytestRoomPath =
+	| `/playtests/${string}/rooms/${string}`
+	| `/playtests/${string}/rooms/${string}?e2e=1`;
 
-export function playtestRoomHref(input: { playtestId: string; roomId: string; e2e?: boolean }) {
-	const path = resolve('/playtests/[playtestId]/rooms/[roomId]', {
-		playtestId: input.playtestId,
-		roomId: input.roomId
-	});
+export function playtestRoomHref(input: {
+	playtestId: string;
+	roomId: string;
+	e2e?: boolean;
+}): PlaytestRoomPath {
+	const path =
+		`/playtests/${encodeURIComponent(input.playtestId)}/rooms/${encodeURIComponent(input.roomId)}` as const;
 
 	return input.e2e ? `${path}?e2e=1` : path;
 }

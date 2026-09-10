@@ -62,6 +62,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (getPlaytestProjectSize(files) >= maxProjectBytes) {
 		error(413, `Playtest project must be smaller than ${formatByteLimit(maxProjectBytes)}`);
 	}
+	console.log(body.projectName);
 
 	const room = await createPrivateRoom({
 		ownerUserId: locals.user.id,
@@ -84,6 +85,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	return json({
 		playtestId,
+		projectName: body.projectName,
 		privateRoomId: room.id,
 		invitePath: `/playtests/${playtestId}`
 	});

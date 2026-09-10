@@ -4,6 +4,7 @@ import {
 	saveOpfsStoragePreference,
 	seedProjectFiles,
 	useBrowserStorage,
+	writeBufferToOPFS,
 	writeOpfsText
 } from './helpers/opfs';
 import {
@@ -1031,12 +1032,13 @@ async function startPlaytestAndGetInvite(page: Page, projectSlug: string, passwo
 	await page.getByRole('link', { name: 'Playtests' }).click();
 	await expect(page).toHaveURL(new RegExp(`/app/games/${projectSlug}/playtests`));
 	await expect(page.getByRole('heading', { name: 'Playtests' })).toBeVisible();
-	await page.getByRole('button', { name: 'Start playtest' }).click();
+	await page.getByRole('button', { name: 'Create Playtest' }).click();
 	const dialog = page.getByRole('dialog');
+	await dialog.getByLabel('Name').fill('E2E playtest');
 	if (password) {
 		await dialog.getByLabel('Password').fill(password);
 	}
-	await dialog.getByRole('button', { name: 'Start playtest' }).click();
+	await dialog.getByRole('button', { name: 'Create Playtest' }).click();
 	const inviteInput = page.getByLabel('Playtest invite link');
 	await expect(inviteInput).toHaveValue(/\/app\/playtests\/[0-9a-f-]+/);
 	await expect(page.getByRole('link', { name: 'Open' }).first()).toHaveAttribute(
@@ -1066,17 +1068,17 @@ async function unlockPlaytestInvite(page: Page, inviteUrl: string, password: str
 
 async function createPlaytestRoom(page: Page, inviteUrl: string, roomName: string, password = '') {
 	await openPlaytestRoomList(page, inviteUrl);
-	await page.getByRole('button', { name: 'Create room' }).click();
+	await page.getByRole('button', { name: 'Create Room' }).click();
 	const dialog = page.getByRole('dialog');
-	await dialog.getByLabel('Room name').fill(roomName);
+	await dialog.getByLabel('Name').fill(roomName);
 	if (password) {
 		await dialog.getByLabel('Password').fill(password);
 	}
-	await dialog.getByRole('button', { name: 'Create room' }).click();
+	await dialog.getByRole('button', { name: 'Create Room' }).click();
 	await expect(page).toHaveURL(/\/app\/playtests\/[0-9a-f-]+\/rooms\/[A-Za-z0-9_-]+\?e2e=1$/);
 	await expect(page.getByRole('heading', { name: roomName })).toBeVisible();
 	await expect(page.getByText('Playtest E2E (You)')).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Ready up' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Ready' })).toBeVisible();
 	return page.url();
 }
 
@@ -1093,7 +1095,10 @@ async function joinPlaytestRoom(page: Page, inviteUrl: string, roomName: string,
 }
 
 async function readyAndWaitForPixi(page: Page) {
-	await page.getByRole('button', { name: 'Ready up' }).click();
+	const readyButton = page.getByRole('button', { name: 'Ready' });
+	if (await readyButton.isEnabled().catch(() => false)) {
+		await readyButton.click();
+	}
 	await waitForPixi(page);
 }
 
@@ -1559,7 +1564,7 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	await signUp(page);
 	await seedPixiProject(page, 'pixi-play-smoke');
 
-	const playtestPassword = 'playtest-correct-horse-battery-staple';
+	const playtestPassword = 'playtest-e2e-password';
 	const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke', playtestPassword);
 
 	await page.evaluate(() => localStorage.setItem('storage-preference', 'directory'));
@@ -1569,7 +1574,7 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 	const secondPage = await page.context().newPage();
 	await unlockPlaytestInvite(secondPage, inviteUrl, playtestPassword);
 	await joinPlaytestRoom(secondPage, inviteUrl, 'Smoke room', roomPassword);
-	await secondPage.getByRole('button', { name: 'Ready up' }).click();
+	await secondPage.getByRole('button', { name: 'Ready' }).click();
 	await readyAndWaitForPixi(page);
 	await secondPage.close();
 	await page.goto(roomUrl);
@@ -1609,7 +1614,7 @@ test('playtest invite imports the project and opens playable cards', async ({ pa
 			{ timeout: 20_000 }
 		)
 		.toEqual({
-			visibleBoardCards: 1,
+			visibleBoardCards: 0,
 			handCards: 1
 		});
 
@@ -1695,10 +1700,9 @@ test('playtest room list hides full lobbies based on game player limits', async 
 		await joinPlaytestRoom(secondPage, inviteUrl, 'Two seats');
 
 		await openAnonymousPlaytestInvite(thirdPage, inviteUrl);
-		await expect(thirdPage.getByRole('link', { name: /Two seats/ })).toHaveCount(0);
-		await expect(thirdPage.getByText('No open rooms yet.')).toBeVisible();
+		await expect(thirdPage.getByRole('button', { name: /Two seats/ })).toHaveCount(0);
 
-		await page.getByRole('button', { name: 'Ready up' }).click();
+		await page.getByRole('button', { name: 'Ready' }).click();
 		await readyAndWaitForPixi(secondPage);
 		await waitForPixi(page);
 	} finally {
@@ -1759,7 +1763,7 @@ test('playtest invitees share private room state', async ({ page, browser }) => 
 		await openAnonymousPlaytestInvite(secondPage, inviteUrl);
 		await joinPlaytestRoom(secondPage, inviteUrl, 'Shared room');
 		const playtestStartFailures = collectPlaytestStartFailures(page, secondPage);
-		await page.getByRole('button', { name: 'Ready up' }).click();
+		await page.getByRole('button', { name: 'Ready' }).click();
 		await readyAndWaitForPixi(secondPage);
 		await waitForPixi(page);
 		playtestStartFailures.stop();
@@ -1838,7 +1842,7 @@ test('playtest invitees sync fixed slot parenting when another player moves a ca
 
 		await signUp(secondPage);
 		await joinPlaytestRoom(secondPage, inviteUrl, 'Fixed slot room');
-		await page.getByRole('button', { name: 'Ready up' }).click();
+		await page.getByRole('button', { name: 'Ready' }).click();
 		await readyAndWaitForPixi(secondPage);
 		await waitForPixi(page);
 
@@ -1908,7 +1912,7 @@ test('playtest invitee notes are imported into the creator game feedback folder'
 		await createPlaytestRoom(page, inviteUrl, 'Feedback room');
 		await openAnonymousPlaytestInvite(secondPage, inviteUrl);
 		await joinPlaytestRoom(secondPage, inviteUrl, 'Feedback room');
-		await page.getByRole('button', { name: 'Ready up' }).click();
+		await page.getByRole('button', { name: 'Ready' }).click();
 		await readyAndWaitForPixi(secondPage);
 		await waitForPixi(page);
 

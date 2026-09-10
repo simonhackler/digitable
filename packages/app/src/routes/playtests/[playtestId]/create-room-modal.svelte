@@ -25,14 +25,17 @@
 			if (form.valid) {
 				creating = true;
 				createRoom($formData.name, $formData.password);
+				creating = false;
+				open = false;
 			}
 		}
 	});
 	const { form: formData, enhance } = form;
 	let creating = $state(false);
+	let open = $state(false);
 </script>
 
-<Dialog.Root>
+<Dialog.Root bind:open>
 	<Dialog.Trigger>
 		{#snippet child({ props })}
 			<Button {...props} class="self-start" disabled={creating}>

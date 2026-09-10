@@ -19,6 +19,7 @@
 	import { Err, tryAsync } from 'wellcrafted/result';
 	import { getFileSystemContext } from '../../context';
 	import CreateRoomModal from '../../../playtests/[playtestId]/create-room-modal.svelte';
+	import PlaytestNotes from '$lib/play/PlaytestNotes.svelte';
 
 	type RegisteredPlaytest = PlaytestFeedbackRegistry['playtests'][number];
 
@@ -131,15 +132,18 @@
 		}
 
 		playtests = registry.data.playtests;
+		console.log(playtests);
 		await Promise.all(
 			registry.data.playtests.map((playtest) => loadFeedbackFor(playtest.playtestId))
 		);
 		await importFeedback();
 	}
 
-	async function startPlaytest(name: string, playtestPassword?: string) {
+	// TODO use forms
+	async function startPlaytest(_name: string, playtestPassword?: string) {
 		if (isStartingPlaytest) return;
 		const password = playtestPassword?.trim();
+		const name = _name.trim();
 
 		isStartingPlaytest = true;
 		statusMessage = null;
@@ -157,6 +161,7 @@
 					},
 					body: JSON.stringify({
 						projectName,
+						name,
 						files,
 						password: password || undefined
 					})
@@ -167,7 +172,8 @@
 				}
 
 				const result = (await response.json()) as { playtestId: string };
-				const registered = await registerPlaytestFeedbackImport(gameDir, result.playtestId);
+				console.log('registering playtest');
+				const registered = await registerPlaytestFeedbackImport(gameDir, result.playtestId, name);
 				if (registered.error) {
 					throw new Error(registered.error.message);
 				}
@@ -264,6 +270,7 @@
 							<div>
 								<Card.Title class="text-lg">
 									Playtest {playtest.playtestId.slice(0, 8)}
+									{playtest.name}
 								</Card.Title>
 								<p class="text-muted-foreground text-sm">
 									Started {formatDate(playtest.createdAt)}

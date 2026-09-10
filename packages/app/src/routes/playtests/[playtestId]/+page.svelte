@@ -93,10 +93,11 @@
 			setPlaytestReconnectToken(data.privateRoomId, room.roomId, room.reconnectionToken);
 			room.reconnection.enabled = false;
 			void room.leave(false);
-			await goto(playtestRoomHref({ playtestId: data.playtestId, roomId: room.roomId, e2e }));
+			await goto(
+				resolve(playtestRoomHref({ playtestId: data.playtestId, roomId: room.roomId, e2e }))
+			);
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Could not create room.';
-		} finally {
 		}
 	}
 
@@ -108,13 +109,15 @@
 			joinRoomOpen = true;
 			return;
 		}
-		await goto(href);
+		await goto(resolve(href));
 	}
 
 	async function joinSelectedRoom() {
 		if (!selectedRoom) return;
 		setPlaytestRoomPassword(data.privateRoomId, selectedRoom.roomId, joinPassword);
-		await goto(playtestRoomHref({ playtestId: data.playtestId, roomId: selectedRoom.roomId, e2e }));
+		await goto(
+			resolve(playtestRoomHref({ playtestId: data.playtestId, roomId: selectedRoom.roomId, e2e }))
+		);
 	}
 
 	onMount(async () => {
