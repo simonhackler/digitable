@@ -8,6 +8,7 @@
 	import { resolve } from '$app/paths';
 	import CreateGamePopover from './create-game-popover.svelte';
 	import GameTopBar from './game-top-bar.svelte';
+	import * as Empty from '$lib/components/ui/empty/index.js';
 
 	const games = getGamesContext();
 
@@ -34,21 +35,42 @@
 				<div class="text-muted-foreground">Loading games...</div>
 			</div>
 		{:else if games.existingGames.length === 0}
-			<Card.Root class="py-12">
-				<Card.Content class="text-center">
-					<FolderOpen class="text-muted-foreground mx-auto mb-4 h-12 w-12" />
-					<h3 class="mb-2 text-lg font-medium">No games found</h3>
-					<p class="text-muted-foreground mb-4">Get started by creating your first board game.</p>
-					<CreateGamePopover>
-						{#snippet trigger(props)}
-							<Button {...props} class="flex items-center gap-2">
-								<Plus class="h-4 w-4" />
-								Create Game
-							</Button>
-						{/snippet}
-					</CreateGamePopover>
-				</Card.Content>
-			</Card.Root>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Media variant="icon">
+						<FolderOpen />
+					</Empty.Media>
+					<Empty.Title>No Games Yet</Empty.Title>
+					<Empty.Description>
+						You haven't created any games yet. Get started by creating your first board game.
+					</Empty.Description>
+					<Empty.Content>
+						<CreateGamePopover>
+							{#snippet trigger(props)}
+								<Button {...props} class="flex items-center gap-2">
+									<Plus class="h-4 w-4" />
+									Create Game
+								</Button>
+							{/snippet}
+						</CreateGamePopover>
+					</Empty.Content>
+				</Empty.Header>
+			</Empty.Root>
+			<!-- <Card.Root class="py-12"> -->
+			<!-- 	<Card.Content class="text-center"> -->
+			<!-- 		<FolderOpen class="text-muted-foreground mx-auto mb-4 h-12 w-12" /> -->
+			<!-- 		<h3 class="mb-2 text-lg font-medium">No games found</h3> -->
+			<!-- 		<p class="text-muted-foreground mb-4">Get started by creating your first board game.</p> -->
+			<!-- 		<CreateGamePopover> -->
+			<!-- 			{#snippet trigger(props)} -->
+			<!-- 				<Button {...props} class="flex items-center gap-2"> -->
+			<!-- 					<Plus class="h-4 w-4" /> -->
+			<!-- 					Create Game -->
+			<!-- 				</Button> -->
+			<!-- 			{/snippet} -->
+			<!-- 		</CreateGamePopover> -->
+			<!-- 	</Card.Content> -->
+			<!-- </Card.Root> -->
 		{:else}
 			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{#each games.existingGames as game (game.name)}

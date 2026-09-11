@@ -59,13 +59,6 @@
       }
     }
   '';
-  playwrightPreCommit = pkgs.writeShellScriptBin "playwright-pre-commit" ''
-    if [ -w /dev/tty ]; then
-      bun run playwright test --reporter=list >/dev/tty 2>&1
-    else
-      bun run playwright test --reporter=list
-    fi
-  '';
   playwrightCliConfig = pkgs.writeTextDir ".playwright/cli.config.json" (builtins.toJSON {
     browser = {
       browserName = "chromium";
@@ -116,7 +109,7 @@ in {
       "99-bun-test" = {
         enable = true;
         name = "Playwright E2E Tests";
-        entry = "${playwrightPreCommit}/bin/playwright-pre-commit";
+        entry = "bun run playwright test --reporter=dot";
         language = "system";
         files = "\\.(js|ts|jsx|tsx|svelte)$";
         pass_filenames = false;
@@ -230,6 +223,40 @@ in {
       "devenv:processes:game-server"
       "devenv:processes:proxy"
     ];
+  };
+
+  # Pre-commit hooks remain installed, but `devenv test` runs these checks as
+  # individual tasks so their output is not nested inside the hook runner.
+  tasks."devenv:git-hooks:run" = {
+    exec = lib.mkForce "true";
+    before = lib.mkForce [];
+  };
+
+  tasks."test:format" = {
+    exec = ''
+      git ls-files -co --exclude-standard -z -- \
+        '*.js' '*.ts' '*.jsx' '*.tsx' '*.svelte' '*.json' '*.css' '*.scss' '*.md' '*.yaml' '*.yml' |
+        xargs -0r bunx prettier --write
+    '';
+    before = [ "test:lint" ];
+  };
+
+  tasks."test:lint" = {
+    exec = ''
+      git ls-files -co --exclude-standard -z -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.svelte' |
+        xargs -0r bunx eslint --max-warnings 0
+    '';
+    before = [ "test:check" ];
+  };
+
+  tasks."test:check" = {
+    exec = "bun run check";
+    before = [ "test:e2e" ];
+  };
+
+  tasks."test:e2e" = {
+    exec = "bun run playwright test --reporter=dot";
+    before = [ "devenv:enterTest" ];
   };
 
   processes = {

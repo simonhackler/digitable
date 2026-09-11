@@ -22,6 +22,13 @@
 			"when": 1780595874916,
 			"tag": "0002_hesitant_mentallo",
 			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1783824000000,
+			"tag": "0003_private_room_password",
+			"breakpoints": true
 		}
 	]
 }
