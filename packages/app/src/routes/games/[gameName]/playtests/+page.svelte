@@ -19,7 +19,6 @@
 	import { Err, tryAsync } from 'wellcrafted/result';
 	import { getFileSystemContext } from '../../context';
 	import CreateRoomModal from '../../../playtests/[playtestId]/create-room-modal.svelte';
-	import PlaytestNotes from '$lib/play/PlaytestNotes.svelte';
 
 	type RegisteredPlaytest = PlaytestFeedbackRegistry['playtests'][number];
 
