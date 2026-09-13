@@ -5,19 +5,32 @@ description: A guide to quickly create and playtest a boardgame
 
 To get started with digitable simply click this link here: https://digitable.ink/app/games
 
-Digitable is based on files. This means almost everything in digitable is a file.
-This allows you to edit digitable with whatever programs you like. E.g an experienced designer
-can use inkscape to edit components and an experienced excel jockey can use that to edit their spreadsheets.
+Digitable is a board game engine. It allows you to design, playtest and publish your games.
+The focus is on allowing quick iterations with playtesting and designing, while allowing you to use the same project for
+creating professional print files.
+Digitable is based on files. This means almost everything in digitable is a file and will be saved on your device.
+This allows you to edit digitable with whatever programs you like.
+So you can use the inbuilt editors or you can use inkscape to edit components and excel to edit the spreadsheets.
 
-This also means you have your files with you no matter what.
+In Digitable you can either store your files in the browser or on your system.
+I recommend using files on your system.
 
-In digitable you can either store your files in the browser or on your system. I recommend using files on your system.
-!NOTE If you want to store your files on your computer use a chromium based browser(Chrome, Edge, Opera, Brave). Firefox does not support accessing local files.
+:::note
+If you want to store your files on your computer, use a Chromium-based browser
+such as Chrome, Edge, Opera, or Brave.
 
-TODO Make warning: Warn digitable currently does not offer a way to sync files. So you should back them up yourself.
-This might be added later as a paid option.
+Firefox does not support accessing local files in the way Digitable requires.
+:::
 
-After choosing a folder create a new game. Give your game a name, select the player amounts and give it an optional description.
+:::caution
+Digitable currently does not sync your game files automatically.
+
+Make sure to back up your project files yourself. File syncing may be added
+later as a paid option.
+:::
+
+After choosing a folder, create a new game. Give your game a name, select the
+number of players, and optionally add a description.
 
 Now create a component in the deck dropdown on the left and open it.
 
