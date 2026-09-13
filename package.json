@@ -17,6 +17,7 @@
 		"dev:svgcanvas": "cd svgedit/packages/svgcanvas && bun x vite build --watch",
 		"dev:studio": "bun run --filter=studio dev",
 		"dev:server": "bun run --filter=boardgame-server start",
+		"dev:docs": "bun run --filter=@digitable/docs dev",
 		"auth:generate": "bun --env-file=.env run --filter=@svg-table/db auth:generate",
 		"db:generate": "bun --env-file=.env run --filter=@svg-table/db db:generate",
 		"db:migrate": "bun --env-file=.env run --filter=@svg-table/db db:migrate",

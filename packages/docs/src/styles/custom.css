@@ -1,0 +1,67 @@
+.homepage-card-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 1rem;
+	align-items: stretch;
+}
+
+.homepage-card {
+	border: 1px solid var(--sl-color-gray-5);
+	padding: 1.5rem;
+	min-height: 14rem;
+	margin: 0;
+}
+
+.sl-markdown-content .homepage-card-grid > .homepage-card + .homepage-card {
+	margin-top: 0;
+}
+
+.homepage-card-heading {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+.homepage-card-heading h2 {
+	margin: 0;
+	font-size: var(--sl-text-2xl);
+}
+
+.homepage-card p {
+	margin: 0;
+	color: var(--sl-color-gray-2);
+}
+
+.homepage-card-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	border: 1px solid currentColor;
+	border-radius: 0.25rem;
+}
+
+.homepage-card-icon svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.homepage-card-design .homepage-card-icon {
+	color: var(--sl-color-yellow-high);
+}
+
+.homepage-card-playtest .homepage-card-icon {
+	color: var(--sl-color-purple-high);
+}
+
+.homepage-card-publish .homepage-card-icon {
+	color: var(--sl-color-green-high);
+}
+
+@media (max-width: 50rem) {
+	.homepage-card-grid {
+		grid-template-columns: 1fr;
+	}
+}
