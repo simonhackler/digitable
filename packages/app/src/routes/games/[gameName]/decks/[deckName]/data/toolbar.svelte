@@ -5,10 +5,9 @@
 	import GenerateImagesModal from './generate-images-modal.svelte';
 	import ImageSelectionModal from './image-selection-modal.svelte';
 	import type { ImageGenResponse } from './image-generator.js';
-	import { getFileSystemContext } from '../../../../context';
+	import { getActiveProjectContext } from '../../../../context';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import { ASSETS_DIR } from '$lib/workspace/project-layout';
-	import { requireParam } from '$lib/utils/assert';
 	import { FlipHorizontal2, LayoutTemplate } from '@lucide/svelte';
 	import GameTopBar from '../../../../game-top-bar.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.js';
@@ -48,16 +47,10 @@
 		statusError?: string | null;
 	} = $props();
 
-	const gameName = $derived(requireParam('gameName'));
-	const filesystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 
 	async function handleGenerateImages(images: ImageGenResponse) {
 		const timestamp = Date.now();
-		const generatedDir = await filesystem.ensureDir(joinFsPath(gameName, ASSETS_DIR, 'generated'));
-		if (generatedDir.error) {
-			throw new Error(`Failed to open generated images folder: ${generatedDir.error.message}`);
-		}
-
 		for (const image of images.results) {
 			const response = await fetch(image.imageUrl);
 			if (!response.ok) {
@@ -66,7 +59,9 @@
 			const blob = await response.blob();
 			const filename = `${image.rowId}_${timestamp}_${image.columnName}.png`;
 			const file = new File([blob], filename, { type: blob.type });
-			const written = await generatedDir.data.write(file.name, file);
+			const written = await project.session.writeFiles([
+				{ path: joinFsPath(ASSETS_DIR, 'generated', file.name), data: file }
+			]);
 			if (written.error) {
 				throw new Error(`Failed to save generated image ${filename}: ${written.error.message}`);
 			}

@@ -32,13 +32,14 @@
 		type EditorThemeClasses,
 		type LexicalEditor
 	} from 'svelte-lexical';
-	import { getFileSystemContext } from '../../context.js';
+	import { getActiveProjectContext, getFileSystemContext } from '../../context.js';
 	import { requireParam } from '$lib/utils/assert';
 	import RulesMarkdownToolbar from './rules-markdown-toolbar.svelte';
 	import GameTopBar from '../../game-top-bar.svelte';
 
 	const RULES_FILE = 'rules.md';
 	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const gameName = requireParam('gameName');
 
 	type RulesLoad = {
@@ -144,16 +145,7 @@
 		isWriting = true;
 		const version = saveVersion;
 		const serializedRules = pendingRules;
-		const gameDir = await fileSystem.ensureDir(gameName);
-
-		if (gameDir.error) {
-			saveState = 'error';
-			saveError = gameDir.error.message;
-			isWriting = false;
-			return;
-		}
-
-		const written = await gameDir.data.write(RULES_FILE, serializedRules);
+		const written = await project.session.writeFiles([{ path: RULES_FILE, data: serializedRules }]);
 		isWriting = false;
 
 		if (written.error) {

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "rootUrl": "automerge:2p7M1byjopHVHTobiuaLxUn4iyN9",
+  "projections": {
+    "$metadata": {
+      "path": "game.json",
+      "url": "automerge:2uwvbt3wXL8B2fYQx4FkTmuFjWSi",
+      "heads": [
+        "2JvgBHmLaMq9ZdJbhmWW6mv2GBy3pYgJuEZiU3BZsnw9XcqpjN"
+      ],
+      "hash": "bc808eb84acb425f0da652385cb1df00cfcc75575687b6210ee2dbcb42be3eb1"
+    }
+  }
+}

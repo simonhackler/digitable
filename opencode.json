@@ -1,9 +1,14 @@
 {
-	"$schema": "https://opencode.ai/config.json",
-	"mcp": {
-		"svelte": {
-			"type": "local",
-			"command": ["bunx", "@sveltejs/mcp"]
-		}
-	}
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "svelte": {
+      "type": "local",
+      "command": ["bunx", "@sveltejs/mcp"]
+    }
+  },
+  "permission": {
+    "external_directory": {
+      "/home/simon/projects/automerge-test-todo/**": "allow"
+    }
+  }
 }

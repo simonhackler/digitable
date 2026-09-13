@@ -46,6 +46,7 @@ async function walkFiles(
 
 	const files: PlaytestUploadFile[] = [];
 	for (const entry of entries.data) {
+		if (!currentPath && (entry.name === '.automerge' || entry.name === 'tts-export')) continue;
 		const relativePath = currentPath ? joinFsPath(currentPath, entry.name) : entry.name;
 		const sourcePath = joinFsPath(rootPath, relativePath);
 

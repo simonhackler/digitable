@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "rootUrl": "automerge:dyrKhs3iQFW8FojSrpZ44c6UA8Y",
+  "projections": {
+    "$metadata": {
+      "path": "game.json",
+      "url": "automerge:9HE5dQbxLERgdd2x1Ne8fQnYkg7",
+      "heads": [
+        "hTvmtBtj5yZnzQsBqRkQh7cWAiFF2qU39Uxdxjgzxtv9GZTEJ"
+      ],
+      "hash": "9c4655909ab688bb1bf8c4a297e4ca372092563715ca984e894fe654ae791cec"
+    },
+    "file-1a5f240f-ff05-4149-88dc-4ad369740245": {
+      "path": "components/western/front.svg",
+      "url": "automerge:4JfJ7jQHmajuXMP8RF7FZVGaQLbv",
+      "heads": [
+        "EZRUTJWd1acEXq1XySxZ5vUAQBqY1WDLXt4nHA9pAR9wBjZbn"
+      ],
+      "hash": "47a5c0a7d2e202eccd5457139296f16fa81bf0461d1704443ffa39f0a140dc32"
+    },
+    "file-62744ced-8e01-47fd-a829-da24d30b50cf": {
+      "path": "setup/table.svg",
+      "url": "automerge:3qiJtzyyfGQCt3pV8vvUbNDZkmQn",
+      "heads": [
+        "2oMdV7Kb4uxhA8MbVp8JRc1J3UvKMLCMwX1jdYGMaGtphgy9NT"
+      ],
+      "hash": "aa1e1043999e847d56710958c9a88ed2f4eb2d18440ee1ceba4382ea3310342a"
+    },
+    "file-7d4f2e2d-fe8f-4eb1-8eed-368742bbbb02": {
+      "path": "feedback/playtests.json",
+      "url": "automerge:LFwTdsHAPWnYezyaq63JP4EGXSp",
+      "heads": [
+        "MwTgNgLu4ijNLXWRDpnjri9hRHVPqzLtuRhky7FLwZo1G6z6W"
+      ],
+      "hash": "8e57d6b8e7020cadb4e5d41745f4a4740c7dfc76f410cd8a472eb515371e7fe0"
+    },
+    "file-8aaeba7c-7a1b-41ec-90b4-88f8c60d6abf": {
+      "path": "components/western/back.svg",
+      "url": "automerge:242W6ojAoyh3tpDYdfcFsf4pQP76",
+      "heads": [
+        "2GZfG9SwBxbJs29VgNTxav8eBjsxhgqXCKvNQ3n6CLah2jTs11"
+      ],
+      "hash": "c7412adbc105339a3c9f2ca2b9036d40fbe4eb9d9eb6876f5c66ca097c9b1c66"
+    },
+    "file-967f1e94-5682-4534-952b-95c8eb0ff689": {
+      "path": "components/western/data.csv",
+      "url": "automerge:2Y6vwkoL1K31ZZQVfXtVoJrJfob5",
+      "heads": [
+        "2NmCUkvEdChTzi4ERQDkGu2zjJQRaEFqRQxn4CyVGxiYCnMKRH"
+      ],
+      "hash": "df05bf015cb6dafa7e73ad434b518b8d6ea0e4e63458a478803b9603c45b14d6"
+    },
+    "file-ddaa30c6-db36-4492-90f1-17a564a372bb": {
+      "path": "rules.md",
+      "url": "automerge:67eRrhWkKEXygwvWDkV2HckB1g4",
+      "heads": [
+        "2bqN2DLstKP2tj27WQJThb6zBzt4Z6X5NN3daNbp2sU6YNJre3"
+      ],
+      "hash": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+    }
+  }
+}

@@ -14,21 +14,23 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
+	import type { ProjectSession } from '$lib/collaboration';
 
 	let {
 		games,
 		fileSystem,
-		onSetOpfsAdapter
+		onSetOpfsAdapter,
+		projectSession
 	}: {
 		games: Game[];
 		fileSystem: FsDir;
 		onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => Promise<void>;
+		projectSession: ProjectSession | null;
 	} = $props();
 
 	let activeProject = $derived.by(() => {
 		const game = games.find((game) => game.name === page.params.gameName);
-		if (game) return game;
-		return games.length > 0 ? games[0] : null;
+		return game ?? null;
 	});
 
 	// TODO why have this bs be null?
@@ -68,7 +70,9 @@
 		<!-- Todo display error -->
 	{:else}
 		<Sidebar.Content>
-			<CreateMenu activeGame={activeProject} fileSystem={projectFolderResult.data} />
+			{#if projectSession}
+				<CreateMenu activeGame={activeProject} fileSystem={projectFolderResult.data} {projectSession} />
+			{/if}
 			<ExportMenu activeGame={activeProject} />
 			<PlaySidebarMenu activeGame={activeProject} />
 			<Sidebar.Group />

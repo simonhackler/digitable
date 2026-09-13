@@ -10,7 +10,7 @@
 	import { cn } from '$lib/utils/utils.js';
 	import { requireParam } from '$lib/utils/assert';
 	import { Image, Loader2, Upload } from '@lucide/svelte';
-	import { getFileSystemContext } from '../context';
+	import { getActiveProjectContext, getFileSystemContext } from '../context';
 	import { isImageFileName, listProjectImageFiles, resolveImageReference } from './data-loader';
 	import { ASSETS_DIR } from '$lib/workspace/project-layout';
 
@@ -57,6 +57,7 @@
 
 	const gameName = $derived(requireParam('gameName'));
 	const filesystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 
 	function revokeChoiceUrls(nextChoices: ImageChoice[]) {
 		for (const choice of nextChoices) {
@@ -168,7 +169,9 @@
 							.map((entry: FsEntry) => entry.name)
 			);
 			const fileName = uniqueFileName(sanitizeFileName(file.name), existingNames);
-			const written = await uploadDir.data.write(fileName, file);
+			const written = await project.session.writeFiles([
+				{ path: joinFsPath(ASSETS_DIR, 'uploads', fileName), data: file }
+			]);
 			if (written.error) throw new Error(written.error.message);
 
 			const imagePath = joinFsPath('uploads', fileName);

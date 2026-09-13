@@ -14,7 +14,7 @@
 	import { FlipHorizontal2, Table2, Upload } from '@lucide/svelte';
 	import placeholderFrontSvg from '../../../../../../../static/placeholder.svg?raw';
 	import { useDebounce } from 'runed';
-	import { getFileSystemContext } from '../../../../context';
+	import { getActiveProjectContext, getFileSystemContext } from '../../../../context';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { requireParam } from '$lib/utils/assert';
@@ -45,9 +45,9 @@
 	const ORIGINAL_HREF_ATTR = 'data-digitable-original-href';
 
 	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const game = $derived(requireParam('gameName'));
 	const deck = $derived(requireParam('deckName'));
-	const folder = $derived(joinFsPath(game, COMPONENTS_DIR, deck));
 	const dataPath = $derived(`/games/${game}/decks/${deck}/data`);
 	const maxSvgUploadSize = 12 * 1024 * 1024;
 	const deckSideIndex = getDeckSideIndexContext();
@@ -169,13 +169,9 @@
 		if (!value) return;
 		const nextMeta = nextSide === 'front' ? frontMeta : backMeta;
 		const nextValue = preserveCanvasMeta ? applySvgMeta(value, nextMeta) : value;
-		const file = new File([nextValue], `${nextSide}.svg`, { type: 'image/svg+xml' });
-		const deckDir = await fileSystem.ensureDir(folder);
-		if (deckDir.error) {
-			console.error(`Upload failed for ${nextSide}.svg`, deckDir.error);
-			return;
-		}
-		const written = await deckDir.data.write(file.name, file);
+		const written = await project.session.writeFiles([
+			{ path: joinFsPath(COMPONENTS_DIR, deck, `${nextSide}.svg`), data: nextValue }
+		]);
 		if (written.error) {
 			console.error(`Upload failed for ${nextSide}.svg`, written.error);
 			return;
@@ -305,15 +301,9 @@
 	});
 
 	const writePlaceholderSvg = async () => {
-		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
-			type: 'image/svg+xml'
-		});
-		const filesDir = await fileSystem.ensureDir(joinFsPath(game, ASSETS_DIR));
-		if (filesDir.error) {
-			console.error(filesDir.error);
-			return;
-		}
-		const placeholderWrite = await filesDir.data.write(file.name, file);
+		const placeholderWrite = await project.session.writeFiles([
+			{ path: joinFsPath(ASSETS_DIR, 'placeholder.svg'), data: placeholderFrontSvg }
+		]);
 		if (placeholderWrite.error) console.error(placeholderWrite.error);
 	};
 

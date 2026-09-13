@@ -1,0 +1,189 @@
+import { parseFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+import { isValidAutomergeUrl, type AutomergeUrl, type UrlHeads } from '@automerge/automerge-repo';
+import { readText, removeFile, writeFile } from './filesystem';
+
+export const AUTOMERGE_DIR = '.automerge';
+export const AUTOMERGE_STORAGE_DIR = '.automerge/storage';
+export const PROJECT_CONFIG_FILE = '.automerge/config.json';
+export const PENDING_BOOTSTRAP_FILE = '.automerge/pending-bootstrap.json';
+const PENDING_MATERIALIZATION_DIR = '.automerge/pending-materialization';
+
+export type MaterializedState = {
+	heads: UrlHeads;
+	hash: string | null;
+};
+
+export type ProjectProjection = MaterializedState & {
+	path: string;
+	url: AutomergeUrl;
+};
+
+export type ProjectConfig = {
+	version: 1 | 2;
+	rootUrl: AutomergeUrl;
+	projections: Record<string, ProjectProjection>;
+};
+
+export type PendingMaterialization = {
+	version: 1;
+	memberId: string;
+	path: string;
+	before: MaterializedState;
+	after: MaterializedState;
+};
+
+export type PendingBootstrap = {
+	version: 1;
+	sources: Record<string, string>;
+	config?: ProjectConfig;
+};
+
+export async function readProjectConfig(fs: FsDir): Promise<ProjectConfig | undefined> {
+	const source = await readText(fs, PROJECT_CONFIG_FILE);
+	return source === undefined ? undefined : validateConfig(parseJson(source, PROJECT_CONFIG_FILE));
+}
+
+export function writeProjectConfig(fs: FsDir, config: ProjectConfig): Promise<void> {
+	return writeJson(fs, PROJECT_CONFIG_FILE, config);
+}
+
+export async function readPendingBootstrap(fs: FsDir): Promise<PendingBootstrap | undefined> {
+	const source = await readText(fs, PENDING_BOOTSTRAP_FILE);
+	if (source === undefined) return undefined;
+	const value = parseJson(source, PENDING_BOOTSTRAP_FILE);
+	if (!isObject(value) || value.version !== 1 || !isStringRecord(value.sources)) {
+		throw new Error(`${PENDING_BOOTSTRAP_FILE} has an unsupported format.`);
+	}
+	return {
+		version: 1,
+		sources: value.sources,
+		config: value.config === undefined ? undefined : validateConfig(value.config)
+	};
+}
+
+export function writePendingBootstrap(fs: FsDir, pending: PendingBootstrap): Promise<void> {
+	return writeJson(fs, PENDING_BOOTSTRAP_FILE, pending);
+}
+
+export function removePendingBootstrap(fs: FsDir): Promise<void> {
+	return removeFile(fs, PENDING_BOOTSTRAP_FILE);
+}
+
+export async function readPendingMaterialization(
+	fs: FsDir,
+	memberId: string
+): Promise<PendingMaterialization | undefined> {
+	const path = pendingMaterializationPath(memberId);
+	const source = await readText(fs, path);
+	if (source === undefined) return undefined;
+	const value = parseJson(source, path);
+	if (
+		!isObject(value) ||
+		value.version !== 1 ||
+		value.memberId !== memberId ||
+		typeof value.path !== 'string'
+	) {
+		throw new Error(`${path} has an unsupported format.`);
+	}
+	return {
+		version: 1,
+		memberId,
+		path: value.path,
+		before: validateMaterializedState(value.before),
+		after: validateMaterializedState(value.after)
+	};
+}
+
+export function writePendingMaterialization(
+	fs: FsDir,
+	pending: PendingMaterialization
+): Promise<void> {
+	return writeJson(fs, pendingMaterializationPath(pending.memberId), pending);
+}
+
+export function removePendingMaterialization(fs: FsDir, memberId: string): Promise<void> {
+	return removeFile(fs, pendingMaterializationPath(memberId));
+}
+
+export function materializedStatesEqual(
+	left: MaterializedState,
+	right: MaterializedState
+): boolean {
+	return (
+		left.hash === right.hash &&
+		left.heads.length === right.heads.length &&
+		left.heads.every((head) => right.heads.includes(head))
+	);
+}
+
+function pendingMaterializationPath(memberId: string): string {
+	if (!/^[A-Za-z0-9.$_-]+$/.test(memberId)) {
+		throw new Error(`Invalid Automerge project member id: ${memberId}`);
+	}
+	return `${PENDING_MATERIALIZATION_DIR}/${memberId}.json`;
+}
+
+function validateConfig(value: unknown): ProjectConfig {
+	if (
+		!isObject(value) ||
+		(value.version !== 1 && value.version !== 2) ||
+		!isValidAutomergeUrl(value.rootUrl)
+	) {
+		throw new Error(`${PROJECT_CONFIG_FILE} has an unsupported format.`);
+	}
+	if (!isObject(value.projections)) {
+		throw new Error(`${PROJECT_CONFIG_FILE} has invalid projections.`);
+	}
+
+	const projections = Object.fromEntries(
+		Object.entries(value.projections).map(([memberId, projection]) => {
+			if (!isObject(projection) || !isValidAutomergeUrl(projection.url)) {
+				throw new Error(`${PROJECT_CONFIG_FILE} has an invalid projection for ${memberId}.`);
+			}
+			if (typeof projection.path !== 'string' || parseFsPath('read', projection.path).error) {
+				throw new Error(`${PROJECT_CONFIG_FILE} has an invalid path for ${memberId}.`);
+			}
+			return [
+				memberId,
+				{
+					path: projection.path,
+					url: projection.url,
+					...validateMaterializedState(projection)
+				}
+			];
+		})
+	);
+	return { version: value.version, rootUrl: value.rootUrl, projections };
+}
+
+function validateMaterializedState(value: unknown): MaterializedState {
+	if (
+		!isObject(value) ||
+		!Array.isArray(value.heads) ||
+		!value.heads.every((head) => typeof head === 'string') ||
+		(value.hash !== null && typeof value.hash !== 'string')
+	) {
+		throw new Error('Invalid materialized Automerge state.');
+	}
+	return { heads: value.heads as UrlHeads, hash: value.hash as string | null };
+}
+
+function parseJson(source: string, path: string): unknown {
+	try {
+		return JSON.parse(source);
+	} catch (cause) {
+		throw new Error(`${path} is not valid JSON.`, { cause });
+	}
+}
+
+function writeJson(fs: FsDir, path: string, value: unknown): Promise<void> {
+	return writeFile(fs, path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+	return isObject(value) && Object.values(value).every((entry) => typeof entry === 'string');
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

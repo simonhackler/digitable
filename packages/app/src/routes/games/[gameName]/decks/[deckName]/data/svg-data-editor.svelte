@@ -7,7 +7,7 @@
 	import jspreadsheet, { type JspreadsheetInstanceElement } from 'jspreadsheet-ce';
 	import type { Attachment } from 'svelte/attachments';
 	import { ScrollState } from 'runed';
-	import { getFileSystemContext } from '../../../../context';
+	import { getActiveProjectContext, getFileSystemContext } from '../../../../context';
 	import {
 		generateSvg,
 		updateSvg,
@@ -48,6 +48,7 @@
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(requireParam('deckName'));
 	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const deckSideIndex = getDeckSideIndexContext();
 	const sides: SvgSide[] = $derived([
 		{ template: svgTemplateFront, columnPrefix: '' },
@@ -141,13 +142,9 @@
 		const header = spreadsheet[0].getHeaders(true) as string[];
 
 		const csvText = Papa.unparse([header, ...rows]);
-		const csvFile = new File([csvText], 'data.csv', {
-			type: 'text/csv',
-			lastModified: Date.now()
-		});
-		const deckDir = await fileSystem.ensureDir(joinFsPath(projectName, COMPONENTS_DIR, cardName));
-		if (deckDir.error) throw new Error(`Upload failed for data.csv: ${deckDir.error.message}`);
-		const res = await deckDir.data.write(csvFile.name, csvFile);
+		const res = await project.session.writeFiles([
+			{ path: joinFsPath(COMPONENTS_DIR, cardName, 'data.csv'), data: csvText }
+		]);
 		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);
 	}
 

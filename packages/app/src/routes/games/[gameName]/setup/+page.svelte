@@ -21,7 +21,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { useDebounce } from 'runed';
 	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
-	import { getFileSystemContext } from '../../context';
+	import { getActiveProjectContext, getFileSystemContext } from '../../context';
 	import {
 		getProjectFilePath,
 		isEmbeddedImageReference,
@@ -80,6 +80,7 @@
 		| { kind: 'card'; deckName: string; cardId: string; label: string };
 
 	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const projectName = $derived(requireParam('gameName'));
 
 	const tableSvgPath = $derived(joinFsPath(projectName, TABLE_SVG_PATH));
@@ -993,9 +994,7 @@
 	}
 
 	async function saveTableSvg(svg: string): Promise<void> {
-		const tableDir = await fileSystem.ensureDir(joinFsPath(projectName, 'setup'));
-		if (tableDir.error) throw new Error(tableDir.error.message);
-		const svgWrite = await tableDir.data.write('table.svg', svg);
+		const svgWrite = await project.session.writeFiles([{ path: TABLE_SVG_PATH, data: svg }]);
 		if (svgWrite.error) throw new Error(svgWrite.error.message);
 	}
 

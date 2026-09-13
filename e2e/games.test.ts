@@ -124,6 +124,81 @@ gamesTest('created game appears in the games overview and can create a deck', as
 	await expect(page.getByRole('main').getByText(secondFolderName)).toBeVisible();
 });
 
+gamesTest('game metadata reconciles through Automerge', async (page) => {
+	await page.goto('/app/games/western-cards');
+	await expect(page.getByText('Edit Board Game')).toBeVisible();
+	await expect
+		.poll(() => opfsEntryExists(page, '/western-cards/.automerge/config.json'))
+		.toBe(true);
+
+	const description = 'Metadata saved through the Automerge project session.';
+	await page.getByRole('textbox', { name: 'Game Description' }).fill(description);
+	await page.getByRole('button', { name: 'Update' }).click();
+	await expect(page.getByText('Game updated successfully!')).toBeVisible();
+
+	const saved = JSON.parse(await readOpfsText(page, '/western-cards/game.json'));
+	expect(saved.description).toBe(description);
+	expect(saved.tags).toEqual(['Wild West', 'Dinosaurs']);
+	expect(saved.digitableVersion).toBe('0.0.1');
+
+	const externalDescription = 'Metadata changed outside Digitable.';
+	await writeOpfsText(
+		page,
+		'/western-cards/game.json',
+		`${JSON.stringify({ ...saved, description: externalDescription }, null, 2)}\n`
+	);
+	await expect(page.getByRole('textbox', { name: 'Game Description' })).toHaveValue(
+		externalDescription,
+		{ timeout: 10_000 }
+	);
+
+	await writeOpfsText(page, '/western-cards/game.json', '{ invalid json');
+	await expect(page.getByRole('alert')).toContainText('game.json is not valid JSON', {
+		timeout: 10_000
+	});
+	expect(await readOpfsText(page, '/western-cards/game.json')).toBe('{ invalid json');
+
+	const recoveredDescription = 'Metadata recovered after an invalid external edit.';
+	await writeOpfsText(
+		page,
+		'/western-cards/game.json',
+		`${JSON.stringify({ ...saved, description: recoveredDescription }, null, 2)}\n`
+	);
+	await expect(page.getByRole('textbox', { name: 'Game Description' })).toHaveValue(
+		recoveredDescription,
+		{ timeout: 10_000 }
+	);
+});
+
+gamesTest('game metadata synchronizes between tabs', async (page) => {
+	if (!gamesContext) throw new Error('Games context was not initialized');
+	const peer = await gamesContext.newPage();
+	try {
+		await Promise.all([
+			page.goto('/app/games/western-cards'),
+			peer.goto('/app/games/western-cards')
+		]);
+		await Promise.all([
+			expect(page.getByText('Edit Board Game')).toBeVisible(),
+			expect(peer.getByText('Edit Board Game')).toBeVisible()
+		]);
+
+		const description = 'Description merged from the first tab.';
+		await page.getByRole('textbox', { name: 'Game Description' }).fill(description);
+		await expect(peer.getByRole('textbox', { name: 'Game Description' })).toHaveValue(description);
+
+		const name = 'Collaborative Western Cards';
+		await peer.getByRole('textbox', { name: 'Game Name' }).fill(name);
+		await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(name);
+		await page.getByRole('button', { name: 'Update' }).click();
+		await expect
+			.poll(async () => JSON.parse(await readOpfsText(page, '/western-cards/game.json')))
+			.toMatchObject({ name, description });
+	} finally {
+		await peer.close();
+	}
+});
+
 gamesTest('create new deck and delete it', async (page) => {
 	const deckName = 'e2e_deck';
 

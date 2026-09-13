@@ -1,149 +1,159 @@
 <script lang="ts">
-	import { ConfirmDeleteDialog, confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
-	import * as Form from '$lib/components/ui/form/index.js';
-	import * as Card from '$lib/components/ui/card/index.js';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { superForm, defaults } from 'sveltekit-superforms';
-	import { zod4 } from 'sveltekit-superforms/adapters';
-	import { createGameSchema, type CreateGameForm } from '../schemas.js';
-	import { getFileSystemContext, getGamesContext } from '../context.js';
-	import { CircleCheck } from '@lucide/svelte';
-	import { requireParam } from '$lib/utils/assert';
-	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { page } from '$app/state';
+	import { ConfirmDeleteDialog, confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card/index.js';
+	import { Input } from '$lib/components/ui/input';
+	import { assert } from '$lib/utils/assert';
+	import { updateText } from '@automerge/automerge-repo';
+	import { CircleCheck } from '@lucide/svelte';
+	import { createGameSchema, type CreateGameForm } from '../schemas.js';
+	import {
+		getActiveProjectContext,
+		getActiveProjectState,
+		getFileSystemContext,
+		getGamesContext
+	} from '../context.js';
 	import GameTopBar from '../game-top-bar.svelte';
 
 	const fileSystem = getFileSystemContext();
 	const games = getGamesContext();
-	const gameNameParsed = $derived(requireParam('gameName'));
-	const gameName = $derived(page.url.searchParams.get('gameName') ?? '');
+	const projectState = getActiveProjectState();
+	const project = getActiveProjectContext();
+	const initial = project.metadata.current;
+	assert(initial, 'Game metadata document is unavailable');
 
-	// Load game data using top-level await
-	async function loadGameData(
-		gameNameParsed: string,
-		gameName: string
-	): Promise<{
-		data: CreateGameForm;
-		isEditMode: boolean;
-	}> {
-		try {
-			const gameDir = await fileSystem.openDir(gameNameParsed);
-			if (gameDir.error) throw gameDir.error;
-
-			const gameFileResult = await gameDir.data.readText('game.json');
-
-			if (!gameFileResult.error) {
-				const gameData = JSON.parse(gameFileResult.data);
-
-				return { data: gameData, isEditMode: true };
-			}
-		} catch (error) {
-			if (
-				!(error && typeof error === 'object' && 'name' in error && error.name === 'NotFoundError')
-			) {
-				console.error('Failed to load game data:', error);
-			}
-		}
-
-		return {
-			data: {
-				name: gameName,
-				minPlayers: 1,
-				maxPlayers: 4,
-				description: ''
-			},
-			isEditMode: false
-		};
-	}
-
-	const { data: initialData, isEditMode } = $derived(await loadGameData(gameNameParsed, gameName));
-
-	const form = $derived(
-		superForm(defaults(initialData, zod4(createGameSchema)), {
-			SPA: true,
-			validators: zod4(createGameSchema),
-			async onUpdate({ form }) {
-				if (form.valid) {
-					isSubmitting = true;
-					showSuccessMessage = false;
-
-					const data: CreateGameForm = { ...form.data };
-					const gameData = JSON.stringify(data, null, 2);
-					const gameFile = new File([gameData], 'game.json', { type: 'application/json' });
-
-					const gameDir = await fileSystem.ensureDir(gameNameParsed);
-					if (gameDir.error) {
-						console.error('Failed to open game folder:', gameDir.error);
-						isSubmitting = false;
-						return;
-					}
-
-					const writeGame = await gameDir.data.write(gameFile.name, gameFile);
-					if (writeGame.error) {
-						console.error('Failed to save game:', writeGame.error);
-						isSubmitting = false;
-						return;
-					}
-
-					syncSavedGame(data);
-					isSubmitting = false;
-					showSuccessMessage = true;
-					setTimeout(() => {
-						showSuccessMessage = false;
-					}, 3000);
-				}
-			}
-		})
-	);
-	const { form: formData, enhance } = $derived(form);
-
-	let showSuccessMessage = $state(false);
+	const metadata = $derived(project.metadata.current);
+	let errors = $state<Partial<Record<keyof CreateGameForm, string>>>({});
+	let saveError = $state<string | null>(null);
+	let successMessage = $state('');
 	let isSubmitting = $state(false);
+	const isCreateMode = $derived(page.url.searchParams.has('gameName'));
+	const saveStatus = $derived(
+		projectState.reconciliation.state === 'syncing' ? 'Saving locally' : 'Saved locally'
+	);
+	const reconciliationError = $derived(
+		projectState.reconciliation.state === 'error' ? projectState.reconciliation.message : null
+	);
 
-	function syncSavedGame(data: CreateGameForm) {
-		if (!games.existingGames) return;
+	function changeText(field: 'name' | 'description', value: string) {
+		const valid = field === 'name' ? value.length >= 1 && value.length <= 80 : value.length <= 500;
+		if (!valid) {
+			errors[field] = field === 'name' ? 'Game name is required' : 'Description is too long';
+			return;
+		}
+		errors[field] = undefined;
 
-		const existingGame = games.existingGames.find((game) => game.name === gameNameParsed);
-		const savedGame = {
-			name: gameNameParsed,
-			decks: existingGame?.decks ?? [],
-			description: data.description
-		};
-
-		games.existingGames = existingGame
-			? games.existingGames.map((game) => (game.name === gameNameParsed ? savedGame : game))
-			: [...games.existingGames, savedGame].sort((a, b) => a.name.localeCompare(b.name));
+		project.metadata.change((document) => {
+			if (document[field] !== value) updateText(document, [field], value);
+		});
 	}
 
-	async function deleteGame() {
-		const removed = await fileSystem.remove(joinFsPath(gameNameParsed), { recursive: true });
-		if (removed.error) {
-			console.error('Failed to delete game:', removed.error);
+	function changePlayers(field: 'minPlayers' | 'maxPlayers', value: number) {
+		const current = project.metadata.current;
+		if (!current) return;
+		const minPlayers = field === 'minPlayers' ? value : current.players.min;
+		const maxPlayers = field === 'maxPlayers' ? value : current.players.max;
+		const valid =
+			Number.isInteger(minPlayers) &&
+			minPlayers >= 1 &&
+			minPlayers <= 20 &&
+			Number.isInteger(maxPlayers) &&
+			maxPlayers >= 1 &&
+			maxPlayers <= 20 &&
+			minPlayers <= maxPlayers;
+		if (!valid) {
+			errors[field] = 'Players must be between 1 and 20, with minimum no greater than maximum';
+			return;
+		}
+		errors.minPlayers = undefined;
+		errors.maxPlayers = undefined;
+
+		project.metadata.change((document) => {
+			document.players = { min: minPlayers, max: maxPlayers };
+		});
+	}
+
+	async function saveGame(event: SubmitEvent) {
+		event.preventDefault();
+		if (Object.values(errors).some(Boolean)) return;
+		const current = project.metadata.current;
+		if (!current) return;
+		const parsed = createGameSchema.safeParse({
+			name: current.name,
+			minPlayers: current.players.min,
+			maxPlayers: current.players.max,
+			description: current.description
+		});
+		if (!parsed.success) {
+			errors = Object.fromEntries(
+				parsed.error.issues.flatMap((issue) => {
+					const field = issue.path[0];
+					return typeof field === 'string' ? [[field, issue.message]] : [];
+				})
+			);
 			return;
 		}
 
-		if (games.existingGames) {
-			games.existingGames = games.existingGames.filter((game) => game.name !== gameNameParsed);
+		isSubmitting = true;
+		saveError = null;
+		successMessage = '';
+		const synchronized = await project.session.sync();
+		isSubmitting = false;
+		if (synchronized.error) {
+			saveError = synchronized.error.message;
+			return;
 		}
 
+		successMessage = isCreateMode ? 'Game created successfully!' : 'Game updated successfully!';
+		setTimeout(() => (successMessage = ''), 3000);
+		if (isCreateMode) {
+			await goto(resolve(`/games/${project.key}`), {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true
+			});
+		}
+	}
+
+	async function deleteGame() {
+		const closed = await project.session.close();
+		if (closed.error) {
+			saveError = closed.error.message;
+			return;
+		}
+		project.metadata.destroy();
+		projectState.current = null;
+		projectState.phase = 'idle';
+
+		const removed = await fileSystem.remove(project.key, { recursive: true });
+		if (removed.error) {
+			saveError = removed.error.message;
+			return;
+		}
+		if (games.existingGames) {
+			games.existingGames = games.existingGames.filter((game) => game.name !== project.key);
+		}
 		await goto(resolve('/games'));
 	}
 </script>
 
+<svelte:head>
+	<title>{metadata?.name ?? project.key}</title>
+</svelte:head>
+
 <div class="flex min-h-svh flex-col">
-	<GameTopBar />
+	<GameTopBar status={saveStatus} statusError={saveError ?? reconciliationError} />
 	<div class="mx-auto w-full max-w-4xl p-6">
 		<Card.Root>
 			<Card.Header>
 				<Card.Title class="text-center text-2xl font-bold">
-					{isEditMode ? 'Edit Board Game' : 'Create New Board Game'}
+					{isCreateMode ? 'Create New Board Game' : 'Edit Board Game'}
 				</Card.Title>
-				{#if isEditMode}
+				{#if !isCreateMode}
 					<ConfirmDeleteDialog />
-
 					<div class="flex items-center justify-center">
 						<Button
 							variant="destructive"
@@ -152,9 +162,7 @@
 								confirmDelete({
 									title: 'Delete',
 									description: 'Are you sure you want to delete this item?',
-									input: {
-										confirmationText: gameName
-									},
+									input: { confirmationText: metadata?.name ?? project.key },
 									onConfirm: deleteGame
 								});
 							}}
@@ -166,114 +174,105 @@
 				<hr class="border-t border-gray-300" />
 			</Card.Header>
 			<Card.Content>
-				{#key form}
-					<form use:enhance class="space-y-6">
-						<Form.Field {form} name="name">
-							<Form.Control>
-								{#snippet children({ props })}
-									<Form.Label class="text-base font-medium">Game Name</Form.Label>
-									<Input
-										{...props}
-										bind:value={$formData.name}
-										placeholder=""
-										maxlength={80}
-										class="w-full"
-									/>
-								{/snippet}
-							</Form.Control>
-							<Form.Description class="text-muted-foreground flex justify-between text-xs">
-								<span>up to 80 characters · required</span>
-								<span>{$formData.name?.length || 0}/80</span>
-							</Form.Description>
-							<Form.FieldErrors />
-						</Form.Field>
+				<form class="space-y-6" onsubmit={saveGame}>
+					<div class="space-y-2">
+						<label class="text-base font-medium" for="game-name">Game Name</label>
+						<Input
+							id="game-name"
+							value={metadata?.name ?? ''}
+							oninput={(event) => changeText('name', event.currentTarget.value)}
+							maxlength={80}
+							aria-invalid={errors.name ? 'true' : undefined}
+							aria-describedby={errors.name ? 'game-name-error' : undefined}
+							class="w-full"
+						/>
+						<div class="text-muted-foreground flex justify-between text-xs">
+							<span>Up to 80 characters, required</span>
+							<span>{metadata?.name.length ?? 0}/80</span>
+						</div>
+						{#if errors.name}
+							<p id="game-name-error" class="text-destructive text-sm" role="alert">
+								{errors.name}
+							</p>
+						{/if}
+					</div>
 
-						<div class="space-y-2">
-							<div class="text-base font-medium">Players</div>
-							<div class="flex gap-4">
-								<Form.Field {form} name="minPlayers" class="flex-1">
-									<Form.Control>
-										{#snippet children({ props })}
-											<div class="flex items-center gap-2">
-												<span class="text-base">Min</span>
-												<Input
-													{...props}
-													type="number"
-													bind:value={$formData.minPlayers}
-													min={1}
-													max={20}
-													class="w-16"
-												/>
-											</div>
-										{/snippet}
-									</Form.Control>
-									<Form.FieldErrors />
-								</Form.Field>
-
-								<Form.Field {form} name="maxPlayers" class="flex-1">
-									<Form.Control>
-										{#snippet children({ props })}
-											<div class="flex items-center gap-2">
-												<span class="text-base">Max</span>
-												<Input
-													{...props}
-													type="number"
-													bind:value={$formData.maxPlayers}
-													min={1}
-													max={20}
-													class="w-16"
-												/>
-											</div>
-										{/snippet}
-									</Form.Control>
-									<Form.FieldErrors />
-								</Form.Field>
+					<div class="space-y-2">
+						<div class="text-base font-medium">Players</div>
+						<div class="flex gap-4">
+							<div class="flex-1 space-y-1">
+								<label class="text-base" for="min-players">Min</label>
+								<Input
+									id="min-players"
+									type="number"
+									value={metadata?.players.min ?? 1}
+									oninput={(event) =>
+										changePlayers('minPlayers', event.currentTarget.valueAsNumber)}
+									min={1}
+									max={20}
+									aria-invalid={errors.minPlayers ? 'true' : undefined}
+									class="w-20"
+								/>
+								{#if errors.minPlayers}
+									<p class="text-destructive text-sm" role="alert">{errors.minPlayers}</p>
+								{/if}
+							</div>
+							<div class="flex-1 space-y-1">
+								<label class="text-base" for="max-players">Max</label>
+								<Input
+									id="max-players"
+									type="number"
+									value={metadata?.players.max ?? 1}
+									oninput={(event) =>
+										changePlayers('maxPlayers', event.currentTarget.valueAsNumber)}
+									min={1}
+									max={20}
+									aria-invalid={errors.maxPlayers ? 'true' : undefined}
+									class="w-20"
+								/>
+								{#if errors.maxPlayers}
+									<p class="text-destructive text-sm" role="alert">{errors.maxPlayers}</p>
+								{/if}
 							</div>
 						</div>
+					</div>
 
-						<Form.Field {form} name="description">
-							<Form.Control>
-								{#snippet children({ props })}
-									<Form.Label class="text-base font-medium">Game Description</Form.Label>
-									<textarea
-										{...props}
-										bind:value={$formData.description}
-										placeholder=""
-										rows={4}
-										maxlength={500}
-										class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-base file:border-0 file:bg-transparent file:text-base file:font-medium focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-									></textarea>
-								{/snippet}
-							</Form.Control>
-							<Form.Description class="text-muted-foreground flex justify-between text-xs">
-								<span>up to 500 characters · optional</span>
-								<span>{$formData.description?.length || 0}/500</span>
-							</Form.Description>
-							<Form.FieldErrors />
-						</Form.Field>
-
-						<div class="pt-4">
-							<!-- Success Message -->
-							{#if showSuccessMessage}
-								<div
-									class="mb-4 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-green-800"
-								>
-									<CircleCheck class="h-5 w-5" />
-									<span>Game {isEditMode ? 'updated' : 'created'} successfully!</span>
-								</div>
-							{/if}
-
-							<Button type="submit" class="w-full" disabled={isSubmitting}>
-								{#if isSubmitting}
-									<div
-										class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
-									></div>
-								{/if}
-								{isSubmitting ? 'Saving...' : isEditMode ? 'Update' : 'Create'}
-							</Button>
+					<div class="space-y-2">
+						<label class="text-base font-medium" for="game-description">Game Description</label>
+						<textarea
+							id="game-description"
+							value={metadata?.description ?? ''}
+							oninput={(event) => changeText('description', event.currentTarget.value)}
+							rows={4}
+							maxlength={500}
+							aria-invalid={errors.description ? 'true' : undefined}
+							aria-describedby={errors.description ? 'game-description-error' : undefined}
+							class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-base focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+						></textarea>
+						<div class="text-muted-foreground flex justify-between text-xs">
+							<span>Up to 500 characters, optional</span>
+							<span>{metadata?.description.length ?? 0}/500</span>
 						</div>
-					</form>
-				{/key}
+						{#if errors.description}
+							<p id="game-description-error" class="text-destructive text-sm" role="alert">
+								{errors.description}
+							</p>
+						{/if}
+					</div>
+
+					{#if successMessage}
+						<div
+							class="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-green-800"
+						>
+							<CircleCheck class="h-5 w-5" />
+							<span>{successMessage}</span>
+						</div>
+					{/if}
+
+					<Button type="submit" class="w-full" disabled={isSubmitting}>
+						{isSubmitting ? 'Saving...' : isCreateMode ? 'Create' : 'Update'}
+					</Button>
+				</form>
 			</Card.Content>
 		</Card.Root>
 	</div>

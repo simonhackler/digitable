@@ -16,11 +16,15 @@
 	import RenameDeckDialog from './rename-deck-dialog.svelte';
 	import NewDeckDialog from './new-deck-dialog.svelte';
 	import { goto } from '$app/navigation';
-	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { BookOpenText } from '@lucide/svelte';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import type { ProjectSession } from '$lib/collaboration';
 
-	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
+	let {
+		activeGame,
+		fileSystem,
+		projectSession
+	}: { activeGame: Game | null; fileSystem: FsDir; projectSession: ProjectSession } = $props();
 
 	function onDeckRenamed(oldName: string, newName: string) {
 		if (!activeGame) return;
@@ -36,14 +40,8 @@
 		activeGame.decks = [...activeGame.decks, { name: deckName }];
 	}
 
-	async function deleteDeck(
-		fileSystem: FsDir,
-		projectName: string,
-		component: ComponentFileStructure
-	) {
-		const fullFolderPath = joinFsPath(COMPONENTS_DIR, component.name);
-		console.log('deleting for', fullFolderPath);
-		const removed = await fileSystem.remove(fullFolderPath, { recursive: true });
+	async function deleteDeck(projectName: string, component: ComponentFileStructure) {
+		const removed = await projectSession.deleteComponent(component.name);
 		if (removed.error) {
 			console.error(removed.error);
 		} else {
@@ -82,7 +80,7 @@
 				<Collapsible.Content>
 					<Sidebar.MenuSub>
 						<Sidebar.MenuSubItem>
-							<NewDeckDialog {activeGame} {fileSystem} {onDeckCreated} />
+							<NewDeckDialog {activeGame} {fileSystem} {projectSession} {onDeckCreated} />
 						</Sidebar.MenuSubItem>
 						{#each activeGame?.decks ?? [] as deck (deck.name)}
 							<Sidebar.MenuSubItem>
@@ -126,7 +124,12 @@
 											<Table2 />
 											<span>Spreadsheet</span>
 										</DropdownMenu.Item>
-										<RenameDeckDialog projectFolder={fileSystem} {deck} onRenamed={onDeckRenamed}>
+								<RenameDeckDialog
+									projectFolder={fileSystem}
+									{projectSession}
+									{deck}
+									onRenamed={onDeckRenamed}
+								>
 											{#snippet trigger({ props })}
 												<DropdownMenu.Item
 													{...props}
@@ -141,7 +144,7 @@
 										<DropdownMenu.Separator />
 										<DropdownMenu.Item
 											variant="destructive"
-											onSelect={() => deleteDeck(fileSystem, activeGame!.name, deck)}
+											onSelect={() => deleteDeck(activeGame!.name, deck)}
 											class="flex w-full justify-start gap-2"
 										>
 											<Trash2 />

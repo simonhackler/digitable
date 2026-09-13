@@ -5,20 +5,23 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
-	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { TextCursorInput } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import { z } from 'zod';
 	import type { ComponentFileStructure } from './types.js';
+	import type { ProjectSession } from '$lib/collaboration';
 
 	let {
 		projectFolder,
+		projectSession,
 		deck,
 		onRenamed,
 		trigger
 	}: {
 		projectFolder: FsDir;
+		projectSession: ProjectSession;
 		deck: ComponentFileStructure;
 		onRenamed: (oldName: string, newName: string) => void;
 		trigger: Snippet<[{ props: Record<string, unknown> }]>;
@@ -83,13 +86,11 @@
 		}
 
 		const projectName = projectFolder.name;
-		const sourcePath = joinFsPath(COMPONENTS_DIR, oldName);
-		const targetPath = joinFsPath(COMPONENTS_DIR, newName);
-
 		submitting = true;
-		const moved = await projectFolder.move(sourcePath, targetPath);
+		const moved = await projectSession.renameComponent(oldName, newName);
 		if (moved.error) {
 			error = moved.error.message;
+			submitting = false;
 			return;
 		}
 		onRenamed(oldName, newName);

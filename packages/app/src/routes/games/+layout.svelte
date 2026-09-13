@@ -5,7 +5,12 @@
 	import PickFolder from '../../lib/components/pick-folder.svelte';
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import type { Game } from './types';
-	import { setFileSystemContext, setGamesContext } from './context';
+	import {
+		setActiveProjectState,
+		setFileSystemContext,
+		setGamesContext,
+		type ActiveProjectState
+	} from './context';
 	import { generateAgentFiles } from '$lib/utils/agent-generator.js';
 	import { isPlaytestImportFolderName } from '$lib/playtests/project-transfer';
 	import { Button } from '$lib/components/ui/button';
@@ -20,7 +25,15 @@
 		writeProjectsRootMarker
 	} from '$lib/workspace/projects-root';
 	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import { page } from '$app/state';
+	import {
+		createDocumentState,
+		gameMetadataMaterializer,
+		openProjectSession
+	} from '$lib/collaboration';
+	import { afterNavigate, beforeNavigate, onNavigate } from '$app/navigation';
+	import { Ok, trySync } from 'wellcrafted/result';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
@@ -28,6 +41,13 @@
 	const gamesState: { existingGames: Game[] | null } = $state({ existingGames: null });
 	const games = $derived(gamesState.existingGames);
 	setGamesContext(gamesState);
+	const activeProjectState: ActiveProjectState = $state({
+		phase: 'idle',
+		current: null,
+		reconciliation: { state: 'idle' },
+		error: null
+	});
+	setActiveProjectState(activeProjectState);
 	let projectsToMigrate = $state<string[] | null>(null);
 	let migrationError = $state('');
 	let isMigrating = $state(false);
@@ -36,7 +56,96 @@
 	let canPickProjectsFolder = $state(false);
 	let migrationDigitableVersion = $state<string | undefined>();
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
+	const activeGameName = $derived(page.params.gameName);
+	let projectGeneration = 0;
 
+	async function closeActiveProject() {
+		projectGeneration += 1;
+		const active = activeProjectState.current;
+		activeProjectState.current = null;
+		activeProjectState.phase = 'idle';
+		activeProjectState.error = null;
+		activeProjectState.reconciliation = { state: 'idle' };
+		if (!active) return;
+		active.metadata.destroy();
+		await active.session.close();
+	}
+
+	async function openActiveProject(fileSystem: FsDir | null, gameName: string | undefined) {
+		if (
+			activeProjectState.phase === 'ready' &&
+			activeProjectState.current?.key === gameName &&
+			fileSystem
+		) {
+			return;
+		}
+		const generation = ++projectGeneration;
+		const previous = activeProjectState.current;
+		activeProjectState.current = null;
+		activeProjectState.error = null;
+		activeProjectState.reconciliation = { state: 'idle' };
+		activeProjectState.phase = fileSystem && gameName ? 'opening' : 'idle';
+
+		if (previous) {
+			previous.metadata.destroy();
+			const closed = await previous.session.close();
+			if (closed.error && generation === projectGeneration) {
+				activeProjectState.phase = 'error';
+				activeProjectState.error = closed.error.message;
+				return;
+			}
+		}
+		if (generation !== projectGeneration || !fileSystem || !gameName) return;
+
+		const projectDir = await fileSystem.openDir(gameName);
+		if (generation !== projectGeneration) return;
+		if (projectDir.error) {
+			activeProjectState.phase = 'error';
+			activeProjectState.error = projectDir.error.message;
+			return;
+		}
+
+		let openingError: string | null = null;
+		const opened = await openProjectSession(projectDir.data, {
+			saveDebounceMs: 0,
+			onStatus: (status) => {
+				if (generation !== projectGeneration) return;
+				activeProjectState.reconciliation = status;
+				if (status.state === 'error' && status.memberId === '$project') {
+					openingError = status.message;
+					activeProjectState.phase = 'error';
+					activeProjectState.error = status.message;
+				}
+			}
+		});
+		if (generation !== projectGeneration) {
+			if (!opened.error) await opened.data.close();
+			return;
+		}
+		if (opened.error) {
+			activeProjectState.phase = 'error';
+			activeProjectState.error = opened.error.message;
+			return;
+		}
+		if (openingError) {
+			await opened.data.close();
+			return;
+		}
+
+		activeProjectState.current = {
+			key: gameName,
+			session: opened.data,
+			metadata: createDocumentState(opened.data.metadataHandle, (metadata) => {
+				if (generation !== projectGeneration || !metadata || !gamesState.existingGames) return;
+				gamesState.existingGames = gamesState.existingGames.map((game) =>
+					game.name === gameName
+						? { ...game, description: metadata.description, tags: [...metadata.tags] }
+						: game
+				);
+			})
+		};
+		activeProjectState.phase = 'ready';
+	}
 	async function getGames(fileSystem: Readonly<FsDir>) {
 		const root = await fileSystem.list();
 		if (root.error) return [];
@@ -56,11 +165,16 @@
 
 			const gameFile = await projectDir.data.readText('game.json');
 			let description = '';
-			let tags = [];
+			let tags: string[] = [];
 			if (!gameFile.error) {
-				const gameData = JSON.parse(gameFile.data);
-				description = gameData.description;
-				tags = gameData.tags || [];
+				const { data: metadata } = trySync({
+					try: () => gameMetadataMaterializer.parse(gameFile.data, { hash: '' }),
+					catch: () => Ok(null)
+				});
+				if (metadata) {
+					description = metadata.description;
+					tags = metadata.tags;
+				}
 			}
 
 			const componentEntries = await listProjectComponents(projectDir.data);
@@ -103,6 +217,7 @@
 	}
 
 	async function onSetOpfsAdapter(adapter: FsDir) {
+		await closeActiveProject();
 		migrationError = '';
 		projectsToMigrate = null;
 		gamesState.existingGames = null;
@@ -119,6 +234,7 @@
 		projectsToMigrate = migrations;
 		gamesState.existingGames = migrations.length ? null : await getGames(adapter);
 		isInspectingProjects = false;
+		if (!migrations.length) await openActiveProject(adapter, page.params.gameName);
 	}
 
 	async function selectDifferentProjectsFolder() {
@@ -170,6 +286,7 @@
 		projectsToMigrate = [];
 		gamesState.existingGames = await getGames(fileSystem);
 		isMigrating = false;
+		await openActiveProject(fileSystem, page.params.gameName);
 	}
 
 	let { children } = $props();
@@ -177,11 +294,40 @@
 	onMount(() => {
 		canPickProjectsFolder = 'showDirectoryPicker' in window;
 	});
+
+	afterNavigate(() => {
+		if (isInspectingProjects || projectsToMigrate === null || projectsToMigrate.length) return;
+		void openActiveProject(fileSystem, page.params.gameName);
+	});
+
+	onNavigate(async ({ from, to }) => {
+		const active = activeProjectState.current;
+		if (!active) return;
+		if (from?.params?.gameName === active.key && to?.params?.gameName === active.key) return;
+		const synchronized = await active.session.sync();
+		if (!synchronized.error) return;
+		activeProjectState.phase = 'error';
+		activeProjectState.error = synchronized.error.message;
+		throw new Error(synchronized.error.message);
+	});
+
+	beforeNavigate(({ cancel, willUnload }) => {
+		if (willUnload && activeProjectState.reconciliation.state === 'syncing') cancel();
+	});
+
+	onDestroy(() => {
+		void closeActiveProject();
+	});
 </script>
 
 <Sidebar.Provider>
 	{#if fileSystem && games}
-		<AppSidebar {games} {fileSystem} {onSetOpfsAdapter} />
+		<AppSidebar
+			{games}
+			{fileSystem}
+			{onSetOpfsAdapter}
+			projectSession={activeProjectState.current?.session ?? null}
+		/>
 	{/if}
 	<main class="relative min-w-0 flex-1">
 		{#if !fileSystem}
@@ -226,7 +372,16 @@
 					</div>
 				</div>
 			</div>
-		{:else}
+		{:else if activeGameName && activeProjectState.phase === 'opening'}
+			<p class="text-muted-foreground p-6 text-sm">Opening project...</p>
+		{:else if activeGameName && activeProjectState.phase === 'error'}
+			<div class="flex min-h-screen items-center justify-center p-6">
+				<div class="border-border bg-background max-w-lg space-y-4 rounded-lg border p-6 shadow-sm">
+					<p class="text-destructive text-sm" role="alert">{activeProjectState.error}</p>
+					<Button onclick={() => openActiveProject(fileSystem, activeGameName)}>Retry</Button>
+				</div>
+			</div>
+		{:else if !activeGameName || activeProjectState.current?.key === activeGameName}
 			<svelte:boundary>
 				{#snippet pending()}
 					<p>loading...</p>

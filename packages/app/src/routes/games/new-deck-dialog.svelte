@@ -14,7 +14,7 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
-	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import {
@@ -23,14 +23,17 @@
 		premadeDeckPresets,
 		type PremadeDeckPresetId
 	} from '$lib/premade-decks';
+	import type { ProjectSession } from '$lib/collaboration';
 
 	let {
 		activeGame,
 		fileSystem,
+		projectSession,
 		onDeckCreated
 	}: {
 		activeGame: Game | null;
 		fileSystem: FsDir;
+		projectSession: ProjectSession;
 		onDeckCreated: (deckName: string) => void;
 	} = $props();
 
@@ -102,11 +105,20 @@
 		const normalizedHeight = Number(String(height).replace(',', '.'));
 		const frontSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		const backSvg = createEmptySvg(normalizedWidth, normalizedHeight);
-		const uploaded = await Promise.all([
-			uploadSvgAsSide(fileSystem, deckName, frontSvg, 'front'),
-			uploadSvgAsSide(fileSystem, deckName, backSvg, 'back')
+		const serializer = new XMLSerializer();
+		const created = await projectSession.writeFiles([
+			{
+				path: `${COMPONENTS_DIR}/${deckName}/front.svg`,
+				data: serializer.serializeToString(frontSvg)
+			},
+			{
+				path: `${COMPONENTS_DIR}/${deckName}/back.svg`,
+				data: serializer.serializeToString(backSvg)
+			},
+			{ path: `${ASSETS_DIR}/placeholder.svg`, data: placeholderFrontSvg }
 		]);
-		if (uploaded.some((done) => !done)) {
+		if (created.error) {
+			console.error(created.error);
 			createDeckError = 'Could not create the deck files.';
 			return false;
 		}
@@ -132,6 +144,12 @@
 			createDeckError = 'Could not create the pre-made deck.';
 			return false;
 		}
+		const synchronized = await projectSession.sync();
+		if (synchronized.error) {
+			console.error(synchronized.error);
+			createDeckError = 'Could not synchronize the pre-made deck.';
+			return false;
+		}
 
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
@@ -152,42 +170,6 @@
 		$formData.height = cardFormats.poker.height;
 		isCreatingDeck = false;
 		createDeckError = '';
-	}
-
-	async function uploadSvgAsSide(
-		fileSystem: FsDir,
-		deckName: string,
-		svg: SVGElement,
-		side: 'front' | 'back'
-	) {
-		const svgString = new XMLSerializer().serializeToString(svg);
-		const svgFile = new File([svgString], `${side}.svg`, { type: 'image/svg+xml' });
-		const deckDir = await fileSystem.ensureDir(joinFsPath(COMPONENTS_DIR, deckName));
-		if (deckDir.error) {
-			console.error(deckDir.error);
-			return false;
-		}
-		const svgWrite = await deckDir.data.write(svgFile.name, svgFile);
-		if (svgWrite.error) {
-			console.error(svgWrite.error);
-			return false;
-		}
-
-		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
-			type: 'image/svg+xml'
-		});
-		const filesDir = await fileSystem.ensureDir(ASSETS_DIR);
-		if (filesDir.error) {
-			console.error(filesDir.error);
-			return false;
-		}
-		const placeholderWrite = await filesDir.data.write(file.name, file);
-		if (placeholderWrite.error) {
-			console.error(placeholderWrite.error);
-			return false;
-		}
-
-		return true;
 	}
 
 	const cardFormats = {

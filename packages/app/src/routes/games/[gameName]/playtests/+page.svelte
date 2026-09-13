@@ -17,12 +17,13 @@
 	import { Clipboard, ExternalLink } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { Err, tryAsync } from 'wellcrafted/result';
-	import { getFileSystemContext } from '../../context';
+	import { getActiveProjectContext, getFileSystemContext } from '../../context';
 	import CreateRoomModal from '../../../playtests/[playtestId]/create-room-modal.svelte';
 
 	type RegisteredPlaytest = PlaytestFeedbackRegistry['playtests'][number];
 
 	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const projectName = $derived(requireParam('gameName'));
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -150,6 +151,8 @@
 
 		const created = await tryAsync({
 			try: async () => {
+				const synchronized = await project.session.sync();
+				if (synchronized.error) throw new Error(synchronized.error.message);
 				const gameDir = await openGameDir();
 				const files = await exportProjectForPlaytest(fileSystem, projectName);
 				// TODO: This shouldn't be an untyped api call.
