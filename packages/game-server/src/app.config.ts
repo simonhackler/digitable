@@ -1,6 +1,8 @@
 import config from '@colyseus/tools';
 import { monitor } from '@colyseus/monitor';
 import { playground } from '@colyseus/playground';
+import { LobbyRoom } from 'colyseus';
+import { createRequire } from 'node:module';
 
 /**
  * Import your Room files
@@ -8,13 +10,30 @@ import { playground } from '@colyseus/playground';
 import { CommandRoom } from './rooms/command-room';
 import { PrivateCommandRoom } from './rooms/private-command-room';
 
+const requireFromHere = createRequire(import.meta.url);
+const requireFromColyseusCore = createRequire(
+	requireFromHere.resolve('@colyseus/core/package.json')
+);
+// Bun can install a second @colyseus/core peer for ws-transport; load it from core's context.
+const { WebSocketTransport } = requireFromColyseusCore(
+	'@colyseus/ws-transport'
+) as typeof import('@colyseus/ws-transport');
+
 export default config({
+	initializeTransport: (options) => {
+		return new WebSocketTransport(options);
+	},
+
 	initializeGameServer: (gameServer) => {
 		/**
 		 * Define your room handlers:
 		 */
+		gameServer.define('lobby', LobbyRoom);
 		gameServer.define('my_room', CommandRoom);
-		gameServer.define('private_room', PrivateCommandRoom).filterBy(['privateRoomId']);
+		gameServer
+			.define('private_room', PrivateCommandRoom)
+			.filterBy(['privateRoomId'])
+			.enableRealtimeListing();
 	},
 
 	initializeExpress: (app) => {

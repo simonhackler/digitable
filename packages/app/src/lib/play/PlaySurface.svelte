@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Client, getStateCallbacks, type Room } from 'colyseus.js';
+	import { Client, getStateCallbacks } from '@colyseus/sdk';
 	import {
 		Application,
 		Container,
@@ -83,12 +83,20 @@
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import {
+		clearPlaytestReconnectToken,
+		getPlaytestReconnectToken,
+		setPlaytestReconnectToken
+	} from './playtest-room-helpers';
+	import type { PlayRoom } from './room-types';
 
 	type PlayRoomConnection =
 		| { kind: 'localPlay' }
 		| {
 				kind: 'privatePlaytest';
 				privateRoomId: string;
+				roomId: string;
+				room?: PlayRoom;
 				getAuthToken: () => Promise<string>;
 		  };
 
@@ -114,37 +122,13 @@
 	}
 	const client = new Client(gameServerUrl);
 	let playE2EBridge: ReturnType<typeof installPlayE2EBridge> | null = null;
-	const privatePlaytestReconnectTokenPrefix = 'svg-table:playtest-reconnect-token:';
 
 	function isE2EMode() {
 		return e2e;
 	}
 
-	function privatePlaytestReconnectTokenKey(privateRoomId: string) {
-		return `${privatePlaytestReconnectTokenPrefix}${privateRoomId}`;
-	}
-
-	function getPrivatePlaytestReconnectToken(privateRoomId: string) {
-		if (typeof sessionStorage === 'undefined') return null;
-		return sessionStorage.getItem(privatePlaytestReconnectTokenKey(privateRoomId));
-	}
-
-	function setPrivatePlaytestReconnectToken(privateRoomId: string, room: Room<BoardGameRoomState>) {
-		if (typeof sessionStorage === 'undefined') return;
-		sessionStorage.setItem(privatePlaytestReconnectTokenKey(privateRoomId), room.reconnectionToken);
-	}
-
-	function clearPrivatePlaytestReconnectToken(privateRoomId: string) {
-		if (typeof sessionStorage === 'undefined') return;
-		sessionStorage.removeItem(privatePlaytestReconnectTokenKey(privateRoomId));
-	}
-
 	let boardGameItems: SvelteMap<string, BoardGameItemNew> = new SvelteMap();
-	function sendCmd<T extends string, P>(
-		room: Room<BoardGameRoomState>,
-		commandType: T,
-		payload: P
-	) {
+	function sendCmd<T extends string, P>(room: PlayRoom, commandType: T, payload: P) {
 		room.send('cmd', { commandType, payload });
 	}
 
@@ -1169,28 +1153,35 @@
 		const tablePlayPlan = buildTablePlayPlan(localTable.table, loadedDecks);
 		tableItemMetadata = new SvelteMap(tableItemMetadataById(tablePlayPlan));
 		const privatePlaytest = roomConnection.kind === 'privatePlaytest' ? roomConnection : null;
-		const roomType = privatePlaytest ? 'private_room' : 'my_room';
-		const roomOptions = privatePlaytest
-			? { privateRoomId: privatePlaytest.privateRoomId }
-			: undefined;
-		const shouldCreateRoom = !privatePlaytest;
-		let room: Room<BoardGameRoomState> | null = null;
-		if (shouldCreateRoom) {
-			room = await client.create<BoardGameRoomState>(roomType, roomOptions);
+		let room: PlayRoom | null = null;
+		if (!privatePlaytest) {
+			room = await client.create<BoardGameRoomState>('my_room');
 		} else {
-			const reconnectToken = getPrivatePlaytestReconnectToken(privatePlaytest.privateRoomId);
-			if (reconnectToken) {
-				try {
-					room = await client.reconnect<BoardGameRoomState>(reconnectToken);
-				} catch {
-					clearPrivatePlaytestReconnectToken(privatePlaytest.privateRoomId);
+			room = privatePlaytest.room ?? null;
+			if (!room) {
+				const reconnectToken = getPlaytestReconnectToken(
+					privatePlaytest.privateRoomId,
+					privatePlaytest.roomId
+				);
+				if (reconnectToken) {
+					try {
+						room = await client.reconnect<BoardGameRoomState>(reconnectToken);
+					} catch {
+						clearPlaytestReconnectToken(privatePlaytest.privateRoomId, privatePlaytest.roomId);
+					}
+				}
+				if (!room) {
+					client.auth.token = await privatePlaytest.getAuthToken();
+					room = await client.joinById<BoardGameRoomState>(privatePlaytest.roomId, {
+						privateRoomId: privatePlaytest.privateRoomId
+					});
 				}
 			}
-			if (!room) {
-				client.auth.token = await privatePlaytest.getAuthToken();
-				room = await client.joinOrCreate<BoardGameRoomState>(roomType, roomOptions);
-			}
-			setPrivatePlaytestReconnectToken(privatePlaytest.privateRoomId, room);
+			setPlaytestReconnectToken(
+				privatePlaytest.privateRoomId,
+				privatePlaytest.roomId,
+				room.reconnectionToken
+			);
 		}
 		let s = getStateCallbacks(room);
 		strokeLayer.connect(room, s);
@@ -1246,7 +1237,7 @@
 	}
 
 	let localTable: LocalTable;
-	let room: Room<BoardGameRoomState>;
+	let room: PlayRoom;
 
 	const loadedTable = await loadRequiredTable({ fileSystem, projectName });
 	const tableData = loadedTable.data;
@@ -1326,6 +1317,7 @@
 	onDestroy(() => {
 		document.removeEventListener('contextmenu', blockNativeContextMenu);
 		window.removeEventListener('keydown', handleCameraShortcut);
+		room.leave();
 	});
 
 	function selectionAfterStackDraw(item: BoardGameItemNew): BoardGameItemNew | null {

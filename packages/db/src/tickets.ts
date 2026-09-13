@@ -3,7 +3,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 
 import { db } from './client';
 import { getActiveMembership } from './private-rooms';
-import { gameTickets } from './schema';
+import { gameTickets, user } from './schema';
 
 function hashToken(token: string) {
 	return createHash('sha256').update(token).digest('hex');
@@ -70,9 +70,20 @@ export async function verifyAndConsumeGameTicket(input: {
 		return null;
 	}
 
+	const [ticketUser] = await db
+		.select({ name: user.name })
+		.from(user)
+		.where(eq(user.id, ticket.userId))
+		.limit(1);
+
+	if (!ticketUser) {
+		return null;
+	}
+
 	return {
 		userId: ticket.userId,
 		privateRoomId: ticket.privateRoomId,
-		role: membership.role
+		role: membership.role,
+		name: ticketUser.name
 	};
 }

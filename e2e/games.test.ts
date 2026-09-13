@@ -60,7 +60,6 @@ gamesTest('create new game and delete it', async (page) => {
 	await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(gameName);
 
 	await page.getByRole('textbox', { name: 'Game Description' }).fill(gameDescription);
-	await page.getByRole('button', { name: 'Fantasy', exact: true }).click();
 	await page.getByRole('main').getByRole('button', { name: 'Create', exact: true }).click();
 
 	await expect(page.getByText('Game created successfully!')).toBeVisible();
@@ -71,7 +70,6 @@ gamesTest('create new game and delete it', async (page) => {
 	await expect(page.getByRole('textbox', { name: 'Game Description' })).toHaveValue(
 		gameDescription
 	);
-	await expect(page.getByRole('button', { name: 'Fantasy', exact: true })).toBeDisabled();
 	await page.getByRole('button', { name: 'Delete' }).click();
 	await page.getByRole('textbox', { name: 'Enter "Create Game Test" to' }).fill(gameName);
 	await page.getByRole('button', { name: 'Delete' }).nth(1).click();
@@ -95,7 +93,6 @@ gamesTest('created game appears in the games overview and can create a deck', as
 
 	await expect(page).toHaveURL(new RegExp(`/app/games/${folderName}`));
 	await page.getByRole('textbox', { name: 'Game Description' }).fill(gameDescription);
-	await page.getByRole('button', { name: 'Strategy', exact: true }).click();
 	await page.getByRole('main').getByRole('button', { name: 'Create', exact: true }).click();
 	await expect(page.getByText('Game created successfully!')).toBeVisible();
 
@@ -120,7 +117,6 @@ gamesTest('created game appears in the games overview and can create a deck', as
 
 	await expect(page).toHaveURL(new RegExp(`/app/games/${secondFolderName}`));
 	await page.getByRole('textbox', { name: 'Game Description' }).fill(secondGameDescription);
-	await page.getByRole('button', { name: 'Strategy', exact: true }).click();
 	await page.getByRole('main').getByRole('button', { name: 'Create', exact: true }).click();
 	await expect(page.getByText('Game created successfully!')).toBeVisible();
 
@@ -237,7 +233,6 @@ gamesTest('create new game from project switcher', async (page) => {
 	await expect(page.getByRole('textbox', { name: 'Game Name' })).toHaveValue(gameName);
 
 	await page.getByRole('textbox', { name: 'Game Description' }).fill(gameDescription);
-	await page.getByRole('button', { name: 'Strategy', exact: true }).click();
 	await page.getByRole('main').getByRole('button', { name: 'Create', exact: true }).click();
 	await expect(page.getByText('Game created successfully!')).toBeVisible();
 
