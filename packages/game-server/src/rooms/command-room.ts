@@ -30,8 +30,15 @@ type CommandRoomOptions<Metadata = Record<string, unknown>, Auth = unknown> = {
 	client: Client<{ auth: Auth }>;
 };
 
+// export class CommandRoom<Metadata = Record<string, unknown>, Auth = unknown> extends Room<
+// 	CommandRoomOptions<Metadata, Auth>
+// > {
+// Remove the CommandRoomOptions type definition entirely
 export class CommandRoom<Metadata = Record<string, unknown>, Auth = unknown> extends Room<
-	CommandRoomOptions<Metadata, Auth>
+	BoardGameRoomState,
+	Metadata,
+	unknown,
+	Auth
 > {
 	dispatcher = new Dispatcher(this);
 	roomCommands = new Map<string, new () => Command<CommandRoom, unknown>>([
@@ -427,10 +434,16 @@ export class PlayCommand extends Command<
 	}
 }
 
+// Stack Command has to be reworked like this:
+// - Support dropping a stack onto a stack
+// - Support dropping a stack onto a card
+// - Support grouping multiple/cards stack into one stack
+// This means we take in a list of ids and combine them into one stack, we have to check for exisiting stacks and combine them
 export class StackCommand extends Command<
 	CommandRoom,
 	{
 		sessionId: string;
+		ids: string[];
 		sourceId: string;
 		targetId: string;
 		x: number;

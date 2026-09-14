@@ -251,6 +251,7 @@
 			previewer.showPreview(hoverItem);
 		}
 	});
+	keys.onKeys('G', () => {});
 
 	type DragState = {
 		originGlobalX: number;
