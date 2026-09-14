@@ -1,4 +1,6 @@
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+import { blake3 } from '@noble/hashes/blake3.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 import { componentDataMaterializer } from './component-data';
 import { decodeText, hashBytes, readFile } from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
@@ -24,61 +26,80 @@ export type ProjectFileFingerprint = {
 	size: number;
 };
 
+export function projectMemberId(path: string): string {
+	return `file-${hexId(path)}`;
+}
+
+export function projectComponentId(name: string): string {
+	return `component-${hexId(name)}`;
+}
+
 export async function scanProjectFiles(
 	project: FsDir,
-	cache?: Map<string, ProjectFileFingerprint>
+	cache?: Map<string, ProjectFileFingerprint>,
+	requestedPaths?: string[]
 ): Promise<{
 	files: ProjectFileSource[];
 	components: string[];
 }> {
-	const paths = await walkKnownFiles(project);
+	const paths = requestedPaths ?? (await walkKnownFiles(project));
 	const components = new Set(await listComponents(project));
-	const files = await Promise.all(paths.map(async (path): Promise<ProjectFileSource> => {
-		const classification = classifyProjectFile(path);
-		if (!classification) throw new Error(`Unsupported project file path ${path}.`);
-		const file = await readFile(project, path);
-		if (!file) throw new Error(`Project file ${path} disappeared while it was being scanned.`);
-		const previous = cache?.get(path);
-		let bytes: Uint8Array | undefined;
-		const unchanged = previous?.lastModified === file.lastModified && previous.size === file.size;
-		if (!unchanged) bytes = new Uint8Array(await file.arrayBuffer());
-		const snapshot = {
-			hash: unchanged ? previous.hash : await hashBytes(bytes!),
-			lastModified: file.lastModified,
-			size: file.size
-		};
-		cache?.set(path, snapshot);
-		if (classification.componentName) components.add(classification.componentName);
-		return {
-			path,
-			...classification,
-			snapshot,
-			async document() {
-				const content = bytes ?? new Uint8Array(await (await readFileRequired(project, path)).arrayBuffer());
-				if (classification.kind === 'game-metadata') {
-					return gameMetadataMaterializer.parse(decodeText(content), { hash: snapshot.hash });
-				}
-				if (classification.kind === 'component-data') {
-					return componentDataMaterializer.parse(decodeText(content), {
-						hash: snapshot.hash,
-						allowMissingIds: true
-					});
-				}
-				if (classification.kind === 'asset') {
+	const files: ProjectFileSource[] = [];
+	for (let index = 0; index < paths.length; index += 4) {
+		files.push(
+			...(await Promise.all(
+				paths.slice(index, index + 4).map(async (path): Promise<ProjectFileSource> => {
+					const classification = classifyProjectFile(path);
+					if (!classification) throw new Error(`Unsupported project file path ${path}.`);
+					const file = await readFileRequired(project, path);
+					const bytes = new Uint8Array(await file.arrayBuffer());
+					const snapshot = {
+						hash: await hashBytes(bytes),
+						lastModified: file.lastModified,
+						size: file.size
+					};
+					cache?.set(path, snapshot);
+					if (classification.componentName) components.add(classification.componentName);
 					return {
-						type: 'binary-file',
-						schemaVersion: 1,
-						content
-					} satisfies BinaryFileDocument;
-				}
-				return {
-					type: 'text-file',
-					schemaVersion: 1,
-					content: decodeText(content)
-				} satisfies TextFileDocument;
-			}
-		};
-	}));
+						path,
+						...classification,
+						snapshot,
+						async document() {
+							const current = new Uint8Array(
+								await (await readFileRequired(project, path)).arrayBuffer()
+							);
+							if ((await hashBytes(current)) !== snapshot.hash) {
+								throw new Error(`${path} changed while it was being imported.`);
+							}
+							if (classification.kind === 'game-metadata') {
+								return gameMetadataMaterializer.parse(decodeText(current), {
+									hash: snapshot.hash
+								});
+							}
+							if (classification.kind === 'component-data') {
+								return componentDataMaterializer.parse(decodeText(current), {
+									hash: snapshot.hash,
+									allowMissingIds: true
+								});
+							}
+							if (classification.kind === 'asset') {
+								return {
+									type: 'binary-file',
+									schemaVersion: 1,
+									content: current
+								} satisfies BinaryFileDocument;
+							}
+							return {
+								type: 'text-file',
+								schemaVersion: 1,
+								content: decodeText(current)
+							} satisfies TextFileDocument;
+						}
+					};
+				})
+			))
+		);
+	}
 	if (cache) {
 		const currentPaths = new Set(paths);
 		for (const path of cache.keys()) {
@@ -88,26 +109,9 @@ export async function scanProjectFiles(
 	return { files, components: [...components].sort() };
 }
 
-export async function primeProjectFileCache(
-	project: FsDir,
-	hashes: ReadonlyMap<string, string | null>
-): Promise<Map<string, ProjectFileFingerprint>> {
-	const cache = new Map<string, ProjectFileFingerprint>();
-	await Promise.all(
-		(await walkKnownFiles(project)).map(async (path) => {
-			const hash = hashes.get(path);
-			if (!hash) return;
-			const file = await readFile(project, path);
-			if (!file) return;
-			cache.set(path, { hash, lastModified: file.lastModified, size: file.size });
-		})
-	);
-	return cache;
-}
-
 async function readFileRequired(project: FsDir, path: string): Promise<File> {
 	const file = await readFile(project, path);
-	if (!file) throw new Error(`Project file ${path} disappeared while it was being imported.`);
+	if (!file) throw new Error(`Project file ${path} disappeared while it was being scanned.`);
 	return file;
 }
 
@@ -141,6 +145,10 @@ export function classifyProjectFile(path: string):
 		componentName: component[1],
 		side: component[2] === 'front.svg' ? 'front' : 'back'
 	};
+}
+
+function hexId(value: string): string {
+	return bytesToHex(blake3(new TextEncoder().encode(value)));
 }
 
 async function walkKnownFiles(project: FsDir, path = ''): Promise<string[]> {

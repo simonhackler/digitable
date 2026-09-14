@@ -1,12 +1,15 @@
 {
   "version": 2,
   "rootUrl": "automerge:dyrKhs3iQFW8FojSrpZ44c6UA8Y",
+  "rootHeads": [
+    "2U9D81h8z9BoyCMaMw85Ef2iT18Dkh9y9Kexp4pFbNq255dW2j"
+  ],
   "projections": {
     "$metadata": {
       "path": "game.json",
       "url": "automerge:9HE5dQbxLERgdd2x1Ne8fQnYkg7",
       "heads": [
-        "hTvmtBtj5yZnzQsBqRkQh7cWAiFF2qU39Uxdxjgzxtv9GZTEJ"
+        "nHmRaCkNxoFWG8SEtLMjegassZ3sQLKvwUW9ogCG5JJfpDd1N"
       ],
       "hash": "9c4655909ab688bb1bf8c4a297e4ca372092563715ca984e894fe654ae791cec"
     },
@@ -14,9 +17,9 @@
       "path": "components/western/front.svg",
       "url": "automerge:4JfJ7jQHmajuXMP8RF7FZVGaQLbv",
       "heads": [
-        "EZRUTJWd1acEXq1XySxZ5vUAQBqY1WDLXt4nHA9pAR9wBjZbn"
+        "dwcjPj7Mw5AqRtz7KA6BzNR7XgQ7eg9pd6RFBVqeA5qCif8PU"
       ],
-      "hash": "47a5c0a7d2e202eccd5457139296f16fa81bf0461d1704443ffa39f0a140dc32"
+      "hash": "ac3fa2dfa781ff6e9d257ab8da6252bd23921e9fd2872adbdb61dc82c9f5574f"
     },
     "file-62744ced-8e01-47fd-a829-da24d30b50cf": {
       "path": "setup/table.svg",
@@ -46,17 +49,17 @@
       "path": "components/western/data.csv",
       "url": "automerge:2Y6vwkoL1K31ZZQVfXtVoJrJfob5",
       "heads": [
-        "2NmCUkvEdChTzi4ERQDkGu2zjJQRaEFqRQxn4CyVGxiYCnMKRH"
+        "2FhETbKq6vniDKdcNvw4zMK59ygRUqh5XuBvjVcYQBiXheMAQe"
       ],
-      "hash": "df05bf015cb6dafa7e73ad434b518b8d6ea0e4e63458a478803b9603c45b14d6"
+      "hash": "89320f83e744762bbdfaa4d2f5c1e3afb2e6bf52a3d4115b38b4c0327273e993"
     },
     "file-ddaa30c6-db36-4492-90f1-17a564a372bb": {
       "path": "rules.md",
       "url": "automerge:67eRrhWkKEXygwvWDkV2HckB1g4",
       "heads": [
-        "2bqN2DLstKP2tj27WQJThb6zBzt4Z6X5NN3daNbp2sU6YNJre3"
+        "WWXiq4WAQMuR4QKpM32kfWnPT7UEDTcJVsR9xXCmgMp32CDum"
       ],
-      "hash": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+      "hash": "370a0ca255fbc317c94a22c9b7832c99556b918c635e4ab26f26aa60ea19d63e"
     }
   }
 }

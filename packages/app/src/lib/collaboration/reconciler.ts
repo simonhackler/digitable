@@ -207,7 +207,9 @@ export function createProjectReconciler({
 		if (projection.path !== member.path || projection.url !== member.handle.url) {
 			throw new Error(`Projection configuration does not match ${member.id}.`);
 		}
-		const projectedDocument = member.handle.view(projection.heads).doc();
+		const projectedDocument = projection.materializeOnly
+			? member.handle.doc()
+			: member.handle.view(projection.heads).doc();
 		if (!projectedDocument) {
 			throw new Error(
 				`Automerge document for ${member.path} has not loaded the projected heads yet.`
@@ -217,6 +219,7 @@ export function createProjectReconciler({
 		const actual = await snapshotFile(fs, member.path);
 		const actualHash = actual?.hash ?? null;
 		if (
+			!projection.materializeOnly &&
 			materializedStatesEqual(
 				{ heads: member.handle.heads(), hash: actualHash },
 				{ heads: projection.heads, hash: projection.hash }
@@ -224,7 +227,7 @@ export function createProjectReconciler({
 		) {
 			return;
 		}
-		if (actual && actualHash !== projection.hash) {
+		if (!projection.materializeOnly && actual && actualHash !== projection.hash) {
 			const incoming = member.materializer.parse(decodeText(actual.bytes), { hash: actual.hash });
 			member.handle.changeAt(
 				projection.heads,
@@ -279,7 +282,11 @@ export function createProjectReconciler({
 			...config,
 			projections: {
 				...config.projections,
-				[member.id]: { ...projection, ...desired }
+				[member.id]: {
+					path: projection.path,
+					url: projection.url,
+					...desired
+				}
 			}
 		};
 		await writeProjectConfig(fs, config);
@@ -316,7 +323,13 @@ export function createProjectReconciler({
 		}
 		const actualHash = (await snapshotFile(fs, member.path))?.hash ?? null;
 		const desired: MaterializedState = { heads: member.handle.heads(), hash: desiredHash };
-		if (materializedStatesEqual(desired, projection) && actualHash === desiredHash) return;
+		if (
+			!projection.materializeOnly &&
+			materializedStatesEqual(desired, projection) &&
+			actualHash === desiredHash
+		) {
+			return;
+		}
 		await repo.flush([member.handle.documentId]);
 		await writePendingMaterialization(fs, {
 			version: 1,
@@ -335,7 +348,11 @@ export function createProjectReconciler({
 			...config,
 			projections: {
 				...config.projections,
-				[member.id]: { ...projection, ...desired }
+				[member.id]: {
+					path: projection.path,
+					url: projection.url,
+					...desired
+				}
 			}
 		};
 		await writeProjectConfig(fs, config);
@@ -418,13 +435,17 @@ export function createProjectReconciler({
 			void requestReconcile();
 			return;
 		}
-			saveTimer = setTimeout(() => void requestReconcile(dirtyMemberIds), saveDebounceMs);
+		saveTimer = setTimeout(() => void requestReconcile(dirtyMemberIds), saveDebounceMs);
 	}
 
 	return {
-		async start(): Promise<void> {
+		async start(reconcile = true): Promise<void> {
 			replaceMembers(members, config);
-			await requestReconcile();
+			if (reconcile) {
+				await requestReconcile();
+				return;
+			}
+			onStatus({ state: 'idle' });
 		},
 		async reconcileOrThrow(): Promise<void> {
 			if (saveTimer) {

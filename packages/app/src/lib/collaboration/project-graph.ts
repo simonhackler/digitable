@@ -11,16 +11,25 @@ import {
 	type ProjectDocument,
 	type ProjectMemberDocument
 } from './model';
-import type { ProjectFileSource } from './project-files';
+import {
+	classifyProjectFile,
+	projectComponentId,
+	projectMemberId,
+	type ProjectFileSource
+} from './project-files';
 
 export type ProjectGraph = {
 	projectHandle: DocHandle<ProjectDocument>;
+	project: ProjectDocument;
 	metadataHandle: DocHandle<GameMetadataDocument>;
 	memberHandles: Map<string, DocHandle<ProjectMemberDocument>>;
 	componentDataHandles: Map<string, DocHandle<ComponentDataDocument>>;
 };
 
-export async function createProjectGraph(repo: Repo, sources: ProjectFileSource[]): Promise<ProjectGraph> {
+export async function createProjectGraph(
+	repo: Repo,
+	sources: ProjectFileSource[]
+): Promise<ProjectGraph> {
 	const metadata = sources.find((source) => source.kind === 'game-metadata');
 	const metadataDocument = await metadata?.document();
 	if (!metadata || !metadataDocument || !isGameMetadataDocument(metadataDocument)) {
@@ -29,7 +38,7 @@ export async function createProjectGraph(repo: Repo, sources: ProjectFileSource[
 	const componentIds = new Map<string, string>();
 	for (const source of sources) {
 		if (source.componentName && !componentIds.has(source.componentName)) {
-			componentIds.set(source.componentName, crypto.randomUUID());
+			componentIds.set(source.componentName, projectComponentId(source.componentName));
 		}
 	}
 
@@ -39,7 +48,8 @@ export async function createProjectGraph(repo: Repo, sources: ProjectFileSource[
 	);
 	const memberHandles = new Map<string, DocHandle<ProjectMemberDocument>>();
 	for (const source of sources) {
-		const id = source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : `file-${crypto.randomUUID()}`;
+		const id =
+			source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId(source.path);
 		const handle = repo.create<ProjectMemberDocument>(await source.document());
 		const componentId = source.componentName ? componentIds.get(source.componentName) : undefined;
 		members[id] = {
@@ -67,34 +77,48 @@ export async function createProjectGraph(repo: Repo, sources: ProjectFileSource[
 		projectHandle.documentId,
 		...Array.from(memberHandles.values(), (handle) => handle.documentId)
 	]);
-	return graphFromHandles(projectHandle, memberHandles);
+	return graphFromHandles(projectHandle, projectHandle.doc()!, memberHandles);
 }
 
 export async function resolveProjectGraph(
 	repo: Repo,
 	projectHandle: DocHandle<unknown>
 ): Promise<ProjectGraph> {
-	const project = projectHandle.doc();
-	if (!isProjectDocument(project)) {
-		throw new Error('The Automerge root document is not a supported Digitable project.');
-	}
-	const memberHandles = new Map<string, DocHandle<ProjectMemberDocument>>();
-	for (const [id, member] of Object.entries(project.members)) {
-		const handle = await repo.find<ProjectMemberDocument>(member.url);
-		if (!isMemberDocument(member.kind, handle.doc())) {
-			throw new Error(`Automerge project member ${member.path} has an unsupported format.`);
+	while (true) {
+		const heads = projectHandle.heads();
+		const project = projectHandle.doc();
+		if (!isProjectDocument(project)) {
+			throw new Error('The Automerge root document is not a supported Digitable project.');
 		}
-		memberHandles.set(id, handle);
+		const resolved = await Promise.all(
+			Object.entries(project.members).map(async ([id, member]) => {
+				const classification = classifyProjectFile(member.path);
+				if (!classification || classification.kind !== member.kind) {
+					throw new Error(
+						`Automerge project member ${member.path} is not a recognized ${member.kind} file.`
+					);
+				}
+				const handle = await repo.find<ProjectMemberDocument>(member.url);
+				if (!isMemberDocument(member.kind, handle.doc())) {
+					throw new Error(`Automerge project member ${member.path} has an unsupported format.`);
+				}
+				return [id, handle] as const;
+			})
+		);
+		if (!sameHeads(heads, projectHandle.heads())) continue;
+		return graphFromHandles(
+			projectHandle as DocHandle<ProjectDocument>,
+			project,
+			new Map(resolved)
+		);
 	}
-	return graphFromHandles(projectHandle as DocHandle<ProjectDocument>, memberHandles);
 }
 
 function graphFromHandles(
 	projectHandle: DocHandle<ProjectDocument>,
+	project: ProjectDocument,
 	memberHandles: Map<string, DocHandle<ProjectMemberDocument>>
 ): ProjectGraph {
-	const project = projectHandle.doc();
-	if (!project) throw new Error('The Automerge root document is unavailable.');
 	const metadataHandle = memberHandles.get(GAME_METADATA_MEMBER_ID);
 	if (!metadataHandle || !isGameMetadataDocument(metadataHandle.doc())) {
 		throw new Error('The Automerge project is missing its game metadata member.');
@@ -110,13 +134,21 @@ function graphFromHandles(
 	}
 	return {
 		projectHandle,
+		project,
 		metadataHandle: metadataHandle as DocHandle<GameMetadataDocument>,
 		memberHandles,
 		componentDataHandles
 	};
 }
 
-function isMemberDocument(kind: ProjectDocument['members'][string]['kind'], value: unknown): boolean {
+function sameHeads(left: readonly string[], right: readonly string[]): boolean {
+	return left.length === right.length && left.every((head) => right.includes(head));
+}
+
+function isMemberDocument(
+	kind: ProjectDocument['members'][string]['kind'],
+	value: unknown
+): boolean {
 	if (kind === 'game-metadata') return isGameMetadataDocument(value);
 	if (kind === 'component-data') return isComponentDataDocument(value);
 	if (kind === 'asset') return isBinaryFileDocument(value);

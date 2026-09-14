@@ -16,11 +16,13 @@ export type MaterializedState = {
 export type ProjectProjection = MaterializedState & {
 	path: string;
 	url: AutomergeUrl;
+	materializeOnly?: boolean;
 };
 
 export type ProjectConfig = {
 	version: 1 | 2;
 	rootUrl: AutomergeUrl;
+	rootHeads?: UrlHeads;
 	projections: Record<string, ProjectProjection>;
 };
 
@@ -148,12 +150,15 @@ function validateConfig(value: unknown): ProjectConfig {
 				{
 					path: projection.path,
 					url: projection.url,
+					...(projection.materializeOnly === true ? { materializeOnly: true } : {}),
 					...validateMaterializedState(projection)
 				}
 			];
 		})
 	);
-	return { version: value.version, rootUrl: value.rootUrl, projections };
+	const rootHeads =
+		value.rootHeads === undefined ? undefined : validateHeads(value.rootHeads, 'root heads');
+	return { version: value.version, rootUrl: value.rootUrl, rootHeads, projections };
 }
 
 function validateMaterializedState(value: unknown): MaterializedState {
@@ -166,6 +171,13 @@ function validateMaterializedState(value: unknown): MaterializedState {
 		throw new Error('Invalid materialized Automerge state.');
 	}
 	return { heads: value.heads as UrlHeads, hash: value.hash as string | null };
+}
+
+function validateHeads(value: unknown, label: string): UrlHeads {
+	if (!Array.isArray(value) || !value.every((head) => typeof head === 'string')) {
+		throw new Error(`Invalid Automerge ${label}.`);
+	}
+	return value as UrlHeads;
 }
 
 function parseJson(source: string, path: string): unknown {

@@ -1,4 +1,6 @@
-id,label
-western-card-1,Front
-western-card-2,Back
-western-card-3,Third
+id,label,svg_3,back_Back
+western-card-1,Front,Front,Back
+western-card-2,Back,Front,Back
+western-card-3,"Third
+",Front,Back
+98496545-9a76-4a7a-aa39-eaba14f0366c,,,

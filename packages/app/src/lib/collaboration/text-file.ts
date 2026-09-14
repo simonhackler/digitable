@@ -9,7 +9,8 @@ export function textFileMaterializer(
 		kind,
 		parse: (source) => ({ type: 'text-file', schemaVersion: 1, content: source }),
 		apply(document, incoming) {
-			if (document.content !== incoming.content) updateText(document, ['content'], incoming.content);
+			if (document.content !== incoming.content)
+				updateText(document, ['content'], incoming.content);
 		},
 		serialize: (document) => document.content,
 		isDocument: isTextFileDocument

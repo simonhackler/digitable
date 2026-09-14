@@ -2,362 +2,230 @@
 
 ## Status
 
-`game.json` is the first Automerge-managed project file in `packages/app`.
+Automerge is authoritative for every recognized authoring file in a project.
 
-Automerge is authoritative for game metadata. The physical `game.json` file remains a human-editable projection that is imported into Automerge when changed externally and materialized from Automerge after document changes.
+Recognized files are:
 
-Component data, SVG templates, rules, table setup, and assets are not yet managed by Automerge. In particular, component `data.csv` reconciliation is deliberately disabled in the application integration until component creation, rename, and deletion are represented in the project graph.
+- `game.json`
+- `rules.md`
+- `components/<component>/front.svg`
+- `components/<component>/back.svg`
+- `components/<component>/data.csv`
+- `assets/**`
+- `setup/table.svg`
+- `feedback/playtests.json`
+- `feedback/**/*.md`
 
-## Current Architecture
+The project scanner deliberately ignores unknown paths. It also excludes:
 
-### Project sessions
+- `.automerge/**`, which contains local Automerge repository state and journals.
+- `tts-export/**`, which contains generated Tabletop Simulator results.
 
-Each open project has one `ProjectSession` created by `openProjectSession`.
+Generated images below `assets/generated/**` are synchronized because project data can reference them as authoring inputs.
 
-The session owns:
+Synchronization currently connects same-origin browser tabs through `BroadcastChannel`. There is no cross-device sync service yet.
 
-- A project-scoped Automerge Repo.
-- Project-local Repo storage under `.automerge/storage/`.
-- The stable project root document.
-- The linked game metadata document.
-- Filesystem reconciliation.
-- External-file observation.
-- Repo flushing and shutdown.
+## Project Graph
 
-The `/games` layout owns the active session lifecycle. It opens the project named by the route, closes the previous session before switching projects or workspaces, and prevents project children from rendering until the session is ready.
+Each project has one stable root Automerge document using schema version 2.
 
-A generation counter prevents a slow project open from replacing a newer navigation result.
+The root document contains:
 
-### Svelte reactivity
+- A dynamic member registry.
+- Stable component records independent of directory names.
+- Stable file member IDs independent of component renames.
+- File paths, document kinds, and linked Automerge URLs.
+- BLAKE3 hashes for binary members.
 
-Automerge is connected to Svelte 5 through `document-state.svelte.ts`.
+File and component IDs for newly discovered paths are deterministic BLAKE3-based IDs. This prevents separate tabs from creating different registry keys for the same path.
 
-The adapter:
+Components are represented even when they have no `data.csv`. Their optional front, back, and data member references are stored separately.
 
-- Stores the current immutable Automerge document in `$state.raw`.
-- Reassigns that state when the `DocHandle` emits a change.
-- Exposes a typed `change()` method that delegates to `DocHandle.change()`.
-- Removes the handle listener when destroyed.
-- Avoids wrapping Automerge documents in Svelte deep proxies.
+Replicated member paths are validated against the recognized-file policy before their linked documents are resolved or materialized. A root document cannot use a member entry to overwrite `.automerge`, `tts-export`, or an unknown project path.
 
-The integration does not use `@automerge/automerge-repo-svelte-store`. Its writable `set()` and `update()` methods only mutate the Svelte store and do not write to Automerge, while its handle listener has no explicit teardown API.
+## Member Documents
 
-### Project graph
+### Game metadata
 
-Every project has a stable root document with linked members.
-
-The current root includes:
-
-- The game metadata member.
-- A component registry structure reserved for later project integration.
-
-The metadata member has its own Automerge document and URL. Local folder names remain route and materialization keys; they are not the synchronized project identity.
-
-### Game metadata model
-
-The metadata document contains:
+`game.json` retains its structured metadata document:
 
 - `name`
-- An atomic `{ min, max }` player range.
+- Atomic `{ min, max }` player range
 - `description`
 - `tags`
-- Optional `digitableVersion`.
-- Unknown `game.json` properties in `extra`.
+- Optional `digitableVersion`
+- Unknown JSON properties in `extra`
 
-The player range is one CRDT value so independently valid concurrent changes cannot merge into an invalid combination such as a minimum greater than the maximum.
+Known text fields use Automerge text updates. Unknown JSON properties survive form edits and canonical materialization.
 
-The materializer converts between this document and the existing `game.json` shape containing `minPlayers` and `maxPlayers`.
+### Component data
 
-Unknown properties are preserved when the UI edits known fields.
+`data.csv` uses a structured document with stable row and column IDs, explicit row and column ordering, and Automerge text cells.
 
-### Metadata editing
+Initial and external CSV imports accept missing row IDs and assign deterministic internal IDs. Adoption preserves the original projection bytes; spreadsheet saves materialize the stable IDs.
 
-The game metadata page no longer reads or writes `game.json` directly.
+The spreadsheet still emits complete CSV projections, but in-app writes are imported directly into the linked component document at the last projected heads. Reconciliation then processes only that member.
 
-Valid field edits enter Automerge immediately:
+### Text files
 
-- `name` and `description` use Automerge `updateText`.
-- Player-limit changes replace the atomic player-range value.
-- Fields not exposed by the form remain unchanged.
+The following files currently use linked Automerge text documents:
 
-The form reads directly from rune-backed Automerge state, so remote document changes update the mounted page. The submit button validates the current document and explicitly flushes its filesystem projection.
+- `rules.md`
+- Component `front.svg` and `back.svg`
+- `setup/table.svg`
+- Feedback Markdown
+- The playtest feedback registry
 
-Save status distinguishes local persistence from remote acknowledgement:
+In-app writes update these linked documents through the project session. External editor changes are imported with `changeAt()` using the recorded projection heads.
 
-- `Saving locally`
-- `Saved locally`
-- A reconciliation error message
+SVG and table files currently merge as text. Moving them to stable semantic element and table models remains future work.
 
-Metadata materialization currently has no debounce. This starts local persistence immediately after an edit. SvelteKit navigation awaits a session flush, and full-page unload is guarded while reconciliation is active.
+### Binary assets
 
-### Filesystem reconciliation
+Assets use immutable linked Automerge documents following the Backstitch model.
 
-Each managed file tracks:
+The root member stores:
 
-- Its Automerge document URL.
-- Last materialized Automerge heads.
-- Last materialized file hash.
-- Projection path.
+```text
+path -> Automerge URL + BLAKE3 hash
+```
 
-Reconciliation performs these operations in order:
+The linked binary document stores:
 
-1. Recover an interrupted materialization journal.
-2. Read and hash the current file.
-3. Import a changed file at the last materialized heads with `changeAt`.
-4. Merge that change with the latest Automerge state.
-5. Validate and serialize the merged document.
-6. Flush Automerge Repo storage.
-7. Recheck the file hash to detect concurrent filesystem changes.
-8. Write a pending materialization journal.
-9. Write and verify the canonical projection.
-10. Update `.automerge/config.json`.
-11. Remove the journal.
+```text
+{
+  type: "binary-file",
+  schemaVersion: 1,
+  content: Uint8Array
+}
+```
 
-Invalid external JSON is preserved rather than overwritten. Reconciliation reports an error and retries after a later file or document change. Once the file is corrected, it is imported normally.
+Replacing an asset performs these operations:
 
-Unexpected deletion of a managed projection currently restores the file from canonical Automerge state.
+1. Read and hash the complete new file.
+2. Create a new Automerge binary document.
+3. Flush that document before publishing its URL.
+4. Change the root member to point to the new URL and hash.
+5. Retain the previous binary document through project history.
 
-### Bootstrap and recovery
+Receiving sessions resolve the linked document with `repo.find()`, verify its BLAKE3 hash, and only then materialize its bytes.
 
-Opening an existing project without Automerge configuration imports `game.json` and creates:
+Binary payloads do not inflate the root document. There is currently no hash deduplication or external blob protocol.
 
-- A project root document.
-- A game metadata document.
-- Project-local Repo storage.
-- `.automerge/config.json`.
+## Dynamic Inventory
 
-Bootstrap uses a pending journal and source hashes so interrupted initialization can be resumed safely.
+The active session scans recognized paths after opening and while the project remains mounted.
 
-If Automerge storage exists but `config.json` is missing, the session refuses to create a replacement identity. This prevents silently abandoning project history and collaborators.
+It handles:
 
-### Multi-tab coordination
+- New recognized files.
+- New components, including empty components.
+- External text changes.
+- Binary replacements.
+- Optional file deletion.
+- Root members added, removed, relinked, or renamed by another tab.
 
-BroadcastChannel synchronizes Automerge documents between same-origin tabs.
+Refresh requests are coalesced. If a file or root change occurs during an active refresh, one dirty rerun processes the newer state immediately.
 
-Web Locks serialize:
+Every synchronization scan verifies current file bytes with BLAKE3. Size and modification time are recorded for diagnostics but are never trusted as content identity.
 
-- Project bootstrap.
-- Project creation.
-- Reconciliation and config updates.
-- Automerge storage adapter reads and mutations.
+Reconciliation tracks exact dirty member IDs. A CSV or SVG edit no longer causes every project member to be reserialized.
 
-The storage lock is necessary because separate Repo instances may otherwise contend over writable handles in the same `.automerge/storage` directory.
+## Project Commands
 
-Before materializing, a reconciler verifies that its handle contains the heads recorded by the latest projection config. A stale tab therefore waits for Automerge synchronization rather than writing an older document over a newer projection.
+The session exposes commands for:
 
-### Project creation and deletion
+- Writing one or more project files.
+- Renaming a component.
+- Deleting a component.
+- Flushing all pending project work.
 
-Project creation now creates a valid canonical `game.json` before navigation. The operation is protected by a Web Lock and rejects normalized folder-name collisions.
+Blank component creation, rename, and deletion use these commands. Component rename changes member paths while preserving component and member IDs.
 
-If the initial file write fails, the newly created empty directory is removed so creation can be retried.
+Rules, CSV, component SVG, table SVG, uploaded assets, and generated assets write through the active project session. Premade deck generation and feedback import hand their completed filesystem mutations to an explicit session sync.
 
-Local project deletion flushes and closes the active session before removing the project directory.
+New-path writes are projection-first so UI navigation does not wait for whole-project discovery. Existing managed text files are imported into Automerge before their save operation completes. Project switch, close, playtest export, and explicit synchronization await all pending refresh and reconciliation work.
 
-Collaborative deletion across devices is not implemented yet. That requires a workspace-level project registry and deletion tombstones.
+## Bootstrap And Migration
 
-### Playtest exports
+New projects bootstrap a stable root and the required `game.json` member before rendering. The remaining recognized inventory is adopted immediately in the background.
 
-Starting a playtest flushes the active project session before reading project files.
+Version 1 projects retain their existing root URL. Migration upgrades the root and config schema first, then dynamic inventory adopts the additional file types without replacing project identity.
 
-`.automerge/**` is excluded from project transfer. Playtests receive materialized project content, not authoring history or project identity.
+Pending bootstrap configurations are recovered before source comparison. Existing Automerge storage without a config still fails safely instead of creating a replacement identity.
 
-### Build integration
+When the root and config differ after an interrupted root mutation, opening rebuilds affected projections from the loaded root. Those projections are marked materialization-only so stale filesystem bytes cannot be imported over a newer linked document.
 
-Automerge requires WASM support in Vite. `vite-plugin-wasm` is configured for both the main build and workers.
+Config version 2 records the root heads it represents. A tab that reads a newer shared config waits until its local root handle contains those heads before repairing or materializing project files.
 
-The unused Automerge Svelte-store and IndexedDB storage adapters were removed. Project history is stored with the project rather than in browser-specific IndexedDB.
+Per-member pending materialization journals continue to protect file/config updates. Structural component operations are serialized with Web Locks. A dedicated multi-step structural operation journal is not yet implemented.
+
+## Multi-Tab Coordination
+
+Each tab owns a project-scoped Automerge Repo backed by `.automerge/storage`.
+
+Coordination uses:
+
+- BroadcastChannel for document synchronization.
+- Web Locks for bootstrap, root/config changes, reconciliation, and storage adapter mutations.
+- Latest-config rereads while holding the project lock.
+- Deterministic IDs and commit-time path revalidation.
+- Projected heads to prevent stale filesystem imports.
+
+Local save status distinguishes synchronization work from idle state. It does not imply acknowledgement from another device.
+
+## Playtests And Exports
+
+Starting a playtest synchronizes the active project before reading its projections.
+
+Project transfer excludes:
+
+- `.automerge/**`
+- `tts-export/**`
+
+Playtests receive materialized project files, not authoring history or generated TTS output.
+
+TTS export continues writing directly below `tts-export/**`. Those writes do not enter the project graph or trigger synchronization.
 
 ## Verification
 
-The implemented flow is covered by Playwright tests for:
+Focused Playwright coverage verifies:
 
-- Existing project bootstrap into `.automerge/config.json`.
-- Metadata edits materializing to `game.json`.
-- Preservation of tags, `digitableVersion`, and unknown fields.
-- Valid external `game.json` changes updating the mounted form.
-- Invalid external JSON remaining untouched.
-- Recovery after correcting invalid external JSON.
-- Metadata synchronization between two tabs.
-- Independent fields edited from different tabs being retained.
-- Existing game creation, deletion, deck creation, and deck rename behavior.
-- Existing CSV editor behavior while CSV remains filesystem-managed.
+- Background adoption of every recognized file kind.
+- Exclusion of TTS and unknown component files.
+- External Markdown import while preserving the linked document URL.
+- Immutable binary replacement with a new linked document URL.
+- Exact binary projection bytes.
+- Dynamic component file discovery.
+- Stable project identity after reload.
+- Component creation through a project command.
+- Stable member IDs across component rename.
 
-The application type-check and production build pass. Existing warnings in `PlaySurface.svelte` are unrelated to this integration.
+Existing regressions cover:
+
+- Metadata editing and invalid external JSON recovery.
+- Metadata synchronization between tabs.
+- Component create, rename, and delete.
+- CSV save and navigation persistence.
+- SVG editor persistence.
+- Semantic table SVG persistence.
+- Asset upload and image selection.
 
 ## Current Boundaries
 
-### Metadata only
+- Synchronization is same-browser only.
+- SVG and table collaboration is text-based rather than semantic.
+- Mounted Lexical, SVG, and spreadsheet editors do not yet apply every remote document patch directly to their third-party editor instance; filesystem projections and remounts remain part of those integrations.
+- Binary documents are immutable but are not deduplicated by hash.
+- Structural operations have config repair but no dedicated operation journal.
+- Collaborative whole-project discovery and deletion require a workspace-level Automerge document.
 
-The application currently opens sessions with component-data management disabled. This is necessary because the existing deck UI still creates, renames, and deletes directories directly.
+## Next Steps
 
-Enabling the existing CSV materializer now would allow reconciliation to recreate an old `data.csv` path after a deck rename or deletion. Dynamic graph membership must be implemented first.
-
-### No remote server
-
-BroadcastChannel only connects same-origin browser contexts. There is no authenticated cross-device Automerge sync server yet.
-
-`Saved locally` therefore means that Automerge storage and the filesystem projection are current on this client. It does not mean another device has acknowledged the change.
-
-### No collaborative project discovery
-
-Each project has a stable root URL, but there is no workspace Automerge document listing project roots. A remote client cannot discover project creation or deletion from per-project documents alone.
-
-### No shared deletion tombstones
-
-Deleting a project removes one local checkout. Other clients do not yet receive a durable deletion event. A project-wide deletion design must prevent an offline or stale peer from recreating deleted content.
-
-### No binary synchronization
-
-Binary assets remain ordinary files. They are not discoverable or transferable through the Automerge graph.
-
-## Next Necessary Steps
-
-### 1. Make the project graph dynamic
-
-The root project document must become the authoritative component registry.
-
-Required work:
-
-- Observe root-document changes during an active session.
-- Add and remove reconciled members without reopening the project.
-- Represent every component, including components without `data.csv`.
-- Preserve stable component IDs independently of directory names.
-- Add operation journals for structural changes.
-- Reconcile config projections when root membership changes.
-- Define conflict behavior for concurrent component names and paths.
-
-This is the prerequisite for all deck and CSV integration.
-
-### 2. Move deck lifecycle into project commands
-
-Replace direct directory and sidebar mutation with session commands:
-
-- `createComponent`
-- `renameComponent`
-- `deleteComponent`
-
-Each command must update the root document, member paths, filesystem structure, projection config, and visible project summary as one recoverable operation.
-
-The current `new-deck-dialog.svelte`, `rename-deck-dialog.svelte`, and `create-menu.svelte` should consume these commands rather than writing through `FsDir` directly.
-
-### 3. Enable structured `data.csv` documents
-
-Once component membership is dynamic:
-
-- Enable component-data management in `openProjectSession`.
-- Resolve component routes by stable component ID plus local name.
-- Convert spreadsheet changes into row, column, order, and cell operations.
-- Preserve row IDs in the CSV projection.
-- Update the spreadsheet from remote Automerge changes without triggering feedback writes.
-- Flush pending spreadsheet edits during navigation and project operations.
-- Add conflict handling for concurrent column renames and row deletion/edit combinations.
-
-### 4. Add a workspace Automerge document
-
-Introduce a workspace document containing stable project entries:
-
-- Project ID.
-- Project root URL.
-- Display name.
-- Suggested local folder key.
-- Creation metadata.
-- Deletion tombstone.
-
-The selected filesystem root remains the local materialization target. The workspace document provides project discovery and shared lifecycle across clients.
-
-Existing workspaces require a migration that scans project configs and registers their root URLs.
-
-### 5. Add authenticated remote synchronization
-
-Replace development-only local synchronization with a production sync service.
-
-Required work:
-
-- Authenticated WebSocket adapter configuration.
-- Authorization from users and collaborators to workspace and project document IDs.
-- Invitation and join flows.
-- Timeouts and offline status.
-- Server-side retention and storage policy.
-- Clear UI distinction between local persistence and remote synchronization.
-
-Project editing and Colyseus play-session state should remain separate systems.
-
-### 6. Synchronize text project files
-
-After project membership and networking are stable, add managed members for:
-
-- `rules.md`
-- Component `front.svg`
-- Component `back.svg`
-- `setup/table.svg` or its typed semantic source
-
-Markdown can use Automerge text operations.
-
-SVG should not be treated as an unconstrained whole-file string for collaborative editing. Concurrent XML text changes can create invalid documents. Prefer stable element identities and attribute/text operations, with deterministic SVG materialization.
-
-Table setup should use the existing typed table model as the Automerge source and materialize `setup/table.svg` as an artifact.
-
-### 7. Add content-addressed binary assets
-
-Binary bytes should not be stored directly in Automerge history.
-
-Add an Automerge asset manifest containing:
-
-- Stable asset ID.
-- Project-relative path.
-- Content hash.
-- MIME type.
-- Size.
-- Blob-storage identifier.
-
-Store bytes separately:
-
-- As normal local files under `assets/`.
-- In remote object storage keyed by content hash.
-- With deduplicated and resumable upload/download.
-- With hash verification before materialization.
-
-Renames should only update manifest paths. Deletion should use tombstones and a retention policy rather than immediately removing shared bytes.
-
-### 8. Implement collaborative deletion
-
-Project deletion must eventually:
-
-1. Write a workspace tombstone.
-2. Stop accepting project edits.
-3. Notify connected peers through the workspace document.
-4. Close local project sessions.
-5. Remove local projections.
-6. Retain or garbage-collect Automerge documents and binary blobs according to policy.
-
-An offline peer must not be able to rematerialize a project after reconnecting.
-
-### 9. Add history, branches, and presence
-
-Only add these after all managed member types support stable identity and materialization.
-
-The todo prototype's versioning controller cannot be ported directly because it hard-codes one todo member. Digitable needs project-wide checkpoints and branch clones covering every managed member.
-
-Presence messages should identify:
-
-- Project root.
-- Branch.
-- Member ID.
-- Editor mode.
-- Editor-specific coordinates or cursor positions.
-
-Undo should remain editor-aware. Existing Lexical, SVG editor, and spreadsheet histories should not be replaced by one generic todo-style command stack.
-
-## Recommended Order
-
-1. Dynamic project graph and structural journals.
-2. Automerge-backed deck create, rename, and delete commands.
-3. Structured `data.csv` editor integration.
-4. Workspace project registry and tombstones.
-5. Authenticated remote synchronization and invitations.
-6. Rules, SVG, and table document types.
-7. Content-addressed binary asset synchronization.
-8. Collaborative project deletion.
-9. Presence, history, undo coordination, and branches.
-
-The immediate next implementation should be dynamic component membership plus recoverable deck lifecycle commands. That removes the current metadata-only boundary and makes it safe to enable the existing structured CSV materializer.
+1. Add structural operation journals for component rename and deletion.
+2. Bind mounted rules, SVG, table, and spreadsheet editors directly to remote member changes.
+3. Replace text SVG merging with stable element and attribute identities.
+4. Make the typed table model authoritative and materialize `setup/table.svg` from it.
+5. Add authenticated cross-device Automerge networking.
+6. Add a workspace project registry and project deletion tombstones.
+7. Add binary deduplication and retention policy if repository growth requires it.

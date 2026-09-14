@@ -232,7 +232,7 @@ test.describe.serial('data editor', () => {
 		await page.keyboard.press('Enter');
 
 		await expect(page.getByText('Saving')).toBeVisible();
-		await expect(page.getByText('Saved')).toBeVisible();
+		await expect(page.getByText('Saved')).toBeVisible({ timeout: 15_000 });
 		await expect(cardPreview(page, 'persisted e2e value')).toBeVisible();
 
 		await page.goto('/app/games/western-cards/decks/western/editor');

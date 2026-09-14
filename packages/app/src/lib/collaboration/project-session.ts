@@ -8,7 +8,8 @@ import {
 	Repo,
 	type AutomergeUrl,
 	type DocHandle,
-	type NetworkAdapterInterface
+	type NetworkAdapterInterface,
+	type UrlHeads
 } from '@automerge/automerge-repo';
 import { BroadcastChannelNetworkAdapter } from '@automerge/automerge-repo-network-broadcastchannel';
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
@@ -51,7 +52,9 @@ import {
 	type TextFileDocument
 } from './model';
 import {
-	primeProjectFileCache,
+	classifyProjectFile,
+	projectComponentId,
+	projectMemberId,
 	scanProjectFiles,
 	type ProjectFileFingerprint,
 	type ProjectFileSource
@@ -82,7 +85,9 @@ export type ProjectSession = {
 	metadataHandle: DocHandle<GameMetadataDocument>;
 	componentDataHandles: ReadonlyMap<string, DocHandle<ComponentDataDocument>>;
 	getConfig(): ProjectConfig;
-	writeFiles(files: Array<{ path: string; data: FsWriteData }>): Promise<Result<void, CollaborationError>>;
+	writeFiles(
+		files: Array<{ path: string; data: FsWriteData }>
+	): Promise<Result<void, CollaborationError>>;
 	renameComponent(oldName: string, newName: string): Promise<Result<void, CollaborationError>>;
 	deleteComponent(name: string): Promise<Result<void, CollaborationError>>;
 	sync(): Promise<Result<void, CollaborationError>>;
@@ -120,69 +125,94 @@ export async function openProjectSession(
 			const restored = await withProjectLock(`bootstrap:${project.name}`, () =>
 				restoreOrCreateProject(project, projectRepo, hadStoredData)
 			);
-			let graph = await resolveProjectGraph(
-				projectRepo,
-				await projectRepo.find(restored.rootUrl)
-			);
-			let config = restored;
-			const fileCache = await primeProjectFileCache(
-				project,
-				new Map(Object.values(config.projections).map((projection) => [projection.path, projection.hash]))
-			);
+			const rootHandle = await projectRepo.find(restored.rootUrl);
+			const openedGraph = await withProjectLock(restored.rootUrl, async () => {
+				const latestConfig = await readProjectConfig(project);
+				if (latestConfig?.rootHeads) await waitForRootHeads(rootHandle, latestConfig.rootHeads);
+				const graph = await resolveProjectGraph(projectRepo, rootHandle);
+				const repaired = await repairProjectConfig(
+					project,
+					graph,
+					latestConfig?.rootUrl === restored.rootUrl ? latestConfig : restored
+				);
+				return { graph, repaired };
+			});
+			let graph = openedGraph.graph;
+			const repaired = openedGraph.repaired;
+			let config = repaired.config;
+			const fileCache = new Map<string, ProjectFileFingerprint>();
 			const members = managedMembers(graph, config);
 			const reconciler = createProjectReconciler({
 				fs: project,
 				repo: projectRepo,
-				initialConfig: restored,
+				initialConfig: config,
 				members,
 				onStatus: options.onStatus,
 				saveDebounceMs: options.saveDebounceMs
 			});
 			let refreshPromise: Promise<void> | undefined;
+			let refreshAgain = false;
 			function refresh(): Promise<void> {
-				if (refreshPromise) return refreshPromise;
+				if (refreshPromise) {
+					refreshAgain = true;
+					return refreshPromise;
+				}
 				refreshPromise = (async () => {
-					const refreshed = await withProjectLock(restored.rootUrl, () => {
-						config = reconciler.getConfig();
-						return refreshProjectInventory(project, projectRepo, graph, config, fileCache);
-					});
-					graph = refreshed.graph;
-					config = refreshed.config;
-					reconciler.replaceMembers(managedMembers(graph, config), config);
-					if (refreshed.reconcileMemberIds.length) {
-						void reconciler.requestReconcile(refreshed.reconcileMemberIds);
-					}
+					do {
+						refreshAgain = false;
+						const scanned = await scanProjectFiles(project, fileCache);
+						const refreshed = await withProjectLock(restored.rootUrl, async () => {
+							const latestConfig = await readProjectConfig(project);
+							if (latestConfig?.rootHeads) {
+								await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+							}
+							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+							config =
+								latestConfig?.rootUrl === restored.rootUrl ? latestConfig : reconciler.getConfig();
+							return refreshProjectInventory(project, projectRepo, graph, config, scanned);
+						});
+						graph = refreshed.graph;
+						config = refreshed.config;
+						reconciler.replaceMembers(managedMembers(graph, config), config);
+						if (refreshed.reconcileMemberIds.length) {
+							void reconciler.requestReconcile(refreshed.reconcileMemberIds);
+						}
+						if (refreshed.scanChanged) refreshAgain = true;
+					} while (refreshAgain);
 				})().finally(() => {
 					refreshPromise = undefined;
 				});
 				return refreshPromise;
 			}
 			function requestRefresh(): void {
-				void refresh()
-					.then(() => reconciler.reconcileOrThrow())
-					.catch((cause) => {
-						options.onStatus?.({
-							state: 'error',
-							memberId: '$project',
-							path: '.automerge/config.json',
-							message: cause instanceof Error ? cause.message : String(cause)
-						});
+				void refresh().catch((cause) => {
+					options.onStatus?.({
+						state: 'error',
+						memberId: '$project',
+						path: '.automerge/config.json',
+						message: cause instanceof Error ? cause.message : String(cause)
 					});
+				});
 			}
 			const observer = createProjectFileObserver(requestRefresh, {
 				pollIntervalMs: options.pollIntervalMs
 			});
 			const started = await tryAsync({
-				try: () => reconciler.start(),
+				try: () => reconciler.start(false),
 				catch: (cause) => CollaborationError.ProjectOpenFailed({ project: project.name, cause })
 			});
 			if (started.error) {
 				await reconciler.stop();
 				throw started.error;
 			}
+			if (repaired.reconcileMemberIds.length) {
+				await reconciler.requestReconcile(repaired.reconcileMemberIds);
+				await reconciler.reconcileOrThrow();
+			}
 			const rootListener = requestRefresh;
 			graph.projectHandle.on('change', rootListener);
 			observer.start();
+			requestRefresh();
 
 			let closed = false;
 			async function synchronize(): Promise<void> {
@@ -192,7 +222,15 @@ export async function openProjectSession(
 			function command(operation: () => Promise<void>): Promise<Result<void, CollaborationError>> {
 				return tryAsync({
 					try: async () => {
-						await withProjectLock(restored.rootUrl, operation);
+						await withProjectLock(restored.rootUrl, async () => {
+							const latestConfig = await readProjectConfig(project);
+							if (latestConfig?.rootHeads) {
+								await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+							}
+							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+							if (latestConfig?.rootUrl === restored.rootUrl) config = latestConfig;
+							await operation();
+						});
 						await refresh();
 					},
 					catch: (cause) =>
@@ -208,38 +246,144 @@ export async function openProjectSession(
 				writeFiles: (files: Array<{ path: string; data: FsWriteData }>) =>
 					tryAsync({
 						try: async () => {
-							const projectDocument = graph.projectHandle.doc();
-							if (!projectDocument) throw new Error('The Automerge project is unavailable.');
-							const membersByPath = new Map(
-								Object.entries(projectDocument.members).map(([id, member]) => [member.path, { id, member }])
-							);
 							const changedIds: string[] = [];
 							await withProjectLock(restored.rootUrl, async () => {
+								const latestConfig = await readProjectConfig(project);
+								if (!latestConfig || latestConfig.rootUrl !== restored.rootUrl) {
+									throw new Error('The Automerge project configuration is unavailable.');
+								}
+								if (latestConfig.rootHeads) {
+									await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+								}
+								graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+								const repaired = await repairProjectConfig(project, graph, latestConfig);
+								config = repaired.config;
+								changedIds.push(...repaired.reconcileMemberIds);
 								await Promise.all(files.map((file) => writeFile(project, file.path, file.data)));
-								const projections = { ...config.projections };
-								const managed = new Map(managedMembers(graph, config).map((member) => [member.id, member]));
-								for (const file of files) {
-									const entry = membersByPath.get(file.path);
-									if (!entry || entry.member.kind === 'asset') continue;
-									const projection = projections[entry.id];
+								const scanned = await scanProjectFiles(
+									project,
+									fileCache,
+									files.map((file) => file.path)
+								);
+								const membersByPath = new Map(
+									Object.entries(graph.project.members).map(([id, member]) => [
+										member.path,
+										{ id, member }
+									])
+								);
+								const managed = new Map(
+									managedMembers(graph, config).map((member) => [member.id, member])
+								);
+								const created = new Map<string, DocHandle<ProjectMemberDocument>>();
+								for (const source of scanned.files) {
+									const entry = membersByPath.get(source.path);
+									if (!entry) {
+										created.set(
+											projectMemberId(source.path),
+											projectRepo.create<ProjectMemberDocument>(await source.document())
+										);
+										continue;
+									}
+									if (entry.member.kind !== source.kind) {
+										throw new Error(`${source.path} changed project file kind.`);
+									}
+									if (source.kind === 'asset') {
+										created.set(
+											entry.id,
+											projectRepo.create<ProjectMemberDocument>(await source.document())
+										);
+										continue;
+									}
+									const projection = config.projections[entry.id];
 									const member = managed.get(entry.id);
-									const snapshot = await snapshotFile(project, file.path);
-									if (!projection || !member || !snapshot) continue;
+									if (!projection || !member) continue;
 									importManagedTextMember(
 										member,
 										projection,
-										decodeText(snapshot.bytes),
-										snapshot.hash
+										decodeText((await snapshotFile(project, source.path))!.bytes),
+										source.snapshot.hash
 									);
-									projections[entry.id] = { ...projection, hash: snapshot.hash };
-									fileCache.set(file.path, snapshot);
 									changedIds.push(entry.id);
 								}
-								if (!changedIds.length) return;
-								await projectRepo.flush(
-									changedIds.map((id) => memberHandle(graph, id).documentId)
+								await projectRepo.flush([
+									...changedIds.flatMap((id) => {
+										const handle = graph.memberHandles.get(id);
+										return handle ? [handle.documentId] : [];
+									}),
+									...Array.from(created.values(), (handle) => handle.documentId)
+								]);
+								if (created.size) {
+									graph.projectHandle.change(
+										(root) => {
+											const componentIds = new Map(
+												Object.entries(root.components).map(([id, component]) => [
+													component.name,
+													id
+												])
+											);
+											for (const source of scanned.files) {
+												const existing = membersByPath.get(source.path);
+												const id = existing?.id ?? projectMemberId(source.path);
+												const handle = created.get(id);
+												if (!handle) continue;
+												if (existing) {
+													root.members[id].url = handle.url;
+													root.members[id].hash = source.snapshot.hash;
+													continue;
+												}
+												const componentId = source.componentName
+													? (componentIds.get(source.componentName) ??
+														projectComponentId(source.componentName))
+													: undefined;
+												if (source.componentName && componentId && !root.components[componentId]) {
+													componentIds.set(source.componentName, componentId);
+													root.components[componentId] = { name: source.componentName };
+												}
+												root.members[id] = {
+													kind: source.kind,
+													path: source.path,
+													url: handle.url,
+													...(source.kind === 'asset' ? { hash: source.snapshot.hash } : {}),
+													...(componentId ? { componentId } : {})
+												};
+												if (!componentId) continue;
+												if (source.kind === 'component-data')
+													root.components[componentId].dataMemberId = id;
+												if (source.side === 'front')
+													root.components[componentId].frontMemberId = id;
+												if (source.side === 'back') root.components[componentId].backMemberId = id;
+											}
+										},
+										{ message: 'Write project files' }
+									);
+									await projectRepo.flush([graph.projectHandle.documentId]);
+								}
+								graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+								const sourceByPath = new Map(scanned.files.map((source) => [source.path, source]));
+								const projections = Object.fromEntries(
+									Object.entries(graph.project.members).map(([id, member]) => {
+										const source = sourceByPath.get(member.path);
+										const previous = config.projections[id];
+										if (!source && previous?.path === member.path && previous.url === member.url) {
+											return [id, previous];
+										}
+										return [
+											id,
+											{
+												path: member.path,
+												url: member.url,
+												heads: memberHandle(graph, id).heads(),
+												hash: source?.snapshot.hash ?? previous?.hash ?? null
+											}
+										];
+									})
 								);
-								config = { ...config, projections };
+								config = {
+									version: 2,
+									rootUrl: graph.projectHandle.url,
+									rootHeads: graph.projectHandle.heads(),
+									projections
+								};
 								await writeProjectConfig(project, config);
 								reconciler.replaceMembers(managedMembers(graph, config), config);
 							});
@@ -247,54 +391,60 @@ export async function openProjectSession(
 								await reconciler.requestReconcile(changedIds);
 								await reconciler.reconcileOrThrow();
 							}
-							if (files.some((file) => !membersByPath.has(file.path))) requestRefresh();
+							if (refreshPromise) refreshAgain = true;
 						},
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
 				renameComponent: (oldName: string, newName: string) =>
 					command(async () => {
-						const document = graph.projectHandle.doc();
-						const component = document
-							? Object.entries(document.components).find(([, value]) => value.name === oldName)
-							: undefined;
+						const document = graph.project;
+						const component = Object.entries(document.components).find(
+							([, value]) => value.name === oldName
+						);
 						if (!component) throw new Error(`Component "${oldName}" does not exist.`);
-						if (Object.values(document!.components).some((value) => value.name === newName)) {
+						if (Object.values(document.components).some((value) => value.name === newName)) {
 							throw new Error(`Component "${newName}" already exists.`);
 						}
 						const source = joinFsPath(COMPONENTS_DIR, oldName);
 						const target = joinFsPath(COMPONENTS_DIR, newName);
 						const moved = await project.move(source, target);
 						if (moved.error) throw new Error(moved.error.message, { cause: moved.error });
-						graph.projectHandle.change((root) => {
-							root.components[component[0]].name = newName;
-							for (const member of Object.values(root.members)) {
-								if (member.componentId !== component[0]) continue;
-								member.path = `${target}/${member.path.slice(source.length + 1)}`;
-							}
-						}, { message: `Rename component ${oldName} to ${newName}` });
+						graph.projectHandle.change(
+							(root) => {
+								root.components[component[0]].name = newName;
+								for (const member of Object.values(root.members)) {
+									if (member.componentId !== component[0]) continue;
+									member.path = `${target}/${member.path.slice(source.length + 1)}`;
+								}
+							},
+							{ message: `Rename component ${oldName} to ${newName}` }
+						);
 						await projectRepo.flush([graph.projectHandle.documentId]);
 					}),
 				deleteComponent: (name: string) =>
 					command(async () => {
-						const document = graph.projectHandle.doc();
-						const component = document
-							? Object.entries(document.components).find(([, value]) => value.name === name)
-							: undefined;
+						const document = graph.project;
+						const component = Object.entries(document.components).find(
+							([, value]) => value.name === name
+						);
 						if (!component) throw new Error(`Component "${name}" does not exist.`);
-						graph.projectHandle.change((root) => {
-							for (const [id, member] of Object.entries(root.members)) {
-								if (member.componentId === component[0]) delete root.members[id];
-							}
-							delete root.components[component[0]];
-						}, { message: `Delete component ${name}` });
-						await projectRepo.flush([graph.projectHandle.documentId]);
 						const removed = await project.remove(joinFsPath(COMPONENTS_DIR, name), {
 							recursive: true
 						});
 						if (removed.error && removed.error.name !== 'NotFoundError') {
 							throw new Error(removed.error.message, { cause: removed.error });
 						}
+						graph.projectHandle.change(
+							(root) => {
+								for (const [id, member] of Object.entries(root.members)) {
+									if (member.componentId === component[0]) delete root.members[id];
+								}
+								delete root.components[component[0]];
+							},
+							{ message: `Delete component ${name}` }
+						);
+						await projectRepo.flush([graph.projectHandle.documentId]);
 					}),
 				sync: () =>
 					tryAsync({
@@ -342,7 +492,14 @@ async function restoreOrCreateProject(
 	const pending = await readPendingBootstrap(project);
 	if (existing) {
 		if (pending?.config?.rootUrl === existing.rootUrl) await removePendingBootstrap(project);
+		if (existing.version === 2) return existing;
 		return upgradeProject(project, repo, existing);
+	}
+	if (pending?.config) {
+		await writeProjectConfig(project, pending.config);
+		await removePendingBootstrap(project);
+		if (pending.config.version === 2) return pending.config;
+		return upgradeProject(project, repo, pending.config);
 	}
 	if (!pending && hadStoredData) {
 		throw new Error(
@@ -350,17 +507,12 @@ async function restoreOrCreateProject(
 		);
 	}
 
-	const sources = await scanProjectFiles(project);
+	const sources = await scanProjectFiles(project, undefined, ['game.json']);
 	const sourceHashes = Object.fromEntries(
 		sources.files.map(({ path, snapshot }) => [path, snapshot.hash])
 	);
 	if (pending && !sameSources(pending.sources, sourceHashes)) {
 		throw new Error(`${PENDING_BOOTSTRAP_FILE} does not match the current project files.`);
-	}
-	if (pending?.config) {
-		await writeProjectConfig(project, pending.config);
-		await removePendingBootstrap(project);
-		return pending.config;
 	}
 	if (!pending) await writePendingBootstrap(project, { version: 1, sources: sourceHashes });
 
@@ -379,7 +531,7 @@ function configFromGraph(
 	graph: ProjectGraph,
 	snapshots: Array<{ path: string; snapshot: { hash: string } }>
 ): ProjectConfig {
-	const project = graph.projectHandle.doc()!;
+	const project = graph.project;
 	const hashes = new Map(snapshots.map(({ path, snapshot }) => [path, snapshot.hash]));
 	const projections = Object.fromEntries(
 		Object.entries(project.members).map(([memberId, member]) => {
@@ -395,11 +547,16 @@ function configFromGraph(
 			];
 		})
 	);
-	return { version: 2, rootUrl: graph.projectHandle.url, projections };
+	return {
+		version: 2,
+		rootUrl: graph.projectHandle.url,
+		rootHeads: graph.projectHandle.heads(),
+		projections
+	};
 }
 
 function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMember[] {
-	const project = graph.projectHandle.doc()!;
+	const project = graph.project;
 	const members = Object.entries(project.members).map(([memberId, member]) => {
 		const projection = config.projections[memberId];
 		if (!projection || projection.path !== member.path || projection.url !== member.url) {
@@ -414,11 +571,7 @@ function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMemb
 		const handle = graph.memberHandles.get(memberId);
 		if (!handle) throw new Error(`Automerge project member ${memberId} has no document handle.`);
 		if (member.kind === 'component-data') {
-			return componentDataMember(
-				memberId,
-				member.path,
-				handle as DocHandle<ComponentDataDocument>
-			);
+			return componentDataMember(memberId, member.path, handle as DocHandle<ComponentDataDocument>);
 		}
 		if (member.kind === 'asset') {
 			if (!member.hash) throw new Error(`Binary member ${member.path} is missing its hash.`);
@@ -429,12 +582,7 @@ function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMemb
 				handle as DocHandle<BinaryFileDocument>
 			);
 		}
-		return textMember(
-			memberId,
-			member.path,
-			member.kind,
-			handle as DocHandle<TextFileDocument>
-		);
+		return textMember(memberId, member.path, member.kind, handle as DocHandle<TextFileDocument>);
 	});
 	if (Object.keys(config.projections).length !== members.length) {
 		throw new Error('Project configuration contains projections not present in the project graph.');
@@ -442,13 +590,68 @@ function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMemb
 	return members;
 }
 
-function memberHandle(
-	graph: ProjectGraph,
-	memberId: string
-): DocHandle<ProjectMemberDocument> {
+function memberHandle(graph: ProjectGraph, memberId: string): DocHandle<ProjectMemberDocument> {
 	const handle = graph.memberHandles.get(memberId);
 	if (!handle) throw new Error(`Automerge project member ${memberId} has no document handle.`);
 	return handle;
+}
+
+async function waitForRootHeads<T>(handle: DocHandle<T>, heads: UrlHeads): Promise<void> {
+	if (!heads.length || handle.view(heads).doc()) return;
+	await new Promise<void>((resolve, reject) => {
+		const timeout = setTimeout(() => {
+			handle.off('change', check);
+			reject(new Error('Timed out waiting for the Automerge project root to synchronize.'));
+		}, 10_000);
+		const check = () => {
+			if (!handle.view(heads).doc()) return;
+			clearTimeout(timeout);
+			handle.off('change', check);
+			resolve();
+		};
+		handle.on('change', check);
+	});
+}
+
+async function repairProjectConfig(
+	project: FsDir,
+	graph: ProjectGraph,
+	config: ProjectConfig
+): Promise<{ config: ProjectConfig; reconcileMemberIds: string[] }> {
+	const document = graph.project;
+	const reconcileMemberIds: string[] = [];
+	const projections = Object.fromEntries(
+		await Promise.all(
+			Object.entries(document.members).map(async ([id, member]) => {
+				const existing = config.projections[id];
+				if (existing?.path === member.path && existing.url === member.url) {
+					if (existing.materializeOnly) reconcileMemberIds.push(id);
+					return [id, existing] as const;
+				}
+				const snapshot = await snapshotFile(project, member.path);
+				reconcileMemberIds.push(id);
+				return [
+					id,
+					{
+						path: member.path,
+						url: member.url,
+						heads: memberHandle(graph, id).heads(),
+						hash: snapshot?.hash ?? null,
+						materializeOnly: true
+					}
+				] as const;
+			})
+		)
+	);
+	const repaired: ProjectConfig = {
+		version: 2,
+		rootUrl: graph.projectHandle.url,
+		rootHeads: graph.projectHandle.heads(),
+		projections
+	};
+	if (JSON.stringify(repaired) !== JSON.stringify(config))
+		await writeProjectConfig(project, repaired);
+	return { config: repaired, reconcileMemberIds };
 }
 
 async function upgradeProject(
@@ -461,65 +664,26 @@ async function upgradeProject(
 	if (!isProjectDocument(current) && !isLegacyProjectDocument(current)) {
 		throw new Error('The Automerge root document is not a supported Digitable project.');
 	}
-	const scanned = await scanProjectFiles(project);
-	const existingByPath = new Map(Object.entries(current.members).map(([id, member]) => [member.path, id]));
-	const handles = new Map<string, DocHandle<ProjectMemberDocument>>();
-	for (const [id, member] of Object.entries(current.members)) {
-		handles.set(id, await repo.find<ProjectMemberDocument>(member.url));
+	if (current.schemaVersion === 1) {
+		root.change(
+			(document) => {
+				const mutable = document as unknown as ProjectDocument;
+				const components: ProjectDocument['components'] = Object.fromEntries(
+					Object.entries(document.components).map(([id, component]) => [id, { ...component }])
+				);
+				for (const [componentId, component] of Object.entries(components)) {
+					if (!component.dataMemberId) continue;
+					const member = mutable.members[component.dataMemberId];
+					if (member) member.componentId = componentId;
+				}
+				mutable.components = components;
+				mutable.schemaVersion = 2;
+			},
+			{ message: 'Upgrade project file graph' }
+		);
 	}
-	const additions: Array<{ id: string; source: ProjectFileSource; handle: DocHandle<ProjectMemberDocument> }> = [];
-	for (const source of scanned.files) {
-		if (existingByPath.has(source.path)) continue;
-		const id = `file-${crypto.randomUUID()}`;
-		const handle = repo.create<ProjectMemberDocument>(await source.document());
-		additions.push({ id, source, handle });
-		handles.set(id, handle);
-	}
-
-	if (current.schemaVersion === 1 || additions.length) {
-		root.change((document) => {
-			const mutable = document as unknown as ProjectDocument;
-			const components: ProjectDocument['components'] = Object.fromEntries(
-				Object.entries(document.components).map(([id, component]) => [id, { ...component }])
-			);
-			const componentIds = new Map(Object.entries(components).map(([id, value]) => [value.name, id]));
-			for (const name of scanned.components) {
-				if (componentIds.has(name)) continue;
-				const id = crypto.randomUUID();
-				componentIds.set(name, id);
-				components[id] = { name };
-			}
-			for (const [componentId, component] of Object.entries(components)) {
-				if (!component.dataMemberId) continue;
-				const member = mutable.members[component.dataMemberId];
-				if (member) member.componentId = componentId;
-			}
-			for (const addition of additions) {
-				const componentId = addition.source.componentName
-					? componentIds.get(addition.source.componentName)
-					: undefined;
-				mutable.members[addition.id] = {
-					kind: addition.source.kind,
-					path: addition.source.path,
-					url: addition.handle.url,
-					...(addition.source.kind === 'asset' ? { hash: addition.source.snapshot.hash } : {}),
-					...(componentId ? { componentId } : {})
-				};
-				if (!componentId) continue;
-				if (addition.source.kind === 'component-data') components[componentId].dataMemberId = addition.id;
-				if (addition.source.side === 'front') components[componentId].frontMemberId = addition.id;
-				if (addition.source.side === 'back') components[componentId].backMemberId = addition.id;
-			}
-			mutable.components = components;
-			mutable.schemaVersion = 2;
-		}, { message: 'Upgrade project file graph' });
-	}
-	await repo.flush([root.documentId, ...additions.map(({ handle }) => handle.documentId)]);
-	const graph = await resolveProjectGraph(repo, root);
-	const upgraded = configFromGraph(
-		graph,
-		scanned.files.map(({ path, snapshot }) => ({ path, snapshot }))
-	);
+	await repo.flush([root.documentId]);
+	const upgraded: ProjectConfig = { ...config, version: 2, rootHeads: root.heads() };
 	await writeProjectConfig(project, upgraded);
 	return upgraded;
 }
@@ -534,33 +698,53 @@ async function refreshProjectInventory(
 	repo: Repo,
 	graph: ProjectGraph,
 	config: ProjectConfig,
-	fileCache: Map<string, ProjectFileFingerprint>
-): Promise<{ graph: ProjectGraph; config: ProjectConfig; reconcileMemberIds: string[] }> {
+	scanned: Awaited<ReturnType<typeof scanProjectFiles>>
+): Promise<{
+	graph: ProjectGraph;
+	config: ProjectConfig;
+	reconcileMemberIds: string[];
+	scanChanged: boolean;
+}> {
 	const root = graph.projectHandle;
-	const current = root.doc();
-	if (!current || !isProjectDocument(current)) {
-		throw new Error('The Automerge root document is not a supported Digitable project.');
-	}
-	const scanned = await scanProjectFiles(project, fileCache);
+	const current = graph.project;
 	const sourceByPath = new Map(scanned.files.map((source) => [source.path, source]));
-	const memberByPath = new Map(Object.entries(current.members).map(([id, member]) => [member.path, { id, member }]));
-	const additions: Array<{ id: string; source: ProjectFileSource; handle: DocHandle<ProjectMemberDocument> }> = [];
+	const memberByPath = new Map(
+		Object.entries(current.members).map(([id, member]) => [member.path, { id, member }])
+	);
+	const additions: Array<{
+		id: string;
+		source: ProjectFileSource;
+		handle: DocHandle<ProjectMemberDocument>;
+	}> = [];
 	const replacements: Array<{
 		id: string;
 		source: ProjectFileSource;
 		handle: DocHandle<ProjectMemberDocument>;
 	}> = [];
 	const deletions = new Set<string>();
+	let scanChanged = false;
+	let structuralChanges = 0;
+	const maxStructuralChanges = 4;
 
 	for (const source of scanned.files) {
 		const existing = memberByPath.get(source.path);
 		if (!existing) {
-			const id = source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : `file-${crypto.randomUUID()}`;
+			if (structuralChanges >= maxStructuralChanges) {
+				scanChanged = true;
+				continue;
+			}
+			if ((await snapshotFile(project, source.path))?.hash !== source.snapshot.hash) {
+				scanChanged = true;
+				continue;
+			}
+			const id =
+				source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId(source.path);
 			additions.push({
 				id,
 				source,
 				handle: repo.create<ProjectMemberDocument>(await source.document())
 			});
+			structuralChanges += 1;
 			continue;
 		}
 		if (existing.member.kind !== 'asset' || source.kind !== 'asset') continue;
@@ -570,11 +754,20 @@ async function refreshProjectInventory(
 			projection.url !== existing.member.url ||
 			projection.path !== existing.member.path;
 		if (rootChanged || source.snapshot.hash === projection.hash) continue;
+		if (structuralChanges >= maxStructuralChanges) {
+			scanChanged = true;
+			continue;
+		}
+		if ((await snapshotFile(project, source.path))?.hash !== source.snapshot.hash) {
+			scanChanged = true;
+			continue;
+		}
 		replacements.push({
 			id: existing.id,
 			source,
 			handle: repo.create<ProjectMemberDocument>(await source.document())
 		});
+		structuralChanges += 1;
 	}
 
 	for (const [id, member] of Object.entries(current.members)) {
@@ -586,7 +779,16 @@ async function refreshProjectInventory(
 			projection.url === member.url &&
 			projection.hash !== null
 		) {
+			if (structuralChanges >= maxStructuralChanges) {
+				scanChanged = true;
+				continue;
+			}
+			if (await snapshotFile(project, member.path)) {
+				scanChanged = true;
+				continue;
+			}
 			deletions.add(id);
+			structuralChanges += 1;
 		}
 	}
 
@@ -595,70 +797,90 @@ async function refreshProjectInventory(
 			...additions.map(({ handle }) => handle.documentId),
 			...replacements.map(({ handle }) => handle.documentId)
 		]);
-		root.change((document) => {
-			const componentIds = new Map(
-				Object.entries(document.components).map(([id, component]) => [component.name, id])
-			);
-			for (const name of scanned.components) {
-				if (componentIds.has(name)) continue;
-				const id = crypto.randomUUID();
-				componentIds.set(name, id);
-				document.components[id] = { name };
-			}
-			for (const id of deletions) {
-				delete document.members[id];
-				for (const component of Object.values(document.components)) {
-					if (component.frontMemberId === id) delete component.frontMemberId;
-					if (component.backMemberId === id) delete component.backMemberId;
-					if (component.dataMemberId === id) delete component.dataMemberId;
+		root.change(
+			(document) => {
+				const componentIds = new Map(
+					Object.entries(document.components).map(([id, component]) => [component.name, id])
+				);
+				for (const name of scanned.components) {
+					if (componentIds.has(name)) continue;
+					const id = projectComponentId(name);
+					componentIds.set(name, id);
+					document.components[id] = { name };
 				}
-			}
-			for (const replacement of replacements) {
-				const member = document.members[replacement.id];
-				if (!member) continue;
-				member.url = replacement.handle.url;
-				member.hash = replacement.source.snapshot.hash;
-			}
-			for (const addition of additions) {
-				const componentId = addition.source.componentName
-					? componentIds.get(addition.source.componentName)
-					: undefined;
-				document.members[addition.id] = {
-					kind: addition.source.kind,
-					path: addition.source.path,
-					url: addition.handle.url,
-					...(addition.source.kind === 'asset' ? { hash: addition.source.snapshot.hash } : {}),
-					...(componentId ? { componentId } : {})
-				};
-				if (!componentId) continue;
-				const component = document.components[componentId];
-				if (addition.source.kind === 'component-data') component.dataMemberId = addition.id;
-				if (addition.source.side === 'front') component.frontMemberId = addition.id;
-				if (addition.source.side === 'back') component.backMemberId = addition.id;
-			}
-			for (const [id, component] of Object.entries(document.components)) {
-				if (scanned.components.includes(component.name)) continue;
-				if (component.frontMemberId || component.backMemberId || component.dataMemberId) continue;
-				delete document.components[id];
-			}
-		}, { message: 'Reconcile project file inventory' });
+				for (const id of deletions) {
+					const expected = current.members[id];
+					if (!expected || document.members[id]?.url !== expected.url) continue;
+					delete document.members[id];
+					for (const component of Object.values(document.components)) {
+						if (component.frontMemberId === id) delete component.frontMemberId;
+						if (component.backMemberId === id) delete component.backMemberId;
+						if (component.dataMemberId === id) delete component.dataMemberId;
+					}
+				}
+				for (const replacement of replacements) {
+					const member = document.members[replacement.id];
+					if (!member || member.url !== current.members[replacement.id]?.url) continue;
+					member.url = replacement.handle.url;
+					member.hash = replacement.source.snapshot.hash;
+				}
+				for (const addition of additions) {
+					if (
+						Object.values(document.members).some((member) => member.path === addition.source.path)
+					) {
+						continue;
+					}
+					const componentId = addition.source.componentName
+						? componentIds.get(addition.source.componentName)
+						: undefined;
+					document.members[addition.id] = {
+						kind: addition.source.kind,
+						path: addition.source.path,
+						url: addition.handle.url,
+						...(addition.source.kind === 'asset' ? { hash: addition.source.snapshot.hash } : {}),
+						...(componentId ? { componentId } : {})
+					};
+					if (!componentId) continue;
+					const component = document.components[componentId];
+					if (addition.source.kind === 'component-data') component.dataMemberId = addition.id;
+					if (addition.source.side === 'front') component.frontMemberId = addition.id;
+					if (addition.source.side === 'back') component.backMemberId = addition.id;
+				}
+				for (const [id, component] of Object.entries(document.components)) {
+					if (scanned.components.includes(component.name)) continue;
+					if (component.frontMemberId || component.backMemberId || component.dataMemberId) continue;
+					delete document.components[id];
+				}
+			},
+			{ message: 'Reconcile project file inventory' }
+		);
 		await repo.flush([root.documentId]);
 	}
 
 	const latest = await resolveProjectGraph(repo, root);
-	const latestProject = latest.projectHandle.doc()!;
+	const latestProject = latest.project;
 	const latestPaths = new Set(Object.values(latestProject.members).map((member) => member.path));
 	for (const [id, projection] of Object.entries(config.projections)) {
-		if (latestProject.members[id] || latestPaths.has(projection.path)) continue;
+		if (latestProject.members[id]?.path === projection.path || latestPaths.has(projection.path))
+			continue;
+		if (!classifyProjectFile(projection.path)) continue;
 		await removeFile(project, projection.path);
 	}
 	const sourceHashes = new Map(scanned.files.map((source) => [source.path, source.snapshot.hash]));
+	const localMemberIds = new Set([
+		...additions.map((addition) => addition.id),
+		...replacements.map((replacement) => replacement.id)
+	]);
 	const reconcileMemberIds = new Set<string>();
 	const projections = Object.fromEntries(
 		Object.entries(latestProject.members).map(([id, member]) => {
 			const handle = memberHandle(latest, id);
 			const existing = config.projections[id];
 			const unchanged = existing?.path === member.path && existing.url === member.url;
+			const filesystemIsCurrent =
+				localMemberIds.has(id) || (existing?.url === member.url && sourceHashes.has(member.path));
+			if (!unchanged) reconcileMemberIds.add(id);
+			if (unchanged && existing.materializeOnly) reconcileMemberIds.add(id);
 			if (
 				unchanged &&
 				(sourceHashes.get(member.path) ?? null) !== existing.hash &&
@@ -681,12 +903,23 @@ async function refreshProjectInventory(
 							path: member.path,
 							url: member.url,
 							heads: handle.heads(),
-							hash: sourceHashes.get(member.path) ?? null
+							hash: sourceHashes.get(member.path) ?? null,
+							...(filesystemIsCurrent ? {} : { materializeOnly: true })
 						}
 			];
 		})
 	);
-	const nextConfig: ProjectConfig = { version: 2, rootUrl: latest.projectHandle.url, projections };
+	const nextConfig: ProjectConfig = {
+		version: 2,
+		rootUrl: latest.projectHandle.url,
+		rootHeads: latest.projectHandle.heads(),
+		projections
+	};
 	await writeProjectConfig(project, nextConfig);
-	return { graph: latest, config: nextConfig, reconcileMemberIds: [...reconcileMemberIds] };
+	return {
+		graph: latest,
+		config: nextConfig,
+		reconcileMemberIds: [...reconcileMemberIds],
+		scanChanged
+	};
 }

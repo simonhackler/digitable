@@ -179,6 +179,8 @@
 				if (registered.error) {
 					throw new Error(registered.error.message);
 				}
+				const feedbackSynchronized = await project.session.sync();
+				if (feedbackSynchronized.error) console.error(feedbackSynchronized.error);
 
 				return result.playtestId;
 			},
@@ -216,9 +218,16 @@
 			fetchFeedback: fetchPlaytestFeedback
 		});
 
-		isImportingFeedback = false;
 		if (imported.error) {
+			await project.session.sync();
+			isImportingFeedback = false;
 			errorMessage = messageFrom(imported.error, 'Could not import playtest feedback');
+			return;
+		}
+		const synchronized = await project.session.sync();
+		isImportingFeedback = false;
+		if (synchronized.error) {
+			errorMessage = synchronized.error.message;
 			return;
 		}
 

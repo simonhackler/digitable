@@ -15,6 +15,7 @@ export type ComponentDataTable = {
 export const componentDataMaterializer: MemberMaterializer<ComponentDataDocument> = {
 	kind: 'component-data',
 	parse(source, context) {
+		const allowMissingIds = context.allowMissingIds !== false;
 		const parsed = Papa.parse<string[]>(source, { skipEmptyLines: true });
 		if (parsed.errors.length) {
 			throw new Error(
@@ -29,7 +30,7 @@ export const componentDataMaterializer: MemberMaterializer<ComponentDataDocument
 			throw new Error(`data.csv contains duplicate column "${duplicates[0]}".`);
 
 		const idIndex = header.indexOf('id');
-		if (idIndex === -1 && !context.allowMissingIds) {
+		if (idIndex === -1 && !allowMissingIds) {
 			throw new Error('data.csv must retain its id column after Automerge migration.');
 		}
 		const names = header.filter((_, index) => index !== idIndex);
@@ -43,7 +44,7 @@ export const componentDataMaterializer: MemberMaterializer<ComponentDataDocument
 				throw new Error(`data.csv row ${rowIndex + 2} has more values than the header.`);
 			}
 			const suppliedId = idIndex === -1 ? '' : String(row[idIndex] ?? '').trim();
-			if (!suppliedId && !context.allowMissingIds) {
+			if (!suppliedId && !allowMissingIds) {
 				throw new Error(`data.csv row ${rowIndex + 2} must retain its id.`);
 			}
 			const id = suppliedId || rowId(rowIndex);
