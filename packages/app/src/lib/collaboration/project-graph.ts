@@ -4,10 +4,12 @@ import {
 	isBinaryFileDocument,
 	isComponentDataDocument,
 	isGameMetadataDocument,
+	isMarkdownFileDocument,
 	isProjectDocument,
 	isTextFileDocument,
 	type ComponentDataDocument,
 	type GameMetadataDocument,
+	type MarkdownFileDocument,
 	type ProjectDocument,
 	type ProjectMemberDocument
 } from './model';
@@ -17,6 +19,7 @@ import {
 	projectMemberId,
 	type ProjectFileSource
 } from './project-files';
+import { applyMarkdown } from './markdown/markdown-codec';
 
 export type ProjectGraph = {
 	projectHandle: DocHandle<ProjectDocument>;
@@ -50,7 +53,7 @@ export async function createProjectGraph(
 	for (const source of sources) {
 		const id =
 			source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId(source.path);
-		const handle = repo.create<ProjectMemberDocument>(await source.document());
+		const handle = await createProjectMemberHandle(repo, source);
 		const componentId = source.componentName ? componentIds.get(source.componentName) : undefined;
 		members[id] = {
 			kind: source.kind,
@@ -78,6 +81,22 @@ export async function createProjectGraph(
 		...Array.from(memberHandles.values(), (handle) => handle.documentId)
 	]);
 	return graphFromHandles(projectHandle, projectHandle.doc()!, memberHandles);
+}
+
+export async function createProjectMemberHandle(
+	repo: Repo,
+	source: ProjectFileSource
+): Promise<DocHandle<ProjectMemberDocument>> {
+	const handle = repo.create<ProjectMemberDocument>(await source.document());
+	if (source.kind !== 'rules') return handle;
+	const document = handle.doc();
+	if (!isMarkdownFileDocument(document))
+		throw new Error('New rules document has an invalid format.');
+	const markdown = document.content;
+	handle.change((value) => applyMarkdown(value as MarkdownFileDocument, markdown), {
+		message: `Import ${source.path}`
+	});
+	return handle;
 }
 
 export async function resolveProjectGraph(
@@ -152,5 +171,6 @@ function isMemberDocument(
 	if (kind === 'game-metadata') return isGameMetadataDocument(value);
 	if (kind === 'component-data') return isComponentDataDocument(value);
 	if (kind === 'asset') return isBinaryFileDocument(value);
+	if (kind === 'rules') return isMarkdownFileDocument(value) || isTextFileDocument(value);
 	return isTextFileDocument(value);
 }

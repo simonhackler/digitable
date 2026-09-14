@@ -89,6 +89,13 @@ export type TextFileDocument = {
 	content: string;
 };
 
+export type MarkdownFileDocument = {
+	type: 'markdown-file';
+	schemaVersion: 1;
+	dialect: 'commonmark';
+	content: string;
+};
+
 export type BinaryFileDocument = {
 	type: 'binary-file';
 	schemaVersion: 1;
@@ -99,6 +106,7 @@ export type ProjectMemberDocument =
 	| GameMetadataDocument
 	| ComponentDataDocument
 	| TextFileDocument
+	| MarkdownFileDocument
 	| BinaryFileDocument;
 
 export function isProjectDocument(value: unknown): value is ProjectDocument {
@@ -183,6 +191,16 @@ export function isTextFileDocument(value: unknown): value is TextFileDocument {
 		isObject(value) &&
 		value.type === 'text-file' &&
 		value.schemaVersion === 1 &&
+		typeof value.content === 'string'
+	);
+}
+
+export function isMarkdownFileDocument(value: unknown): value is MarkdownFileDocument {
+	return (
+		isObject(value) &&
+		value.type === 'markdown-file' &&
+		value.schemaVersion === 1 &&
+		value.dialect === 'commonmark' &&
 		typeof value.content === 'string'
 	);
 }

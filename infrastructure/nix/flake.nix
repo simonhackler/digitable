@@ -58,7 +58,6 @@
       "packages/studio"
       "svgedit"
       "svgedit/packages/svgcanvas"
-      "vendor/svelte-lexical/packages/svelte-lexical"
     ];
 
     sourceParentDirs = [
@@ -66,9 +65,6 @@
       "packages"
       "svgedit"
       "svgedit/packages"
-      "vendor"
-      "vendor/svelte-lexical"
-      "vendor/svelte-lexical/packages"
     ];
 
     mkSource = {
@@ -121,7 +117,6 @@
         "svgedit/package.json"
         "svgedit/packages/react-test/package.json"
         "svgedit/packages/svgcanvas/package.json"
-        "vendor/svelte-lexical/packages/svelte-lexical/package.json"
       ];
     };
 
@@ -145,13 +140,6 @@
       ];
       files = [
         "svgedit/package.json"
-      ];
-    };
-
-    svelteLexicalSource = mkSource {
-      name = "digitable-svelte-lexical-source";
-      dirs = [
-        "vendor/svelte-lexical/packages/svelte-lexical"
       ];
     };
 
@@ -283,7 +271,6 @@
           "packages/studio/package.json",
           "packages/svgeditor/package.json",
           "svgedit/packages/svgcanvas/package.json",
-          "vendor/svelte-lexical/packages/svelte-lexical/package.json",
         ];
 
         for (const manifest of manifests) {
@@ -392,50 +379,6 @@
       '';
     };
 
-    svelteLexicalPackage = pkgs.stdenv.mkDerivation {
-      pname = "digitable-svelte-lexical";
-      version = "0.0.1";
-      src = svelteLexicalSource;
-
-      nativeBuildInputs = [
-        pkgs.nodejs
-      ];
-
-      dontConfigure = true;
-
-      buildPhase = ''
-        runHook preBuild
-
-        export HOME="$TMPDIR"
-        export XDG_CACHE_HOME="$TMPDIR/.cache"
-        export CI=1
-
-        ${setupNodeModules {
-        packageNodeModuleDirs = [
-          "vendor/svelte-lexical/packages/svelte-lexical"
-        ];
-        linkRootWorkspaces = false;
-      }}
-
-        packageDir=vendor/svelte-lexical/packages/svelte-lexical
-        test -d "$packageDir/src/lib"
-        (cd "$packageDir" && node ./node_modules/.bin/svelte-kit sync)
-        (cd "$packageDir" && node ./node_modules/.bin/svelte-package --input src/lib --output dist --tsconfig tsconfig.json)
-
-        runHook postBuild
-      '';
-
-      installPhase = ''
-        runHook preInstall
-
-        mkdir -p $out/vendor/svelte-lexical/packages/svelte-lexical
-        cp vendor/svelte-lexical/packages/svelte-lexical/package.json $out/vendor/svelte-lexical/packages/svelte-lexical/package.json
-        cp -r vendor/svelte-lexical/packages/svelte-lexical/dist $out/vendor/svelte-lexical/packages/svelte-lexical/dist
-
-        runHook postInstall
-      '';
-    };
-
     gameServerPackage = pkgs.stdenv.mkDerivation {
       pname = "digitable-game-server";
       version = "0.0.1";
@@ -502,10 +445,6 @@
         mkdir -p svgedit/packages
         rm -rf svgedit/packages/svgcanvas
         cp -r ${svgcanvasPackage}/svgedit/packages/svgcanvas svgedit/packages/svgcanvas
-        mkdir -p vendor/svelte-lexical/packages
-        rm -rf vendor/svelte-lexical/packages/svelte-lexical
-        cp -r ${svelteLexicalPackage}/vendor/svelte-lexical/packages/svelte-lexical vendor/svelte-lexical/packages/svelte-lexical
-        chmod -R u+w vendor/svelte-lexical/packages/svelte-lexical
 
         ${setupNodeModules {
         packageNodeModuleDirs = [
@@ -514,7 +453,6 @@
           "packages/db"
           "packages/game-server"
           "packages/svgeditor"
-          "vendor/svelte-lexical/packages/svelte-lexical"
         ];
       }}
 
@@ -574,7 +512,6 @@
         mkdir -p $out/packages/studio
         mkdir -p $out/packages/app
         mkdir -p $out/packages/game-server
-        mkdir -p $out/vendor/svelte-lexical/packages
 
         cp packages/studio/package.json $out/packages/studio/package.json
         cp -r packages/studio/build $out/packages/studio/build
@@ -615,9 +552,6 @@
         cp -r ${gameServerPackage}/packages/game-server/src $out/packages/game-server/src
         cp -r ${gameServerPackage}/packages/game-server/build $out/packages/game-server/build
         cp -r packages/svgeditor $out/packages/svgeditor
-        mkdir -p $out/vendor/svelte-lexical/packages/svelte-lexical
-        cp ${svelteLexicalPackage}/vendor/svelte-lexical/packages/svelte-lexical/package.json $out/vendor/svelte-lexical/packages/svelte-lexical/package.json
-        cp -r ${svelteLexicalPackage}/vendor/svelte-lexical/packages/svelte-lexical/dist $out/vendor/svelte-lexical/packages/svelte-lexical/dist
         mkdir -p $out/svgedit/packages
         cp svgedit/package.json $out/svgedit/package.json
         cp -r ${svgcanvasPackage}/svgedit/packages/svgcanvas $out/svgedit/packages/svgcanvas

@@ -34,6 +34,7 @@
 	} from '$lib/collaboration';
 	import { afterNavigate, beforeNavigate, onNavigate } from '$app/navigation';
 	import { Ok, trySync } from 'wellcrafted/result';
+	import CollaborativeCursorLayer from '$lib/collaboration/collaborative-cursor-layer.svelte';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
@@ -57,6 +58,13 @@
 	let migrationDigitableVersion = $state<string | undefined>();
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 	const activeGameName = $derived(page.params.gameName);
+	const presenceScope = $derived(
+		JSON.stringify([
+			page.route.id,
+			Object.entries(page.params).sort(([left], [right]) => left.localeCompare(right))
+		])
+	);
+	const showCollaborativeCursors = $derived(page.route.id !== '/games/[gameName]/play');
 	let projectGeneration = 0;
 
 	async function closeActiveProject() {
@@ -388,6 +396,15 @@
 				{/snippet}
 				{@render children?.()}
 			</svelte:boundary>
+		{/if}
+		{#if activeProjectState.current && showCollaborativeCursors}
+			{#key `${activeProjectState.current.session.rootUrl}:${presenceScope}`}
+				<CollaborativeCursorLayer
+					presence={activeProjectState.current.session.presence}
+					name={page.data.user?.name || 'Collaborator'}
+					scope={presenceScope}
+				/>
+			{/key}
 		{/if}
 	</main>
 </Sidebar.Provider>

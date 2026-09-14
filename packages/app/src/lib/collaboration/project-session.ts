@@ -12,10 +12,16 @@ import {
 	type UrlHeads
 } from '@automerge/automerge-repo';
 import { BroadcastChannelNetworkAdapter } from '@automerge/automerge-repo-network-broadcastchannel';
+import { createProjectPresence, type ProjectPresence } from './project-presence';
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
 import { tryAsync, type Result } from 'wellcrafted/result';
 import { createProjectFileObserver } from './file-observer';
-import { createProjectGraph, resolveProjectGraph, type ProjectGraph } from './project-graph';
+import {
+	createProjectGraph,
+	createProjectMemberHandle,
+	resolveProjectGraph,
+	type ProjectGraph
+} from './project-graph';
 import {
 	AUTOMERGE_STORAGE_DIR,
 	PENDING_BOOTSTRAP_FILE,
@@ -31,6 +37,7 @@ import {
 	createProjectReconciler,
 	binaryMember,
 	importManagedTextMember,
+	markdownMember,
 	metadataMember,
 	textMember,
 	type ManagedMember,
@@ -42,15 +49,19 @@ import { withProjectLock } from './project-lock';
 import {
 	GAME_METADATA_MEMBER_ID,
 	isLegacyProjectDocument,
+	isMarkdownFileDocument,
 	isProjectDocument,
+	isTextFileDocument,
 	type BinaryFileDocument,
 	type ComponentDataDocument,
 	type GameMetadataDocument,
 	type LegacyProjectDocument,
+	type MarkdownFileDocument,
 	type ProjectDocument,
 	type ProjectMemberDocument,
 	type TextFileDocument
 } from './model';
+import { applyMarkdown } from './markdown/markdown-codec';
 import {
 	classifyProjectFile,
 	projectComponentId,
@@ -83,7 +94,9 @@ export type ProjectSession = {
 	name: string;
 	rootUrl: AutomergeUrl;
 	metadataHandle: DocHandle<GameMetadataDocument>;
+	getRulesHandle(): DocHandle<MarkdownFileDocument> | undefined;
 	componentDataHandles: ReadonlyMap<string, DocHandle<ComponentDataDocument>>;
+	presence: ProjectPresence;
 	getConfig(): ProjectConfig;
 	writeFiles(
 		files: Array<{ path: string; data: FsWriteData }>
@@ -129,11 +142,20 @@ export async function openProjectSession(
 			const openedGraph = await withProjectLock(restored.rootUrl, async () => {
 				const latestConfig = await readProjectConfig(project);
 				if (latestConfig?.rootHeads) await waitForRootHeads(rootHandle, latestConfig.rootHeads);
-				const graph = await resolveProjectGraph(projectRepo, rootHandle);
+				let graph = await resolveProjectGraph(projectRepo, rootHandle);
+				const ensured = await ensureRulesDocument(
+					project,
+					projectRepo,
+					graph,
+					latestConfig?.rootUrl === restored.rootUrl ? latestConfig : restored
+				);
+				graph = ensured.graph;
+				const migrated = await migrateRulesDocument(project, projectRepo, graph, ensured.config);
+				graph = migrated.graph;
 				const repaired = await repairProjectConfig(
 					project,
 					graph,
-					latestConfig?.rootUrl === restored.rootUrl ? latestConfig : restored
+					migrated.config?.rootUrl === restored.rootUrl ? migrated.config : restored
 				);
 				return { graph, repaired };
 			});
@@ -213,6 +235,7 @@ export async function openProjectSession(
 			graph.projectHandle.on('change', rootListener);
 			observer.start();
 			requestRefresh();
+			const presence = createProjectPresence(graph.projectHandle);
 
 			let closed = false;
 			async function synchronize(): Promise<void> {
@@ -241,7 +264,9 @@ export async function openProjectSession(
 				name: project.name,
 				rootUrl: graph.projectHandle.url,
 				metadataHandle: graph.metadataHandle,
+				getRulesHandle: () => rulesHandle(graph),
 				componentDataHandles: graph.componentDataHandles,
+				presence,
 				getConfig: reconciler.getConfig,
 				writeFiles: (files: Array<{ path: string; data: FsWriteData }>) =>
 					tryAsync({
@@ -280,7 +305,7 @@ export async function openProjectSession(
 									if (!entry) {
 										created.set(
 											projectMemberId(source.path),
-											projectRepo.create<ProjectMemberDocument>(await source.document())
+											await createProjectMemberHandle(projectRepo, source)
 										);
 										continue;
 									}
@@ -288,10 +313,7 @@ export async function openProjectSession(
 										throw new Error(`${source.path} changed project file kind.`);
 									}
 									if (source.kind === 'asset') {
-										created.set(
-											entry.id,
-											projectRepo.create<ProjectMemberDocument>(await source.document())
-										);
+										created.set(entry.id, await createProjectMemberHandle(projectRepo, source));
 										continue;
 									}
 									const projection = config.projections[entry.id];
@@ -455,6 +477,7 @@ export async function openProjectSession(
 				close: async () => {
 					if (closed) return { data: undefined, error: null };
 					closed = true;
+					presence.close();
 					observer.stop();
 					graph.projectHandle.off('change', rootListener);
 					const closedSession = await tryAsync({
@@ -507,7 +530,12 @@ async function restoreOrCreateProject(
 		);
 	}
 
-	const sources = await scanProjectFiles(project, undefined, ['game.json']);
+	const bootstrapPaths = pending
+		? Object.keys(pending.sources)
+		: (await snapshotFile(project, 'rules.md'))
+			? ['game.json', 'rules.md']
+			: ['game.json'];
+	const sources = await scanProjectFiles(project, undefined, bootstrapPaths);
 	const sourceHashes = Object.fromEntries(
 		sources.files.map(({ path, snapshot }) => [path, snapshot.hash])
 	);
@@ -582,12 +610,114 @@ function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMemb
 				handle as DocHandle<BinaryFileDocument>
 			);
 		}
+		if (member.kind === 'rules') {
+			if (!isMarkdownFileDocument(handle.doc())) {
+				throw new Error(`Rules member ${member.path} has an unsupported format.`);
+			}
+			return markdownMember(memberId, member.path, handle as DocHandle<MarkdownFileDocument>);
+		}
 		return textMember(memberId, member.path, member.kind, handle as DocHandle<TextFileDocument>);
 	});
 	if (Object.keys(config.projections).length !== members.length) {
 		throw new Error('Project configuration contains projections not present in the project graph.');
 	}
 	return members;
+}
+
+async function ensureRulesDocument(
+	project: FsDir,
+	repo: Repo,
+	graph: ProjectGraph,
+	config: ProjectConfig
+): Promise<{ graph: ProjectGraph; config: ProjectConfig }> {
+	if (Object.values(graph.project.members).some((member) => member.kind === 'rules')) {
+		return { graph, config };
+	}
+	if (!(await snapshotFile(project, 'rules.md'))) await writeFile(project, 'rules.md', '');
+	const scanned = await scanProjectFiles(project, undefined, ['rules.md']);
+	const source = scanned.files[0];
+	if (!source) throw new Error('Could not read rules.md.');
+	const id = projectMemberId(source.path);
+	const handle = await createProjectMemberHandle(repo, source);
+	await repo.flush([handle.documentId]);
+	graph.projectHandle.change(
+		(document) => {
+			if (Object.values(document.members).some((member) => member.path === source.path)) return;
+			document.members[id] = { kind: 'rules', path: source.path, url: handle.url };
+		},
+		{ message: 'Add rules.md to project' }
+	);
+	await repo.flush([graph.projectHandle.documentId]);
+	const latest = await resolveProjectGraph(repo, graph.projectHandle);
+	const member = latest.project.members[id];
+	const memberHandle = latest.memberHandles.get(id);
+	if (!member || !memberHandle) throw new Error('The rules document was not added to the project.');
+	const nextConfig: ProjectConfig = {
+		...config,
+		rootHeads: latest.projectHandle.heads(),
+		projections: {
+			...config.projections,
+			[id]: {
+				path: member.path,
+				url: member.url,
+				heads: memberHandle.heads(),
+				hash: source.snapshot.hash
+			}
+		}
+	};
+	await writeProjectConfig(project, nextConfig);
+	return { graph: latest, config: nextConfig };
+}
+
+async function migrateRulesDocument(
+	project: FsDir,
+	repo: Repo,
+	graph: ProjectGraph,
+	config: ProjectConfig | undefined
+): Promise<{ graph: ProjectGraph; config: ProjectConfig | undefined }> {
+	const entry = Object.entries(graph.project.members).find(([, member]) => member.kind === 'rules');
+	if (!entry) return { graph, config };
+	const handle = graph.memberHandles.get(entry[0]);
+	const current = handle?.doc();
+	if (!handle || !isTextFileDocument(current)) return { graph, config };
+	const source = current.content;
+	handle.change(
+		(document) => {
+			const markdown = document as unknown as MarkdownFileDocument;
+			markdown.type = 'markdown-file';
+			markdown.schemaVersion = 1;
+			markdown.dialect = 'commonmark';
+			applyMarkdown(markdown, source);
+		},
+		{ message: 'Upgrade rules.md to collaborative rich text' }
+	);
+	await repo.flush([handle.documentId]);
+	const projection = config?.projections[entry[0]];
+	const migratedConfig =
+		config && projection
+			? {
+					...config,
+					projections: {
+						...config.projections,
+						[entry[0]]: { ...projection, heads: handle.heads() }
+					}
+				}
+			: config;
+	if (migratedConfig) await writeProjectConfig(project, migratedConfig);
+	return {
+		graph: await resolveProjectGraph(repo, graph.projectHandle),
+		config: migratedConfig
+	};
+}
+
+function rulesHandle(graph: ProjectGraph): DocHandle<MarkdownFileDocument> | undefined {
+	const entry = Object.entries(graph.project.members).find(([, member]) => member.kind === 'rules');
+	if (!entry) return undefined;
+	const handle = graph.memberHandles.get(entry[0]);
+	if (!handle || !isMarkdownFileDocument(handle.doc())) {
+		throw new Error('The Automerge rules document has an unsupported format.');
+	}
+	return handle as DocHandle<MarkdownFileDocument>;
 }
 
 function memberHandle(graph: ProjectGraph, memberId: string): DocHandle<ProjectMemberDocument> {
@@ -698,7 +828,8 @@ async function refreshProjectInventory(
 	repo: Repo,
 	graph: ProjectGraph,
 	config: ProjectConfig,
-	scanned: Awaited<ReturnType<typeof scanProjectFiles>>
+	scanned: Awaited<ReturnType<typeof scanProjectFiles>>,
+	partial = false
 ): Promise<{
 	graph: ProjectGraph;
 	config: ProjectConfig;
@@ -742,7 +873,7 @@ async function refreshProjectInventory(
 			additions.push({
 				id,
 				source,
-				handle: repo.create<ProjectMemberDocument>(await source.document())
+				handle: await createProjectMemberHandle(repo, source)
 			});
 			structuralChanges += 1;
 			continue;
@@ -765,13 +896,14 @@ async function refreshProjectInventory(
 		replacements.push({
 			id: existing.id,
 			source,
-			handle: repo.create<ProjectMemberDocument>(await source.document())
+			handle: await createProjectMemberHandle(repo, source)
 		});
 		structuralChanges += 1;
 	}
 
-	for (const [id, member] of Object.entries(current.members)) {
-		if (member.kind === 'game-metadata' || sourceByPath.has(member.path)) continue;
+	for (const [id, member] of partial ? [] : Object.entries(current.members)) {
+		if (member.kind === 'game-metadata' || member.kind === 'rules' || sourceByPath.has(member.path))
+			continue;
 		const projection = config.projections[id];
 		if (
 			projection &&

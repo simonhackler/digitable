@@ -70,7 +70,6 @@ The spreadsheet still emits complete CSV projections, but in-app writes are impo
 
 The following files currently use linked Automerge text documents:
 
-- `rules.md`
 - Component `front.svg` and `back.svg`
 - `setup/table.svg`
 - Feedback Markdown
@@ -79,6 +78,14 @@ The following files currently use linked Automerge text documents:
 In-app writes update these linked documents through the project session. External editor changes are imported with `changeAt()` using the recorded projection heads.
 
 SVG and table files currently merge as text. Moving them to stable semantic element and table models remains future work.
+
+### Rules Markdown
+
+`rules.md` uses a dedicated linked Markdown document whose `content` field is Automerge rich text. A project-owned Markdown schema and codec define the supported ProseMirror nodes, Automerge blocks and marks, and Markdown projection.
+
+The mounted rules editor binds directly to the member handle through `@automerge/prosemirror`. Local ProseMirror transactions update Automerge immediately, and remote Automerge patches update the mounted editor without a filesystem round trip or remount.
+
+Existing schema-version-1 text documents are migrated in place, preserving their linked Automerge URL. External filesystem changes are parsed as Markdown and applied with `changeAt()` at the recorded projection heads before being merged with the current rich-text document.
 
 ### Binary assets
 
@@ -142,7 +149,7 @@ The session exposes commands for:
 
 Blank component creation, rename, and deletion use these commands. Component rename changes member paths while preserving component and member IDs.
 
-Rules, CSV, component SVG, table SVG, uploaded assets, and generated assets write through the active project session. Premade deck generation and feedback import hand their completed filesystem mutations to an explicit session sync.
+CSV, component SVG, table SVG, uploaded assets, and generated assets write through the active project session. Rules edit their linked handle directly and use session reconciliation for filesystem materialization. Premade deck generation and feedback import hand their completed filesystem mutations to an explicit session sync.
 
 New-path writes are projection-first so UI navigation does not wait for whole-project discovery. Existing managed text files are imported into Automerge before their save operation completes. Project switch, close, playtest export, and explicit synchronization await all pending refresh and reconciliation work.
 
@@ -174,6 +181,18 @@ Coordination uses:
 
 Local save status distinguishes synchronization work from idle state. It does not imply acknowledgement from another device.
 
+## Ephemeral Presence
+
+Each open project session attaches one application-owned presence service to the stable root document handle. Presence uses Automerge Repo's `DocHandle.broadcast()` and `ephemeral-message` event; cursor state is never written to an Automerge document or the filesystem.
+
+Presence messages are versioned and runtime-validated. A message carries the collaborator display name, an exact route scope, and normalized content-viewport coordinates or a null cursor. The Automerge sender peer ID identifies a browser client and deterministically selects its cursor color, but it is not treated as a user identity. Email addresses are not broadcast.
+
+The route scope combines the SvelteKit route ID with sorted dynamic parameters. Clients therefore share cursors only while viewing the same project page, including the same component on parameterized deck routes. Query parameters do not create separate presence scopes.
+
+The service exchanges hello, complete state, and leave messages. Complete state is replaceable because ephemeral delivery is not guaranteed. Heartbeats repair missed messages, stale clients expire after a timeout, and normal project-session shutdown sends a best-effort leave before the Automerge Repo disconnects.
+
+A single cursor layer in the games layout tracks movement across nested editors, throttles outgoing updates, and renders matching peers above project content but below modal overlays. Individual metadata, rules, deck, spreadsheet, setup, and feedback pages require no presence integration. Routes that mount `PlaySurface` do not mount this cursor layer because the play surface owns its pointer interactions; multiplayer play routes are outside the games layout and are excluded as well.
+
 ## Playtests And Exports
 
 Starting a playtest synchronizes the active project before reading its projections.
@@ -194,6 +213,10 @@ Focused Playwright coverage verifies:
 - Background adoption of every recognized file kind.
 - Exclusion of TTS and unknown component files.
 - External Markdown import while preserving the linked document URL.
+- Live rules synchronization between mounted editors.
+- External rules Markdown updates applied to mounted editors.
+- Ephemeral cursor presence between clients on the same exact route.
+- Cursor isolation between different routes in the same project.
 - Immutable binary replacement with a new linked document URL.
 - Exact binary projection bytes.
 - Dynamic component file discovery.
@@ -215,7 +238,7 @@ Existing regressions cover:
 
 - Synchronization is same-browser only.
 - SVG and table collaboration is text-based rather than semantic.
-- Mounted Lexical, SVG, and spreadsheet editors do not yet apply every remote document patch directly to their third-party editor instance; filesystem projections and remounts remain part of those integrations.
+- Mounted SVG and spreadsheet editors do not yet apply every remote document patch directly to their third-party editor instance; filesystem projections and remounts remain part of those integrations.
 - Binary documents are immutable but are not deduplicated by hash.
 - Structural operations have config repair but no dedicated operation journal.
 - Collaborative whole-project discovery and deletion require a workspace-level Automerge document.
@@ -223,7 +246,7 @@ Existing regressions cover:
 ## Next Steps
 
 1. Add structural operation journals for component rename and deletion.
-2. Bind mounted rules, SVG, table, and spreadsheet editors directly to remote member changes.
+2. Bind mounted SVG, table, and spreadsheet editors directly to remote member changes.
 3. Replace text SVG merging with stable element and attribute identities.
 4. Make the typed table model authoritative and materialize `setup/table.svg` from it.
 5. Add authenticated cross-device Automerge networking.

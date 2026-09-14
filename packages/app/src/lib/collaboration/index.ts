@@ -9,6 +9,7 @@ export * from './project-files';
 export * from './project-config';
 export * from './project-graph';
 export * from './project-lock';
+export * from './project-presence';
 export * from './project-session';
 export * from './reconciler';
 export * from './storage-adapter';

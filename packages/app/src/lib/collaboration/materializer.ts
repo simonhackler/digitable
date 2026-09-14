@@ -5,10 +5,10 @@ export type MaterializerContext = {
 	allowMissingIds?: boolean;
 };
 
-export type MemberMaterializer<T extends object> = {
+export type MemberMaterializer<T extends object, Source = T> = {
 	kind: Exclude<ProjectMemberKind, 'asset'>;
-	parse(source: string, context: MaterializerContext): T;
-	apply(document: T, incoming: T): void;
+	parse(source: string, context: MaterializerContext): Source;
+	apply(document: T, incoming: Source): void;
 	serialize(document: T): string;
 	isDocument(value: unknown): value is T;
 };

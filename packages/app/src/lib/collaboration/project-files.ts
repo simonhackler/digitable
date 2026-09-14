@@ -6,6 +6,7 @@ import { decodeText, hashBytes, readFile } from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
 import type {
 	BinaryFileDocument,
+	MarkdownFileDocument,
 	ProjectMemberDocument,
 	ProjectMemberKind,
 	TextFileDocument
@@ -88,6 +89,14 @@ export async function scanProjectFiles(
 									schemaVersion: 1,
 									content: current
 								} satisfies BinaryFileDocument;
+							}
+							if (classification.kind === 'rules') {
+								return {
+									type: 'markdown-file',
+									schemaVersion: 1,
+									dialect: 'commonmark',
+									content: decodeText(current)
+								} satisfies MarkdownFileDocument;
 							}
 							return {
 								type: 'text-file',

@@ -3,12 +3,14 @@ import type { DocHandle, Repo } from '@automerge/automerge-repo';
 import { componentDataMaterializer } from './component-data';
 import { decodeText, encodeText, hashBytes, snapshotFile, writeFile } from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
+import { markdownFileMaterializer } from './markdown/markdown-file';
 import type { MemberMaterializer } from './materializer';
 import {
 	isBinaryFileDocument,
 	type BinaryFileDocument,
 	type ComponentDataDocument,
 	type GameMetadataDocument,
+	type MarkdownFileDocument,
 	type TextFileDocument
 } from './model';
 import { textFileMaterializer } from './text-file';
@@ -45,6 +47,13 @@ type TextMember = {
 	materializer: MemberMaterializer<TextFileDocument>;
 };
 
+type MarkdownMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<MarkdownFileDocument>;
+	materializer: typeof markdownFileMaterializer;
+};
+
 type BinaryMember = {
 	id: string;
 	path: string;
@@ -52,7 +61,12 @@ type BinaryMember = {
 	hash: string;
 };
 
-export type ManagedMember = MetadataMember | ComponentDataMember | TextMember | BinaryMember;
+export type ManagedMember =
+	| MetadataMember
+	| ComponentDataMember
+	| TextMember
+	| MarkdownMember
+	| BinaryMember;
 
 export type ReconciliationStatus =
 	| { state: 'idle' }
@@ -84,6 +98,14 @@ export function textMember(
 	return { id, path, handle, materializer: textFileMaterializer(kind) };
 }
 
+export function markdownMember(
+	id: string,
+	path: string,
+	handle: DocHandle<MarkdownFileDocument>
+): ManagedMember {
+	return { id, path, handle, materializer: markdownFileMaterializer };
+}
+
 export function binaryMember(
 	id: string,
 	path: string,
@@ -108,11 +130,15 @@ export function importManagedTextMember(
 		importTyped(member as ComponentDataMember, projection, source, hash);
 		return;
 	}
+	if (member.materializer.kind === 'rules') {
+		importTyped(member as MarkdownMember, projection, source, hash);
+		return;
+	}
 	importTyped(member as TextMember, projection, source, hash);
 }
 
-function importTyped<T extends object>(
-	member: { handle: DocHandle<T>; materializer: MemberMaterializer<T>; path: string },
+function importTyped<T extends object, Source>(
+	member: { handle: DocHandle<T>; materializer: MemberMaterializer<T, Source>; path: string },
 	projection: ProjectConfig['projections'][string],
 	source: string,
 	hash: string
@@ -195,11 +221,11 @@ export function createProjectReconciler({
 		await removePendingMaterialization(fs, member.id);
 	}
 
-	async function reconcileTyped<T extends object>(member: {
+	async function reconcileTyped<T extends object, Source>(member: {
 		id: string;
 		path: string;
 		handle: DocHandle<T>;
-		materializer: MemberMaterializer<T>;
+		materializer: MemberMaterializer<T, Source>;
 	}): Promise<void> {
 		await recoverMember(member as ManagedMember);
 		const projection = config.projections[member.id];
@@ -301,6 +327,10 @@ export function createProjectReconciler({
 			}
 			if (member.materializer.kind === 'component-data') {
 				await reconcileTyped(member as ComponentDataMember);
+				return;
+			}
+			if (member.materializer.kind === 'rules') {
+				await reconcileTyped(member as MarkdownMember);
 				return;
 			}
 			await reconcileTyped(member as TextMember);

@@ -1955,7 +1955,7 @@ test('playtest invitee notes are imported into the creator game feedback folder'
 					) ?? '',
 				{ timeout: 20_000 }
 			)
-			.toContain('This worked well.\n&lt;script&gt;alert("xss")&lt;/script&gt;');
+			.toContain('This worked well.\n\n&lt;script&gt;alert("xss")&lt;/script&gt;');
 		await expect
 			.poll(
 				async () =>

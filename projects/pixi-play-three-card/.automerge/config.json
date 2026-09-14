@@ -25,9 +25,9 @@
       "path": "setup/table.svg",
       "url": "automerge:3qiJtzyyfGQCt3pV8vvUbNDZkmQn",
       "heads": [
-        "2oMdV7Kb4uxhA8MbVp8JRc1J3UvKMLCMwX1jdYGMaGtphgy9NT"
+        "QjDkDHMRcZDK2AqRjrR1CpLHq6x1TQAUfZFT3Qk4DPaKC2uN1"
       ],
-      "hash": "aa1e1043999e847d56710958c9a88ed2f4eb2d18440ee1ceba4382ea3310342a"
+      "hash": "2605cfb62fcfb9b9bc6e4ad2d78d9e91b7a929becbf5717fc234ac48e98c8915"
     },
     "file-7d4f2e2d-fe8f-4eb1-8eed-368742bbbb02": {
       "path": "feedback/playtests.json",
@@ -57,9 +57,9 @@
       "path": "rules.md",
       "url": "automerge:67eRrhWkKEXygwvWDkV2HckB1g4",
       "heads": [
-        "WWXiq4WAQMuR4QKpM32kfWnPT7UEDTcJVsR9xXCmgMp32CDum"
+        "2tkRnUMMV9rixMwMScauTSGmfq6MTpnwAFBfbFvCSb6eDcKomR"
       ],
-      "hash": "370a0ca255fbc317c94a22c9b7832c99556b918c635e4ab26f26aa60ea19d63e"
+      "hash": "c233be3c2205914f67a6bbc4401f7274d5f38e4dcbc40c79957f35ab94f0f966"
     }
   }
 }
