@@ -5,6 +5,7 @@ import type {
 	DocumentState,
 	GameMetadataDocument,
 	ProjectSession,
+	ProjectPresenceState,
 	ReconciliationStatus
 } from '$lib/collaboration';
 
@@ -28,6 +29,7 @@ export type ActiveProject = {
 	key: string;
 	session: ProjectSession;
 	metadata: DocumentState<GameMetadataDocument>;
+	presence: ProjectPresenceState;
 };
 
 export type ActiveProjectState = {

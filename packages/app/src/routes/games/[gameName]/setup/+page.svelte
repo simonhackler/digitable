@@ -19,6 +19,7 @@
 	import { Maximize2, Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
 	import { useDebounce } from 'runed';
 	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { getActiveProjectContext, getFileSystemContext } from '../../context';
@@ -54,6 +55,7 @@
 		type TablePresetId,
 		type Table
 	} from './table';
+	const tableEditorPresence = createPresenceRegionAttachment({ id: 'table-editor' });
 
 	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
 	const SVG_MIME_TYPE = 'image/svg+xml';
@@ -1054,7 +1056,12 @@
 		/>
 		{@render tableToolbarAction()}
 	</GameTopBar>
-	<div role="region" aria-label="Table SVG editor" class="min-h-0 flex-1 overflow-hidden p-2">
+	<div
+		role="region"
+		aria-label="Table SVG editor"
+		class="min-h-0 flex-1 overflow-hidden p-2"
+		{@attach tableEditorPresence}
+	>
 		{#if isLoading}
 			<div class="text-muted-foreground flex h-full items-center justify-center text-sm">
 				Loading table

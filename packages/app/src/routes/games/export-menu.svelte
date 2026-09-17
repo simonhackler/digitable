@@ -5,8 +5,14 @@
 	import { Download, Gamepad2, Printer } from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { Game } from './types.js';
+	import { peersOnProjectPages, type RemotePresenceState } from '$lib/collaboration';
+	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
 
-	let { activeGame }: { activeGame: Game | null } = $props();
+	let { activeGame, peers }: { activeGame: Game | null; peers: RemotePresenceState[] } = $props();
+
+	function pagePeers(routeId: string): RemotePresenceState[] {
+		return peersOnProjectPages(peers, routeId, { gameName: activeGame?.name });
+	}
 </script>
 
 <Sidebar.Group>
@@ -32,7 +38,11 @@
 								{#snippet child({ props })}
 									<a href={resolve(`/games/${activeGame?.name}/export/tts`)} {...props}>
 										<Gamepad2 class="mr-2 h-4 w-4" />
-										TTS
+										<span class="flex-1">TTS</span>
+										<SidebarPresenceAvatars
+											peers={pagePeers('/games/[gameName]/export/tts')}
+											pageLabel="TTS"
+										/>
 									</a>
 								{/snippet}
 							</Sidebar.MenuSubButton>
@@ -42,7 +52,11 @@
 								{#snippet child({ props })}
 									<a href={resolve(`/games/${activeGame?.name}/export/paper`)} {...props}>
 										<Printer class="mr-2 h-4 w-4" />
-										Paper
+										<span class="flex-1">Paper</span>
+										<SidebarPresenceAvatars
+											peers={pagePeers('/games/[gameName]/export/paper')}
+											pageLabel="Paper"
+										/>
 									</a>
 								{/snippet}
 							</Sidebar.MenuSubButton>

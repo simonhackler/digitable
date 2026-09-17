@@ -161,6 +161,33 @@ test.describe.serial('data editor', () => {
 		await expect(page.locator('h1')).toBeVisible();
 	});
 
+	dataEditorTest('shows collaborators over card previews', async (page) => {
+		if (!dataEditorContext) throw new Error('Data editor context was not initialized');
+		const peer = await dataEditorContext.newPage();
+		try {
+			await Promise.all([openWesternDataEditor(page), openWesternDataEditor(peer)]);
+			const preview = page.locator('[data-card-previews] svg').first();
+			await expect(preview).toBeVisible();
+			const box = await preview.boundingBox();
+			if (!box) throw new Error('Card preview was not visible');
+
+			await page.mouse.move(box.x + 5, box.y + 5);
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
+			const cursor = peer.getByLabel('Collaborator cursor');
+			await expect(cursor).toBeVisible({ timeout: 10_000 });
+			await expect(cursor).toHaveAttribute('data-presence-region', 'card-previews');
+
+			await peer.getByRole('button', { name: 'Decks' }).click();
+			await expect(
+				peer
+					.locator('a[href$="/decks/western/editor"]')
+					.getByLabel('Collaborator is viewing western')
+			).toBeVisible({ timeout: 10_000 });
+		} finally {
+			await peer.close();
+		}
+	});
+
 	dataEditorTest('generated fallback spreadsheet data is saved to csv', async (page) => {
 		const frontSvg = await readOpfsText(page, '/map/components/map/front.svg');
 		const expectedColumn = frontSvg.match(/<text\b[^>]*\bid="([^"]+)"/)?.[1];

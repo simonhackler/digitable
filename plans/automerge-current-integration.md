@@ -185,13 +185,17 @@ Local save status distinguishes synchronization work from idle state. It does no
 
 Each open project session attaches one application-owned presence service to the stable root document handle. Presence uses Automerge Repo's `DocHandle.broadcast()` and `ephemeral-message` event; cursor state is never written to an Automerge document or the filesystem.
 
-Presence messages are versioned and runtime-validated. A message carries the collaborator display name, an exact route scope, and normalized content-viewport coordinates or a null cursor. The Automerge sender peer ID identifies a browser client and deterministically selects its cursor color, but it is not treated as a user identity. Email addresses are not broadcast.
+Presence messages are versioned and runtime-validated. A message carries the collaborator display name, an exact page ID, and a receiver-resolvable pointer or null. The Automerge sender peer ID identifies a browser client and deterministically selects its cursor color, but it is not treated as a user identity. Email addresses are not broadcast.
 
-The route scope combines the SvelteKit route ID with sorted dynamic parameters. Clients therefore share cursors only while viewing the same project page, including the same component on parameterized deck routes. Query parameters do not create separate presence scopes.
+The page ID combines the SvelteKit route ID with sorted dynamic parameters. Clients therefore share cursors only while viewing the same project page, including the same component on parameterized deck routes. Query parameters do not create separate presence scopes. A centralized route policy disables pointer presence on `PlaySurface` routes.
 
-The service exchanges hello, complete state, and leave messages. Complete state is replaceable because ephemeral delivery is not guaranteed. Heartbeats repair missed messages, stale clients expire after a timeout, and normal project-session shutdown sends a best-effort leave before the Automerge Repo disconnects.
+The service exchanges hello, complete state, and leave messages. Participant identity, page membership, and pointer position have separate update methods while each network message remains a replaceable complete state because ephemeral delivery is not guaranteed. Five-second heartbeats repair missed startup messages, stale clients expire after 60 seconds, visibility restoration reannounces current state, and normal project-session shutdown sends a best-effort leave before the Automerge Repo disconnects.
 
-A single cursor layer in the games layout tracks movement across nested editors, throttles outgoing updates, and renders matching peers above project content but below modal overlays. Individual metadata, rules, deck, spreadsheet, setup, and feedback pages require no presence integration. Routes that mount `PlaySurface` do not mount this cursor layer because the play surface owns its pointer interactions; multiplayer play routes are outside the games layout and are excluded as well.
+A layout-owned surface registry captures and resolves pointer positions against the receiver's current DOM. The registry is deliberately non-reactive: registration only updates its element maps, while the cursor layer recalculates geometry on actual scroll, resize, visibility, and remote-presence updates. The games layout registers the default project surface, while reusable Markdown and spreadsheet boundaries and the SVG editor pages register stable nested regions. Regions can use element-box, scroll-content, or visible-viewport coordinates. Rules and card previews use visible-viewport coordinates so cursor movement remains visible across different editor heights, while the spreadsheet uses scroll-content coordinates. Surface fallback positions render only across compatible responsive breakpoints. Unresolved or offscreen positions are hidden.
+
+A single cursor layer in the games layout uses pointer events, prefers the deepest registered region, throttles outgoing updates, and renders matching peers above project content but below modal overlays. Hit testing prevents sidebars and portalled overlays from publishing positions over hidden page content. Routes that mount `PlaySurface` do not mount this cursor layer because the play surface owns its pointer interactions; multiplayer play routes are outside the games layout and are excluded as well.
+
+The active project owns one reactive snapshot of remote presence, shared by the cursor layer and project sidebar. Sidebar navigation rows render compact shadcn-svelte Avatar fallback stacks for peers on Rules, each deck, TTS, Paper, Setup, Local Test, Playtests, and the project overview. Deck layout and spreadsheet routes aggregate on the corresponding deck row. Page membership is published even where pointer presence is disabled, so Local Test users remain visible without enabling cursors over `PlaySurface`. Stacks show at most three peer avatars followed by a remaining count; the local client is not included.
 
 ## Playtests And Exports
 
@@ -216,7 +220,9 @@ Focused Playwright coverage verifies:
 - Live rules synchronization between mounted editors.
 - External rules Markdown updates applied to mounted editors.
 - Ephemeral cursor presence between clients on the same exact route.
+- Region-based cursor resolution across different sender and receiver viewport sizes.
 - Cursor isolation between different routes in the same project.
+- Sidebar page-location avatars, including deck aggregation and pointer-disabled Local Test membership.
 - Immutable binary replacement with a new linked document URL.
 - Exact binary projection bytes.
 - Dynamic component file discovery.
@@ -237,6 +243,7 @@ Existing regressions cover:
 ## Current Boundaries
 
 - Synchronization is same-browser only.
+- Presence regions follow receiver DOM geometry but do not yet expose semantic ProseMirror, spreadsheet-cell, or SVG user-space positions.
 - SVG and table collaboration is text-based rather than semantic.
 - Mounted SVG and spreadsheet editors do not yet apply every remote document patch directly to their third-party editor instance; filesystem projections and remounts remain part of those integrations.
 - Binary documents are immutable but are not deduplicated by hash.
@@ -252,3 +259,4 @@ Existing regressions cover:
 5. Add authenticated cross-device Automerge networking.
 6. Add a workspace project registry and project deletion tombstones.
 7. Add binary deduplication and retention policy if repository growth requires it.
+8. Add semantic presence adapters for ProseMirror cursors, spreadsheet cells, and SVG user-space coordinates where DOM regions are not precise enough.

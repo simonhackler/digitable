@@ -18,13 +18,31 @@
 	import { goto } from '$app/navigation';
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { BookOpenText } from '@lucide/svelte';
-	import type { ProjectSession } from '$lib/collaboration';
+	import {
+		peersOnProjectPages,
+		type ProjectSession,
+		type RemotePresenceState
+	} from '$lib/collaboration';
+	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
 
 	let {
 		activeGame,
 		fileSystem,
-		projectSession
-	}: { activeGame: Game | null; fileSystem: FsDir; projectSession: ProjectSession } = $props();
+		projectSession,
+		peers
+	}: {
+		activeGame: Game | null;
+		fileSystem: FsDir;
+		projectSession: ProjectSession;
+		peers: RemotePresenceState[];
+	} = $props();
+
+	function pagePeers(routeIds: string | string[], deckName?: string): RemotePresenceState[] {
+		return peersOnProjectPages(peers, routeIds, {
+			gameName: activeGame?.name,
+			deckName
+		});
+	}
 
 	function onDeckRenamed(oldName: string, newName: string) {
 		if (!activeGame) return;
@@ -60,6 +78,11 @@
 					<a href={resolve(`/games/${activeGame?.name}/rules`)} {...props}>
 						<BookOpenText />
 						<span>Rules</span>
+						<SidebarPresenceAvatars
+							peers={pagePeers('/games/[gameName]/rules')}
+							pageLabel="Rules"
+							class="ml-auto"
+						/>
 					</a>
 				{/snippet}
 			</Sidebar.MenuButton>
@@ -90,7 +113,18 @@
 											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/editor`)}
 											{...props}
 										>
-											<span class="text-muted-foreground">{deck.name}</span>
+											<span class="text-muted-foreground min-w-0 flex-1 truncate">{deck.name}</span>
+											<SidebarPresenceAvatars
+												peers={pagePeers(
+													[
+														'/games/[gameName]/decks/[deckName]/editor',
+														'/games/[gameName]/decks/[deckName]/data'
+													],
+													deck.name
+												)}
+												pageLabel={deck.name}
+												class="mr-5"
+											/>
 										</a>
 									{/snippet}
 								</Sidebar.MenuSubButton>
@@ -124,12 +158,12 @@
 											<Table2 />
 											<span>Spreadsheet</span>
 										</DropdownMenu.Item>
-								<RenameDeckDialog
-									projectFolder={fileSystem}
-									{projectSession}
-									{deck}
-									onRenamed={onDeckRenamed}
-								>
+										<RenameDeckDialog
+											projectFolder={fileSystem}
+											{projectSession}
+											{deck}
+											onRenamed={onDeckRenamed}
+										>
 											{#snippet trigger({ props })}
 												<DropdownMenu.Item
 													{...props}

@@ -5,25 +5,50 @@ import type {
 } from '@automerge/automerge-repo';
 import type { ProjectDocument } from './model';
 
-const VERSION = 1;
+const VERSION = 2;
 const HEARTBEAT_MS = 5_000;
-const PEER_TTL_MS = 15_000;
+const PEER_TTL_MS = 60_000;
 
-export type PresenceCursor = { x: number; y: number };
+export type PresenceSurfaceLayout = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+
+type PresenceCoordinates = { x: number; y: number };
+
+export type PresencePointer =
+	| (PresenceCoordinates & {
+			kind: 'surface';
+			surfaceId: string;
+			layout: PresenceSurfaceLayout;
+	  })
+	| (PresenceCoordinates & {
+			kind: 'region';
+			surfaceId: string;
+			regionId: string;
+	  });
+
+export type PresenceParticipant = { displayName: string };
 
 export type LocalPresenceState = {
-	name: string;
-	scope: string;
-	cursor: PresenceCursor | null;
+	participant: PresenceParticipant;
+	pageId: string | null;
+	pointer: PresencePointer | null;
 };
 
 export type RemotePresenceState = LocalPresenceState & { peerId: string };
 
 export type ProjectPresence = {
-	setLocalState(state: LocalPresenceState): void;
+	setParticipant(participant: PresenceParticipant): void;
+	setPage(pageId: string | null): void;
+	setPointer(pointer: PresencePointer | null): void;
+	reannounce(): void;
 	subscribe(listener: (peers: RemotePresenceState[]) => void): () => void;
 	close(): void;
 };
+
+export function presenceColor(peerId: string): string {
+	let hash = 0;
+	for (const character of peerId) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+	return `hsl(${Math.abs(hash) % 360} 72% 45%)`;
+}
 
 type PresenceMessage =
 	| { type: 'presence-hello'; version: typeof VERSION }
@@ -35,15 +60,20 @@ type PeerState = RemotePresenceState & { lastSeenAt: number };
 export function createProjectPresence(handle: DocHandle<ProjectDocument>): ProjectPresence {
 	const peers = new Map<PeerId, PeerState>();
 	const listeners = new Set<(peers: RemotePresenceState[]) => void>();
-	let local: LocalPresenceState | null = null;
+	let local: LocalPresenceState = {
+		participant: { displayName: 'Collaborator' },
+		pageId: null,
+		pointer: null
+	};
+	let active = false;
 	let closed = false;
 
 	function snapshot(): RemotePresenceState[] {
-		return [...peers.values()].map(({ peerId, name, scope, cursor }) => ({
+		return [...peers.values()].map(({ peerId, participant, pageId, pointer }) => ({
 			peerId,
-			name,
-			scope,
-			cursor
+			participant,
+			pageId,
+			pointer
 		}));
 	}
 
@@ -53,7 +83,7 @@ export function createProjectPresence(handle: DocHandle<ProjectDocument>): Proje
 	}
 
 	function broadcastState(): void {
-		if (!local || closed) return;
+		if (!active || closed) return;
 		handle.broadcast({
 			type: 'presence-state',
 			version: VERSION,
@@ -97,9 +127,25 @@ export function createProjectPresence(handle: DocHandle<ProjectDocument>): Proje
 	}, HEARTBEAT_MS);
 
 	return {
-		setLocalState(state) {
+		setParticipant(participant) {
 			if (closed) return;
-			local = state;
+			local = { ...local, participant };
+			active = true;
+			broadcastState();
+		},
+		setPage(pageId) {
+			if (closed) return;
+			local = { ...local, pageId, pointer: null };
+			broadcastState();
+		},
+		setPointer(pointer) {
+			if (closed) return;
+			local = { ...local, pointer };
+			broadcastState();
+		},
+		reannounce() {
+			if (closed) return;
+			handle.broadcast({ type: 'presence-hello', version: VERSION } satisfies PresenceMessage);
 			broadcastState();
 		},
 		subscribe(listener) {
@@ -115,6 +161,7 @@ export function createProjectPresence(handle: DocHandle<ProjectDocument>): Proje
 			window.clearInterval(pruning);
 			handle.off('ephemeral-message', onMessage);
 			peers.clear();
+			notify();
 			listeners.clear();
 		}
 	};
@@ -129,22 +176,45 @@ function isPresenceMessage(value: unknown): value is PresenceMessage {
 		return false;
 	}
 	const state = message.state as Record<string, unknown>;
-	if (typeof state.name !== 'string' || state.name.length === 0 || state.name.length > 80)
-		return false;
-	if (typeof state.scope !== 'string' || state.scope.length === 0 || state.scope.length > 500) {
+	if (!state.participant || typeof state.participant !== 'object') return false;
+	const participant = state.participant as Record<string, unknown>;
+	if (
+		typeof participant.displayName !== 'string' ||
+		participant.displayName.length === 0 ||
+		participant.displayName.length > 80
+	) {
 		return false;
 	}
-	if (state.cursor === null) return true;
-	if (!state.cursor || typeof state.cursor !== 'object') return false;
-	const cursor = state.cursor as Record<string, unknown>;
+	if (
+		state.pageId !== null &&
+		(typeof state.pageId !== 'string' || state.pageId.length === 0 || state.pageId.length > 500)
+	) {
+		return false;
+	}
+	if (state.pointer === null) return true;
+	if (!state.pointer || typeof state.pointer !== 'object') return false;
+	const pointer = state.pointer as Record<string, unknown>;
+	if (pointer.kind !== 'surface' && pointer.kind !== 'region') return false;
+	if (!validId(pointer.surfaceId)) return false;
+	if (pointer.kind === 'region' && !validId(pointer.regionId)) return false;
+	if (
+		pointer.kind === 'surface' &&
+		!['xs', 'sm', 'md', 'lg', 'xl'].includes(String(pointer.layout))
+	) {
+		return false;
+	}
 	return (
-		typeof cursor.x === 'number' &&
-		Number.isFinite(cursor.x) &&
-		cursor.x >= 0 &&
-		cursor.x <= 1 &&
-		typeof cursor.y === 'number' &&
-		Number.isFinite(cursor.y) &&
-		cursor.y >= 0 &&
-		cursor.y <= 1
+		typeof pointer.x === 'number' &&
+		Number.isFinite(pointer.x) &&
+		pointer.x >= 0 &&
+		pointer.x <= 1 &&
+		typeof pointer.y === 'number' &&
+		Number.isFinite(pointer.y) &&
+		pointer.y >= 0 &&
+		pointer.y <= 1
 	);
+}
+
+function validId(value: unknown): value is string {
+	return typeof value === 'string' && value.length > 0 && value.length <= 120;
 }

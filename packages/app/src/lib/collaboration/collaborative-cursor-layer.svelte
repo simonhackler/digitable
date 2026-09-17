@@ -1,60 +1,59 @@
 <script lang="ts">
-	import type { PresenceCursor, ProjectPresence, RemotePresenceState } from './project-presence';
+	import {
+		presenceColor,
+		type ProjectPresence,
+		type RemotePresenceState
+	} from './project-presence';
+	import type { PresenceSurfaceRegistry } from './presence-surfaces';
 	import { onMount } from 'svelte';
-	import type { Attachment } from 'svelte/attachments';
 
 	let {
 		presence,
-		name,
-		scope
+		pageId,
+		surfaces,
+		peers
 	}: {
 		presence: ProjectPresence;
-		name: string;
-		scope: string;
+		pageId: string;
+		surfaces: PresenceSurfaceRegistry;
+		peers: RemotePresenceState[];
 	} = $props();
 
-	let peers = $state.raw<RemotePresenceState[]>([]);
-	let bounds = $state.raw({ left: 0, width: 0, height: 0 });
-	let cursor: PresenceCursor | null = null;
 	let timer: number | undefined;
+	let pointer = $state.raw<ReturnType<PresenceSurfaceRegistry['capture']>>(null);
+	let geometryRevision = $state(0);
 	let lastSentAt = 0;
-	let root: HTMLElement | null = null;
-	const visible = $derived(peers.filter((peer) => peer.scope === scope && peer.cursor));
+	const visible = $derived(peers.filter((peer) => peer.pageId === pageId && peer.pointer));
+	const resolvedPeers = $derived.by(() => {
+		void geometryRevision;
+		return visible.flatMap((peer) => {
+			const resolved = peer.pointer ? surfaces.resolve(peer.pointer) : null;
+			return resolved ? [{ peer, resolved }] : [];
+		});
+	});
 
-	function publish(next: PresenceCursor | null): void {
-		cursor = next;
-		presence.setLocalState({ name, scope, cursor });
+	function publish(next: ReturnType<PresenceSurfaceRegistry['capture']>): void {
+		pointer = next;
+		presence.setPointer(pointer);
 		lastSentAt = performance.now();
 	}
 
-	function updateBounds(): void {
-		if (!root) return;
-		const rect = root.getBoundingClientRect();
-		const left = Math.max(0, rect.left);
-		bounds = {
-			left,
-			width: Math.max(0, Math.min(window.innerWidth, rect.right) - left),
-			height: window.innerHeight
-		};
-	}
-
-	function onPointerMove(event: MouseEvent): void {
-		if (!bounds.width || !bounds.height) return;
-		if (event.clientX < bounds.left || event.clientX > bounds.left + bounds.width) return;
-		const next = {
-			x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
-			y: Math.min(1, Math.max(0, event.clientY / bounds.height))
-		};
+	function onPointerMove(event: PointerEvent): void {
+		const next = surfaces.capture(event);
+		if (!next) {
+			hideCursor();
+			return;
+		}
 		const remaining = 50 - (performance.now() - lastSentAt);
 		if (remaining <= 0) {
 			publish(next);
 			return;
 		}
-		cursor = next;
+		pointer = next;
 		if (timer !== undefined) return;
 		timer = window.setTimeout(() => {
 			timer = undefined;
-			publish(cursor);
+			publish(pointer);
 		}, remaining);
 	}
 
@@ -63,65 +62,58 @@
 			window.clearTimeout(timer);
 			timer = undefined;
 		}
-		if (cursor) publish(null);
-	}
-
-	function color(peerId: string): string {
-		let hash = 0;
-		for (const character of peerId) hash = (hash * 31 + character.charCodeAt(0)) | 0;
-		return `hsl(${Math.abs(hash) % 360} 72% 45%)`;
+		if (pointer) publish(null);
 	}
 
 	onMount(() => {
-		const unsubscribe = presence.subscribe((next) => (peers = next));
-		publish(null);
+		const onVisibilityChange = () => {
+			if (document.hidden) {
+				hideCursor();
+				return;
+			}
+			presence.reannounce();
+			updateGeometry();
+		};
+		document.addEventListener('scroll', updateGeometry, true);
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		window.visualViewport?.addEventListener('resize', updateGeometry);
+		window.visualViewport?.addEventListener('scroll', updateGeometry);
+
 		return () => {
-			publish(null);
-			unsubscribe();
-			if (timer !== undefined) window.clearTimeout(timer);
+			hideCursor();
+			document.removeEventListener('scroll', updateGeometry, true);
+			document.removeEventListener('visibilitychange', onVisibilityChange);
+			window.visualViewport?.removeEventListener('resize', updateGeometry);
+			window.visualViewport?.removeEventListener('scroll', updateGeometry);
 		};
 	});
 
-	const trackRoot: Attachment<HTMLElement> = (element) => {
-		root = element.parentElement;
-		if (!root) return;
-		updateBounds();
-		const observer = new ResizeObserver(updateBounds);
-		observer.observe(root);
-		const onVisibilityChange = () => {
-			if (document.hidden) hideCursor();
-		};
-		document.addEventListener('visibilitychange', onVisibilityChange);
-
-		return () => {
-			observer.disconnect();
-			document.removeEventListener('visibilitychange', onVisibilityChange);
-			root = null;
-		};
-	};
+	function updateGeometry(): void {
+		geometryRevision += 1;
+	}
 </script>
 
 <svelte:window
-	onmousemove={onPointerMove}
-	onmouseleave={hideCursor}
+	onpointermove={onPointerMove}
+	onpointerleave={hideCursor}
 	onblur={hideCursor}
-	onresize={updateBounds}
+	onresize={updateGeometry}
 />
 
 <div
 	class="pointer-events-none fixed inset-0 z-40 overflow-hidden"
 	data-collaborative-cursor-layer
 	aria-hidden="false"
-	{@attach trackRoot}
 >
-	{#each visible as peer (peer.peerId)}
-		{@const peerColor = color(peer.peerId)}
+	{#each resolvedPeers as entry (entry.peer.peerId)}
+		{@const peerColor = presenceColor(entry.peer.peerId)}
 		<div
 			class="absolute"
-			style:left={`${bounds.left + (peer.cursor?.x ?? 0) * bounds.width}px`}
-			style:top={`${(peer.cursor?.y ?? 0) * bounds.height}px`}
+			style:left={`${entry.resolved.x}px`}
+			style:top={`${entry.resolved.y}px`}
 			role="img"
-			aria-label={`${peer.name} cursor`}
+			aria-label={`${entry.peer.participant.displayName} cursor`}
+			data-presence-region={entry.resolved.regionId ?? undefined}
 		>
 			<svg viewBox="0 0 24 24" class="h-5 w-5 drop-shadow-sm" aria-hidden="true">
 				<path
@@ -136,7 +128,7 @@
 				class="ml-3 block max-w-40 truncate rounded-r-md rounded-bl-md px-2 py-1 text-xs font-medium whitespace-nowrap text-white shadow-sm"
 				style:background-color={peerColor}
 			>
-				{peer.name}
+				{entry.peer.participant.displayName}
 			</span>
 		</div>
 	{/each}

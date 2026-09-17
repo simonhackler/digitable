@@ -3,8 +3,14 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { ClipboardList, Play, SlidersHorizontal } from '@lucide/svelte';
 	import type { Game } from './types.js';
+	import { peersOnProjectPages, type RemotePresenceState } from '$lib/collaboration';
+	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
 
-	let { activeGame }: { activeGame: Game | null } = $props();
+	let { activeGame, peers }: { activeGame: Game | null; peers: RemotePresenceState[] } = $props();
+
+	function pagePeers(routeId: string): RemotePresenceState[] {
+		return peersOnProjectPages(peers, routeId, { gameName: activeGame?.name });
+	}
 </script>
 
 <Sidebar.Group>
@@ -16,6 +22,11 @@
 					<a href={resolve(`/games/${activeGame?.name}/setup`)} {...props}>
 						<SlidersHorizontal />
 						<span>Setup</span>
+						<SidebarPresenceAvatars
+							peers={pagePeers('/games/[gameName]/setup')}
+							pageLabel="Setup"
+							class="ml-auto"
+						/>
 					</a>
 				{/snippet}
 			</Sidebar.MenuButton>
@@ -26,6 +37,11 @@
 					<a href={resolve(`/games/${activeGame?.name}/play`)} {...props}>
 						<Play />
 						<span>Local Test</span>
+						<SidebarPresenceAvatars
+							peers={pagePeers('/games/[gameName]/play')}
+							pageLabel="Local Test"
+							class="ml-auto"
+						/>
 					</a>
 				{/snippet}
 			</Sidebar.MenuButton>
@@ -36,6 +52,11 @@
 					<a href={resolve(`/games/${activeGame?.name}/playtests`)} {...props}>
 						<ClipboardList />
 						<span>Playtests</span>
+						<SidebarPresenceAvatars
+							peers={pagePeers('/games/[gameName]/playtests')}
+							pageLabel="Playtests"
+							class="ml-auto"
+						/>
 					</a>
 				{/snippet}
 			</Sidebar.MenuButton>

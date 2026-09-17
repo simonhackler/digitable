@@ -24,6 +24,7 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import { ImageEditor } from './custom-image';
 	import { getDeckSideIndexContext } from '../svg-context.svelte';
+	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
 
 	const {
 		svgTemplateFront,
@@ -86,6 +87,14 @@
 	const svgsToShow = $derived(cards.map((card) => card.sides[activeSideIndex] ?? card.sides[0]));
 
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
+	const spreadsheetPresence = createPresenceRegionAttachment({
+		id: 'spreadsheet',
+		space: 'scroll'
+	});
+	const cardPreviewPresence = createPresenceRegionAttachment({
+		id: 'card-previews',
+		space: 'visible'
+	});
 	let selectionRects: SVGRectElement[] = [];
 	let saveStatus = $state<'saved' | 'saving' | 'error'>('saved');
 	let activeSavePromises = $state<Promise<void>[]>([]);
@@ -490,6 +499,8 @@
 			<div
 				bind:this={scrollEl}
 				class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
+				data-card-previews
+				{@attach cardPreviewPresence}
 			>
 				{#each svgsToShow as svg, i (svg.id)}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -533,7 +544,7 @@
 			<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
 				<ContextMenu.Root>
 					<ContextMenu.Trigger>
-						<div id="spreadsheet" {@attach mountSpreadsheet}></div>
+						<div id="spreadsheet" {@attach spreadsheetPresence} {@attach mountSpreadsheet}></div>
 					</ContextMenu.Trigger>
 					<ContextMenu.Content>
 						{#each contextItems as item (item)}

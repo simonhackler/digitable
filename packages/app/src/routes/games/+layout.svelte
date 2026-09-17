@@ -28,9 +28,14 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
 	import {
+		createPresenceSurfaceRegistry,
 		createDocumentState,
+		createProjectPresenceState,
 		gameMetadataMaterializer,
-		openProjectSession
+		openProjectSession,
+		projectPresencePage,
+		setPresenceSurfaceRegistry,
+		type ProjectSession
 	} from '$lib/collaboration';
 	import { afterNavigate, beforeNavigate, onNavigate } from '$app/navigation';
 	import { Ok, trySync } from 'wellcrafted/result';
@@ -58,14 +63,16 @@
 	let migrationDigitableVersion = $state<string | undefined>();
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 	const activeGameName = $derived(page.params.gameName);
-	const presenceScope = $derived(
-		JSON.stringify([
-			page.route.id,
-			Object.entries(page.params).sort(([left], [right]) => left.localeCompare(right))
-		])
-	);
-	const showCollaborativeCursors = $derived(page.route.id !== '/games/[gameName]/play');
+	const presencePage = $derived(projectPresencePage(page.route.id, page.params));
+	const surfaces = createPresenceSurfaceRegistry();
+	const presenceSurface = surfaces.surface({ id: 'project-page' });
+	setPresenceSurfaceRegistry(surfaces);
 	let projectGeneration = 0;
+
+	function configurePresence(session: ProjectSession): void {
+		session.presence.setParticipant({ displayName: page.data.user?.name || 'Collaborator' });
+		session.presence.setPage(presencePage.id);
+	}
 
 	async function closeActiveProject() {
 		projectGeneration += 1;
@@ -76,15 +83,14 @@
 		activeProjectState.reconciliation = { state: 'idle' };
 		if (!active) return;
 		active.metadata.destroy();
+		active.presence.destroy();
 		await active.session.close();
 	}
 
 	async function openActiveProject(fileSystem: FsDir | null, gameName: string | undefined) {
-		if (
-			activeProjectState.phase === 'ready' &&
-			activeProjectState.current?.key === gameName &&
-			fileSystem
-		) {
+		const active = activeProjectState.current;
+		if (active && activeProjectState.phase === 'ready' && active.key === gameName && fileSystem) {
+			configurePresence(active.session);
 			return;
 		}
 		const generation = ++projectGeneration;
@@ -96,6 +102,7 @@
 
 		if (previous) {
 			previous.metadata.destroy();
+			previous.presence.destroy();
 			const closed = await previous.session.close();
 			if (closed.error && generation === projectGeneration) {
 				activeProjectState.phase = 'error';
@@ -143,6 +150,7 @@
 		activeProjectState.current = {
 			key: gameName,
 			session: opened.data,
+			presence: createProjectPresenceState(opened.data.presence),
 			metadata: createDocumentState(opened.data.metadataHandle, (metadata) => {
 				if (generation !== projectGeneration || !metadata || !gamesState.existingGames) return;
 				gamesState.existingGames = gamesState.existingGames.map((game) =>
@@ -152,6 +160,7 @@
 				);
 			})
 		};
+		configurePresence(opened.data);
 		activeProjectState.phase = 'ready';
 	}
 	async function getGames(fileSystem: Readonly<FsDir>) {
@@ -324,6 +333,7 @@
 	});
 
 	onDestroy(() => {
+		surfaces.close();
 		void closeActiveProject();
 	});
 </script>
@@ -335,9 +345,10 @@
 			{fileSystem}
 			{onSetOpfsAdapter}
 			projectSession={activeProjectState.current?.session ?? null}
+			peers={activeProjectState.current?.presence.peers ?? []}
 		/>
 	{/if}
-	<main class="relative min-w-0 flex-1">
+	<main class="relative min-w-0 flex-1" {@attach presenceSurface}>
 		{#if !fileSystem}
 			<div class="mt-12 flex w-full flex-col items-center justify-center gap-4 text-xl">
 				<PickFolder {onSetOpfsAdapter}></PickFolder>
@@ -397,12 +408,13 @@
 				{@render children?.()}
 			</svelte:boundary>
 		{/if}
-		{#if activeProjectState.current && showCollaborativeCursors}
-			{#key `${activeProjectState.current.session.rootUrl}:${presenceScope}`}
+		{#if activeProjectState.current && presencePage.pointerEnabled}
+			{#key activeProjectState.current.session.rootUrl}
 				<CollaborativeCursorLayer
 					presence={activeProjectState.current.session.presence}
-					name={page.data.user?.name || 'Collaborator'}
-					scope={presenceScope}
+					pageId={presencePage.id}
+					{surfaces}
+					peers={activeProjectState.current.presence.peers}
 				/>
 			{/key}
 		{/if}

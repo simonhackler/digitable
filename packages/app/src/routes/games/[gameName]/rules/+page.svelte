@@ -43,7 +43,14 @@
 		<div
 			class="bg-background mx-auto min-h-[calc(100vh-8rem)] max-w-[980px] overflow-hidden rounded-lg border"
 		>
-			<MarkdownEditor {handle} ariaLabel="Game rules editor" bind:view bind:state={editorState} />
+			<MarkdownEditor
+				{handle}
+				ariaLabel="Game rules editor"
+				presenceRegionId="rules-editor"
+				presenceSpace="visible"
+				bind:view
+				bind:state={editorState}
+			/>
 		</div>
 	</div>
 </div>

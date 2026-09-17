@@ -24,6 +24,7 @@
 	import { getDeckSideIndexContext, getToLoadSvgsContext } from '../svg-context.svelte';
 	import GameTopBar from '../../../../game-top-bar.svelte';
 	import { Separator } from '$lib/components/ui/separator';
+	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
 
 	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
 
@@ -131,6 +132,9 @@
 	const sideIndex = $derived(deckSideIndex.sideIndex);
 	const side = $derived(sideIndex === 0 ? 'front' : 'back');
 	const editorKey = $derived(`${game}/${deck}/${side}`);
+	const svgEditorPresence = createPresenceRegionAttachment({
+		id: () => `svg-editor:${deck}:${side}`
+	});
 	let blankWidth = $state(63);
 	let blankHeight = $state(88);
 	let createTemplatesDialogOpen = $state(false);
@@ -454,7 +458,7 @@
 
 	{#if hasAnySvg && svg}
 		{#key editorKey}
-			<div class="min-h-0 flex-1 p-4">
+			<div class="min-h-0 flex-1 p-4" {@attach svgEditorPresence}>
 				<ReferenceEditor
 					value={editorSvg.value}
 					{config}

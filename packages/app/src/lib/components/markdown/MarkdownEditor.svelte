@@ -1,5 +1,9 @@
 <script lang="ts">
 	import type { MarkdownFileDocument } from '$lib/collaboration/model';
+	import {
+		createPresenceRegionAttachment,
+		type PresenceCoordinateSpace
+	} from '$lib/collaboration/presence-surfaces';
 	import { markdownSchemaAdapter } from '$lib/collaboration/markdown/markdown-schema-adapter';
 	import { parseMarkdown, serializeMarkdownNode } from '$lib/collaboration/markdown/markdown-codec';
 	import * as A from '@automerge/automerge';
@@ -27,6 +31,8 @@
 		handle,
 		initialMarkdown = '',
 		ariaLabel,
+		presenceRegionId = 'markdown-editor',
+		presenceSpace = 'box',
 		view = $bindable<EditorView | undefined>(),
 		state = $bindable<EditorState | undefined>(),
 		onchange
@@ -34,10 +40,16 @@
 		handle?: DocHandle<MarkdownFileDocument>;
 		initialMarkdown?: string;
 		ariaLabel: string;
+		presenceRegionId?: string;
+		presenceSpace?: PresenceCoordinateSpace;
 		view?: EditorView;
 		state?: EditorState;
 		onchange?: (markdown: string) => void;
 	} = $props();
+	const presenceRegion = createPresenceRegionAttachment({
+		id: () => presenceRegionId,
+		space: () => presenceSpace
+	});
 
 	function editorInputRules(): Plugin {
 		const schema = markdownSchemaAdapter.schema;
@@ -121,7 +133,11 @@
 	}
 </script>
 
-<div class="markdown-editor min-h-full outline-none" {@attach mountEditor}></div>
+<div
+	class="markdown-editor min-h-full outline-none"
+	{@attach presenceRegion}
+	{@attach mountEditor}
+></div>
 
 <style>
 	.markdown-editor :global(.ProseMirror) {

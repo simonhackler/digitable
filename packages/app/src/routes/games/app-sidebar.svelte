@@ -14,18 +14,20 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
-	import type { ProjectSession } from '$lib/collaboration';
+	import type { ProjectSession, RemotePresenceState } from '$lib/collaboration';
 
 	let {
 		games,
 		fileSystem,
 		onSetOpfsAdapter,
-		projectSession
+		projectSession,
+		peers
 	}: {
 		games: Game[];
 		fileSystem: FsDir;
 		onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => Promise<void>;
 		projectSession: ProjectSession | null;
+		peers: RemotePresenceState[];
 	} = $props();
 
 	let activeProject = $derived.by(() => {
@@ -64,17 +66,22 @@
 
 <Sidebar.Root>
 	<Sidebar.Header>
-		<ProjectSwitcher {games} {activeProject} {onProjectChange} />
+		<ProjectSwitcher {games} {activeProject} {onProjectChange} {peers} />
 	</Sidebar.Header>
 	{#if projectFolderResult.error}
 		<!-- Todo display error -->
 	{:else}
 		<Sidebar.Content>
 			{#if projectSession}
-				<CreateMenu activeGame={activeProject} fileSystem={projectFolderResult.data} {projectSession} />
+				<CreateMenu
+					activeGame={activeProject}
+					fileSystem={projectFolderResult.data}
+					{projectSession}
+					{peers}
+				/>
 			{/if}
-			<ExportMenu activeGame={activeProject} />
-			<PlaySidebarMenu activeGame={activeProject} />
+			<ExportMenu activeGame={activeProject} {peers} />
+			<PlaySidebarMenu activeGame={activeProject} {peers} />
 			<Sidebar.Group />
 		</Sidebar.Content>
 	{/if}

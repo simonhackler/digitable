@@ -70,6 +70,10 @@ test('shows collaborators moving their pointer on the same rules page', async ()
 	const otherRoute = await rulesContext.newPage();
 	try {
 		await Promise.all([
+			page.setViewportSize({ width: 1280, height: 720 }),
+			peer.setViewportSize({ width: 800, height: 600 })
+		]);
+		await Promise.all([
 			openRules(page),
 			openRules(peer),
 			otherRoute.goto('/app/games/western-cards')
@@ -79,13 +83,25 @@ test('shows collaborators moving their pointer on the same rules page', async ()
 		const box = await editor.boundingBox();
 		if (!box) throw new Error('Rules editor was not visible');
 		await page.mouse.move(box.x + 10, box.y + 10);
-		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
-		await expect(peer.getByLabel('Collaborator cursor')).toBeVisible({ timeout: 10_000 });
+		await page.mouse.move(box.x + box.width / 2, Math.min(box.y + box.height - 10, 700), {
+			steps: 2
+		});
+		const remoteCursor = peer.getByLabel('Collaborator cursor');
+		await expect(remoteCursor).toBeVisible({ timeout: 10_000 });
+		await expect(remoteCursor).toHaveAttribute('data-presence-region', 'rules-editor');
+		await expect(
+			peer.getByRole('link', { name: /Rules/ }).getByLabel('Collaborator is viewing Rules')
+		).toBeVisible({ timeout: 10_000 });
 		await expect(otherRoute.getByLabel('Collaborator cursor')).toHaveCount(0);
 
 		await otherRoute.goto('/app/games/western-cards/play');
 		await expect(otherRoute.getByRole('toolbar', { name: 'Play tools' })).toBeVisible();
 		await expect(otherRoute.locator('[data-collaborative-cursor-layer]')).toHaveCount(0);
+		await expect(
+			peer
+				.getByRole('link', { name: /Local Test/ })
+				.getByLabel('Collaborator is viewing Local Test')
+		).toBeVisible({ timeout: 10_000 });
 	} finally {
 		await Promise.all([page.close(), peer.close(), otherRoute.close()]);
 	}
