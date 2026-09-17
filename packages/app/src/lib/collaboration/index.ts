@@ -16,4 +16,5 @@ export * from './presence-surfaces';
 export * from './project-session';
 export * from './reconciler';
 export * from './storage-adapter';
+export * from './svg-file';
 export * from './text-file';

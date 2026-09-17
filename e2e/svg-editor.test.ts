@@ -120,6 +120,18 @@ async function selectElement(page: Page, id: string) {
 	}, id);
 }
 
+async function setElementFill(page: Page, id: string, fill: string) {
+	await selectElement(page, id);
+	await page.evaluate((nextFill) => {
+		const global = window as Window & {
+			__svgEditorController?: {
+				setFill: (color: string) => void;
+			};
+		};
+		global.__svgEditorController!.setFill(nextFill);
+	}, fill);
+}
+
 async function treeIdForElement(page: Page, elementId: string) {
 	return page.evaluate((elementId) => {
 		const global = window as Window & {
@@ -198,6 +210,43 @@ test.afterAll(async () => {
 	await svgEditorContext?.close();
 	svgEditorContext = null;
 	svgEditorBaseline = null;
+});
+
+test('layout editors merge live changes to different SVG nodes', async () => {
+	if (!svgEditorContext) throw new Error('SVG editor context was not initialized');
+	const page = await svgEditorContext.newPage();
+	const peer = await svgEditorContext.newPage();
+	const pageErrors: string[] = [];
+	page.on('pageerror', (error) => pageErrors.push(error.message));
+	try {
+		await page.goto('/app/games');
+		await resetSvgEditorProject(page);
+		await openWesternSvgEditor(page);
+		await peer.goto('/app/games');
+		await openWesternSvgEditor(peer);
+		expect(pageErrors).toEqual([]);
+
+		await setElementFill(page, 'effect_zone', '#ff00aa');
+		await expect
+			.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+			.toContain('fill="#ff00aa"');
+		expect(await readOpfsText(page, '/western-cards/components/western/front.svg')).toContain(
+			'data-svg-table-node-id'
+		);
+		await expect.poll(() => editorSvg(peer)).toContain('fill="#ff00aa"');
+
+		await setElementFill(peer, 'rect1', '#00aaff');
+		await expect.poll(() => editorSvg(page)).toContain('fill="#00aaff"');
+
+		await expect
+			.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+			.toEqual(expect.stringContaining('fill="#00aaff"'));
+		const projected = await readOpfsText(page, '/western-cards/components/western/front.svg');
+		expect(projected).toContain('fill="#ff00aa"');
+		expect(projected).toContain('fill="#00aaff"');
+	} finally {
+		await Promise.all([page.close(), peer.close()]);
+	}
 });
 
 svgEditorTest('layout editor reloads svg when navigating between decks', async (page) => {
@@ -285,6 +334,87 @@ svgEditorTest(
 		await expect(page.getByRole('button', { name: 'Redo' })).toBeDisabled();
 	}
 );
+
+svgEditorTest('fill and stroke pickers commit only the final selected colors', async (page) => {
+	await openWesternSvgEditor(page);
+	await selectEffectZone(page);
+	const fill = page.locator('#inspector-fill-color');
+	const stroke = page.locator('#inspector-stroke-color');
+
+	await fill.evaluate((input) => {
+		const picker = input as HTMLInputElement;
+		for (const color of ['#aa1122', '#22aa33', '#123abc']) {
+			picker.value = color;
+			picker.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		}
+	});
+	expect(
+		await page.evaluate(() =>
+			(
+				window as Window & {
+					__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+				}
+			)
+				.__svgEditorApi!.getElementById('effect_zone')
+				?.getAttribute('fill')
+		)
+	).toBe('#000000');
+
+	await fill.dispatchEvent('change');
+	await expect
+		.poll(() =>
+			page.evaluate(() =>
+				(
+					window as Window & {
+						__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+					}
+				)
+					.__svgEditorApi!.getElementById('effect_zone')
+					?.getAttribute('fill')
+			)
+		)
+		.toBe('#123abc');
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+		.toContain('fill="#123abc"');
+
+	await stroke.evaluate((input) => {
+		const picker = input as HTMLInputElement;
+		for (const color of ['#bb2233', '#33bb44', '#654321']) {
+			picker.value = color;
+			picker.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		}
+	});
+	expect(
+		await page.evaluate(() =>
+			(
+				window as Window & {
+					__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+				}
+			)
+				.__svgEditorApi!.getElementById('effect_zone')
+				?.getAttribute('stroke')
+		)
+	).toBeNull();
+
+	await stroke.dispatchEvent('change');
+	await expect
+		.poll(() =>
+			page.evaluate(() =>
+				(
+					window as Window & {
+						__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+					}
+				)
+					.__svgEditorApi!.getElementById('effect_zone')
+					?.getAttribute('stroke')
+			)
+		)
+		.toBe('#654321');
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+		.toContain('stroke="#654321"');
+});
 
 svgEditorTest(
 	'navigation preserves multiline svg template text between spreadsheet and layout editors',

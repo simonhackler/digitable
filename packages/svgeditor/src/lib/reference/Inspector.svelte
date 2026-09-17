@@ -1370,7 +1370,7 @@
 							class="h-10 w-full p-1"
 							bind:value={fillColor}
 							disabled={!hasSelection}
-							oninput={applyFillColor}
+							onchange={applyFillColor}
 						/>
 					</div>
 					<div class="grid gap-1.5">
@@ -1381,7 +1381,7 @@
 							class="h-10 w-full p-1"
 							bind:value={strokeColor}
 							disabled={!canEditStroke}
-							oninput={applyStrokeColor}
+							onchange={applyStrokeColor}
 						/>
 					</div>
 				</div>

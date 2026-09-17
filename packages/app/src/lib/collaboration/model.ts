@@ -1,4 +1,5 @@
 import type { AutomergeUrl } from '@automerge/automerge-repo';
+import type { SvgDocument } from '@svg-table/svgeditor';
 
 export const GAME_METADATA_MEMBER_ID = '$metadata';
 
@@ -106,6 +107,7 @@ export type ProjectMemberDocument =
 	| GameMetadataDocument
 	| ComponentDataDocument
 	| TextFileDocument
+	| SvgDocument
 	| MarkdownFileDocument
 	| BinaryFileDocument;
 

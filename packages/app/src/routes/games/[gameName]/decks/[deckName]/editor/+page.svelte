@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { onNavigate } from '$app/navigation';
 	import { asset } from '$app/paths';
 	import {
 		createEditorController,
+		createSvgDocumentBinding,
 		ReferenceEditor,
 		ReferenceEditorToolbar,
-		type ChangeEvent
+		type ChangeEvent,
+		type SvgDocumentBinding
 	} from '@svg-table/svgeditor';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
@@ -13,7 +14,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { FlipHorizontal2, Table2, Upload } from '@lucide/svelte';
 	import placeholderFrontSvg from '../../../../../../../static/placeholder.svg?raw';
-	import { useDebounce } from 'runed';
 	import { getActiveProjectContext, getFileSystemContext } from '../../../../context';
 	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
 	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
@@ -103,12 +103,7 @@
 		};
 	};
 
-	const applySvgMeta = (value: string, meta: SvgMeta): string => {
-		if (!value) return value;
-		if (!meta.width && !meta.height && !meta.viewBox) return value;
-		const doc = new DOMParser().parseFromString(value, 'image/svg+xml');
-		const root = doc.documentElement;
-		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+	const applySvgMetaToRoot = (root: Element, meta: SvgMeta) => {
 		if (meta.width) root.setAttribute('width', meta.width);
 		if (meta.height) root.setAttribute('height', meta.height);
 		if (meta.viewBox) root.setAttribute('viewBox', meta.viewBox);
@@ -119,16 +114,29 @@
 				root.setAttribute('viewBox', `0 0 ${w} ${h}`);
 			}
 		}
+	};
+
+	const applySvgMeta = (value: string, meta: SvgMeta): string => {
+		if (!value) return value;
+		if (!meta.width && !meta.height && !meta.viewBox) return value;
+		const doc = new DOMParser().parseFromString(value, 'image/svg+xml');
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+		applySvgMetaToRoot(root, meta);
 		return new XMLSerializer().serializeToString(doc);
 	};
 
 	const loadSvgTemplates = getToLoadSvgsContext();
 	const svgs = $derived(await loadSvgTemplates());
 
-	let front = $derived(svgs.frontText);
-	let back = $derived(svgs.backText);
-	let frontMeta = $derived(getSvgMeta(svgs.frontText));
-	let backMeta = $derived(getSvgMeta(svgs.backText));
+	let frontBinding = $state.raw<SvgDocumentBinding | null>(null);
+	let backBinding = $state.raw<SvgDocumentBinding | null>(null);
+	let frontOverride = $state<string | null>(null);
+	let backOverride = $state<string | null>(null);
+	const front = $derived(frontBinding?.current ?? frontOverride ?? svgs.frontText);
+	const back = $derived(backBinding?.current ?? backOverride ?? svgs.backText);
+	const frontMeta = $derived(getSvgMeta(front));
+	const backMeta = $derived(getSvgMeta(back));
 	const sideIndex = $derived(deckSideIndex.sideIndex);
 	const side = $derived(sideIndex === 0 ? 'front' : 'back');
 	const editorKey = $derived(`${game}/${deck}/${side}`);
@@ -142,6 +150,22 @@
 	let imageSelectorOpen = $state(false);
 	let imagePickerTarget = $state<ImagePickerTarget | null>(null);
 	const editorController = createEditorController();
+
+	$effect(() => {
+		const componentName = deck;
+		const frontHandle = project.session.getComponentSvgHandle(componentName, 'front');
+		const backHandle = project.session.getComponentSvgHandle(componentName, 'back');
+		const nextFrontBinding = frontHandle ? createSvgDocumentBinding(frontHandle) : null;
+		const nextBackBinding = backHandle ? createSvgDocumentBinding(backHandle) : null;
+		frontBinding = nextFrontBinding;
+		backBinding = nextBackBinding;
+		frontOverride = null;
+		backOverride = null;
+		return () => {
+			nextFrontBinding?.destroy();
+			nextBackBinding?.destroy();
+		};
+	});
 
 	const svg = $derived(side === 'front' ? front : back);
 	const editorSvg = $derived(await resolveSvgImagesForEditor(svg, game));
@@ -180,16 +204,24 @@
 			console.error(`Upload failed for ${nextSide}.svg`, written.error);
 			return;
 		}
+		const currentBinding = nextSide === 'front' ? frontBinding : backBinding;
+		if (!currentBinding) {
+			const handle = project.session.getComponentSvgHandle(deck, nextSide);
+			if (handle) {
+				const binding = createSvgDocumentBinding(handle);
+				if (nextSide === 'front') frontBinding = binding;
+				if (nextSide === 'back') backBinding = binding;
+			}
+		}
 		if (updateState) setSvgSide(nextSide, nextValue);
 	};
 
 	const setSvgSide = (nextSide: Side, value: string) => {
 		if (nextSide === 'front') {
-			front = value;
-			frontMeta = getSvgMeta(value);
-		} else {
-			back = value;
-			backMeta = getSvgMeta(value);
+			frontOverride = value;
+		}
+		if (nextSide === 'back') {
+			backOverride = value;
 		}
 		deckSideIndex.setSideIndex(sideIndexForSide(nextSide));
 	};
@@ -278,7 +310,7 @@
 		};
 	}
 
-	function normalizeEditorSvgImages(value: string) {
+	function normalizeEditorSvg(value: string, meta: SvgMeta) {
 		if (!value) return value;
 
 		const doc = new DOMParser().parseFromString(value, SVG_MIME_TYPE);
@@ -291,6 +323,7 @@
 			setImageHref(image, originalHref);
 			image.removeAttribute(ORIGINAL_HREF_ATTR);
 		}
+		applySvgMetaToRoot(root, meta);
 
 		return new XMLSerializer().serializeToString(doc);
 	}
@@ -370,54 +403,16 @@
 			: `Add an image to the ${sideLabel(side)} SVG`
 	);
 
-	let activeSavePromises = $state<Promise<void>[]>([]);
-
-	const saveSvgAndTrack = (nextSide: Side, value: string) => {
-		const promise = writeSvgSide(nextSide, value, { preserveCanvasMeta: true, updateState: false });
-		activeSavePromises = [...activeSavePromises, promise];
-		void promise.finally(() => {
-			activeSavePromises = activeSavePromises.filter((activePromise) => activePromise !== promise);
-		});
-		return promise;
-	};
-
-	const saveFrontDebounced = useDebounce((value: string) => saveSvgAndTrack('front', value), 600);
-	const saveBackDebounced = useDebounce((value: string) => saveSvgAndTrack('back', value), 600);
-
-	const scheduleSave = (nextSide: Side, value: string) => {
-		const promise = nextSide === 'front' ? saveFrontDebounced(value) : saveBackDebounced(value);
-		void promise.catch((error) => {
-			console.error(`Failed to save ${nextSide}.svg`, error);
-		});
-	};
-
-	const flushPendingSaves = async () => {
-		await Promise.all([saveFrontDebounced.runScheduledNow(), saveBackDebounced.runScheduledNow()]);
-		await Promise.allSettled(activeSavePromises);
-	};
-
-	onNavigate(() => {
-		if (
-			!saveFrontDebounced.pending &&
-			!saveBackDebounced.pending &&
-			activeSavePromises.length === 0
-		) {
-			return;
-		}
-		return flushPendingSaves();
-	});
-
 	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		const { svg: value, source } = event.detail;
 		if (source !== 'user' || !value) return;
-		const normalizedValue = normalizeEditorSvgImages(value);
-		if (side === 'front') {
-			front = normalizedValue;
+		const normalizedValue = normalizeEditorSvg(value, activeMeta);
+		const binding = side === 'front' ? frontBinding : backBinding;
+		if (binding) {
+			binding.change(normalizedValue);
+			return;
 		}
-		if (side === 'back') {
-			back = normalizedValue;
-		}
-		scheduleSave(side, normalizedValue);
+		void writeSvgSide(side, normalizedValue, { updateState: false });
 	};
 </script>
 
@@ -466,6 +461,8 @@
 					showActionToolbar={false}
 					assetBasePath={SVG_EDITOR_ASSET_BASE_PATH}
 					initialZoom="fit"
+					syncExternalValueUpdates={true}
+					centerOnExternalValueChange={false}
 					imageToolAction={(controller) => openImagePicker('insert', controller)}
 					selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}
 					selectedImageHrefApplyAction={applySvgEditorImageHref}

@@ -255,8 +255,7 @@
 			suppressChange = true;
 			try {
 				return (
-					controller?.loadSvg(svg, {
-						preventUndo: true,
+					controller?.applySvgProjection(svg, {
 						center: centerOnExternalValueChange
 					}) ?? false
 				);

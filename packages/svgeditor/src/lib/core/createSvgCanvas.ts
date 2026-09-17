@@ -8,6 +8,7 @@ import type {
 	SvgEditorApi,
 	SvgElementJsonNode
 } from './types';
+import { SVG_NODE_ID_ATTRIBUTE } from '../crdt/codec';
 
 export type SvgCanvasConstructor = new (
 	container: HTMLElement,
@@ -230,6 +231,7 @@ export const createSvgCanvas = ({
 	}
 
 	let canvas: SvgCanvasLike;
+	let suppressEvents = false;
 	try {
 		canvas = new svgCanvasCtor(canvasContainer ?? container, config);
 	} catch (cause) {
@@ -829,6 +831,7 @@ export const createSvgCanvas = ({
 	};
 
 	const changeHandler = (...args: unknown[]) => {
+		if (suppressEvents) return;
 		correctSelectedSetupSelectors();
 		onChange?.(shouldEmitChangeSvg(args) ? canvas.getSvgString() : undefined);
 	};
@@ -1212,6 +1215,7 @@ export const createSvgCanvas = ({
 	};
 
 	const selectionHandler = () => {
+		if (suppressEvents) return;
 		const selected = normalizeSetupSelection();
 		correctSelectedSetupSelectors();
 		onSelectionChange?.({
@@ -1221,6 +1225,7 @@ export const createSvgCanvas = ({
 	};
 
 	const modeHandler = (event: Event) => {
+		if (suppressEvents) return;
 		if (!onModeChange) return;
 		if (event instanceof CustomEvent && typeof event.detail?.getMode === 'function') {
 			onModeChange(event.detail.getMode());
@@ -1243,6 +1248,15 @@ export const createSvgCanvas = ({
 		if (canvas.getSvgString() !== before) {
 			emitCanvasChange();
 		}
+	};
+	const applySelectedAttributeChange = (name: string, value: string | number) => {
+		const selected = (canvas.getSelectedElements?.() ?? []).filter(Boolean);
+		const next = String(value);
+		if (selected.length === 0 || selected.every((element) => element.getAttribute(name) === next)) {
+			return;
+		}
+		canvas.changeSelectedAttribute?.(name, value, selected);
+		emitCanvasChange();
 	};
 	const getActiveTextElement = () => {
 		const selected = canvas.getSelectedElements?.()?.[0];
@@ -1428,6 +1442,43 @@ export const createSvgCanvas = ({
 			}
 			return loadOk;
 		},
+		applySvgProjection(svg, opts) {
+			const selected = (canvas.getSelectedElements?.() ?? []).map((element) => ({
+				id: element.getAttribute('id'),
+				nodeId: element.getAttribute(SVG_NODE_ID_ATTRIBUTE)
+			}));
+			const zoom = canvas.getZoom();
+			const mode = canvas.getMode();
+			let loadOk = false;
+			suppressEvents = true;
+			try {
+				loadOk = canvas.setSvgString(svg, true);
+				if (!loadOk) return false;
+				enableMultilineTextElements();
+				canvas.undoMgr?.resetUndoStack?.();
+				canvas.setZoom(zoom);
+				refreshLayout({ center: opts?.center ?? false });
+				if (gridState.show) updateGrid(canvas.getZoom() || 1);
+				if (rulerState.show) updateRulers(canvas.getZoom() || 1);
+
+				const root = canvas.getSvgContent?.();
+				const restored = selected.flatMap(({ id, nodeId }) => {
+					const byId = id ? resolveElementById(id) : null;
+					if (byId) return [byId];
+					if (!nodeId || !root) return [];
+					const byNodeId = Array.from(root.querySelectorAll(`[${SVG_NODE_ID_ATTRIBUTE}]`)).find(
+						(element) => element.getAttribute(SVG_NODE_ID_ATTRIBUTE) === nodeId
+					);
+					return byNodeId ? [byNodeId] : [];
+				});
+				if (restored.length > 0) canvas.selectOnly?.(restored, true);
+				if (canvas.getMode() !== mode) canvas.setMode(mode);
+				return true;
+			} finally {
+				suppressEvents = false;
+				if (loadOk) selectionHandler();
+			}
+		},
 		getSvg() {
 			return canvas.getSvgString();
 		},
@@ -1530,13 +1581,13 @@ export const createSvgCanvas = ({
 			return canvas.getZoom() || 1;
 		},
 		setFill(color) {
-			applySelectedElementChange(() => canvas.changeSelectedAttribute?.('fill', color));
+			applySelectedAttributeChange('fill', color);
 		},
 		setStroke(color) {
-			applySelectedElementChange(() => canvas.changeSelectedAttribute?.('stroke', color));
+			applySelectedAttributeChange('stroke', color);
 		},
 		setStrokeWidth(value) {
-			applySelectedElementChange(() => canvas.changeSelectedAttribute?.('stroke-width', value));
+			applySelectedAttributeChange('stroke-width', value);
 		},
 		getFontSize() {
 			return canvas.getFontSize?.() ?? 0;

@@ -4,6 +4,7 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 import { componentDataMaterializer } from './component-data';
 import { decodeText, hashBytes, readFile } from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
+import { svgFileMaterializer } from './svg-file';
 import type {
 	BinaryFileDocument,
 	MarkdownFileDocument,
@@ -81,6 +82,11 @@ export async function scanProjectFiles(
 								return componentDataMaterializer.parse(decodeText(current), {
 									hash: snapshot.hash,
 									allowMissingIds: true
+								});
+							}
+							if (classification.kind === 'component-svg') {
+								return svgFileMaterializer.parse(decodeText(current), {
+									hash: snapshot.hash
 								});
 							}
 							if (classification.kind === 'asset') {

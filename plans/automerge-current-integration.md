@@ -70,14 +70,25 @@ The spreadsheet still emits complete CSV projections, but in-app writes are impo
 
 The following files currently use linked Automerge text documents:
 
-- Component `front.svg` and `back.svg`
 - `setup/table.svg`
 - Feedback Markdown
 - The playtest feedback registry
 
 In-app writes update these linked documents through the project session. External editor changes are imported with `changeAt()` using the recorded projection heads.
 
-SVG and table files currently merge as text. Moving them to stable semantic element and table models remains future work.
+Table files currently merge as text. Moving setup to its typed table model remains future work.
+
+### Component SVG
+
+Component `front.svg` and `back.svg` use normalized semantic SVG documents owned by `@svg-table/svgeditor`. Each document stores a stable root ID, a flat node registry, and a resource registry. Nodes remain at a stable registry key while their atomic placement register supplies parent and dense globally unique sibling order. Deletion uses node tombstones rather than removing records.
+
+Known geometry, decomposed transforms, presentation, paint, image sources, path commands, polygon points, and text are structured independently. Path commands and points have their own stable IDs, tombstones, and dense order identifiers. Unknown SVG elements and attributes retain defensive raw projections so existing project SVGs continue to round-trip.
+
+The rendered hierarchy is derived from child-to-parent placements. Missing parents fall back deterministically, deleted ancestors hide descendants, and cycles are broken at a deterministic node ID. Stable node, path-command, and point identities are materialized as reserved SVG data attributes so filesystem edits can retain application identity.
+
+Existing linked text documents migrate in place without replacing their Automerge URL. External SVG changes are parsed and applied at the recorded projection heads, mutating existing semantic fields instead of replacing whole node objects.
+
+The mounted layout editor binds directly to each side's document handle. Local editor changes use `changeAt()` from the heads represented by the canvas, while remote document changes install a sanitized projection without remounting the Svelte editor. Projection application preserves selection, mode, and zoom, suppresses local echo events, and clears SVG-Edit undo history because its commands retain DOM references replaced by a remote projection.
 
 ### Rules Markdown
 
@@ -149,7 +160,7 @@ The session exposes commands for:
 
 Blank component creation, rename, and deletion use these commands. Component rename changes member paths while preserving component and member IDs.
 
-CSV, component SVG, table SVG, uploaded assets, and generated assets write through the active project session. Rules edit their linked handle directly and use session reconciliation for filesystem materialization. Premade deck generation and feedback import hand their completed filesystem mutations to an explicit session sync.
+CSV, table SVG, uploaded assets, and generated assets write through the active project session. Rules and component SVGs edit their linked handles directly and use session reconciliation for filesystem materialization. Premade deck generation and feedback import hand their completed filesystem mutations to an explicit session sync.
 
 New-path writes are projection-first so UI navigation does not wait for whole-project discovery. Existing managed text files are imported into Automerge before their save operation completes. Project switch, close, playtest export, and explicit synchronization await all pending refresh and reconciliation work.
 
@@ -219,6 +230,8 @@ Focused Playwright coverage verifies:
 - External Markdown import while preserving the linked document URL.
 - Live rules synchronization between mounted editors.
 - External rules Markdown updates applied to mounted editors.
+- Live semantic SVG synchronization between mounted layout editors.
+- Concurrent changes to different SVG nodes preserved in both canvases and the filesystem projection.
 - Ephemeral cursor presence between clients on the same exact route.
 - Region-based cursor resolution across different sender and receiver viewport sizes.
 - Cursor isolation between different routes in the same project.
@@ -244,8 +257,10 @@ Existing regressions cover:
 
 - Synchronization is same-browser only.
 - Presence regions follow receiver DOM geometry but do not yet expose semantic ProseMirror, spreadsheet-cell, or SVG user-space positions.
-- SVG and table collaboration is text-based rather than semantic.
-- Mounted SVG and spreadsheet editors do not yet apply every remote document patch directly to their third-party editor instance; filesystem projections and remounts remain part of those integrations.
+- Setup table collaboration remains text-based rather than semantic.
+- Remote semantic SVG changes currently install a complete sanitized SVG projection. Incremental keyed DOM reconciliation and undo rebasing remain future work.
+- Mounted setup and spreadsheet editors do not yet apply every remote document patch directly to their third-party editor instance; filesystem projections and remounts remain part of those integrations.
+- SVG drag previews, selections, and soft claims are not yet exchanged as semantic ephemeral presence.
 - Binary documents are immutable but are not deduplicated by hash.
 - Structural operations have config repair but no dedicated operation journal.
 - Collaborative whole-project discovery and deletion require a workspace-level Automerge document.
@@ -253,10 +268,11 @@ Existing regressions cover:
 ## Next Steps
 
 1. Add structural operation journals for component rename and deletion.
-2. Bind mounted SVG, table, and spreadsheet editors directly to remote member changes.
-3. Replace text SVG merging with stable element and attribute identities.
-4. Make the typed table model authoritative and materialize `setup/table.svg` from it.
-5. Add authenticated cross-device Automerge networking.
-6. Add a workspace project registry and project deletion tombstones.
-7. Add binary deduplication and retention policy if repository growth requires it.
-8. Add semantic presence adapters for ProseMirror cursors, spreadsheet cells, and SVG user-space coordinates where DOM regions are not precise enough.
+2. Make the typed table model authoritative, materialize `setup/table.svg` from it, and bind the mounted setup editor directly.
+3. Bind the mounted spreadsheet editor directly to component data documents.
+4. Add keyed SVG DOM reconciliation and rebase local undo history across compatible remote edits.
+5. Add ephemeral SVG selection, drag-preview, and deterministic soft-claim messages.
+6. Add authenticated cross-device Automerge networking.
+7. Add a workspace project registry and project deletion tombstones.
+8. Add binary deduplication and retention policy if repository growth requires it.
+9. Add semantic presence adapters for ProseMirror cursors, spreadsheet cells, and SVG user-space coordinates where DOM regions are not precise enough.

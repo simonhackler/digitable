@@ -1,4 +1,5 @@
 import type { DocHandle, Repo } from '@automerge/automerge-repo';
+import { isSvgDocument } from '@svg-table/svgeditor';
 import {
 	GAME_METADATA_MEMBER_ID,
 	isBinaryFileDocument,
@@ -172,5 +173,6 @@ function isMemberDocument(
 	if (kind === 'component-data') return isComponentDataDocument(value);
 	if (kind === 'asset') return isBinaryFileDocument(value);
 	if (kind === 'rules') return isMarkdownFileDocument(value) || isTextFileDocument(value);
+	if (kind === 'component-svg') return isSvgDocument(value) || isTextFileDocument(value);
 	return isTextFileDocument(value);
 }

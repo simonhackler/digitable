@@ -163,6 +163,7 @@ export type EditorError = {
 
 export type SvgEditorApi = {
 	loadSvg(svg: string, opts?: { preventUndo?: boolean; center?: boolean }): boolean;
+	applySvgProjection(svg: string, opts?: { center?: boolean }): boolean;
 	getSvg(): string;
 	setResolution(width: number, height: number): boolean;
 

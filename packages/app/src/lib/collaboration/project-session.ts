@@ -11,6 +11,7 @@ import {
 	type NetworkAdapterInterface,
 	type UrlHeads
 } from '@automerge/automerge-repo';
+import { isSvgDocument, type SvgDocument } from '@svg-table/svgeditor';
 import { BroadcastChannelNetworkAdapter } from '@automerge/automerge-repo-network-broadcastchannel';
 import { createProjectPresence, type ProjectPresence } from './project-presence';
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
@@ -39,6 +40,7 @@ import {
 	importManagedTextMember,
 	markdownMember,
 	metadataMember,
+	svgMember,
 	textMember,
 	type ManagedMember,
 	type ReconciliationStatus
@@ -62,6 +64,7 @@ import {
 	type TextFileDocument
 } from './model';
 import { applyMarkdown } from './markdown/markdown-codec';
+import { svgFileMaterializer } from './svg-file';
 import {
 	classifyProjectFile,
 	projectComponentId,
@@ -95,6 +98,10 @@ export type ProjectSession = {
 	rootUrl: AutomergeUrl;
 	metadataHandle: DocHandle<GameMetadataDocument>;
 	getRulesHandle(): DocHandle<MarkdownFileDocument> | undefined;
+	getComponentSvgHandle(
+		componentName: string,
+		side: 'front' | 'back'
+	): DocHandle<SvgDocument> | undefined;
 	componentDataHandles: ReadonlyMap<string, DocHandle<ComponentDataDocument>>;
 	presence: ProjectPresence;
 	getConfig(): ProjectConfig;
@@ -152,10 +159,17 @@ export async function openProjectSession(
 				graph = ensured.graph;
 				const migrated = await migrateRulesDocument(project, projectRepo, graph, ensured.config);
 				graph = migrated.graph;
+				const migratedSvgs = await migrateSvgDocuments(
+					project,
+					projectRepo,
+					graph,
+					migrated.config
+				);
+				graph = migratedSvgs.graph;
 				const repaired = await repairProjectConfig(
 					project,
 					graph,
-					migrated.config?.rootUrl === restored.rootUrl ? migrated.config : restored
+					migratedSvgs.config?.rootUrl === restored.rootUrl ? migratedSvgs.config : restored
 				);
 				return { graph, repaired };
 			});
@@ -265,6 +279,8 @@ export async function openProjectSession(
 				rootUrl: graph.projectHandle.url,
 				metadataHandle: graph.metadataHandle,
 				getRulesHandle: () => rulesHandle(graph),
+				getComponentSvgHandle: (componentName: string, side: 'front' | 'back') =>
+					componentSvgHandle(graph, componentName, side),
 				componentDataHandles: graph.componentDataHandles,
 				presence,
 				getConfig: reconciler.getConfig,
@@ -601,6 +617,12 @@ function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMemb
 		if (member.kind === 'component-data') {
 			return componentDataMember(memberId, member.path, handle as DocHandle<ComponentDataDocument>);
 		}
+		if (member.kind === 'component-svg') {
+			if (!isSvgDocument(handle.doc())) {
+				throw new Error(`Component SVG member ${member.path} has an unsupported format.`);
+			}
+			return svgMember(memberId, member.path, handle as DocHandle<SvgDocument>);
+		}
 		if (member.kind === 'asset') {
 			if (!member.hash) throw new Error(`Binary member ${member.path} is missing its hash.`);
 			return binaryMember(
@@ -710,6 +732,66 @@ async function migrateRulesDocument(
 	};
 }
 
+async function migrateSvgDocuments(
+	project: FsDir,
+	repo: Repo,
+	graph: ProjectGraph,
+	config: ProjectConfig | undefined
+): Promise<{ graph: ProjectGraph; config: ProjectConfig | undefined }> {
+	const migratedIds: string[] = [];
+	for (const [id, member] of Object.entries(graph.project.members)) {
+		if (member.kind !== 'component-svg') continue;
+		const handle = graph.memberHandles.get(id);
+		const current = handle?.doc();
+		if (!handle || !isTextFileDocument(current)) continue;
+		const parsed = svgFileMaterializer.parse(current.content, {
+			hash: config?.projections[id]?.hash ?? id
+		});
+		handle.change(
+			(document) => {
+				const svg = document as unknown as SvgDocument & { content?: string; type?: string };
+				delete svg.content;
+				delete svg.type;
+				svg.schemaVersion = parsed.schemaVersion;
+				svg.rootId = parsed.rootId;
+				svg.nodes = parsed.nodes;
+				svg.resources = parsed.resources;
+			},
+			{ message: `Upgrade ${member.path} to collaborative SVG` }
+		);
+		migratedIds.push(id);
+	}
+	if (migratedIds.length === 0) return { graph, config };
+	await repo.flush(
+		migratedIds.flatMap((id) => {
+			const handle = graph.memberHandles.get(id);
+			return handle ? [handle.documentId] : [];
+		})
+	);
+	const migratedConfig = config
+		? {
+				...config,
+				projections: Object.fromEntries(
+					Object.entries(config.projections).map(([id, projection]) => [
+						id,
+						migratedIds.includes(id)
+							? {
+									...projection,
+									heads: graph.memberHandles.get(id)?.heads() ?? projection.heads,
+									materializeOnly: true as const
+								}
+							: projection
+					])
+				)
+			}
+		: config;
+	if (migratedConfig) await writeProjectConfig(project, migratedConfig);
+	return {
+		graph: await resolveProjectGraph(repo, graph.projectHandle),
+		config: migratedConfig
+	};
+}
+
 function rulesHandle(graph: ProjectGraph): DocHandle<MarkdownFileDocument> | undefined {
 	const entry = Object.entries(graph.project.members).find(([, member]) => member.kind === 'rules');
 	if (!entry) return undefined;
@@ -718,6 +800,23 @@ function rulesHandle(graph: ProjectGraph): DocHandle<MarkdownFileDocument> | und
 		throw new Error('The Automerge rules document has an unsupported format.');
 	}
 	return handle as DocHandle<MarkdownFileDocument>;
+}
+
+function componentSvgHandle(
+	graph: ProjectGraph,
+	componentName: string,
+	side: 'front' | 'back'
+): DocHandle<SvgDocument> | undefined {
+	const component = Object.values(graph.project.components).find(
+		(candidate) => candidate.name === componentName
+	);
+	const memberId = side === 'front' ? component?.frontMemberId : component?.backMemberId;
+	if (!memberId) return undefined;
+	const handle = graph.memberHandles.get(memberId);
+	if (!handle || !isSvgDocument(handle.doc())) {
+		throw new Error(`Component "${componentName}" ${side} SVG has an unsupported format.`);
+	}
+	return handle as DocHandle<SvgDocument>;
 }
 
 function memberHandle(graph: ProjectGraph, memberId: string): DocHandle<ProjectMemberDocument> {

@@ -1,5 +1,6 @@
 import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { DocHandle, Repo } from '@automerge/automerge-repo';
+import type { SvgDocument } from '@svg-table/svgeditor';
 import { componentDataMaterializer } from './component-data';
 import { decodeText, encodeText, hashBytes, snapshotFile, writeFile } from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
@@ -14,6 +15,7 @@ import {
 	type TextFileDocument
 } from './model';
 import { textFileMaterializer } from './text-file';
+import { svgFileMaterializer } from './svg-file';
 import {
 	materializedStatesEqual,
 	readPendingMaterialization,
@@ -47,6 +49,13 @@ type TextMember = {
 	materializer: MemberMaterializer<TextFileDocument>;
 };
 
+type SvgMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<SvgDocument>;
+	materializer: typeof svgFileMaterializer;
+};
+
 type MarkdownMember = {
 	id: string;
 	path: string;
@@ -64,6 +73,7 @@ type BinaryMember = {
 export type ManagedMember =
 	| MetadataMember
 	| ComponentDataMember
+	| SvgMember
 	| TextMember
 	| MarkdownMember
 	| BinaryMember;
@@ -96,6 +106,10 @@ export function textMember(
 	handle: DocHandle<TextFileDocument>
 ): ManagedMember {
 	return { id, path, handle, materializer: textFileMaterializer(kind) };
+}
+
+export function svgMember(id: string, path: string, handle: DocHandle<SvgDocument>): ManagedMember {
+	return { id, path, handle, materializer: svgFileMaterializer };
 }
 
 export function markdownMember(
@@ -132,6 +146,10 @@ export function importManagedTextMember(
 	}
 	if (member.materializer.kind === 'rules') {
 		importTyped(member as MarkdownMember, projection, source, hash);
+		return;
+	}
+	if (member.materializer.kind === 'component-svg') {
+		importTyped(member as SvgMember, projection, source, hash);
 		return;
 	}
 	importTyped(member as TextMember, projection, source, hash);
@@ -331,6 +349,10 @@ export function createProjectReconciler({
 			}
 			if (member.materializer.kind === 'rules') {
 				await reconcileTyped(member as MarkdownMember);
+				return;
+			}
+			if (member.materializer.kind === 'component-svg') {
+				await reconcileTyped(member as SvgMember);
 				return;
 			}
 			await reconcileTyped(member as TextMember);
