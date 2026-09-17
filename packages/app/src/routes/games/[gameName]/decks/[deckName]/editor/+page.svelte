@@ -1,13 +1,20 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
+	import { page } from '$app/state';
 	import {
 		createEditorController,
 		createSvgDocumentBinding,
 		ReferenceEditor,
 		ReferenceEditorToolbar,
 		type ChangeEvent,
-		type SvgDocumentBinding
+		type RemoteSvgInteraction,
+		type SvgClaim,
+		type SvgDocument,
+		type SvgDocumentBinding,
+		type SvgInteractionEvent
 	} from '@svg-table/svgeditor';
+	import { hasHeads } from '@automerge/automerge';
+	import { decodeHeads, type DocHandle, type UrlHeads } from '@automerge/automerge-repo';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -25,6 +32,12 @@
 	import GameTopBar from '../../../../game-top-bar.svelte';
 	import { Separator } from '$lib/components/ui/separator';
 	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
+	import { projectPresencePage } from '$lib/collaboration/presence-page';
+	import { presenceColor } from '$lib/collaboration/project-presence';
+	import type {
+		ProjectSvgInteractionChannel,
+		ProjectSvgInteractionLease
+	} from '$lib/collaboration/project-svg-interactions';
 
 	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
 
@@ -125,6 +138,8 @@
 		applySvgMetaToRoot(root, meta);
 		return new XMLSerializer().serializeToString(doc);
 	};
+	const containsHeads = (handle: DocHandle<SvgDocument>, heads: UrlHeads) =>
+		hasHeads(handle.fullDoc(), decodeHeads(heads));
 
 	const loadSvgTemplates = getToLoadSvgsContext();
 	const svgs = $derived(await loadSvgTemplates());
@@ -133,8 +148,18 @@
 	let backBinding = $state.raw<SvgDocumentBinding | null>(null);
 	let frontOverride = $state<string | null>(null);
 	let backOverride = $state<string | null>(null);
-	const front = $derived(frontBinding?.current ?? frontOverride ?? svgs.frontText);
-	const back = $derived(backBinding?.current ?? backOverride ?? svgs.backText);
+	let interactionSide = $state<Side | null>(null);
+	let interactionSvg = $state<string | null>(null);
+	const front = $derived(
+		interactionSide === 'front' && interactionSvg !== null
+			? interactionSvg
+			: (frontBinding?.current ?? frontOverride ?? svgs.frontText)
+	);
+	const back = $derived(
+		interactionSide === 'back' && interactionSvg !== null
+			? interactionSvg
+			: (backBinding?.current ?? backOverride ?? svgs.backText)
+	);
 	const frontMeta = $derived(getSvgMeta(front));
 	const backMeta = $derived(getSvgMeta(back));
 	const sideIndex = $derived(deckSideIndex.sideIndex);
@@ -149,6 +174,13 @@
 	let uploadInput: HTMLInputElement | null = $state(null);
 	let imageSelectorOpen = $state(false);
 	let imagePickerTarget = $state<ImagePickerTarget | null>(null);
+	let remoteInteractions = $state.raw<RemoteSvgInteraction[]>([]);
+	let blockedClaims = $state.raw<SvgClaim[]>([]);
+	let interactionChannel = $state.raw<ProjectSvgInteractionChannel | null>(null);
+	let activeInteractionId: string | null = null;
+	let activeInteractionLease: ProjectSvgInteractionLease | null = null;
+	let activeInteractionBaseHeads: UrlHeads | null = null;
+	let pendingCommitHeads: UrlHeads | null = null;
 	const editorController = createEditorController();
 
 	$effect(() => {
@@ -164,6 +196,51 @@
 		return () => {
 			nextFrontBinding?.destroy();
 			nextBackBinding?.destroy();
+		};
+	});
+
+	$effect(() => {
+		const componentName = deck;
+		const currentSide = side;
+		const handle = project.session.getComponentSvgHandle(componentName, currentSide);
+		const pageId = projectPresencePage(page.route.id, page.params).id;
+		if (!handle) {
+			interactionChannel = null;
+			remoteInteractions = [];
+			blockedClaims = [];
+			return;
+		}
+		const channel = project.session.svgInteractions.forDocument(String(handle.documentId), pageId);
+		interactionChannel = channel;
+		const unsubscribe = channel.subscribe((state) => {
+			queueMicrotask(() => {
+				if (interactionChannel !== channel) return;
+				remoteInteractions = [...state.handoffs, ...state.active].map((interaction) => ({
+					...interaction,
+					color: presenceColor(interaction.instanceId)
+				}));
+				blockedClaims = state.claims;
+			});
+		});
+		const observeHeads = () =>
+			channel.observeHeads((commitHeads) => containsHeads(handle, commitHeads));
+		handle.on('change', observeHeads);
+		observeHeads();
+
+		return () => {
+			if (activeInteractionLease) activeInteractionLease.cancel();
+			activeInteractionLease = null;
+			activeInteractionId = null;
+			activeInteractionBaseHeads = null;
+			pendingCommitHeads = null;
+			interactionSide = null;
+			interactionSvg = null;
+			if (interactionChannel === channel) interactionChannel = null;
+			unsubscribe();
+			handle.off('change', observeHeads);
+			channel.dispose();
+			remoteInteractions = [];
+			blockedClaims = [];
 		};
 	});
 
@@ -405,14 +482,69 @@
 
 	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		const { svg: value, source } = event.detail;
-		if (source !== 'user' || !value) return;
+		if (source === 'external') return;
+		if (!value) return;
 		const normalizedValue = normalizeEditorSvg(value, activeMeta);
 		const binding = side === 'front' ? frontBinding : backBinding;
 		if (binding) {
-			binding.change(normalizedValue);
+			pendingCommitHeads = binding.change(
+				normalizedValue,
+				activeInteractionBaseHeads ?? binding.heads
+			);
 			return;
 		}
 		void writeSvgSide(side, normalizedValue, { updateState: false });
+	};
+
+	const handleInteraction = (event: CustomEvent<SvgInteractionEvent>) => {
+		const interaction = event.detail;
+		const binding = side === 'front' ? frontBinding : backBinding;
+		if (interaction.phase === 'start') {
+			pendingCommitHeads = null;
+			interactionSide = side;
+			interactionSvg = svg;
+			activeInteractionId = interaction.interactionId;
+			activeInteractionBaseHeads = binding ? ([...binding.heads] as UrlHeads) : null;
+			activeInteractionLease = null;
+			const channel = interactionChannel;
+			if (channel && binding) {
+				queueMicrotask(() => {
+					if (activeInteractionId !== interaction.interactionId || interactionChannel !== channel)
+						return;
+					activeInteractionLease = channel.begin({
+						interactionId: interaction.interactionId,
+						kind: interaction.preview.kind,
+						nodeIds: interaction.nodeIds,
+						claims: interaction.claims,
+						baseHeads: binding.heads,
+						preview: interaction.preview
+					});
+				});
+			}
+			return;
+		}
+		if (interaction.interactionId !== activeInteractionId) return;
+		if (interaction.phase === 'update') {
+			activeInteractionLease?.update(interaction.preview);
+			return;
+		}
+		if (interaction.phase === 'commit') {
+			const commitHeads = pendingCommitHeads ?? binding?.heads;
+			if (commitHeads) {
+				activeInteractionLease?.update(interaction.preview);
+				activeInteractionLease?.handoff(commitHeads);
+			} else {
+				activeInteractionLease?.cancel();
+			}
+		} else {
+			activeInteractionLease?.cancel();
+		}
+		activeInteractionLease = null;
+		activeInteractionId = null;
+		activeInteractionBaseHeads = null;
+		pendingCommitHeads = null;
+		interactionSide = null;
+		interactionSvg = null;
 	};
 </script>
 
@@ -463,10 +595,13 @@
 					initialZoom="fit"
 					syncExternalValueUpdates={true}
 					centerOnExternalValueChange={false}
+					{remoteInteractions}
+					{blockedClaims}
 					imageToolAction={(controller) => openImagePicker('insert', controller)}
 					selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}
 					selectedImageHrefApplyAction={applySvgEditorImageHref}
 					on:change={handleChange}
+					on:interaction={handleInteraction}
 				/>
 			</div>
 		{/key}

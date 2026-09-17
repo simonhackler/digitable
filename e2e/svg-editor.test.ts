@@ -249,6 +249,203 @@ test('layout editors merge live changes to different SVG nodes', async () => {
 	}
 });
 
+test('fill changes preview ephemerally before one durable commit', async () => {
+	if (!svgEditorContext) throw new Error('SVG editor context was not initialized');
+	const page = await svgEditorContext.newPage();
+	const peer = await svgEditorContext.newPage();
+	try {
+		await page.goto('/app/games');
+		await resetSvgEditorProject(page);
+		await openWesternSvgEditor(page);
+		await peer.goto('/app/games');
+		await openWesternSvgEditor(peer);
+		await selectEffectZone(page);
+		await selectEffectZone(peer);
+		const nodeId = await page.evaluate(
+			() =>
+				(
+					window as Window & {
+						__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+					}
+				)
+					.__svgEditorApi!.getElementById('effect_zone')
+					?.getAttribute('data-svg-table-node-id') ?? ''
+		);
+		expect(nodeId).toBeTruthy();
+		const fill = page.locator('#inspector-fill-color');
+		await fill.evaluate((input) => {
+			const picker = input as HTMLInputElement;
+			picker.value = '#765432';
+			picker.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		});
+
+		await expect
+			.poll(() =>
+				page.evaluate(() =>
+					(
+						window as Window & {
+							__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+						}
+					)
+						.__svgEditorApi!.getElementById('effect_zone')
+						?.getAttribute('fill')
+				)
+			)
+			.toBe('#765432');
+		await expect(peer.locator(`[data-svg-interaction-preview-node="${nodeId}"]`)).toHaveAttribute(
+			'fill',
+			'#765432'
+		);
+		await expect(peer.locator('#inspector-fill-color')).toBeDisabled();
+		await expect(peer.locator('#inspector-stroke-color')).toBeEnabled();
+		expect(await readOpfsText(page, '/western-cards/components/western/front.svg')).not.toContain(
+			'fill="#765432"'
+		);
+
+		await fill.dispatchEvent('change');
+		await expect.poll(() => editorSvg(peer)).toContain('fill="#765432"');
+		await expect(peer.locator(`[data-svg-interaction-preview-node="${nodeId}"]`)).toHaveCount(0);
+		await expect(peer.locator('#inspector-fill-color')).toBeEnabled();
+		await expect
+			.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+			.toContain('fill="#765432"');
+
+		await fill.evaluate((input) => {
+			const picker = input as HTMLInputElement;
+			picker.value = '#abcdef';
+			picker.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		});
+		await expect(peer.locator(`[data-svg-interaction-preview-node="${nodeId}"]`)).toHaveAttribute(
+			'fill',
+			'#abcdef'
+		);
+		await fill.dispatchEvent('pointercancel');
+		await expect
+			.poll(() =>
+				page.evaluate(() =>
+					(
+						window as Window & {
+							__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+						}
+					)
+						.__svgEditorApi!.getElementById('effect_zone')
+						?.getAttribute('fill')
+				)
+			)
+			.toBe('#765432');
+		await expect(peer.locator(`[data-svg-interaction-preview-node="${nodeId}"]`)).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'Undo' }).click();
+		await expect.poll(() => editorSvg(peer)).not.toContain('fill="#765432"');
+		await expect
+			.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+			.not.toContain('fill="#765432"');
+	} finally {
+		await Promise.all([page.close(), peer.close()]);
+	}
+});
+
+test('dragging previews ephemerally before one durable move', async () => {
+	if (!svgEditorContext) throw new Error('SVG editor context was not initialized');
+	const page = await svgEditorContext.newPage();
+	const peer = await svgEditorContext.newPage();
+	try {
+		await page.goto('/app/games');
+		await resetSvgEditorProject(page);
+		await openWesternSvgEditor(page);
+		await peer.goto('/app/games');
+		await openWesternSvgEditor(peer);
+		const dragTarget = page.locator('#svgcanvas #dice_image');
+		const targetBox = await dragTarget.boundingBox();
+		if (!targetBox) throw new Error('SVG drag target is not visible');
+		const targetPosition = { x: targetBox.width - 4, y: targetBox.height - 4 };
+		await dragTarget.click({ position: targetPosition });
+		const node = await page.evaluate(() => {
+			const canvas = (
+				window as Window & {
+					__svgEditorApi?: {
+						_unsafe?: { rawCanvas: () => { getSelectedElements?: () => Element[] } | null };
+					} | null;
+				}
+			).__svgEditorApi!._unsafe?.rawCanvas();
+			const element = canvas?.getSelectedElements?.()[0];
+			if (!element) throw new Error('dice_image not found');
+			return {
+				nodeId: element.getAttribute('data-svg-table-node-id') ?? '',
+				svgId: element.id
+			};
+		});
+		expect(node.nodeId).toBeTruthy();
+		const frontPath = '/western-cards/components/western/front.svg';
+		const before = await readOpfsText(page, frontPath);
+		const beforeElement = await page.evaluate(
+			(svgId) =>
+				(
+					window as Window & {
+						__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+					}
+				).__svgEditorApi!.getElementById(svgId)?.outerHTML ?? '',
+			node.svgId
+		);
+		const start = {
+			x: targetBox.x + targetPosition.x,
+			y: targetBox.y + targetPosition.y
+		};
+		const hitTarget = await page.evaluate(({ x, y }) => {
+			const hit = document.elementFromPoint(x, y);
+			return { id: hit?.id ?? '', tag: hit?.tagName ?? '' };
+		}, start);
+		expect(hitTarget, 'drag start must hit the selected SVG element').toMatchObject({
+			id: 'dice_image'
+		});
+		await page.mouse.move(start.x, start.y);
+		await page.mouse.down();
+		await page.mouse.move(start.x + 60, start.y + 30, { steps: 2 });
+		await expect
+			.poll(() =>
+				page.evaluate(
+					(svgId) =>
+						(
+							window as Window & {
+								__svgEditorApi?: { getElementById: (id: string) => Element | null } | null;
+							}
+						).__svgEditorApi!.getElementById(svgId)?.outerHTML ?? '',
+					node.svgId
+				)
+			)
+			.not.toBe(beforeElement);
+		const remotePreview = peer.locator(`[data-svg-interaction-preview-node="${node.nodeId}"]`);
+		await expect(remotePreview).toBeVisible();
+		const firstRemoteTransform = await remotePreview.locator('..').getAttribute('transform');
+		await page.mouse.move(start.x + 100, start.y + 50, { steps: 2 });
+		await expect
+			.poll(() => remotePreview.locator('..').getAttribute('transform'))
+			.not.toBe(firstRemoteTransform);
+		expect(await readOpfsText(page, frontPath)).toBe(before);
+		expect(
+			await peer.evaluate((nodeId) => {
+				const api = (
+					window as Window & {
+						__svgEditorApi?: {
+							isInteractionBlocked: (kind: string, nodeIds?: string[]) => boolean;
+						} | null;
+					}
+				).__svgEditorApi;
+				return api?.isInteractionBlocked('move', [nodeId]) ?? false;
+			}, node.nodeId)
+		).toBe(true);
+
+		await page.mouse.up();
+		await expect.poll(() => readOpfsText(page, frontPath)).not.toBe(before);
+		await expect(peer.locator(`[data-svg-interaction-preview-node="${node.nodeId}"]`)).toHaveCount(
+			0
+		);
+	} finally {
+		await page.mouse.up().catch(() => undefined);
+		await Promise.all([page.close(), peer.close()]);
+	}
+});
+
 svgEditorTest('layout editor reloads svg when navigating between decks', async (page) => {
 	await writeOpfsText(
 		page,
@@ -335,7 +532,7 @@ svgEditorTest(
 	}
 );
 
-svgEditorTest('fill and stroke pickers commit only the final selected colors', async (page) => {
+svgEditorTest('fill and stroke pickers preview locally and commit final colors', async (page) => {
 	await openWesternSvgEditor(page);
 	await selectEffectZone(page);
 	const fill = page.locator('#inspector-fill-color');
@@ -358,7 +555,10 @@ svgEditorTest('fill and stroke pickers commit only the final selected colors', a
 				.__svgEditorApi!.getElementById('effect_zone')
 				?.getAttribute('fill')
 		)
-	).toBe('#000000');
+	).toBe('#123abc');
+	expect(await readOpfsText(page, '/western-cards/components/western/front.svg')).not.toContain(
+		'fill="#123abc"'
+	);
 
 	await fill.dispatchEvent('change');
 	await expect
@@ -395,7 +595,10 @@ svgEditorTest('fill and stroke pickers commit only the final selected colors', a
 				.__svgEditorApi!.getElementById('effect_zone')
 				?.getAttribute('stroke')
 		)
-	).toBeNull();
+	).toBe('#654321');
+	expect(await readOpfsText(page, '/western-cards/components/western/front.svg')).not.toContain(
+		'stroke="#654321"'
+	);
 
 	await stroke.dispatchEvent('change');
 	await expect

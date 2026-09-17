@@ -10,9 +10,12 @@
 		ErrorEvent,
 		ModeChangeEvent,
 		ReadyEvent,
+		RemoteSvgInteraction,
 		SelectionChangeEvent,
+		SvgClaim,
 		SvgCanvasConfig,
-		SvgEditorApi
+		SvgEditorApi,
+		SvgInteractionEvent
 	} from '../core/types';
 
 	type SvgCanvasHostProps = {
@@ -28,6 +31,8 @@
 		assetBasePath?: string;
 		class?: string;
 		api?: SvgEditorApi | null;
+		remoteInteractions?: RemoteSvgInteraction[];
+		blockedClaims?: SvgClaim[];
 	};
 
 	let {
@@ -42,7 +47,9 @@
 		initialZoom,
 		assetBasePath,
 		class: className = '',
-		api = $bindable(null)
+		api = $bindable(null),
+		remoteInteractions = [],
+		blockedClaims = []
 	}: SvgCanvasHostProps = $props();
 
 	const dispatch = createEventDispatcher<{
@@ -50,6 +57,7 @@
 		change: ChangeEvent;
 		selectionchange: SelectionChangeEvent;
 		modechange: ModeChangeEvent;
+		interaction: SvgInteractionEvent;
 		error: ErrorEvent;
 	}>();
 
@@ -66,6 +74,7 @@
 	let lastUserValue: string | null = null;
 	let suppressChange = false;
 	let initialZoomApplied = false;
+	let destroyed = false;
 
 	const resolvedConfig = $derived.by(() => {
 		const base = config ?? {};
@@ -121,6 +130,7 @@
 
 		try {
 			const { default: ImportedSvgCanvas } = await import('@svgedit/svgcanvas');
+			if (destroyed) return;
 			suppressChange = true;
 			controller = createSvgCanvas({
 				container: workareaEl,
@@ -130,6 +140,8 @@
 				config: resolvedConfig,
 				centerOnLoad,
 				emitChangeSvg,
+				remoteInteractions,
+				blockedClaims,
 				rulers: {
 					frame: rulerFrame,
 					x: rulerX,
@@ -155,6 +167,7 @@
 				onModeChange: (mode) => {
 					dispatch('modechange', { mode });
 				},
+				onInteraction: (interaction) => dispatch('interaction', interaction),
 				onError: (error) => emitError(error),
 				svgCanvasCtor: ImportedSvgCanvas
 			});
@@ -229,6 +242,7 @@
 			});
 			resizeObserver.observe(workareaEl);
 		} catch (cause) {
+			if (destroyed) return;
 			emitError({
 				code: 'INIT_FAILED',
 				message: 'Failed to initialize SvgCanvas.',
@@ -240,11 +254,16 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
 		resizeObserver?.disconnect();
 		resizeObserver = null;
 		controller?.destroy();
 		controller = null;
 		api = null;
+	});
+
+	$effect(() => {
+		controller?.setRemoteInteractions(remoteInteractions, blockedClaims);
 	});
 
 	$effect(() => {

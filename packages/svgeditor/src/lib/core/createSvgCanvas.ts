@@ -3,12 +3,20 @@ import type {
 	EditorMode,
 	ElementTreeNode,
 	ChangeSvgEmission,
+	Bounds,
+	RemoteSvgInteraction,
+	SvgClaim,
+	SvgClaimDomain,
 	SvgCanvasConfig,
 	SvgCanvasRawApi,
 	SvgEditorApi,
-	SvgElementJsonNode
+	SvgElementJsonNode,
+	SvgInteractionEvent,
+	SvgInteractionKind,
+	SvgInteractionPreview
 } from './types';
 import { SVG_NODE_ID_ATTRIBUTE } from '../crdt/codec';
+import type { NodeId, Paint, Stroke } from '../crdt/model';
 
 export type SvgCanvasConstructor = new (
 	container: HTMLElement,
@@ -17,6 +25,8 @@ export type SvgCanvasConstructor = new (
 
 type SvgCanvasLike = SvgCanvasRawApi & {
 	getBaseUnit?: () => string;
+	getCurrentMode?: () => string;
+	getCurrentResizeMode?: () => string;
 	getRotationAngle?: (elem: Element) => number;
 	getTypeMap?: () => Record<string, number>;
 	selectorManager?: {
@@ -39,7 +49,7 @@ type HistoryCommand = {
 	unapply: (handler?: HistoryHandler) => void;
 };
 
-type CreateSvgCanvasArgs = {
+export type CreateSvgCanvasArgs = {
 	container: HTMLElement;
 	canvasContainer?: HTMLElement | null;
 	multilineTextInput: HTMLTextAreaElement;
@@ -50,7 +60,10 @@ type CreateSvgCanvasArgs = {
 	onChange?: (svg?: string) => void;
 	onSelectionChange?: (payload: { selectedElements: Element[]; multiselect: boolean }) => void;
 	onModeChange?: (mode: EditorMode) => void;
+	onInteraction?: (event: SvgInteractionEvent) => void;
 	onError?: (err: EditorError) => void;
+	remoteInteractions?: RemoteSvgInteraction[];
+	blockedClaims?: SvgClaim[];
 	svgCanvasCtor?: SvgCanvasConstructor;
 	rulers?: {
 		frame?: HTMLElement | null;
@@ -217,7 +230,10 @@ export const createSvgCanvas = ({
 	onChange,
 	onSelectionChange,
 	onModeChange,
+	onInteraction,
 	onError,
+	remoteInteractions: initialRemoteInteractions = [],
+	blockedClaims: initialBlockedClaims = [],
 	svgCanvasCtor,
 	rulers
 }: CreateSvgCanvasArgs): SvgEditorApi => {
@@ -812,12 +828,480 @@ export const createSvgCanvas = ({
 		if (rulerState.show) {
 			updateRulers(zoom);
 		}
+		if (previewOverlay) renderRemoteInteractions();
 	};
 
 	const changedElementsFromArgs = (args: unknown[]) =>
 		args
 			.flatMap((arg) => (Array.isArray(arg) ? arg : [arg]))
 			.filter((item): item is Element => item instanceof Element);
+
+	const claimDomains = (kind: SvgInteractionKind): SvgClaimDomain[] => {
+		if (kind === 'fill' || kind === 'stroke') return [kind];
+		if (kind === 'resize') return ['geometry', 'transform'];
+		return ['transform'];
+	};
+	const getNodeId = (element: Element) => {
+		const value = element.getAttribute(SVG_NODE_ID_ATTRIBUTE);
+		return value ? (value as NodeId) : null;
+	};
+	const getNodeIds = (elements: Element[]) =>
+		elements.flatMap((element) => {
+			const nodeId = getNodeId(element);
+			return nodeId ? [nodeId] : [];
+		});
+	const ensureSemanticNodeIds = () => {
+		const root = canvas.getSvgContent?.();
+		if (!root) return;
+		const seen = new Set<string>();
+		for (const element of [root, ...Array.from(root.querySelectorAll('*'))]) {
+			const current = element.getAttribute(SVG_NODE_ID_ATTRIBUTE);
+			if (current && !seen.has(current)) {
+				seen.add(current);
+				continue;
+			}
+			let next: string;
+			do {
+				next = `node-${crypto.randomUUID()}`;
+			} while (seen.has(next));
+			element.setAttribute(SVG_NODE_ID_ATTRIBUTE, next);
+			seen.add(next);
+		}
+	};
+	const claimsFor = (kind: SvgInteractionKind, nodeIds: NodeId[]): SvgClaim[] =>
+		nodeIds.flatMap((nodeId) => claimDomains(kind).map((domain) => ({ nodeId, domain })));
+	const parsePaint = (value: string | null): Paint => {
+		const normalized = value?.trim() ?? '';
+		if (!normalized || normalized === 'none') return { kind: 'none' };
+		const resource = /^url\(\s*#([^)\s]+)\s*\)\s*(.*)$/i.exec(normalized);
+		if (resource) {
+			return {
+				kind: 'resource',
+				sourceId: resource[1],
+				resourceId: null,
+				...(resource[2] ? { fallback: parsePaint(resource[2]) } : {})
+			};
+		}
+		if (/^(?:#|rgb|hsl|lab|lch|oklab|oklch|color\(|[a-z]+$)/i.test(normalized)) {
+			return { kind: 'color', value: normalized };
+		}
+		return { kind: 'raw', value: normalized };
+	};
+	const paintToAttribute = (paint: Paint): string => {
+		switch (paint.kind) {
+			case 'none':
+				return 'none';
+			case 'color':
+			case 'raw':
+				return paint.value;
+			case 'resource': {
+				const fallback = paint.fallback ? ` ${paintToAttribute(paint.fallback)}` : '';
+				return `url(#${paint.sourceId})${fallback}`;
+			}
+		}
+	};
+	const finiteAttribute = (element: Element, name: string) => {
+		const value = Number.parseFloat(element.getAttribute(name) ?? '');
+		return Number.isFinite(value) ? value : undefined;
+	};
+	const parseStroke = (element: Element): Stroke => {
+		const lineCap = element.getAttribute('stroke-linecap');
+		const lineJoin = element.getAttribute('stroke-linejoin');
+		const dash = element.getAttribute('stroke-dasharray')?.trim();
+		return {
+			paint: parsePaint(element.getAttribute('stroke')),
+			...(finiteAttribute(element, 'stroke-width') !== undefined
+				? { width: finiteAttribute(element, 'stroke-width') }
+				: {}),
+			...(lineCap === 'butt' || lineCap === 'round' || lineCap === 'square' ? { lineCap } : {}),
+			...(lineJoin === 'miter' || lineJoin === 'round' || lineJoin === 'bevel' ? { lineJoin } : {}),
+			...(finiteAttribute(element, 'stroke-miterlimit') !== undefined
+				? { miterLimit: finiteAttribute(element, 'stroke-miterlimit') }
+				: {}),
+			...(dash
+				? {
+						dashArray:
+							dash === 'none'
+								? ('none' as const)
+								: dash.split(/[ ,]+/).map(Number).filter(Number.isFinite)
+					}
+				: {}),
+			...(finiteAttribute(element, 'stroke-dashoffset') !== undefined
+				? { dashOffset: finiteAttribute(element, 'stroke-dashoffset') }
+				: {})
+		};
+	};
+
+	let remoteInteractions = initialRemoteInteractions;
+	let blockedClaims = initialBlockedClaims;
+	type LocalInteraction = RemoteSvgInteraction & {
+		elements: Element[];
+		attribute?: 'fill' | 'stroke';
+		baselineAttributes?: (string | null)[];
+	};
+	let localInteraction: LocalInteraction | null = null;
+	let pointerStartAngle: number | null = null;
+	let lastInteractionClient = { x: 0, y: 0 };
+	let pendingInteractionFrame: number | null = null;
+	let pendingInteractionPreview: SvgInteractionPreview | null = null;
+	let interactionSequence = 0;
+	let previewOverlay: SVGSVGElement | null = null;
+	type PreviewEntry = {
+		source: Element;
+		wrapper: SVGGElement;
+		clone: Element;
+		baseTransform: string;
+		baseAttributes: Map<string, string | null>;
+	};
+	const previewEntries = new Map<NodeId, PreviewEntry>();
+
+	const isBlocked = (kind: SvgInteractionKind, nodeIds: NodeId[]) => {
+		const domains = claimDomains(kind);
+		return blockedClaims.some(
+			(claim) => domains.includes(claim.domain) && nodeIds.includes(claim.nodeId)
+		);
+	};
+	const emitInteraction = (
+		phase: SvgInteractionEvent['phase'],
+		interaction: LocalInteraction,
+		preview = interaction.preview
+	) => {
+		interaction.preview = preview;
+		onInteraction?.({
+			phase,
+			interactionId: interaction.interactionId,
+			nodeIds: [...interaction.nodeIds],
+			claims: interaction.claims.map((claim) => ({ ...claim })),
+			preview,
+			...(interaction.color ? { color: interaction.color } : {})
+		});
+	};
+	const createInteractionId = () => {
+		interactionSequence += 1;
+		return `svg-interaction-${Date.now().toString(36)}-${interactionSequence.toString(36)}`;
+	};
+	const findNodeElement = (nodeId: NodeId) => {
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgContent) return null;
+		if (svgContent.getAttribute(SVG_NODE_ID_ATTRIBUTE) === nodeId) return svgContent;
+		return (
+			Array.from(svgContent.querySelectorAll(`[${SVG_NODE_ID_ATTRIBUTE}]`)).find(
+				(element) => element.getAttribute(SVG_NODE_ID_ATTRIBUTE) === nodeId
+			) ?? null
+		);
+	};
+	const applyStrokePreview = (element: Element, stroke: Stroke) => {
+		if (stroke.paint) element.setAttribute('stroke', paintToAttribute(stroke.paint));
+		if (stroke.width !== undefined) element.setAttribute('stroke-width', String(stroke.width));
+		if (stroke.lineCap) element.setAttribute('stroke-linecap', stroke.lineCap);
+		if (stroke.lineJoin) element.setAttribute('stroke-linejoin', stroke.lineJoin);
+		if (stroke.miterLimit !== undefined)
+			element.setAttribute('stroke-miterlimit', String(stroke.miterLimit));
+		if (stroke.dashArray !== undefined) {
+			element.setAttribute(
+				'stroke-dasharray',
+				stroke.dashArray === 'none' ? 'none' : stroke.dashArray.join(',')
+			);
+		}
+		if (stroke.dashOffset !== undefined)
+			element.setAttribute('stroke-dashoffset', String(stroke.dashOffset));
+	};
+	const syncOverlayAttributes = (overlay: SVGSVGElement, content: SVGSVGElement) => {
+		for (const name of ['x', 'y', 'width', 'height', 'viewBox', 'preserveAspectRatio']) {
+			const value = content.getAttribute(name);
+			if (value === null) overlay.removeAttribute(name);
+			else overlay.setAttribute(name, value);
+		}
+	};
+	const unsafePreviewSelector =
+		'script, foreignObject, iframe, audio, video, animate, animateMotion, animateTransform, set';
+	const preparePreviewClone = (clone: Element, interactionId: string) => {
+		if (clone.matches(unsafePreviewSelector)) return false;
+		for (const unsafe of clone.querySelectorAll(unsafePreviewSelector)) {
+			unsafe.remove();
+		}
+		const elements = [clone, ...Array.from(clone.querySelectorAll('*'))];
+		const ids = new Map<string, string>();
+		for (const element of elements) {
+			element.setAttribute('pointer-events', 'none');
+			(element as HTMLElement | SVGElement).style.pointerEvents = 'none';
+			element.setAttribute('tabindex', '-1');
+			element.removeAttribute('autofocus');
+			element.removeAttribute('contenteditable');
+			for (const attribute of Array.from(element.attributes)) {
+				if (attribute.name.toLowerCase().startsWith('on')) element.removeAttribute(attribute.name);
+			}
+			const id = element.getAttribute('id');
+			if (!id) continue;
+			ids.set(id, `preview-${interactionId}-${id}`);
+		}
+		for (const element of elements) {
+			const id = element.getAttribute('id');
+			if (id) element.setAttribute('id', ids.get(id)!);
+			for (const attribute of Array.from(element.attributes)) {
+				let value = attribute.value.replace(
+					/url\(\s*(['"]?)#([^'")\s]+)\1\s*\)/g,
+					(match, quote, target) => {
+						const replacement = ids.get(target);
+						return replacement ? `url(${quote}#${replacement}${quote})` : match;
+					}
+				);
+				if (value.startsWith('#')) value = `#${ids.get(value.slice(1)) ?? value.slice(1)}`;
+				if (value !== attribute.value) element.setAttribute(attribute.name, value);
+			}
+		}
+		return true;
+	};
+	const rootMatrix = (element: Element, content: SVGSVGElement) => {
+		if (!(element instanceof SVGGraphicsElement)) return '';
+		const matrix = element.getCTM();
+		const contentMatrix = content.getCTM();
+		if (!matrix || !contentMatrix) return '';
+		const relative = contentMatrix.inverse().multiply(matrix);
+		return `matrix(${relative.a} ${relative.b} ${relative.c} ${relative.d} ${relative.e} ${relative.f})`;
+	};
+	const resetRemoteInteractions = () => {
+		previewOverlay?.remove();
+		previewOverlay = null;
+		previewEntries.clear();
+	};
+	const renderRemoteInteractions = () => {
+		if (remoteInteractions.length === 0) {
+			resetRemoteInteractions();
+			return;
+		}
+		const svgRoot = canvas.getSvgRoot?.();
+		const svgContent = canvas.getSvgContent?.();
+		if (!svgRoot || !svgContent) return;
+
+		if (!previewOverlay) {
+			previewOverlay = document.createElementNS(SVG_NS, 'svg');
+			previewOverlay.setAttribute('data-svg-interaction-preview-overlay', 'true');
+			previewOverlay.setAttribute('aria-hidden', 'true');
+			previewOverlay.setAttribute('focusable', 'false');
+			previewOverlay.setAttribute('overflow', 'visible');
+			previewOverlay.setAttribute('pointer-events', 'none');
+			previewOverlay.style.pointerEvents = 'none';
+			svgRoot.append(previewOverlay);
+		}
+		syncOverlayAttributes(previewOverlay, svgContent);
+
+		type ComposedPreview = {
+			transforms: Extract<SvgInteractionPreview, { kind: 'move' | 'resize' | 'rotate' }>[];
+			fill?: Paint;
+			stroke?: Stroke;
+			color?: string;
+		};
+		const composed = new Map<NodeId, ComposedPreview>();
+		for (const interaction of remoteInteractions) {
+			for (const nodeId of interaction.nodeIds) {
+				const current = composed.get(nodeId) ?? { transforms: [] };
+				if (interaction.preview.kind === 'fill') current.fill = interaction.preview.paint;
+				else if (interaction.preview.kind === 'stroke') current.stroke = interaction.preview.stroke;
+				else current.transforms.push(interaction.preview);
+				current.color = interaction.color ?? current.color;
+				composed.set(nodeId, current);
+			}
+		}
+
+		for (const [nodeId, entry] of previewEntries) {
+			if (composed.has(nodeId)) continue;
+			entry.wrapper.remove();
+			previewEntries.delete(nodeId);
+		}
+
+		const strokeAttributes = [
+			'stroke',
+			'stroke-width',
+			'stroke-linecap',
+			'stroke-linejoin',
+			'stroke-miterlimit',
+			'stroke-dasharray',
+			'stroke-dashoffset'
+		];
+		for (const [nodeId, preview] of composed) {
+			const source = findNodeElement(nodeId);
+			if (!source || source === svgContent) {
+				previewEntries.get(nodeId)?.wrapper.remove();
+				previewEntries.delete(nodeId);
+				continue;
+			}
+			let entry = previewEntries.get(nodeId);
+			if (!entry || entry.source !== source) {
+				entry?.wrapper.remove();
+				const wrapper = document.createElementNS(SVG_NS, 'g');
+				const clone = source.cloneNode(true) as Element;
+				const interactionId = remoteInteractions.find((interaction) =>
+					interaction.nodeIds.includes(nodeId)
+				)?.interactionId;
+				if (!preparePreviewClone(clone, interactionId ?? String(nodeId))) continue;
+				clone.removeAttribute('transform');
+				clone.setAttribute('data-svg-interaction-preview-node', nodeId);
+				clone.setAttribute('pointer-events', 'none');
+				wrapper.setAttribute('opacity', '0.68');
+				wrapper.setAttribute('pointer-events', 'none');
+				wrapper.append(clone);
+				previewOverlay.append(wrapper);
+				entry = {
+					source,
+					wrapper,
+					clone,
+					baseTransform: rootMatrix(source, svgContent),
+					baseAttributes: new Map(
+						['fill', ...strokeAttributes].map((name) => [name, clone.getAttribute(name)])
+					)
+				};
+				previewEntries.set(nodeId, entry);
+			}
+			entry.baseTransform = rootMatrix(source, svgContent);
+			for (const name of ['fill', ...strokeAttributes]) {
+				entry.baseAttributes.set(name, source.getAttribute(name));
+			}
+
+			for (const [name, value] of entry.baseAttributes) {
+				if (value === null) entry.clone.removeAttribute(name);
+				else entry.clone.setAttribute(name, value);
+			}
+			if (preview.fill) entry.clone.setAttribute('fill', paintToAttribute(preview.fill));
+			if (preview.stroke) applyStrokePreview(entry.clone, preview.stroke);
+			if (preview.color) entry.wrapper.setAttribute('color', preview.color);
+			else entry.wrapper.removeAttribute('color');
+
+			const previewTransforms = preview.transforms.map((transform) => {
+				if (transform.kind === 'move') {
+					return `translate(${transform.delta.x} ${transform.delta.y})`;
+				}
+				if (transform.kind === 'resize') {
+					const base = transform.baseBounds;
+					const target = transform.bounds;
+					const sx = base.width === 0 ? 1 : target.width / base.width;
+					const sy = base.height === 0 ? 1 : target.height / base.height;
+					return `translate(${target.x} ${target.y}) scale(${sx} ${sy}) translate(${-base.x} ${-base.y})`;
+				}
+				return `rotate(${transform.angle} ${transform.pivot.x} ${transform.pivot.y})`;
+			});
+			const projectionTransform = [...previewTransforms, entry.baseTransform]
+				.filter(Boolean)
+				.join(' ');
+			if (projectionTransform) entry.wrapper.setAttribute('transform', projectionTransform);
+			else entry.wrapper.removeAttribute('transform');
+		}
+	};
+
+	type TransitionPayload =
+		| {
+				kind: 'move';
+				elements: unknown[];
+				delta: { x: number; y: number };
+				client?: { x: number; y: number };
+		  }
+		| {
+				kind: 'resize';
+				elements: unknown[];
+				baseBounds: Bounds;
+				bounds: Bounds;
+				client?: { x: number; y: number };
+		  }
+		| {
+				kind: 'rotate';
+				elements: unknown[];
+				angle: number;
+				pivot: { x: number; y: number };
+				client?: { x: number; y: number };
+		  };
+	const isTransitionPayload = (value: unknown): value is TransitionPayload => {
+		if (!value || typeof value !== 'object') return false;
+		const payload = value as { kind?: unknown; elements?: unknown };
+		return (
+			(payload.kind === 'move' || payload.kind === 'resize' || payload.kind === 'rotate') &&
+			Array.isArray(payload.elements)
+		);
+	};
+	const legacyTransitionPayload = (value: unknown): TransitionPayload | null => {
+		const elements = changedElementsFromArgs([value]);
+		if (elements.length === 0) return null;
+		const mode = canvas.getCurrentMode?.() ?? canvas.getMode();
+		if (mode === 'rotate') {
+			const angle = canvas.getRotationAngle?.(elements[0]) ?? 0;
+			return { kind: 'rotate', elements, angle, pivot: { x: 0, y: 0 } };
+		}
+		if (mode !== 'select') return null;
+		const element = elements[0];
+		if (!(element instanceof SVGGraphicsElement)) return null;
+		const transform = element.transform.baseVal.numberOfItems
+			? element.transform.baseVal.getItem(0).matrix
+			: null;
+		return {
+			kind: 'move',
+			elements,
+			delta: { x: transform?.e ?? 0, y: transform?.f ?? 0 }
+		};
+	};
+	const queueInteractionPreview = (
+		interaction: LocalInteraction,
+		preview: SvgInteractionPreview
+	) => {
+		interaction.preview = preview;
+		pendingInteractionPreview = preview;
+		if (pendingInteractionFrame !== null) return;
+		pendingInteractionFrame = requestAnimationFrame(() => {
+			pendingInteractionFrame = null;
+			const next = pendingInteractionPreview;
+			pendingInteractionPreview = null;
+			if (!next || localInteraction !== interaction) return;
+			emitInteraction('update', interaction, next);
+			if (remoteInteractions.length > 0) renderRemoteInteractions();
+		});
+	};
+	const transitionHandler = (_window: unknown, args: unknown) => {
+		const payload = isTransitionPayload(args) ? args : legacyTransitionPayload(args);
+		if (!payload) return;
+		if (payload.client) lastInteractionClient = payload.client;
+		const elements = payload.elements.filter(
+			(element): element is Element => element instanceof Element
+		);
+		if (elements.length === 0) return;
+		const preview: SvgInteractionPreview =
+			payload.kind === 'move'
+				? { kind: 'move', delta: payload.delta }
+				: payload.kind === 'resize'
+					? { kind: 'resize', baseBounds: payload.baseBounds, bounds: payload.bounds }
+					: {
+							kind: 'rotate',
+							angle: payload.angle - (pointerStartAngle ?? payload.angle),
+							pivot: payload.pivot
+						};
+		if (!localInteraction) {
+			const nodeIds = getNodeIds(elements);
+			if (nodeIds.length === 0) return;
+			localInteraction = {
+				interactionId: createInteractionId(),
+				nodeIds,
+				claims: claimsFor(payload.kind, nodeIds),
+				preview,
+				elements
+			};
+			emitInteraction('start', localInteraction);
+			return;
+		}
+		if (localInteraction.preview.kind === 'fill' || localInteraction.preview.kind === 'stroke')
+			return;
+		queueInteractionPreview(localInteraction, preview);
+	};
+	const finishTransformInteraction = () => {
+		if (!localInteraction) return;
+		if (localInteraction.preview.kind === 'fill' || localInteraction.preview.kind === 'stroke')
+			return;
+		const interaction = localInteraction;
+		if (pendingInteractionFrame !== null) cancelAnimationFrame(pendingInteractionFrame);
+		pendingInteractionFrame = null;
+		const finalPreview = pendingInteractionPreview ?? interaction.preview;
+		pendingInteractionPreview = null;
+		emitInteraction('commit', interaction, finalPreview);
+		localInteraction = null;
+		pointerStartAngle = null;
+	};
+	let transformCommitQueued = false;
 
 	const shouldEmitChangeSvg = (args: unknown[]) => {
 		if (emitChangeSvg === false) return false;
@@ -832,8 +1316,31 @@ export const createSvgCanvas = ({
 
 	const changeHandler = (...args: unknown[]) => {
 		if (suppressEvents) return;
+		if (
+			localInteraction &&
+			localInteraction.preview.kind !== 'fill' &&
+			localInteraction.preview.kind !== 'stroke'
+		) {
+			if (transformCommitQueued) return;
+			transformCommitQueued = true;
+			queueMicrotask(() => {
+				transformCommitQueued = false;
+				if (suppressEvents || !localInteraction) return;
+				correctSelectedSetupSelectors();
+				ensureSemanticNodeIds();
+				onChange?.(shouldEmitChangeSvg(args) ? canvas.getSvgString() : undefined);
+				finishTransformInteraction();
+				resetRemoteInteractions();
+				renderRemoteInteractions();
+			});
+			return;
+		}
 		correctSelectedSetupSelectors();
+		ensureSemanticNodeIds();
 		onChange?.(shouldEmitChangeSvg(args) ? canvas.getSvgString() : undefined);
+		finishTransformInteraction();
+		resetRemoteInteractions();
+		renderRemoteInteractions();
 	};
 
 	const enableMultilineTextElements = () => {
@@ -1236,6 +1743,7 @@ export const createSvgCanvas = ({
 
 	canvas.bind?.('changed', changeHandler);
 	canvas.bind?.('selected', selectionHandler);
+	canvas.bind?.('transition', transitionHandler);
 	document.addEventListener('modeChange', modeHandler);
 
 	canvas.textActions?.setMultilineInputElem?.(multilineTextInput);
@@ -1257,6 +1765,90 @@ export const createSvgCanvas = ({
 		}
 		canvas.changeSelectedAttribute?.(name, value, selected);
 		emitCanvasChange();
+	};
+	const beginColorInteraction = (kind: 'fill' | 'stroke') => {
+		if (localInteraction) return localInteraction.preview.kind === kind;
+		if (
+			!canvas.changeSelectedAttributeNoUndo ||
+			!canvas.undoMgr?.beginUndoableChange ||
+			!canvas.undoMgr.finishUndoableChange
+		)
+			return false;
+		const elements = (canvas.getSelectedElements?.() ?? []).filter(Boolean);
+		if (elements.length === 0) return false;
+		const nodeIds = getNodeIds(elements);
+		if (isBlocked(kind, nodeIds)) return false;
+		const attribute = kind;
+		const preview: SvgInteractionPreview =
+			kind === 'fill'
+				? { kind, paint: parsePaint(elements[0].getAttribute('fill')) }
+				: { kind, stroke: parseStroke(elements[0]) };
+		canvas.undoMgr?.beginUndoableChange?.(attribute, elements);
+		localInteraction = {
+			interactionId: createInteractionId(),
+			nodeIds,
+			claims: claimsFor(kind, nodeIds),
+			preview,
+			elements,
+			attribute,
+			baselineAttributes: elements.map((element) => element.getAttribute(attribute))
+		};
+		emitInteraction('start', localInteraction);
+		return true;
+	};
+	const updateColorInteraction = (
+		preview: Extract<SvgInteractionPreview, { kind: 'fill' | 'stroke' }>
+	) => {
+		if (!localInteraction && !beginColorInteraction(preview.kind)) return false;
+		const interaction = localInteraction;
+		if (!interaction || interaction.attribute !== preview.kind) return false;
+		const paint = preview.kind === 'fill' ? preview.paint : preview.stroke.paint;
+		if (!paint) return false;
+		canvas.changeSelectedAttributeNoUndo?.(
+			interaction.attribute,
+			paintToAttribute(paint),
+			interaction.elements
+		);
+		queueInteractionPreview(interaction, preview);
+		return true;
+	};
+	const commitColorInteraction = (
+		preview?: Extract<SvgInteractionPreview, { kind: 'fill' | 'stroke' }>
+	) => {
+		if (preview && !updateColorInteraction(preview)) return false;
+		const interaction = localInteraction;
+		if (!interaction?.attribute) return false;
+		const command = canvas.undoMgr?.finishUndoableChange?.();
+		if (pendingInteractionFrame !== null) cancelAnimationFrame(pendingInteractionFrame);
+		pendingInteractionFrame = null;
+		pendingInteractionPreview = null;
+		localInteraction = null;
+		if (command && !command.isEmpty()) {
+			canvas.undoMgr?.addCommandToHistory?.(command);
+			canvas.call?.('changed', interaction.elements);
+		}
+		emitInteraction('commit', interaction);
+		return true;
+	};
+	const cancelLocalInteraction = () => {
+		const interaction = localInteraction;
+		if (!interaction) return false;
+		if (interaction.attribute && interaction.baselineAttributes) {
+			interaction.elements.forEach((element, index) => {
+				const baseline = interaction.baselineAttributes?.[index] ?? null;
+				if (baseline === null) element.removeAttribute(interaction.attribute!);
+				else element.setAttribute(interaction.attribute!, baseline);
+			});
+			canvas.undoMgr?.finishUndoableChange?.();
+			correctSelectedSetupSelectors();
+		}
+		if (pendingInteractionFrame !== null) cancelAnimationFrame(pendingInteractionFrame);
+		pendingInteractionFrame = null;
+		pendingInteractionPreview = null;
+		localInteraction = null;
+		pointerStartAngle = null;
+		emitInteraction('cancel', interaction);
+		return true;
 	};
 	const getActiveTextElement = () => {
 		const selected = canvas.getSelectedElements?.()?.[0];
@@ -1367,10 +1959,72 @@ export const createSvgCanvas = ({
 	multilineTextInput.addEventListener('mouseup', forwardMultilineCursor);
 	multilineTextInput.addEventListener('select', forwardMultilineCursor);
 	const editorEventTarget = canvasContainer ?? container;
+	const blockClaimedTransform = (event: Event) => {
+		const selected = (canvas.getSelectedElements?.() ?? []).filter(Boolean);
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		const isGrip = Boolean(target.closest('[id^="selectorGrip_"]'));
+		const gripKind: SvgInteractionKind = target.closest('#selectorGrip_rotate')
+			? 'rotate'
+			: isGrip
+				? 'resize'
+				: 'move';
+		const targetNode = target.closest(`[${SVG_NODE_ID_ATTRIBUTE}]`);
+		const targetNodeId = targetNode ? getNodeId(targetNode) : null;
+		const blocked = targetNodeId
+			? isBlocked(gripKind, [targetNodeId])
+			: selected.length > 0 && isBlocked(gripKind, getNodeIds(selected));
+		if (!blocked) return;
+		const isSelectedTarget = selected.some(
+			(element) => element === target || element.contains(target)
+		);
+		if (!targetNodeId && !isGrip && !isSelectedTarget) return;
+		event.preventDefault();
+		event.stopPropagation();
+		event.stopImmediatePropagation();
+	};
+	const capturePointerStartAngle = () => {
+		const elements = (canvas.getSelectedElements?.() ?? []).filter(Boolean);
+		pointerStartAngle = elements.length ? (canvas.getRotationAngle?.(elements[0]) ?? 0) : null;
+	};
+	const cancelTransformInteraction = () => {
+		if (localInteraction?.preview.kind === 'fill' || localInteraction?.preview.kind === 'stroke') {
+			return;
+		}
+		cancelLocalInteraction();
+		pointerStartAngle = null;
+	};
+	const finalizeNativeInteraction = () => {
+		if (!canvas.getStarted?.()) return;
+		editorEventTarget.dispatchEvent(
+			new MouseEvent('mouseup', {
+				bubbles: true,
+				cancelable: true,
+				clientX: lastInteractionClient.x,
+				clientY: lastInteractionClient.y
+			})
+		);
+	};
+	const finishPointerInteraction = () => {
+		queueMicrotask(() => {
+			finalizeNativeInteraction();
+			queueMicrotask(cancelTransformInteraction);
+		});
+	};
+	const handlePointerEnd = (event: MouseEvent) => {
+		lastInteractionClient = { x: event.clientX, y: event.clientY };
+		finishPointerInteraction();
+	};
+	editorEventTarget.addEventListener('pointerdown', blockClaimedTransform, true);
+	editorEventTarget.addEventListener('mousedown', blockClaimedTransform, true);
 	editorEventTarget.addEventListener('pointerdown', preventSetupResize, true);
 	editorEventTarget.addEventListener('mousedown', preventSetupResize, true);
 	editorEventTarget.addEventListener('dblclick', preventSetupResize, true);
 	editorEventTarget.addEventListener('dblclick', preventSetupTextEdit, true);
+	editorEventTarget.addEventListener('mousedown', capturePointerStartAngle, true);
+	editorEventTarget.addEventListener('pointercancel', finishPointerInteraction);
+	window.addEventListener('blur', finishPointerInteraction);
+	window.addEventListener('mouseup', handlePointerEnd);
 
 	if (rulerElements.x || rulerElements.y) {
 		container.addEventListener('scroll', syncRulerScroll);
@@ -1410,6 +2064,7 @@ export const createSvgCanvas = ({
 		syncRulerScroll();
 		updateRulers(canvas.getZoom() || 1);
 	}
+	renderRemoteInteractions();
 
 	canvas.addExtension?.(
 		'svelte-grid',
@@ -1424,6 +2079,8 @@ export const createSvgCanvas = ({
 
 	const api: SvgEditorApi = {
 		loadSvg(svg, opts) {
+			cancelLocalInteraction();
+			resetRemoteInteractions();
 			const loadOk = canvas.setSvgString(svg, opts?.preventUndo);
 			if (loadOk) {
 				enableMultilineTextElements();
@@ -1440,9 +2097,12 @@ export const createSvgCanvas = ({
 			if (rulerState.show) {
 				updateRulers(canvas.getZoom() || 1);
 			}
+			if (loadOk) renderRemoteInteractions();
 			return loadOk;
 		},
 		applySvgProjection(svg, opts) {
+			cancelLocalInteraction();
+			resetRemoteInteractions();
 			const selected = (canvas.getSelectedElements?.() ?? []).map((element) => ({
 				id: element.getAttribute('id'),
 				nodeId: element.getAttribute(SVG_NODE_ID_ATTRIBUTE)
@@ -1473,6 +2133,7 @@ export const createSvgCanvas = ({
 				});
 				if (restored.length > 0) canvas.selectOnly?.(restored, true);
 				if (canvas.getMode() !== mode) canvas.setMode(mode);
+				renderRemoteInteractions();
 				return true;
 			} finally {
 				suppressEvents = false;
@@ -1581,13 +2242,42 @@ export const createSvgCanvas = ({
 			return canvas.getZoom() || 1;
 		},
 		setFill(color) {
+			if (isBlocked('fill', getNodeIds((canvas.getSelectedElements?.() ?? []).filter(Boolean))))
+				return;
 			applySelectedAttributeChange('fill', color);
 		},
 		setStroke(color) {
+			if (isBlocked('stroke', getNodeIds((canvas.getSelectedElements?.() ?? []).filter(Boolean))))
+				return;
 			applySelectedAttributeChange('stroke', color);
 		},
 		setStrokeWidth(value) {
+			if (isBlocked('stroke', getNodeIds((canvas.getSelectedElements?.() ?? []).filter(Boolean))))
+				return;
 			applySelectedAttributeChange('stroke-width', value);
+		},
+		beginColorInteraction(kind) {
+			return beginColorInteraction(kind);
+		},
+		updateColorInteraction(preview) {
+			return updateColorInteraction(preview);
+		},
+		commitColorInteraction(preview) {
+			return commitColorInteraction(preview);
+		},
+		cancelInteraction() {
+			return cancelLocalInteraction();
+		},
+		setRemoteInteractions(interactions, nextBlockedClaims = blockedClaims) {
+			remoteInteractions = [...interactions];
+			blockedClaims = [...nextBlockedClaims];
+			renderRemoteInteractions();
+		},
+		isInteractionBlocked(kind, nodeIds) {
+			return isBlocked(
+				kind,
+				nodeIds ?? getNodeIds((canvas.getSelectedElements?.() ?? []).filter(Boolean))
+			);
 		},
 		getFontSize() {
 			return canvas.getFontSize?.() ?? 0;
@@ -2023,8 +2713,11 @@ export const createSvgCanvas = ({
 			canvas.call?.('changed', [canvas.getSvgContent?.()]);
 		},
 		destroy() {
+			cancelLocalInteraction();
+			resetRemoteInteractions();
 			canvas.unbind?.('changed', changeHandler);
 			canvas.unbind?.('selected', selectionHandler);
+			canvas.unbind?.('transition', transitionHandler);
 			document.removeEventListener('modeChange', modeHandler);
 			multilineTextInput.removeEventListener('keydown', handleMultilineEnter);
 			multilineTextInput.removeEventListener('input', forwardTextInput);
@@ -2034,9 +2727,15 @@ export const createSvgCanvas = ({
 			multilineTextInput.removeEventListener('mouseup', forwardMultilineCursor);
 			multilineTextInput.removeEventListener('select', forwardMultilineCursor);
 			editorEventTarget.removeEventListener('pointerdown', preventSetupResize, true);
+			editorEventTarget.removeEventListener('pointerdown', blockClaimedTransform, true);
+			editorEventTarget.removeEventListener('mousedown', blockClaimedTransform, true);
 			editorEventTarget.removeEventListener('mousedown', preventSetupResize, true);
 			editorEventTarget.removeEventListener('dblclick', preventSetupResize, true);
 			editorEventTarget.removeEventListener('dblclick', preventSetupTextEdit, true);
+			editorEventTarget.removeEventListener('mousedown', capturePointerStartAngle, true);
+			editorEventTarget.removeEventListener('pointercancel', finishPointerInteraction);
+			window.removeEventListener('blur', finishPointerInteraction);
+			window.removeEventListener('mouseup', handlePointerEnd);
 			if (rulerElements.x || rulerElements.y) {
 				container.removeEventListener('scroll', syncRulerScroll);
 			}

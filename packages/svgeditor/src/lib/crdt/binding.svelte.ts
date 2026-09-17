@@ -36,16 +36,21 @@ export function createSvgDocumentBinding(handle: DocHandle<SvgDocument>) {
 		get heads(): UrlHeads {
 			return heads;
 		},
-		change(source: string) {
+		change(source: string, baseHeads: UrlHeads = heads): UrlHeads | null {
 			if (destroyed) throw new Error('Cannot change a destroyed SVG document binding.');
 			const incoming = parseSvg(source);
 			const expected = serializeSvg(incoming);
 			pending = null;
 			changing = true;
+			let changedHeads: UrlHeads | undefined;
 			try {
-				handle.changeAt(heads, (document: SvgDocument) => applySvgDocument(document, incoming), {
-					message: 'Edit SVG'
-				});
+				changedHeads = handle.changeAt(
+					baseHeads,
+					(document: SvgDocument) => applySvgDocument(document, incoming),
+					{
+						message: 'Edit SVG'
+					}
+				);
 			} finally {
 				changing = false;
 			}
@@ -53,6 +58,7 @@ export function createSvgDocumentBinding(handle: DocHandle<SvgDocument>) {
 			const merged = pending ?? serializeSvg(handle.doc()!);
 			pending = null;
 			if (merged !== expected) current = merged;
+			return changedHeads ?? null;
 		},
 		destroy() {
 			if (destroyed) return;

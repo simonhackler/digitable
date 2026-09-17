@@ -208,6 +208,18 @@ A single cursor layer in the games layout uses pointer events, prefers the deepe
 
 The active project owns one reactive snapshot of remote presence, shared by the cursor layer and project sidebar. Sidebar navigation rows render compact shadcn-svelte Avatar fallback stacks for peers on Rules, each deck, TTS, Paper, Setup, Local Test, Playtests, and the project overview. Deck layout and spreadsheet routes aggregate on the corresponding deck row. Page membership is published even where pointer presence is disabled, so Local Test users remain visible without enabling cursors over `PlaySurface`. Stacks show at most three peer avatars followed by a remaining count; the local client is not included.
 
+### SVG Interactions
+
+Each project session also owns a separate SVG interaction service on the stable root handle. It uses its own versioned and runtime-validated ephemeral message namespace rather than extending cursor presence. Complete replaceable snapshots carry one active interaction plus retained commit handoffs, while monotonically increasing revisions prevent delayed messages from restoring stale previews.
+
+One continuous SVG gesture produces many ephemeral updates and at most one durable Automerge change. Fill and stroke inputs use no-undo local preview transactions; move, resize, and rotation use lightweight values already calculated by SVGCanvas's transient `transition` events. The editor's native pointer path only stores the newest preview and schedules one animation-frame publication; it performs no collaboration-specific geometry reads, document cloning, validation, or networking. Wire updates are broadcast at most every 40 milliseconds with a trailing update. A 1.5-second heartbeat repairs dropped state, inactive local gestures expire after five seconds, and visual handoffs expire after two seconds.
+
+Interactions are scoped by exact page ID and component SVG document ID, so front and back editors do not share previews. Claims use stable semantic node IDs and domains. Move and rotation claim transform, resize claims geometry and transform, while fill and stroke claim only their corresponding presentation domain. Compatible interactions compose. Claims already known at pointer-down block a conflicting gesture, but a gesture is never canceled after SVGCanvas starts moving; simultaneous races continue locally and converge through their final CRDT changes.
+
+Remote previews render as pointer-inert SVG clones outside canonical `svgcontent`. Clone IDs are namespaced, ancestor transforms are projected relative to `svgcontent`, and compatible transform/fill/stroke previews compose without entering `getSvg()`, undo history, Automerge, filesystem projections, or exports. Preview nodes are keyed and cloned once; subsequent packets update only their transform or paint attributes on the existing overlay.
+
+On completion, the final editor projection is applied once with `changeAt()` at the heads captured when the interaction began. The active interaction becomes a visual-only commit handoff carrying the resulting heads; handoffs never participate in claim arbitration. Receivers observe the component Automerge handle directly with `hasHeads()` and remove a handoff as soon as its durable change is available, including when the durable change arrived before the ephemeral handoff. Handoffs can coexist with a new local interaction.
+
 ## Playtests And Exports
 
 Starting a playtest synchronizes the active project before reading its projections.
@@ -232,6 +244,8 @@ Focused Playwright coverage verifies:
 - External rules Markdown updates applied to mounted editors.
 - Live semantic SVG synchronization between mounted layout editors.
 - Concurrent changes to different SVG nodes preserved in both canvases and the filesystem projection.
+- Ephemeral fill and movement previews excluded from filesystem projections until one durable commit.
+- Semantic SVG claim blocking, compatible-domain editing, commit-head handoff, and single-step color undo.
 - Ephemeral cursor presence between clients on the same exact route.
 - Region-based cursor resolution across different sender and receiver viewport sizes.
 - Cursor isolation between different routes in the same project.
@@ -260,7 +274,8 @@ Existing regressions cover:
 - Setup table collaboration remains text-based rather than semantic.
 - Remote semantic SVG changes currently install a complete sanitized SVG projection. Incremental keyed DOM reconciliation and undo rebasing remain future work.
 - Mounted setup and spreadsheet editors do not yet apply every remote document patch directly to their third-party editor instance; filesystem projections and remounts remain part of those integrations.
-- SVG drag previews, selections, and soft claims are not yet exchanged as semantic ephemeral presence.
+- SVG text-frame resize does not yet emit the same semantic transition previews as ordinary SVG resize.
+- Remote SVG selections are not yet rendered independently from active interaction previews.
 - Binary documents are immutable but are not deduplicated by hash.
 - Structural operations have config repair but no dedicated operation journal.
 - Collaborative whole-project discovery and deletion require a workspace-level Automerge document.
@@ -271,8 +286,8 @@ Existing regressions cover:
 2. Make the typed table model authoritative, materialize `setup/table.svg` from it, and bind the mounted setup editor directly.
 3. Bind the mounted spreadsheet editor directly to component data documents.
 4. Add keyed SVG DOM reconciliation and rebase local undo history across compatible remote edits.
-5. Add ephemeral SVG selection, drag-preview, and deterministic soft-claim messages.
+5. Add remote SVG selection rendering and text-frame resize previews.
 6. Add authenticated cross-device Automerge networking.
 7. Add a workspace project registry and project deletion tombstones.
 8. Add binary deduplication and retention policy if repository growth requires it.
-9. Add semantic presence adapters for ProseMirror cursors, spreadsheet cells, and SVG user-space coordinates where DOM regions are not precise enough.
+9. Add semantic presence adapters for ProseMirror cursors and spreadsheet cells where DOM regions are not precise enough.

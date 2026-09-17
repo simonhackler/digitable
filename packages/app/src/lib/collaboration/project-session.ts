@@ -14,6 +14,10 @@ import {
 import { isSvgDocument, type SvgDocument } from '@svg-table/svgeditor';
 import { BroadcastChannelNetworkAdapter } from '@automerge/automerge-repo-network-broadcastchannel';
 import { createProjectPresence, type ProjectPresence } from './project-presence';
+import {
+	createProjectSvgInteractions,
+	type ProjectSvgInteractions
+} from './project-svg-interactions';
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
 import { tryAsync, type Result } from 'wellcrafted/result';
 import { createProjectFileObserver } from './file-observer';
@@ -104,6 +108,7 @@ export type ProjectSession = {
 	): DocHandle<SvgDocument> | undefined;
 	componentDataHandles: ReadonlyMap<string, DocHandle<ComponentDataDocument>>;
 	presence: ProjectPresence;
+	svgInteractions: ProjectSvgInteractions;
 	getConfig(): ProjectConfig;
 	writeFiles(
 		files: Array<{ path: string; data: FsWriteData }>
@@ -250,6 +255,7 @@ export async function openProjectSession(
 			observer.start();
 			requestRefresh();
 			const presence = createProjectPresence(graph.projectHandle);
+			const svgInteractions = createProjectSvgInteractions(graph.projectHandle);
 
 			let closed = false;
 			async function synchronize(): Promise<void> {
@@ -283,6 +289,7 @@ export async function openProjectSession(
 					componentSvgHandle(graph, componentName, side),
 				componentDataHandles: graph.componentDataHandles,
 				presence,
+				svgInteractions,
 				getConfig: reconciler.getConfig,
 				writeFiles: (files: Array<{ path: string; data: FsWriteData }>) =>
 					tryAsync({
@@ -494,6 +501,7 @@ export async function openProjectSession(
 					if (closed) return { data: undefined, error: null };
 					closed = true;
 					presence.close();
+					svgInteractions.close();
 					observer.stop();
 					graph.projectHandle.off('change', rootListener);
 					const closedSession = await tryAsync({

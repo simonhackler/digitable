@@ -5,10 +5,14 @@ import type {
 	ElementTreeNode,
 	ModeChangeEvent,
 	ReadyEvent,
+	RemoteSvgInteraction,
 	SelectionChangeEvent,
+	SvgClaim,
 	SvgElementJsonNode,
-	SvgEditorApi
+	SvgEditorApi,
+	SvgInteractionKind
 } from '../core/types';
+import type { Paint, Stroke } from '../crdt/model';
 
 type SvgUnit = 'px' | 'mm';
 
@@ -90,6 +94,8 @@ class EditorController {
 	redoCount = $state(0);
 	nextUndoLabel = $state('');
 	nextRedoLabel = $state('');
+	remoteInteractions = $state<RemoteSvgInteraction[]>([]);
+	blockedClaims = $state<SvgClaim[]>([]);
 	elementIdByRef = new Map<Element, string>();
 
 	handleReady = (event: CustomEvent<ReadyEvent> | ReadyEvent) => {
@@ -218,6 +224,36 @@ class EditorController {
 
 	setStrokeWidth = (value: number) => {
 		this.api?.setStrokeWidth(value);
+	};
+
+	previewFill = (paint: Paint) => {
+		if (!this.api?.beginColorInteraction('fill')) return false;
+		return this.api.updateColorInteraction({ kind: 'fill', paint });
+	};
+
+	commitFill = (paint: Paint) => this.api?.commitColorInteraction({ kind: 'fill', paint }) ?? false;
+
+	previewStroke = (stroke: Stroke) => {
+		if (!this.api?.beginColorInteraction('stroke')) return false;
+		return this.api.updateColorInteraction({ kind: 'stroke', stroke });
+	};
+
+	commitStroke = (stroke: Stroke) =>
+		this.api?.commitColorInteraction({ kind: 'stroke', stroke }) ?? false;
+
+	cancelInteraction = () => this.api?.cancelInteraction() ?? false;
+
+	isInteractionBlocked = (kind: SvgInteractionKind) =>
+		this.api?.isInteractionBlocked(kind) ?? false;
+
+	setInteractionPresence = (
+		interactions: RemoteSvgInteraction[],
+		blockedClaims: SvgClaim[] = this.blockedClaims
+	) => {
+		const nextInteractions = [...interactions];
+		const nextBlockedClaims = [...blockedClaims];
+		this.remoteInteractions = nextInteractions;
+		this.blockedClaims = nextBlockedClaims;
 	};
 
 	getFontSize = () => {
