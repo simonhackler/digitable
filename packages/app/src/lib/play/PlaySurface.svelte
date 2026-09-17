@@ -667,7 +667,7 @@
 		return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
 	}
 
-	function tryStackSelection(point: { x: number; y: number }): boolean {
+	function tryStacking(point: { x: number; y: number }): boolean {
 		if (!keys.has('Shift')) return false;
 		if (selectionManager.size !== 1) return false;
 		const iterator = selectionManager.values();
@@ -681,8 +681,7 @@
 		item.clientPosition?.applyLocalPlacement(tableItemPlacement(item, TABLE_NODE_ID));
 		const targetPosition = tableItemCommandPosition(target);
 		sendCmd(room, 'stack', {
-			sourceId: item.id,
-			targetId: target.id,
+            ids: [target.id, item.id],
 			x: targetPosition.x,
 			y: targetPosition.y
 		});
@@ -840,7 +839,7 @@
 					}
 				}
 			} else if (drag.dragType == 'selection') {
-				const stacked = tryStackSelection(e.global);
+				const stacked = tryStacking(e.global);
 				if (!drag.hasMoved && !stacked) {
 					for (const c of selectionManager.values()) {
 						if (handContainer.hasItem(c)) {
@@ -867,7 +866,7 @@
 					}
 				} else {
 					const dropPoint = boardContainer.toLocal(e.global);
-					const stacked = tryStackSelection(e.global);
+					const stacked = tryStacking(e.global);
 					for (const c of selectionManager.values()) {
 						if (handContainer.hasItem(c)) {
 							c.x = 0;
