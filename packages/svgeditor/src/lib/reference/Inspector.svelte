@@ -310,7 +310,6 @@
 	const getRawCanvas = () =>
 		controller.api?._unsafe?.rawCanvas?.() as {
 			getStrokedBBox?: (elems: Element[]) => BBox | null;
-			getRotationAngle?: (elem: Element) => number;
 			getOpacity?: () => number;
 			getBlur?: (elem: Element) => number | string;
 			getFontSize?: () => number;
@@ -318,7 +317,6 @@
 			getBold?: () => boolean;
 			getItalic?: () => boolean;
 			setOpacity?: (value: number) => void;
-			setRotationAngle?: (value: number, preventUndo?: boolean) => void;
 			setBlur?: (value: number, complete?: boolean) => void;
 			setBlurNoUndo?: (value: number) => void;
 			setRectRadius?: (value: number) => void;
@@ -582,14 +580,10 @@
 			height = roundTo(geometry.height);
 		}
 
-		const rawCanvas = getRawCanvas();
-		if (primary && rawCanvas?.getRotationAngle) {
-			rotation = roundTo(rawCanvas.getRotationAngle(primary));
-		} else {
-			rotation = 0;
-		}
+		rotation = primary ? roundTo(controller.getSelectionRotation()) : 0;
 
 		if (primary) {
+			const rawCanvas = getRawCanvas();
 			const computedStyle = typeof window !== 'undefined' ? window.getComputedStyle(primary) : null;
 			const fillAttr = primary.getAttribute('fill');
 			const strokeAttr = primary.getAttribute('stroke');
@@ -755,11 +749,10 @@
 		changeSelectedAttribute(rawCanvas, 'height', nextHeight);
 	};
 
-	const applyRotation = () => {
+	const applyRotation = (value = rotation) => {
 		if (!canEditRotation || transformInteractionBlocked || !selectedElement) return;
-		const rawCanvas = getRawCanvas();
-		if (!rawCanvas?.setRotationAngle) return;
-		rawCanvas.setRotationAngle(toNumber(rotation, 0), false);
+		controller.setSelectionRotation(toNumber(value, 0));
+		rotation = roundTo(controller.getSelectionRotation());
 	};
 
 	const applyOpacity = () => {
@@ -1037,28 +1030,15 @@
 						id="inspector-rotation"
 						type="number"
 						class="border-input bg-background ring-offset-background focus-visible:ring-ring h-11 w-full rounded-md border px-3 text-lg font-semibold shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-						bind:value={rotation}
+						value={rotation}
 						disabled={!canEditRotation || transformInteractionBlocked}
-						oninput={applyRotation}
+						oninput={(event) => {
+							applyRotation(event.currentTarget.valueAsNumber);
+							event.currentTarget.value = String(rotation);
+						}}
 						onkeydown={(event) => handleNumberCommit(event, applyRotation)}
 						onblur={handleNumberBlur}
 					/>
-					<div class="bg-muted/30 flex h-11 items-center justify-center rounded-lg border">
-						<div
-							class="bg-background relative flex size-11 items-center justify-center rounded-full border"
-							style={`transform: rotate(${rotation}deg);`}
-						>
-							<span
-								class="bg-primary absolute top-1 left-1/2 size-1.5 -translate-x-1/2 rounded-full"
-							></span>
-							<span
-								class="text-foreground text-sm font-semibold"
-								style={`transform: rotate(${-rotation}deg);`}
-							>
-								{rotation}
-							</span>
-						</div>
-					</div>
 				</div>
 				<div class="grid gap-1.5">
 					<Label for="inspector-opacity">Opacity</Label>

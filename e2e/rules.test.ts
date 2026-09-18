@@ -113,7 +113,7 @@ test('creates a missing rules file through the project session', async () => {
 	try {
 		await page.goto('/app/games/map/rules');
 		const editor = page.getByRole('textbox', { name: 'Game rules editor' });
-		await expect(editor).toBeVisible();
+		await expect(editor).toBeVisible({ timeout: 20_000 });
 		await editor.fill('New map rules');
 		await expect.poll(() => readOpfsText(page, '/map/rules.md')).toContain('New map rules');
 	} finally {

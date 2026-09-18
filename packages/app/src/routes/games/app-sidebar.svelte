@@ -15,6 +15,7 @@
 	import type { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
 	import type { ProjectSession, RemotePresenceState } from '$lib/collaboration';
+	import ProjectBranches from './project-branches.svelte';
 
 	let {
 		games,
@@ -67,6 +68,11 @@
 <Sidebar.Root>
 	<Sidebar.Header>
 		<ProjectSwitcher {games} {activeProject} {onProjectChange} {peers} />
+		{#if projectSession}
+			{#key projectSession.rootUrl}
+				<ProjectBranches session={projectSession} />
+			{/key}
+		{/if}
 	</Sidebar.Header>
 	{#if projectFolderResult.error}
 		<!-- Todo display error -->

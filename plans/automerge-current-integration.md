@@ -214,11 +214,38 @@ Each project session also owns a separate SVG interaction service on the stable 
 
 One continuous SVG gesture produces many ephemeral updates and at most one durable Automerge change. Fill and stroke inputs use no-undo local preview transactions; move, resize, and rotation use lightweight values already calculated by SVGCanvas's transient `transition` events. The editor's native pointer path only stores the newest preview and schedules one animation-frame publication; it performs no collaboration-specific geometry reads, document cloning, validation, or networking. Wire updates are broadcast at most every 40 milliseconds with a trailing update. A 1.5-second heartbeat repairs dropped state, inactive local gestures expire after five seconds, and visual handoffs expire after two seconds.
 
+Local SVGCanvas interaction is deliberately fail-open. Ephemeral channel startup, claim acquisition, validation, transport, and rendering never gate or cancel a gesture after SVGCanvas starts it. If the channel is unavailable, a claim races with the gesture, or an element does not yet have a semantic node ID, the local move/resize/rotation continues at native editor speed and still produces its normal durable mouse-up change; only the remote preview is omitted. Missing or duplicated semantic IDs are repaired on the durable change boundary so later interactions can be previewed.
+
+The first transmitted movement state contains the first real delta, bounds, or angle calculated by SVGCanvas rather than a zero-valued placeholder. Subsequent native transitions only replace a plain pending preview. One animation-frame callback crosses the component boundary, and the project interaction service performs validation, cloning, revision updates, and throttled broadcast outside the browser's synchronous pointer-move callback.
+
 Interactions are scoped by exact page ID and component SVG document ID, so front and back editors do not share previews. Claims use stable semantic node IDs and domains. Move and rotation claim transform, resize claims geometry and transform, while fill and stroke claim only their corresponding presentation domain. Compatible interactions compose. Claims already known at pointer-down block a conflicting gesture, but a gesture is never canceled after SVGCanvas starts moving; simultaneous races continue locally and converge through their final CRDT changes.
 
 Remote previews render as pointer-inert SVG clones outside canonical `svgcontent`. Clone IDs are namespaced, ancestor transforms are projected relative to `svgcontent`, and compatible transform/fill/stroke previews compose without entering `getSvg()`, undo history, Automerge, filesystem projections, or exports. Preview nodes are keyed and cloned once; subsequent packets update only their transform or paint attributes on the existing overlay.
 
+Remote interaction state has one propagation owner. Route subscriptions update Svelte state, the reference editor exposes claim state to controls, and the canvas host applies each accepted remote snapshot to the SVG overlay exactly once. Compatible local edits refresh an overlay's cached source state at animation-frame or durable-change boundaries without rebuilding it for every network packet.
+
 On completion, the final editor projection is applied once with `changeAt()` at the heads captured when the interaction began. The active interaction becomes a visual-only commit handoff carrying the resulting heads; handoffs never participate in claim arbitration. Receivers observe the component Automerge handle directly with `hasHeads()` and remove a handoff as soon as its durable change is available, including when the durable change arrived before the ephemeral handoff. Handoffs can coexist with a new local interaction.
+
+## Branches And Checkpoints
+
+Project config version 3 links the stable project to a separate Automerge project-history document. Existing version 1 and 2 projects migrate in place without replacing their Main root or member document identities.
+
+The history document contains:
+
+- One project-global checked-out branch register.
+- A parent-linked branch tree.
+- Complete immutable project checkpoints.
+- Merge records and branch tombstones.
+
+Each branch is a normal complete project graph. Forking clones the root and every member at the selected checkpoint heads, then rewrites the cloned root to those cloned member URLs. This eager clone model deliberately preserves the existing editor, reconciler, and filesystem contracts; branch-local copy-on-write overlays can be introduced later without changing the branch or checkpoint schema.
+
+A checkpoint records the root URL and heads plus the URL, heads, kind, path, hash, and component identity of every member referenced by that root. Checkpoints are therefore exact project-wide manifests and do not reconstruct other documents by timestamp. Durable root and member changes are checkpointed after a short quiet period and before branch switches and merges.
+
+Branch checkout is shared by every tab that has the project open because all tabs also share one materialized project directory. A checkout first synchronizes and checkpoints the current branch, updates the history document, and then every tab closes and reopens its session against the selected branch. Reconciliation verifies both history identity and branch ID before importing filesystem bytes, so files materialized by a new checkout cannot be imported into the old branch.
+
+Historical selection is per tab and URL-addressable through `checkpoint` and `baseline` search parameters. Opening a checkpoint resolves read-only root and member handles at its exact heads and never runs the filesystem observer or reconciler. A read-only virtual `FsDir` materializes the checkpoint's typed documents in memory for setup, spreadsheet, play, and export readers without touching the real project directory. Session and filesystem mutations reject historical writes, and the authoring UI disables direct editor controls. The baseline is independent from the displayed checkpoint and currently drives changed-file summaries in the history sheet.
+
+Creating a branch from history produces a normal writable branch. Nested branches remember their parent, merge upward, and are reparented when an ancestor is merged. Merge preflights member structure and binary compatibility, merges corresponding CRDT members, records source and result checkpoints, and is protected by `.automerge/pending-branch-operation.json` so an interrupted multi-document merge can be retried safely. Structural and binary divergence currently fail preflight rather than being merged incorrectly.
 
 ## Playtests And Exports
 
@@ -246,6 +273,8 @@ Focused Playwright coverage verifies:
 - Concurrent changes to different SVG nodes preserved in both canvases and the filesystem projection.
 - Ephemeral fill and movement previews excluded from filesystem projections until one durable commit.
 - Semantic SVG claim blocking, compatible-domain editing, commit-head handoff, and single-step color undo.
+- Real held-pointer movement updating the local SVG immediately and the remote preview multiple times before mouse-up.
+- Ephemeral transport failure never preventing the local gesture or its final durable commit.
 - Ephemeral cursor presence between clients on the same exact route.
 - Region-based cursor resolution across different sender and receiver viewport sizes.
 - Cursor isolation between different routes in the same project.
@@ -256,6 +285,10 @@ Focused Playwright coverage verifies:
 - Stable project identity after reload.
 - Component creation through a project command.
 - Stable member IDs across component rename.
+- Branch isolation and project-global checkout across browser tabs.
+- Exact read-only checkpoint views and independent comparison baselines.
+- Forking from latest and historical checkpoints.
+- Merge-to-parent materialization.
 
 Existing regressions cover:
 
@@ -279,6 +312,8 @@ Existing regressions cover:
 - Binary documents are immutable but are not deduplicated by hash.
 - Structural operations have config repair but no dedicated operation journal.
 - Collaborative whole-project discovery and deletion require a workspace-level Automerge document.
+- Branches eagerly clone all project members rather than cloning documents only when they diverge.
+- Branch merges currently reject structural changes and immutable asset replacement.
 
 ## Next Steps
 
@@ -291,3 +326,5 @@ Existing regressions cover:
 7. Add a workspace project registry and project deletion tombstones.
 8. Add binary deduplication and retention policy if repository growth requires it.
 9. Add semantic presence adapters for ProseMirror cursors and spreadsheet cells where DOM regions are not precise enough.
+10. Replace eager branch member cloning with per-document copy-on-write if project size makes it necessary.
+11. Add three-way structural and immutable asset branch merging.

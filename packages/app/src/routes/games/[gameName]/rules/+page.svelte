@@ -36,7 +36,7 @@
 
 <div class="bg-background flex h-full min-h-screen flex-col">
 	<GameTopBar title="Rules" status={rulesStatus} statusError={rulesError}>
-		<MarkdownToolbar {view} state={editorState} />
+		<MarkdownToolbar {view} state={editorState} readonly={project.session.readOnly} />
 	</GameTopBar>
 
 	<div class="flex-1 overflow-auto px-4 py-4 sm:px-6">
@@ -48,6 +48,7 @@
 				ariaLabel="Game rules editor"
 				presenceRegionId="rules-editor"
 				presenceSpace="visible"
+				readonly={project.session.readOnly}
 				bind:view
 				bind:state={editorState}
 			/>

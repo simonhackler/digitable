@@ -94,6 +94,7 @@ export type SvgCanvasRawApi = {
 	getItalic?: () => boolean;
 	getMode: () => string;
 	getOpacity?: () => number;
+	getRotationAngle?: (elem?: Element, toRadians?: boolean) => number;
 	getSelectedElements?: () => Element[];
 	getStarted?: () => boolean;
 	getStrokedBBox?: (elems: Element[]) => SvgCanvasBBox | null;
@@ -103,8 +104,8 @@ export type SvgCanvasRawApi = {
 	getZoom: () => number;
 	getNextId?: () => string;
 	moveSelectedElements?: (
-		dx: number,
-		dy: number,
+		dx: number | number[],
+		dy: number | number[],
 		undoable?: boolean,
 		snapToPageBorder?: boolean
 	) => void;
@@ -225,6 +226,8 @@ export type SvgEditorApi = {
 	setFill(color: string): void;
 	setStroke(color: string): void;
 	setStrokeWidth(value: number): void;
+	getSelectionRotation(): number;
+	setSelectionRotation(value: number): void;
 	beginColorInteraction(kind: 'fill' | 'stroke'): boolean;
 	updateColorInteraction(
 		preview: Extract<SvgInteractionPreview, { kind: 'fill' | 'stroke' }>

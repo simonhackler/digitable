@@ -120,6 +120,61 @@ async function selectElement(page: Page, id: string) {
 	}, id);
 }
 
+async function insertCircle(page: Page, id: string, transform?: string) {
+	return page.evaluate(
+		({ id, transform }) => {
+			const global = window as Window & {
+				__svgEditorApi?: {
+					insertSvgElement: (
+						data: { element: string; attr: Record<string, string | number> },
+						opts?: { selectId?: string; historyLabel?: string }
+					) => string | null;
+				} | null;
+			};
+			return global.__svgEditorApi!.insertSvgElement(
+				{
+					element: 'circle',
+					attr: {
+						id,
+						cx: 24,
+						cy: 24,
+						r: 10,
+						fill: '#d93030',
+						...(transform ? { transform } : {})
+					}
+				},
+				{ selectId: id, historyLabel: 'Add test circle' }
+			);
+		},
+		{ id, transform }
+	);
+}
+
+async function elementTransformState(page: Page, id: string) {
+	return page.evaluate((id) => {
+		const element = document.getElementById(id) as unknown as SVGGraphicsElement | null;
+		if (!element) return null;
+		const list = element.transform.baseVal;
+		let matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+		for (let index = 0; index < list.numberOfItems; index += 1) {
+			const next = list.getItem(index).matrix;
+			matrix = {
+				a: matrix.a * next.a + matrix.c * next.b,
+				b: matrix.b * next.a + matrix.d * next.b,
+				c: matrix.a * next.c + matrix.c * next.d,
+				d: matrix.b * next.c + matrix.d * next.d,
+				e: matrix.a * next.e + matrix.c * next.f + matrix.e,
+				f: matrix.b * next.e + matrix.d * next.f + matrix.f
+			};
+		}
+		const angle = (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI;
+		return {
+			angle: Math.round(angle * 100) / 100,
+			singular: Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < Number.EPSILON
+		};
+	}, id);
+}
+
 async function setElementFill(page: Page, id: string, fill: string) {
 	await selectElement(page, id);
 	await page.evaluate((nextFill) => {
@@ -1013,10 +1068,103 @@ svgEditorTest('rotation input changes selected element rotation', async (page) =
 	await rotationInput.press('Enter');
 
 	await expect
-		.poll(() =>
-			page.evaluate(() => document.querySelector('#dice_image')?.getAttribute('transform') ?? '')
-		)
-		.toContain('rotate(27');
+		.poll(() => elementTransformState(page, 'dice_image'))
+		.toEqual({
+			angle: 27,
+			singular: false
+		});
+});
+
+svgEditorTest('repeated rotation keeps a transformed circle visible', async (page) => {
+	await openWesternSvgEditor(page);
+	expect(
+		await insertCircle(page, 'rotation_circle', 'translate(2 3) rotate(1 24 24) scale(1 1)')
+	).toBe('rotation_circle');
+	await expect(page.locator('#rotation_circle')).toBeVisible();
+
+	const rotationInput = page.getByLabel('Rotation');
+	const circle = page.locator('#rotation_circle');
+	for (const rotation of [1, 2, 3, 4]) {
+		await rotationInput.fill(String(rotation));
+		await expect(circle).toBeVisible();
+		await expect
+			.poll(() => elementTransformState(page, 'rotation_circle'))
+			.toEqual({
+				angle: rotation,
+				singular: false
+			});
+	}
+});
+
+svgEditorTest('moving a rotated element preserves its editable rotation', async (page) => {
+	await openWesternSvgEditor(page);
+	expect(await insertCircle(page, 'moved_rotation_circle')).toBe('moved_rotation_circle');
+
+	const circle = page.locator('#moved_rotation_circle');
+	const rotationInput = page.getByLabel('Rotation');
+	await rotationInput.fill('45');
+	await expect(rotationInput).toHaveValue('45');
+
+	const box = await circle.boundingBox();
+	expect(box).not.toBeNull();
+	await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(box!.x + box!.width / 2 + 24, box!.y + box!.height / 2 + 12);
+	await page.mouse.up();
+
+	await expect(rotationInput).toHaveValue('45');
+	for (const [input, rotation] of [
+		[0, 0],
+		[30, 30],
+		[270, -90]
+	]) {
+		await rotationInput.fill(String(input));
+		await expect
+			.poll(() => elementTransformState(page, 'moved_rotation_circle'))
+			.toEqual({
+				angle: rotation,
+				singular: false
+			});
+		await expect(rotationInput).toHaveValue(String(rotation));
+	}
+
+	const resize = await page.locator('#selectorGrip_resize_se').boundingBox();
+	expect(resize).not.toBeNull();
+	await page.mouse.move(resize!.x + resize!.width / 2, resize!.y + resize!.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(resize!.x + resize!.width / 2 + 12, resize!.y + resize!.height / 2 + 12);
+	await page.mouse.up();
+	await expect
+		.poll(() => elementTransformState(page, 'moved_rotation_circle'))
+		.toEqual({
+			angle: -90,
+			singular: false
+		});
+	await expect(rotationInput).toHaveValue('-90');
+});
+
+svgEditorTest('resizing cannot collapse a circle to a zero scale', async (page) => {
+	await openWesternSvgEditor(page);
+	expect(await insertCircle(page, 'resize_circle')).toBe('resize_circle');
+	await expect(page.locator('#resize_circle')).toBeVisible();
+
+	const east = await page.locator('#selectorGrip_resize_e').boundingBox();
+	const west = await page.locator('#selectorGrip_resize_w').boundingBox();
+	expect(east).not.toBeNull();
+	expect(west).not.toBeNull();
+	await page.mouse.move(east!.x + east!.width / 2, east!.y + east!.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(west!.x + west!.width / 2, west!.y + west!.height / 2);
+	await page.mouse.up();
+
+	const circle = page.locator('#resize_circle');
+	await expect(circle).toBeVisible();
+	await expect
+		.poll(() => elementTransformState(page, 'resize_circle'))
+		.toEqual({
+			angle: 0,
+			singular: false
+		});
 });
 
 svgEditorTest('structure tree edit accepts h and l and commits text on Enter', async (page) => {

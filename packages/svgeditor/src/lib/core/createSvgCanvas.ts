@@ -27,7 +27,6 @@ type SvgCanvasLike = SvgCanvasRawApi & {
 	getBaseUnit?: () => string;
 	getCurrentMode?: () => string;
 	getCurrentResizeMode?: () => string;
-	getRotationAngle?: (elem: Element) => number;
 	getTypeMap?: () => Record<string, number>;
 	selectorManager?: {
 		requestSelector?: (elem: Element) => {
@@ -88,6 +87,7 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink';
 const MULTILINE_ATTR = 'data-svgedit-multiline';
 const RAW_TEXT_ATTR = 'data-svgedit-raw-text';
 const WRAP_WIDTH_ATTR = 'data-svgedit-wrap-width';
+const normalizeAngle = (value: number) => ((((value + 180) % 360) + 360) % 360) - 180;
 const WRAP_HEIGHT_ATTR = 'data-svgedit-wrap-height';
 const SHAPE_INSIDE_ATTR = 'data-svgedit-shape-inside-ref';
 const DIGITABLE_KIND_ATTR = 'data-digitable-kind';
@@ -1268,7 +1268,7 @@ export const createSvgCanvas = ({
 					? { kind: 'resize', baseBounds: payload.baseBounds, bounds: payload.bounds }
 					: {
 							kind: 'rotate',
-							angle: payload.angle - (pointerStartAngle ?? payload.angle),
+							angle: normalizeAngle(payload.angle - (pointerStartAngle ?? payload.angle)),
 							pivot: payload.pivot
 						};
 		if (!localInteraction) {
@@ -2255,6 +2255,16 @@ export const createSvgCanvas = ({
 			if (isBlocked('stroke', getNodeIds((canvas.getSelectedElements?.() ?? []).filter(Boolean))))
 				return;
 			applySelectedAttributeChange('stroke-width', value);
+		},
+		getSelectionRotation() {
+			const selected = (canvas.getSelectedElements?.() ?? []).filter(Boolean)[0];
+			return selected ? (canvas.getRotationAngle?.(selected) ?? 0) : 0;
+		},
+		setSelectionRotation(value) {
+			if (!Number.isFinite(value)) return;
+			const selected = (canvas.getSelectedElements?.() ?? []).filter(Boolean);
+			if (isBlocked('rotate', getNodeIds(selected))) return;
+			canvas.setRotationAngle?.(value, false);
 		},
 		beginColorInteraction(kind) {
 			return beginColorInteraction(kind);

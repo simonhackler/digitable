@@ -11,6 +11,7 @@ import {
 	type ComponentDataDocument,
 	type GameMetadataDocument,
 	type MarkdownFileDocument,
+	type ProjectCheckpoint,
 	type ProjectDocument,
 	type ProjectMemberDocument
 } from './model';
@@ -132,6 +133,33 @@ export async function resolveProjectGraph(
 			new Map(resolved)
 		);
 	}
+}
+
+export async function resolveProjectGraphAtCheckpoint(
+	repo: Repo,
+	checkpoint: ProjectCheckpoint
+): Promise<ProjectGraph> {
+	const root = await repo.find<ProjectDocument>(checkpoint.rootUrl);
+	const projectHandle = root.view(checkpoint.rootHeads);
+	const project = projectHandle.doc();
+	if (!isProjectDocument(project)) {
+		throw new Error('The Automerge project root is unavailable at the selected checkpoint.');
+	}
+	const resolved = await Promise.all(
+		Object.entries(project.members).map(async ([id, member]) => {
+			const version = checkpoint.members[id];
+			if (!version || version.url !== member.url) {
+				throw new Error(`Checkpoint is missing project member ${member.path}.`);
+			}
+			const source = await repo.find<ProjectMemberDocument>(version.url);
+			const handle = source.view(version.heads);
+			if (!isMemberDocument(member.kind, handle.doc())) {
+				throw new Error(`Project member ${member.path} is unavailable at the checkpoint.`);
+			}
+			return [id, handle] as const;
+		})
+	);
+	return graphFromHandles(projectHandle, project, new Map(resolved));
 }
 
 function graphFromHandles(

@@ -1,5 +1,7 @@
 {
-  "version": 2,
+  "version": 3,
+  "historyUrl": "automerge:3Qrr8WMPxbiRgRsVFgx7UvNbgeH8",
+  "branchId": "main",
   "rootUrl": "automerge:2p7M1byjopHVHTobiuaLxUn4iyN9",
   "rootHeads": [
     "VJumaujwPkcTbtWDCkKjzqPbjaaPB88ryVRj76pgPmydqHoTc"
@@ -9,9 +11,9 @@
       "path": "game.json",
       "url": "automerge:2uwvbt3wXL8B2fYQx4FkTmuFjWSi",
       "heads": [
-        "2JvgBHmLaMq9ZdJbhmWW6mv2GBy3pYgJuEZiU3BZsnw9XcqpjN"
+        "G22GLTwJdF6G3H2B6Tc4pdKXyWduz1i6rRv9GitqnYBUd5MPn"
       ],
-      "hash": "5fa4c9e30248c623b70ac8bd9f42200ed6d49bb0e734fee9cf31e5a22920da5e"
+      "hash": "02f979c77fa11cbd8a58cbdb8c8d280126a7a4444c3b758d0378fecd8a60b718"
     },
     "file-0244c8b84ff12c2fe9fe2204cbb1bce5fa16ca3b6650a90ec3f4227000dd6360": {
       "path": "feedback/playtest-session-2026-05-16T15-13-30-994Z-9f5b7989/1513-demo-user-1-playtest-note-ed93f2bf.md",
@@ -33,9 +35,9 @@
       "path": "components/western/front.svg",
       "url": "automerge:4FDc1Fa8WaDYrgq4ByHdrt234k4m",
       "heads": [
-        "2q3BXhormSAmqvn3yfiMhJGoiYfPzNGRYVbPKptbv4Un8bhvrB"
+        "2vFMonR5N9f8QCcQmLGK9sswFBnSH4LAguR2vYNz91DD536pK9"
       ],
-      "hash": "3b9870b093efd6c410c4d4905cfcf6de401603aa3fb256f466e90e743e35ba5e"
+      "hash": "7bcca71885feb2f00deb9b8dd35e3bf7ab44e84c6f3c91c399bdbc9b6f13dbdf"
     },
     "file-6edb80b1089dcc6da021127da8b2f1db7086b22c7afa6ed4aa663d1246f45437": {
       "path": "setup/table.svg",
@@ -51,7 +53,7 @@
       "heads": [
         "2GZvmDfKPw17wXBuQRNRHBPSZm8AboRGdDj7VtLjiHayTMP5P2"
       ],
-      "hash": "c7412adbc105339a3c9f2ca2b9036d40fbe4eb9d9eb6876f5c66ca097c9b1c66"
+      "hash": "f2ed59bffe96ea096ae5e940f765473711e5e4fcd90e5266e6c4dd366110c4e5"
     },
     "file-cff38928da18cdb77c8aeb67a7f8be53d77650115eed3d9709e60dd592b9aae6": {
       "path": "rules.md",
@@ -59,7 +61,7 @@
       "heads": [
         "xXWapQBVceSogxwoXLiUiBZGNnXne85zhtRC3CLioRUBXzCbv"
       ],
-      "hash": "ba3f052b019c5292af99e106598614dc488675e66b19da94969ab666087b157c"
+      "hash": "0230c5d5d4ef9c9eb572229662933247ff1fb97b682aba8d84307103c31ca31b"
     },
     "file-de8c0507682ed8887f3d03774382c9f363a51f541d7a02631ee3f551c89f1202": {
       "path": "components/western/data.csv",
@@ -67,7 +69,7 @@
       "heads": [
         "7Taom61icCFatNEDSncAJVz1EjQ5RCAhHYmZajQAS8V4PjKgZ"
       ],
-      "hash": "e21447382b536451fb2ca70d57c963cc5416975526c430e72a2a1c3735b74c59"
+      "hash": "e828cac1cdbad123ba688e04cacba453cdaf82a88a8ed305a09c09c2ce4beca9"
     }
   }
 }

@@ -35,7 +35,8 @@
 		presenceSpace = 'box',
 		view = $bindable<EditorView | undefined>(),
 		state = $bindable<EditorState | undefined>(),
-		onchange
+		onchange,
+		readonly = false
 	}: {
 		handle?: DocHandle<MarkdownFileDocument>;
 		initialMarkdown?: string;
@@ -45,6 +46,7 @@
 		view?: EditorView;
 		state?: EditorState;
 		onchange?: (markdown: string) => void;
+		readonly?: boolean;
 	} = $props();
 	const presenceRegion = createPresenceRegionAttachment({
 		id: () => presenceRegionId,
@@ -90,10 +92,12 @@
 			...('plugin' in initialized ? [initialized.plugin] : [])
 		];
 		const editor = new EditorView(root, {
+			editable: () => !readonly,
 			attributes: {
 				role: 'textbox',
 				'aria-label': ariaLabel,
-				'aria-multiline': 'true'
+				'aria-multiline': 'true',
+				'aria-readonly': String(readonly)
 			},
 			state: EditorState.create({
 				schema: initialized.schema,

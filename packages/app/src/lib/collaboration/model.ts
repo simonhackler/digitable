@@ -1,4 +1,4 @@
-import type { AutomergeUrl } from '@automerge/automerge-repo';
+import { isValidAutomergeUrl, type AutomergeUrl, type UrlHeads } from '@automerge/automerge-repo';
 import type { SvgDocument } from '@svg-table/svgeditor';
 
 export const GAME_METADATA_MEMBER_ID = '$metadata';
@@ -33,6 +33,50 @@ export type ProjectDocument = {
 	schemaVersion: 2;
 	members: Record<string, ProjectMember>;
 	components: Record<string, ProjectComponent>;
+};
+
+export type ProjectBranchId = string;
+export type ProjectCheckpointId = string;
+
+export type ProjectBranch = {
+	name: string;
+	rootUrl: AutomergeUrl;
+	parentBranchId?: ProjectBranchId;
+	forkCheckpointId?: ProjectCheckpointId;
+	createdAt: number;
+	mergedAt?: number;
+	deletedAt?: number;
+};
+
+export type ProjectCheckpointMember = ProjectMember & {
+	heads: UrlHeads;
+};
+
+export type ProjectCheckpoint = {
+	id: ProjectCheckpointId;
+	branchId: ProjectBranchId;
+	createdAt: number;
+	message: string;
+	rootUrl: AutomergeUrl;
+	rootHeads: UrlHeads;
+	members: Record<string, ProjectCheckpointMember>;
+};
+
+export type ProjectMerge = {
+	sourceBranchId: ProjectBranchId;
+	targetBranchId: ProjectBranchId;
+	sourceCheckpointId: ProjectCheckpointId;
+	resultCheckpointId: ProjectCheckpointId;
+	createdAt: number;
+};
+
+export type ProjectHistoryDocument = {
+	type: 'digitable-project-history';
+	schemaVersion: 1;
+	checkedOutBranchId: ProjectBranchId;
+	branches: Record<ProjectBranchId, ProjectBranch>;
+	checkpoints: Record<ProjectCheckpointId, ProjectCheckpoint>;
+	merges: Record<string, ProjectMerge>;
 };
 
 export type LegacyProjectDocument = {
@@ -127,6 +171,68 @@ export function isProjectDocument(value: unknown): value is ProjectDocument {
 				(component.dataMemberId === undefined || typeof component.dataMemberId === 'string')
 		)
 	);
+}
+
+export function isProjectHistoryDocument(value: unknown): value is ProjectHistoryDocument {
+	if (!isObject(value)) return false;
+	if (value.type !== 'digitable-project-history' || value.schemaVersion !== 1) return false;
+	if (
+		typeof value.checkedOutBranchId !== 'string' ||
+		!isObject(value.branches) ||
+		!isObject(value.checkpoints) ||
+		!isObject(value.merges)
+	) {
+		return false;
+	}
+	return (
+		Object.values(value.branches).every(isProjectBranch) &&
+		Object.values(value.checkpoints).every(isProjectCheckpoint) &&
+		Object.values(value.merges).every(isProjectMerge)
+	);
+}
+
+function isProjectBranch(value: unknown): value is ProjectBranch {
+	return (
+		isObject(value) &&
+		typeof value.name === 'string' &&
+		isValidAutomergeUrl(value.rootUrl) &&
+		typeof value.createdAt === 'number' &&
+		(value.parentBranchId === undefined || typeof value.parentBranchId === 'string') &&
+		(value.forkCheckpointId === undefined || typeof value.forkCheckpointId === 'string') &&
+		(value.mergedAt === undefined || typeof value.mergedAt === 'number') &&
+		(value.deletedAt === undefined || typeof value.deletedAt === 'number')
+	);
+}
+
+function isProjectCheckpoint(value: unknown): value is ProjectCheckpoint {
+	return (
+		isObject(value) &&
+		typeof value.id === 'string' &&
+		typeof value.branchId === 'string' &&
+		typeof value.createdAt === 'number' &&
+		typeof value.message === 'string' &&
+		isValidAutomergeUrl(value.rootUrl) &&
+		isHeads(value.rootHeads) &&
+		isObject(value.members) &&
+		Object.values(value.members).every(
+			(member) => isObject(member) && isHeads(member.heads) && isProjectMember(member)
+		)
+	);
+}
+
+function isProjectMerge(value: unknown): value is ProjectMerge {
+	return (
+		isObject(value) &&
+		typeof value.sourceBranchId === 'string' &&
+		typeof value.targetBranchId === 'string' &&
+		typeof value.sourceCheckpointId === 'string' &&
+		typeof value.resultCheckpointId === 'string' &&
+		typeof value.createdAt === 'number'
+	);
+}
+
+function isHeads(value: unknown): value is UrlHeads {
+	return Array.isArray(value) && value.every((head) => typeof head === 'string');
 }
 
 export function isLegacyProjectDocument(value: unknown): value is LegacyProjectDocument {

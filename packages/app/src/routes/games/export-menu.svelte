@@ -7,6 +7,8 @@
 	import type { Game } from './types.js';
 	import { peersOnProjectPages, type RemotePresenceState } from '$lib/collaboration';
 	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
+	import { page } from '$app/state';
+	import { projectViewHref } from './project-view-url';
 
 	let { activeGame, peers }: { activeGame: Game | null; peers: RemotePresenceState[] } = $props();
 
@@ -36,7 +38,13 @@
 						<Sidebar.MenuSubItem>
 							<Sidebar.MenuSubButton>
 								{#snippet child({ props })}
-									<a href={resolve(`/games/${activeGame?.name}/export/tts`)} {...props}>
+									<a
+										href={projectViewHref(
+											resolve(`/games/${activeGame?.name}/export/tts`),
+											page.url
+										)}
+										{...props}
+									>
 										<Gamepad2 class="mr-2 h-4 w-4" />
 										<span class="flex-1">TTS</span>
 										<SidebarPresenceAvatars
@@ -50,7 +58,13 @@
 						<Sidebar.MenuSubItem>
 							<Sidebar.MenuSubButton>
 								{#snippet child({ props })}
-									<a href={resolve(`/games/${activeGame?.name}/export/paper`)} {...props}>
+									<a
+										href={projectViewHref(
+											resolve(`/games/${activeGame?.name}/export/paper`),
+											page.url
+										)}
+										{...props}
+									>
 										<Printer class="mr-2 h-4 w-4" />
 										<span class="flex-1">Paper</span>
 										<SidebarPresenceAvatars

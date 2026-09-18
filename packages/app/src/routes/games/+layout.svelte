@@ -30,6 +30,7 @@
 	import {
 		createPresenceSurfaceRegistry,
 		createDocumentState,
+		createCheckpointWorkspace,
 		createProjectPresenceState,
 		gameMetadataMaterializer,
 		openProjectSession,
@@ -37,13 +38,14 @@
 		setPresenceSurfaceRegistry,
 		type ProjectSession
 	} from '$lib/collaboration';
-	import { afterNavigate, beforeNavigate, onNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto, onNavigate } from '$app/navigation';
 	import { Ok, trySync } from 'wellcrafted/result';
 	import CollaborativeCursorLayer from '$lib/collaboration/collaborative-cursor-layer.svelte';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
-	setFileSystemContext(fileSystemState);
+	let viewFileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
+	setFileSystemContext(viewFileSystemState);
 	const gamesState: { existingGames: Game[] | null } = $state({ existingGames: null });
 	const games = $derived(gamesState.existingGames);
 	setGamesContext(gamesState);
@@ -63,6 +65,8 @@
 	let migrationDigitableVersion = $state<string | undefined>();
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 	const activeGameName = $derived(page.params.gameName);
+	const activeCheckpointId = $derived(page.url.searchParams.get('checkpoint') ?? undefined);
+	const activeViewKey = $derived(`${activeGameName ?? ''}:${activeCheckpointId ?? 'latest'}`);
 	const presencePage = $derived(projectPresencePage(page.route.id, page.params));
 	const surfaces = createPresenceSurfaceRegistry();
 	const presenceSurface = surfaces.surface({ id: 'project-page' });
@@ -81,15 +85,27 @@
 		activeProjectState.phase = 'idle';
 		activeProjectState.error = null;
 		activeProjectState.reconciliation = { state: 'idle' };
+		viewFileSystemState.adapter = fileSystem;
 		if (!active) return;
 		active.metadata.destroy();
 		active.presence.destroy();
 		await active.session.close();
 	}
 
-	async function openActiveProject(fileSystem: FsDir | null, gameName: string | undefined) {
+	async function openActiveProject(
+		fileSystem: FsDir | null,
+		gameName: string | undefined,
+		force = false
+	) {
 		const active = activeProjectState.current;
-		if (active && activeProjectState.phase === 'ready' && active.key === gameName && fileSystem) {
+		if (
+			!force &&
+			active &&
+			activeProjectState.phase === 'ready' &&
+			active.key === gameName &&
+			active.viewKey === activeViewKey &&
+			fileSystem
+		) {
 			configurePresence(active.session);
 			return;
 		}
@@ -123,6 +139,17 @@
 		let openingError: string | null = null;
 		const opened = await openProjectSession(projectDir.data, {
 			saveDebounceMs: 0,
+			checkpointId: activeCheckpointId,
+			onBranchCheckout: () => {
+				if (generation !== projectGeneration) return;
+				const target = new URL(page.url);
+				target.searchParams.delete('checkpoint');
+				target.searchParams.delete('baseline');
+				void (async () => {
+					if (target.href !== page.url.href) await goto(target, { replaceState: true });
+					await openActiveProject(fileSystem, gameName, true);
+				})();
+			},
 			onStatus: (status) => {
 				if (generation !== projectGeneration) return;
 				activeProjectState.reconciliation = status;
@@ -149,6 +176,7 @@
 
 		activeProjectState.current = {
 			key: gameName,
+			viewKey: activeViewKey,
 			session: opened.data,
 			presence: createProjectPresenceState(opened.data.presence),
 			metadata: createDocumentState(opened.data.metadataHandle, (metadata) => {
@@ -160,6 +188,9 @@
 				);
 			})
 		};
+		viewFileSystemState.adapter = opened.data.readOnly
+			? createCheckpointWorkspace(fileSystem, gameName, opened.data.files)
+			: fileSystem;
 		configurePresence(opened.data);
 		activeProjectState.phase = 'ready';
 	}
@@ -240,6 +271,7 @@
 		gamesState.existingGames = null;
 		isInspectingProjects = true;
 		fileSystemState.adapter = adapter;
+		viewFileSystemState.adapter = adapter;
 		await generateAgentFiles(adapter);
 		const marker = await readProjectsRootMarker(adapter);
 		migrationDigitableVersion = marker.error ? undefined : marker.data.digitableVersion;
@@ -349,6 +381,14 @@
 		/>
 	{/if}
 	<main class="relative min-w-0 flex-1" {@attach presenceSurface}>
+		{#if activeProjectState.current?.session.readOnly}
+			<div
+				class="border-primary/20 bg-primary/10 text-primary absolute top-2 right-3 z-40 rounded-full border px-3 py-1 text-xs font-medium shadow-sm"
+				role="status"
+			>
+				Viewing historical checkpoint · Read only
+			</div>
+		{/if}
 		{#if !fileSystem}
 			<div class="mt-12 flex w-full flex-col items-center justify-center gap-4 text-xl">
 				<PickFolder {onSetOpfsAdapter}></PickFolder>
@@ -405,10 +445,12 @@
 				{#snippet pending()}
 					<p>loading...</p>
 				{/snippet}
-				{@render children?.()}
+				{#key activeProjectState.current?.viewKey}
+					{@render children?.()}
+				{/key}
 			</svelte:boundary>
 		{/if}
-		{#if activeProjectState.current && presencePage.pointerEnabled}
+		{#if activeProjectState.current && !activeProjectState.current.session.readOnly && presencePage.pointerEnabled}
 			{#key activeProjectState.current.session.rootUrl}
 				<CollaborativeCursorLayer
 					presence={activeProjectState.current.session.presence}

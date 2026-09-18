@@ -27,6 +27,7 @@ export const [getGamesContext, setGamesContext] = createContext<{ existingGames:
 
 export type ActiveProject = {
 	key: string;
+	viewKey: string;
 	session: ProjectSession;
 	metadata: DocumentState<GameMetadataDocument>;
 	presence: ProjectPresenceState;

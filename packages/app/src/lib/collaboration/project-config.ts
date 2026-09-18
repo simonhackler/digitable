@@ -6,6 +6,7 @@ export const AUTOMERGE_DIR = '.automerge';
 export const AUTOMERGE_STORAGE_DIR = '.automerge/storage';
 export const PROJECT_CONFIG_FILE = '.automerge/config.json';
 export const PENDING_BOOTSTRAP_FILE = '.automerge/pending-bootstrap.json';
+export const PENDING_BRANCH_OPERATION_FILE = '.automerge/pending-branch-operation.json';
 const PENDING_MATERIALIZATION_DIR = '.automerge/pending-materialization';
 
 export type MaterializedState = {
@@ -20,8 +21,10 @@ export type ProjectProjection = MaterializedState & {
 };
 
 export type ProjectConfig = {
-	version: 1 | 2;
+	version: 1 | 2 | 3;
 	rootUrl: AutomergeUrl;
+	historyUrl?: AutomergeUrl;
+	branchId?: string;
 	rootHeads?: UrlHeads;
 	projections: Record<string, ProjectProjection>;
 };
@@ -38,6 +41,13 @@ export type PendingBootstrap = {
 	version: 1;
 	sources: Record<string, string>;
 	config?: ProjectConfig;
+};
+
+export type PendingBranchOperation = {
+	version: 1;
+	type: 'merge';
+	sourceBranchId: string;
+	targetBranchId: string;
 };
 
 export async function readProjectConfig(fs: FsDir): Promise<ProjectConfig | undefined> {
@@ -69,6 +79,40 @@ export function writePendingBootstrap(fs: FsDir, pending: PendingBootstrap): Pro
 
 export function removePendingBootstrap(fs: FsDir): Promise<void> {
 	return removeFile(fs, PENDING_BOOTSTRAP_FILE);
+}
+
+export async function readPendingBranchOperation(
+	fs: FsDir
+): Promise<PendingBranchOperation | undefined> {
+	const source = await readText(fs, PENDING_BRANCH_OPERATION_FILE);
+	if (source === undefined) return undefined;
+	const value = parseJson(source, PENDING_BRANCH_OPERATION_FILE);
+	if (
+		!isObject(value) ||
+		value.version !== 1 ||
+		value.type !== 'merge' ||
+		typeof value.sourceBranchId !== 'string' ||
+		typeof value.targetBranchId !== 'string'
+	) {
+		throw new Error(`${PENDING_BRANCH_OPERATION_FILE} has an unsupported format.`);
+	}
+	return {
+		version: 1,
+		type: 'merge',
+		sourceBranchId: value.sourceBranchId,
+		targetBranchId: value.targetBranchId
+	};
+}
+
+export function writePendingBranchOperation(
+	fs: FsDir,
+	pending: PendingBranchOperation
+): Promise<void> {
+	return writeJson(fs, PENDING_BRANCH_OPERATION_FILE, pending);
+}
+
+export function removePendingBranchOperation(fs: FsDir): Promise<void> {
+	return removeFile(fs, PENDING_BRANCH_OPERATION_FILE);
 }
 
 export async function readPendingMaterialization(
@@ -128,7 +172,7 @@ function pendingMaterializationPath(memberId: string): string {
 function validateConfig(value: unknown): ProjectConfig {
 	if (
 		!isObject(value) ||
-		(value.version !== 1 && value.version !== 2) ||
+		(value.version !== 1 && value.version !== 2 && value.version !== 3) ||
 		!isValidAutomergeUrl(value.rootUrl)
 	) {
 		throw new Error(`${PROJECT_CONFIG_FILE} has an unsupported format.`);
@@ -158,7 +202,20 @@ function validateConfig(value: unknown): ProjectConfig {
 	);
 	const rootHeads =
 		value.rootHeads === undefined ? undefined : validateHeads(value.rootHeads, 'root heads');
-	return { version: value.version, rootUrl: value.rootUrl, rootHeads, projections };
+	if (
+		value.version === 3 &&
+		(!isValidAutomergeUrl(value.historyUrl) || typeof value.branchId !== 'string')
+	) {
+		throw new Error(`${PROJECT_CONFIG_FILE} has invalid branch state.`);
+	}
+	return {
+		version: value.version,
+		rootUrl: value.rootUrl,
+		...(value.historyUrl === undefined ? {} : { historyUrl: value.historyUrl as AutomergeUrl }),
+		...(value.branchId === undefined ? {} : { branchId: value.branchId as string }),
+		rootHeads,
+		projections
+	};
 }
 
 function validateMaterializedState(value: unknown): MaterializedState {

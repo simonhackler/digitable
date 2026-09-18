@@ -226,6 +226,13 @@ class EditorController {
 		this.api?.setStrokeWidth(value);
 	};
 
+	getSelectionRotation = () => this.api?.getSelectionRotation() ?? 0;
+
+	setSelectionRotation = (value: number) => {
+		if (!Number.isFinite(value)) return;
+		this.api?.setSelectionRotation(value);
+	};
+
 	previewFill = (paint: Paint) => {
 		if (!this.api?.beginColorInteraction('fill')) return false;
 		return this.api.updateColorInteraction({ kind: 'fill', paint });

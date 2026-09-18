@@ -5,6 +5,8 @@
 	import type { Game } from './types.js';
 	import { peersOnProjectPages, type RemotePresenceState } from '$lib/collaboration';
 	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
+	import { page } from '$app/state';
+	import { projectViewHref } from './project-view-url';
 
 	let { activeGame, peers }: { activeGame: Game | null; peers: RemotePresenceState[] } = $props();
 
@@ -19,7 +21,10 @@
 		<Sidebar.MenuItem>
 			<Sidebar.MenuButton tooltipContent="Setup">
 				{#snippet child({ props })}
-					<a href={resolve(`/games/${activeGame?.name}/setup`)} {...props}>
+					<a
+						href={projectViewHref(resolve(`/games/${activeGame?.name}/setup`), page.url)}
+						{...props}
+					>
 						<SlidersHorizontal />
 						<span>Setup</span>
 						<SidebarPresenceAvatars
@@ -34,7 +39,10 @@
 		<Sidebar.MenuItem>
 			<Sidebar.MenuButton tooltipContent="Local test">
 				{#snippet child({ props })}
-					<a href={resolve(`/games/${activeGame?.name}/play`)} {...props}>
+					<a
+						href={projectViewHref(resolve(`/games/${activeGame?.name}/play`), page.url)}
+						{...props}
+					>
 						<Play />
 						<span>Local Test</span>
 						<SidebarPresenceAvatars
@@ -49,7 +57,10 @@
 		<Sidebar.MenuItem>
 			<Sidebar.MenuButton tooltipContent="Playtests">
 				{#snippet child({ props })}
-					<a href={resolve(`/games/${activeGame?.name}/playtests`)} {...props}>
+					<a
+						href={projectViewHref(resolve(`/games/${activeGame?.name}/playtests`), page.url)}
+						{...props}
+					>
 						<ClipboardList />
 						<span>Playtests</span>
 						<SidebarPresenceAvatars

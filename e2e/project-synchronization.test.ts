@@ -48,7 +48,7 @@ test('bootstraps every recognized project file into Automerge', async ({ page })
 
 	await expect
 		.poll(async () => JSON.parse(await readOpfsText(page, `/${project}/.automerge/config.json`)))
-		.toMatchObject({ version: 2 });
+		.toMatchObject({ version: 3 });
 	const expectedPaths = [
 		'assets/token.png',
 		'components/cards/back.svg',

@@ -22,6 +22,7 @@
 	const games = getGamesContext();
 	const projectState = getActiveProjectState();
 	const project = getActiveProjectContext();
+	const readOnly = project.session.readOnly;
 	const initial = project.metadata.current;
 	assert(initial, 'Game metadata document is unavailable');
 
@@ -152,7 +153,7 @@
 				<Card.Title class="text-center text-2xl font-bold">
 					{isCreateMode ? 'Create New Board Game' : 'Edit Board Game'}
 				</Card.Title>
-				{#if !isCreateMode}
+				{#if !isCreateMode && !readOnly}
 					<ConfirmDeleteDialog />
 					<div class="flex items-center justify-center">
 						<Button
@@ -185,6 +186,7 @@
 							aria-invalid={errors.name ? 'true' : undefined}
 							aria-describedby={errors.name ? 'game-name-error' : undefined}
 							class="w-full"
+							disabled={readOnly}
 						/>
 						<div class="text-muted-foreground flex justify-between text-xs">
 							<span>Up to 80 characters, required</span>
@@ -212,6 +214,7 @@
 									max={20}
 									aria-invalid={errors.minPlayers ? 'true' : undefined}
 									class="w-20"
+									disabled={readOnly}
 								/>
 								{#if errors.minPlayers}
 									<p class="text-destructive text-sm" role="alert">{errors.minPlayers}</p>
@@ -229,6 +232,7 @@
 									max={20}
 									aria-invalid={errors.maxPlayers ? 'true' : undefined}
 									class="w-20"
+									disabled={readOnly}
 								/>
 								{#if errors.maxPlayers}
 									<p class="text-destructive text-sm" role="alert">{errors.maxPlayers}</p>
@@ -248,6 +252,7 @@
 							aria-invalid={errors.description ? 'true' : undefined}
 							aria-describedby={errors.description ? 'game-description-error' : undefined}
 							class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-base focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+							disabled={readOnly}
 						></textarea>
 						<div class="text-muted-foreground flex justify-between text-xs">
 							<span>Up to 500 characters, optional</span>
@@ -269,7 +274,7 @@
 						</div>
 					{/if}
 
-					<Button type="submit" class="w-full" disabled={isSubmitting}>
+					<Button type="submit" class="w-full" disabled={isSubmitting || readOnly}>
 						{isSubmitting ? 'Saving...' : isCreateMode ? 'Create' : 'Update'}
 					</Button>
 				</form>

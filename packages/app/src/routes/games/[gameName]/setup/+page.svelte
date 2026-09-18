@@ -1048,13 +1048,15 @@
 
 <main class="flex h-svh min-h-0 flex-col overflow-hidden">
 	<GameTopBar title="Table" status={isSaving ? 'Autosaving' : status} statusError={saveError}>
-		<ReferenceEditorToolbar
-			controller={editorController}
-			variant="actions"
-			framed={false}
-			wrap={false}
-		/>
-		{@render tableToolbarAction()}
+		{#if !project.session.readOnly}
+			<ReferenceEditorToolbar
+				controller={editorController}
+				variant="actions"
+				framed={false}
+				wrap={false}
+			/>
+			{@render tableToolbarAction()}
+		{/if}
 	</GameTopBar>
 	<div
 		role="region"
@@ -1077,6 +1079,7 @@
 				assetBasePath={SVG_EDITOR_ASSET_BASE_PATH}
 				emitChangeSvg={false}
 				selectedElementId={selectedTableElementId}
+				readonly={project.session.readOnly}
 				componentPanel={tableComponentPanel}
 				on:change={handleEditorChange}
 				on:selectionchange={handleEditorSelection}

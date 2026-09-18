@@ -565,14 +565,16 @@
 			<FlipHorizontal2 class="size-4" />
 			{side === 'front' ? 'Back' : 'Front'}
 		</Button>
-		<ReferenceEditorToolbar
-			controller={editorController}
-			variant="actions"
-			framed={false}
-			wrap={false}
-			imageToolAction={(controller) => openImagePicker('insert', controller)}
-		/>
-		{@render uploadToolbarAction()}
+		{#if !project.session.readOnly}
+			<ReferenceEditorToolbar
+				controller={editorController}
+				variant="actions"
+				framed={false}
+				wrap={false}
+				imageToolAction={(controller) => openImagePicker('insert', controller)}
+			/>
+			{@render uploadToolbarAction()}
+		{/if}
 	</GameTopBar>
 
 	<input
@@ -595,6 +597,7 @@
 					initialZoom="fit"
 					syncExternalValueUpdates={true}
 					centerOnExternalValueChange={false}
+					readonly={project.session.readOnly}
 					{remoteInteractions}
 					{blockedClaims}
 					imageToolAction={(controller) => openImagePicker('insert', controller)}

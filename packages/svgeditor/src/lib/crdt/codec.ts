@@ -134,6 +134,8 @@ const transformSignature = (transform: Transform): string =>
 		origin: transform.origin
 	});
 
+const normalizeRotation = (value: number): number => ((((value + 180) % 360) + 360) % 360) - 180;
+
 const multiplyMatrix = (left: Matrix, right: Matrix): Matrix => [
 	left[0] * right[0] + left[2] * right[1],
 	left[1] * right[0] + left[3] * right[1],
@@ -197,16 +199,17 @@ const parseTransform = (value: string | undefined): Transform => {
 	const scaleX = Math.hypot(a, b);
 	const determinant = a * d - b * c;
 	const scaleY = scaleX === 0 ? Math.hypot(c, d) : determinant / scaleX;
-	const rotation = scaleX === 0 ? 0 : (Math.atan2(b, a) * 180) / Math.PI;
+	const rotation = scaleX === 0 ? 0 : normalizeRotation((Math.atan2(b, a) * 180) / Math.PI);
 	const skewX = scaleX === 0 ? 0 : (Math.atan2(a * c + b * d, scaleX * scaleX) * 180) / Math.PI;
 	const transform: Transform = {
 		translation: rotateOrigin ? { x: 0, y: 0 } : { x: e, y: f },
 		rotation,
-		scale: { x: scaleX, y: scaleY },
+		scale: { x: scaleX === 0 ? 1 : scaleX, y: scaleY === 0 ? 1 : scaleY },
 		skew: { x: skewX, y: 0 },
 		origin: rotateOrigin ?? { x: 0, y: 0 }
 	};
-	transform.raw = { value, signature: transformSignature(transform) };
+	if (scaleX !== 0 && scaleY !== 0)
+		transform.raw = { value, signature: transformSignature(transform) };
 	return transform;
 };
 

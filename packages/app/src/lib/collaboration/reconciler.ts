@@ -439,9 +439,14 @@ export function createProjectReconciler({
 
 	async function run(): Promise<void> {
 		try {
-			await withProjectLock(initialConfig.rootUrl, async () => {
+			await withProjectLock(initialConfig.historyUrl ?? initialConfig.rootUrl, async () => {
 				const latest = await readProjectConfig(fs);
-				if (!latest || latest.rootUrl !== initialConfig.rootUrl) {
+				if (
+					!latest ||
+					latest.rootUrl !== initialConfig.rootUrl ||
+					latest.historyUrl !== initialConfig.historyUrl ||
+					latest.branchId !== initialConfig.branchId
+				) {
 					throw new Error('Automerge project configuration changed while the project was open.');
 				}
 				config = latest;
