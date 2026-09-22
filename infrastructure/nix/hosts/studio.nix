@@ -12,6 +12,7 @@
   studioDomain,
   studioPackage,
   studioPort,
+  syncServerPort,
   ...
 }: let
   databaseName = "app";
@@ -172,6 +173,15 @@ in {
         ${caddySiteAddress}.extraConfig = ''
           encode zstd gzip
 
+          handle /app/sync {
+            forward_auth 127.0.0.1:${toString appPort} {
+              uri /app/api/sync-auth
+              header_up Connection ""
+              header_up Upgrade ""
+            }
+            reverse_proxy 127.0.0.1:${toString syncServerPort}
+          }
+
           handle /app* {
             reverse_proxy 127.0.0.1:${toString appPort}
           }
@@ -267,6 +277,20 @@ in {
     };
     extraServiceConfig = {
       ExecStart = "${studioPackage}/packages/game-server/node_modules/.bin/tsx src/index.ts";
+    };
+  };
+
+  systemd.services.sync-server = mkNodeService {
+    description = "Digitable Automerge Sync Server";
+    port = syncServerPort;
+    workingDirectory = "${studioPackage}/packages/sync-server";
+    extraEnvironment = {
+      AUTOMERGE_DATA_DIR = "/var/lib/automerge-sync";
+      AUTOMERGE_SYNC_ORIGIN = studioOrigin;
+    };
+    extraServiceConfig = {
+      ExecStart = "${pkgs.nodejs}/bin/node build/src/index.js";
+      StateDirectory = "automerge-sync";
     };
   };
 

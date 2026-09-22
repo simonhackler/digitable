@@ -6,6 +6,7 @@ export const AUTOMERGE_DIR = '.automerge';
 export const AUTOMERGE_STORAGE_DIR = '.automerge/storage';
 export const PROJECT_CONFIG_FILE = '.automerge/config.json';
 export const PENDING_BOOTSTRAP_FILE = '.automerge/pending-bootstrap.json';
+export const PENDING_JOIN_FILE = '.automerge/pending-join.json';
 export const PENDING_BRANCH_OPERATION_FILE = '.automerge/pending-branch-operation.json';
 const PENDING_MATERIALIZATION_DIR = '.automerge/pending-materialization';
 
@@ -40,6 +41,12 @@ export type PendingMaterialization = {
 export type PendingBootstrap = {
 	version: 1;
 	sources: Record<string, string>;
+	config?: ProjectConfig;
+};
+
+export type PendingJoin = {
+	version: 1;
+	historyUrl: AutomergeUrl;
 	config?: ProjectConfig;
 };
 
@@ -79,6 +86,32 @@ export function writePendingBootstrap(fs: FsDir, pending: PendingBootstrap): Pro
 
 export function removePendingBootstrap(fs: FsDir): Promise<void> {
 	return removeFile(fs, PENDING_BOOTSTRAP_FILE);
+}
+
+export async function readPendingJoin(fs: FsDir): Promise<PendingJoin | undefined> {
+	const source = await readText(fs, PENDING_JOIN_FILE);
+	if (source === undefined) return undefined;
+	const value = parseJson(source, PENDING_JOIN_FILE);
+	if (!isObject(value) || value.version !== 1 || !isValidAutomergeUrl(value.historyUrl)) {
+		throw new Error(`${PENDING_JOIN_FILE} has an unsupported format.`);
+	}
+	const config = value.config === undefined ? undefined : validateConfig(value.config);
+	if (config && config.historyUrl !== value.historyUrl) {
+		throw new Error(`${PENDING_JOIN_FILE} does not match its project configuration.`);
+	}
+	return {
+		version: 1,
+		historyUrl: value.historyUrl,
+		config
+	};
+}
+
+export function writePendingJoin(fs: FsDir, pending: PendingJoin): Promise<void> {
+	return writeJson(fs, PENDING_JOIN_FILE, pending);
+}
+
+export function removePendingJoin(fs: FsDir): Promise<void> {
+	return removeFile(fs, PENDING_JOIN_FILE);
 }
 
 export async function readPendingBranchOperation(

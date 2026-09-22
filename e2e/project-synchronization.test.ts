@@ -1,15 +1,217 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type BrowserContext } from '@playwright/test';
 import {
 	openOpfsSeedPage,
 	readOpfsBytes,
 	readOpfsText,
 	saveOpfsStoragePreference,
 	migrateProjectsIfPrompted,
+	useBrowserStorage,
 	writeBufferToOPFS,
 	writeOpfsText
 } from './helpers/opfs';
 
 test.setTimeout(60_000);
+
+async function createAuthenticatedContext(
+	browser: import('@playwright/test').Browser,
+	baseURL: string
+) {
+	const context = await browser.newContext({ baseURL });
+	const page = await context.newPage();
+	const email = `automerge-sync-${Date.now()}@example.com`;
+	const signUp = await page.request.post('/app/api/auth/sign-up/email', {
+		data: {
+			name: 'Automerge Sync E2E',
+			email,
+			password: 'correct-horse-battery-staple'
+		}
+	});
+	expect(signUp.ok()).toBe(true);
+
+	const accepted = await page.request.post('/app/api/legal/accept-current');
+	expect(accepted.ok()).toBe(true);
+	await page.close();
+	return context;
+}
+
+async function closeContexts(contexts: BrowserContext[]) {
+	await Promise.all(contexts.map((context) => context.close()));
+}
+
+async function expectSyncSocket(page: import('@playwright/test').Page) {
+	const connected = await page.evaluate(
+		() =>
+			new Promise<boolean>((resolve) => {
+				const url = new URL('/app/sync', window.location.href);
+				url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+				const socket = new WebSocket(url);
+				socket.addEventListener(
+					'open',
+					() => {
+						socket.close();
+						resolve(true);
+					},
+					{ once: true }
+				);
+				socket.addEventListener('error', () => resolve(false), { once: true });
+			})
+	);
+	expect(connected).toBe(true);
+}
+
+test('syncs an authenticated project between isolated browser contexts', async ({
+	browser
+}, testInfo) => {
+	const baseURL = testInfo.project.use.baseURL as string;
+	const first = await createAuthenticatedContext(browser, baseURL);
+	const contexts = [first];
+	try {
+		const firstPage = await first.newPage();
+		const project = `automerge-websocket-${Date.now()}`;
+		await openOpfsSeedPage(firstPage);
+		await writeOpfsText(
+			firstPage,
+			`/${project}/game.json`,
+			`${JSON.stringify({
+				name: 'Automerge WebSocket',
+				minPlayers: 1,
+				maxPlayers: 4,
+				description: 'Initial description',
+				tags: []
+			})}\n`
+		);
+		await saveOpfsStoragePreference(firstPage);
+		await firstPage.goto('/app/games');
+		await useBrowserStorage(firstPage);
+		await expectSyncSocket(firstPage);
+		await firstPage.goto(`/app/games/${project}`);
+		await expect(firstPage.getByText('Edit Board Game')).toBeVisible();
+		const config = await readOpfsText(firstPage, `/${project}/.automerge/config.json`);
+		await firstPage.waitForTimeout(1_000);
+
+		const second = await browser.newContext({
+			baseURL,
+			storageState: await first.storageState()
+		});
+		contexts.push(second);
+		const secondPage = await second.newPage();
+		await openOpfsSeedPage(secondPage);
+		await writeOpfsText(
+			secondPage,
+			`/${project}/game.json`,
+			`${JSON.stringify({
+				name: 'Automerge WebSocket',
+				minPlayers: 1,
+				maxPlayers: 4,
+				description: 'Initial description',
+				tags: []
+			})}\n`
+		);
+		await writeOpfsText(secondPage, `/${project}/.automerge/config.json`, config);
+		await saveOpfsStoragePreference(secondPage);
+		await secondPage.goto('/app/games');
+		await useBrowserStorage(secondPage);
+		await expectSyncSocket(secondPage);
+		await secondPage.goto(`/app/games/${project}`);
+		await expect(secondPage.getByText('Edit Board Game')).toBeVisible();
+
+		const description = 'Synchronized through the authenticated WebSocket server.';
+		await firstPage.getByLabel('Game Description').fill(description);
+		await firstPage.getByRole('main').getByRole('button', { name: 'Update', exact: true }).click();
+		await expect
+			.poll(() => readOpfsText(secondPage, `/${project}/game.json`))
+			.toContain(description);
+	} finally {
+		await closeContexts(contexts);
+	}
+});
+
+test('shares and joins a project between different signed-in users', async ({
+	browser
+}, testInfo) => {
+	const baseURL = testInfo.project.use.baseURL as string;
+	const owner = await createAuthenticatedContext(browser, baseURL);
+	const collaborator = await createAuthenticatedContext(browser, baseURL);
+	const contexts = [owner, collaborator];
+	try {
+		const ownerPage = await owner.newPage();
+		const project = `shared-project-${Date.now()}`;
+		await openOpfsSeedPage(ownerPage);
+		await writeOpfsText(
+			ownerPage,
+			`/${project}/game.json`,
+			`${JSON.stringify({
+				name: 'Shared Automerge Project',
+				minPlayers: 1,
+				maxPlayers: 4,
+				description: 'Created by the owner',
+				tags: ['shared']
+			})}\n`
+		);
+		await saveOpfsStoragePreference(ownerPage);
+		await ownerPage.goto('/app/games');
+		await useBrowserStorage(ownerPage);
+		await ownerPage.goto(`/app/games/${project}`);
+		await expect(ownerPage.getByText('Edit Board Game')).toBeVisible();
+
+		await ownerPage.getByRole('button', { name: 'Share project' }).click();
+		const invitation = await ownerPage.getByLabel('Project sharing link').inputValue();
+		expect(invitation).toContain('/app/games/join#automerge:');
+
+		const collaboratorPage = await collaborator.newPage();
+		await collaboratorPage.goto(invitation);
+		await collaboratorPage
+			.getByRole('button', { name: 'Use Browser', exact: true })
+			.first()
+			.click();
+		await collaboratorPage.getByRole('button', { name: 'Use Browser storage' }).click();
+		await expect(
+			collaboratorPage.getByRole('heading', { name: 'Join Project' }).last()
+		).toBeVisible();
+		await collaboratorPage.getByLabel('Project folder name').fill('joined-shared-project');
+		await collaboratorPage.getByRole('button', { name: 'Join project' }).click();
+
+		await expect(collaboratorPage).toHaveURL(/\/app\/games\/joined-shared-project$/);
+		await expect(collaboratorPage.getByText('Edit Board Game')).toBeVisible();
+		await expect(collaboratorPage.getByLabel('Game Description')).toHaveValue(
+			'Created by the owner'
+		);
+
+		const description = 'Edited by the collaborator through the shared project.';
+		await collaboratorPage.getByLabel('Game Description').fill(description);
+		await collaboratorPage
+			.getByRole('main')
+			.getByRole('button', { name: 'Update', exact: true })
+			.click();
+		await expect(ownerPage.getByLabel('Game Description')).toHaveValue(description);
+		await expect
+			.poll(() => readOpfsText(ownerPage, `/${project}/game.json`))
+			.toContain(description);
+	} finally {
+		await closeContexts(contexts);
+	}
+});
+
+test('rejects an unauthenticated sync WebSocket upgrade', async ({ browser }, testInfo) => {
+	const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL as string });
+	try {
+		const page = await context.newPage();
+		await page.goto('/app/sign-in');
+		const rejected = await page.evaluate(
+			() =>
+				new Promise<boolean>((resolve) => {
+					const url = new URL('/app/sync', window.location.href);
+					url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+					const socket = new WebSocket(url);
+					socket.addEventListener('open', () => resolve(false), { once: true });
+					socket.addEventListener('error', () => resolve(true), { once: true });
+				})
+		);
+		expect(rejected).toBe(true);
+	} finally {
+		await context.close();
+	}
+});
 
 test('bootstraps every recognized project file into Automerge', async ({ page }) => {
 	const project = 'automerge-all-files';

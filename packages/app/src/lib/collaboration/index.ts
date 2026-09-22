@@ -16,6 +16,7 @@ export * from './project-presence-state.svelte';
 export * from './presence-page';
 export * from './presence-surfaces';
 export * from './project-session';
+export * from './project-sharing';
 export * from './project-svg-interactions';
 export * from './reconciler';
 export * from './storage-adapter';

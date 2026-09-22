@@ -47,6 +47,7 @@
     studioPort = 3000;
     appPort = 3001;
     gameServerPort = 3002;
+    syncServerPort = 3003;
     gameServerPublicPort = 2567;
 
     workspacePackageDirs = [
@@ -54,6 +55,7 @@
       "packages/auth"
       "packages/db"
       "packages/game-server"
+      "packages/sync-server"
       "packages/svgeditor"
       "packages/studio"
       "svgedit"
@@ -111,6 +113,7 @@
         "packages/auth/package.json"
         "packages/db/package.json"
         "packages/game-server/package.json"
+        "packages/sync-server/package.json"
         "packages/studio/package.json"
         "packages/svgeditor/package.json"
         "svgedit/bun.lock"
@@ -148,6 +151,17 @@
       dirs = [
         "packages/db"
         "packages/game-server"
+      ];
+      files = [
+        "package.json"
+        "tsconfig.json"
+      ];
+    };
+
+    syncServerSource = mkSource {
+      name = "digitable-sync-server-source";
+      dirs = [
+        "packages/sync-server"
       ];
       files = [
         "package.json"
@@ -219,7 +233,7 @@
         (cd svgedit && bun install --frozen-lockfile --ignore-scripts)
         rm -f node_modules/studio node_modules/boardgame-server
         rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
-        rm -f node_modules/@svg-table/svgeditor
+        rm -f node_modules/@svg-table/svgeditor node_modules/@svg-table/sync-server
         rm -f node_modules/@svgedit/svgcanvas
         find node_modules -xtype l -delete
 
@@ -268,6 +282,7 @@
           "packages/auth/package.json",
           "packages/db/package.json",
           "packages/game-server/package.json",
+          "packages/sync-server/package.json",
           "packages/studio/package.json",
           "packages/svgeditor/package.json",
           "svgedit/packages/svgcanvas/package.json",
@@ -283,7 +298,7 @@
         bun install --ignore-scripts --cpu=x64 --os=linux --no-save
         rm -f node_modules/studio node_modules/boardgame-server
         rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
-        rm -f node_modules/@svg-table/svgeditor
+        rm -f node_modules/@svg-table/svgeditor node_modules/@svg-table/sync-server
         rm -f node_modules/@svgedit/svgcanvas
         find node_modules -xtype l -delete
 
@@ -316,7 +331,7 @@
       ${lib.optionalString linkRootWorkspaces ''
         rm -f node_modules/studio node_modules/boardgame-server
         rm -f node_modules/@svg-table/app node_modules/@svg-table/auth node_modules/@svg-table/db
-        rm -f node_modules/@svg-table/svgeditor
+        rm -f node_modules/@svg-table/svgeditor node_modules/@svg-table/sync-server
         rm -f node_modules/@svgedit/svgcanvas
         ln -s ../packages/studio node_modules/studio
         ln -s ../packages/game-server node_modules/boardgame-server
@@ -325,6 +340,7 @@
         ln -s ../../packages/auth node_modules/@svg-table/auth
         ln -s ../../packages/db node_modules/@svg-table/db
         ln -s ../../packages/svgeditor node_modules/@svg-table/svgeditor
+        ln -s ../../packages/sync-server node_modules/@svg-table/sync-server
         mkdir -p node_modules/@svgedit
         ln -s ../../svgedit/packages/svgcanvas node_modules/@svgedit/svgcanvas
       ''}
@@ -417,6 +433,47 @@
         cp packages/game-server/tsconfig.json $out/packages/game-server/tsconfig.json
         cp -r packages/game-server/src $out/packages/game-server/src
         cp -r packages/game-server/build $out/packages/game-server/build
+
+        runHook postInstall
+      '';
+    };
+
+    syncServerPackage = pkgs.stdenv.mkDerivation {
+      pname = "digitable-sync-server";
+      version = "0.0.1";
+      src = syncServerSource;
+
+      nativeBuildInputs = [
+        pkgs.nodejs
+      ];
+
+      dontConfigure = true;
+
+      buildPhase = ''
+        runHook preBuild
+
+        export HOME="$TMPDIR"
+        export XDG_CACHE_HOME="$TMPDIR/.cache"
+        export CI=1
+
+        ${setupNodeModules {
+        packageNodeModuleDirs = [
+          "packages/sync-server"
+        ];
+      }}
+
+        (cd packages/sync-server && ./node_modules/.bin/tsc)
+
+        runHook postBuild
+      '';
+
+      installPhase = ''
+        runHook preInstall
+
+        mkdir -p $out/packages/sync-server
+        cp packages/sync-server/package.json $out/packages/sync-server/package.json
+        cp packages/sync-server/tsconfig.json $out/packages/sync-server/tsconfig.json
+        cp -r packages/sync-server/build $out/packages/sync-server/build
 
         runHook postInstall
       '';
@@ -540,6 +597,7 @@
         mkdir -p $out/packages/studio
         mkdir -p $out/packages/app
         mkdir -p $out/packages/game-server
+        mkdir -p $out/packages/sync-server
 
         cp ${studioWebPackage}/packages/studio/package.json $out/packages/studio/package.json
         cp -r ${studioWebPackage}/packages/studio/build $out/packages/studio/build
@@ -551,6 +609,9 @@
         cp ${gameServerPackage}/packages/game-server/tsconfig.json $out/packages/game-server/tsconfig.json
         cp -r ${gameServerPackage}/packages/game-server/src $out/packages/game-server/src
         cp -r ${gameServerPackage}/packages/game-server/build $out/packages/game-server/build
+        cp ${syncServerPackage}/packages/sync-server/package.json $out/packages/sync-server/package.json
+        cp ${syncServerPackage}/packages/sync-server/tsconfig.json $out/packages/sync-server/tsconfig.json
+        cp -r ${syncServerPackage}/packages/sync-server/build $out/packages/sync-server/build
         cp -r packages/svgeditor $out/packages/svgeditor
         mkdir -p $out/svgedit/packages
         cp svgedit/package.json $out/svgedit/package.json
@@ -561,7 +622,7 @@
         find $out/node_modules -type d -exec chmod u+w {} +
         rm -f $out/node_modules/studio $out/node_modules/boardgame-server
         rm -f $out/node_modules/@svg-table/app $out/node_modules/@svg-table/auth $out/node_modules/@svg-table/db
-        rm -f $out/node_modules/@svg-table/svgeditor
+        rm -f $out/node_modules/@svg-table/svgeditor $out/node_modules/@svg-table/sync-server
         rm -f $out/node_modules/@svgedit/svgcanvas
         ln -s ../packages/studio $out/node_modules/studio
         ln -s ../packages/game-server $out/node_modules/boardgame-server
@@ -570,6 +631,7 @@
         ln -s ../../packages/auth $out/node_modules/@svg-table/auth
         ln -s ../../packages/db $out/node_modules/@svg-table/db
         ln -s ../../packages/svgeditor $out/node_modules/@svg-table/svgeditor
+        ln -s ../../packages/sync-server $out/node_modules/@svg-table/sync-server
         mkdir -p $out/node_modules/@svgedit
         ln -s ../../svgedit/packages/svgcanvas $out/node_modules/@svgedit/svgcanvas
 
@@ -609,6 +671,7 @@
             studioDomain
             studioPackage
             studioPort
+            syncServerPort
             ;
         };
         modules =

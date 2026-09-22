@@ -1,0 +1,26 @@
+{
+	"name": "@svg-table/sync-server",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=22.13"
+	},
+	"scripts": {
+		"start": "tsx watch src/index.ts",
+		"build": "tsc",
+		"check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@automerge/automerge-repo": "^2.6.0-alpha.3",
+		"@automerge/automerge-repo-network-websocket": "^2.6.0-alpha.3",
+		"@automerge/automerge-repo-storage-nodefs": "^2.6.0-alpha.3",
+		"tsx": "^4.21.0",
+		"ws": "^8.21.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.12.2",
+		"@types/ws": "^8.18.1",
+		"typescript": "^5.9.3"
+	}
+}

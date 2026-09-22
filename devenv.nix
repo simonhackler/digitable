@@ -12,6 +12,7 @@
   appPort = config.processes.app.ports.http.value;
   studioPort = config.processes.studio.ports.http.value;
   serverPort = config.processes.game-server.ports.http.value;
+  syncServerPort = config.processes.sync-server.ports.http.value;
   postgresPort = config.processes.postgres.ports.main.value;
   databaseUrl = "postgres://${dbUser}:${dbPass}@127.0.0.1:${toString postgresPort}/${dbName}";
   minioApiPort = config.processes.minio.ports.console.value;
@@ -49,6 +50,15 @@
 
     http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
       encode zstd gzip
+
+      handle /app/sync {
+        forward_auth 127.0.0.1:${toString appPort} {
+          uri /app/api/sync-auth
+          header_up Connection ""
+          header_up Upgrade ""
+        }
+        reverse_proxy 127.0.0.1:${toString syncServerPort}
+      }
 
       handle /app* {
         reverse_proxy 127.0.0.1:${toString appPort}
@@ -280,6 +290,17 @@ in {
       env.PORT = toString serverPort;
     };
 
+    sync-server = {
+      ports.http.allocate = 3030;
+      exec = ''
+        mkdir -p .devenv/state/automerge-sync
+        exec bun run --filter=@svg-table/sync-server start
+      '';
+      env.PORT = toString syncServerPort;
+      env.AUTOMERGE_DATA_DIR = "${worktreePath}/.devenv/state/automerge-sync";
+      env.AUTOMERGE_SYNC_ORIGIN = studioOrigin;
+    };
+
     proxy = {
       ports.http.allocate = 5180;
       exec = ''
@@ -294,6 +315,7 @@ in {
       after = [
         "devenv:processes:studio@started"
         "devenv:processes:app@started"
+        "devenv:processes:sync-server@started"
       ];
     };
   };

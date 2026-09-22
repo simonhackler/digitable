@@ -1,0 +1,12 @@
+{
+	"compilerOptions": {
+		"outDir": "build",
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"skipLibCheck": true,
+		"composite": true
+	},
+	"include": ["src"]
+}

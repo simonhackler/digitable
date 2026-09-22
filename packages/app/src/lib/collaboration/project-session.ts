@@ -34,11 +34,14 @@ import {
 	PENDING_BOOTSTRAP_FILE,
 	readPendingBranchOperation,
 	readPendingBootstrap,
+	readPendingJoin,
 	readProjectConfig,
 	removePendingBootstrap,
 	removePendingBranchOperation,
+	removePendingJoin,
 	writePendingBranchOperation,
 	writePendingBootstrap,
+	writePendingJoin,
 	writeProjectConfig,
 	type ProjectConfig
 } from './project-config';
@@ -156,6 +159,7 @@ export type ProjectSession = {
 
 export type OpenProjectSessionOptions = {
 	network?: NetworkAdapterInterface[];
+	joinHistoryUrl?: AutomergeUrl;
 	onStatus?: (status: ReconciliationStatus) => void;
 	pollIntervalMs?: number;
 	saveDebounceMs?: number;
@@ -185,7 +189,7 @@ export async function openProjectSession(
 			repo = projectRepo;
 
 			const restored = await withProjectLock(`bootstrap:${project.name}`, () =>
-				restoreOrCreateProject(project, projectRepo, hadStoredData)
+				restoreOrCreateProject(project, projectRepo, hadStoredData, options.joinHistoryUrl)
 			);
 			if (!restored.historyUrl || !restored.branchId) {
 				throw new Error('The Automerge project history configuration is unavailable.');
@@ -927,16 +931,36 @@ function createHistoricalProjectSession({
 async function restoreOrCreateProject(
 	project: FsDir,
 	repo: Repo,
-	hadStoredData: boolean
+	hadStoredData: boolean,
+	joinHistoryUrl?: AutomergeUrl
 ): Promise<ProjectConfig> {
 	const existing = await readProjectConfig(project);
 	const pending = await readPendingBootstrap(project);
+	const pendingJoin = await readPendingJoin(project);
 	if (existing) {
+		if (joinHistoryUrl && existing.historyUrl !== joinHistoryUrl) {
+			throw new Error('The selected folder already belongs to a different Automerge project.');
+		}
 		if (pending?.config?.rootUrl === existing.rootUrl) await removePendingBootstrap(project);
+		if (pendingJoin?.historyUrl === existing.historyUrl) await removePendingJoin(project);
 		if (existing.version === 3) return existing;
 		const upgraded =
 			existing.version === 2 ? existing : await upgradeProject(project, repo, existing);
 		return addProjectHistory(project, repo, upgraded);
+	}
+	if (pendingJoin?.config) {
+		if (joinHistoryUrl && pendingJoin.historyUrl !== joinHistoryUrl) {
+			throw new Error('The selected folder has an unfinished join for a different project.');
+		}
+		await writeProjectConfig(project, pendingJoin.config);
+		await removePendingJoin(project);
+		return pendingJoin.config;
+	}
+	const sharedHistoryUrl = joinHistoryUrl ?? pendingJoin?.historyUrl;
+	if (sharedHistoryUrl) {
+		if (pending)
+			throw new Error('The selected folder contains an unfinished local project bootstrap.');
+		return joinSharedProject(project, repo, sharedHistoryUrl, pendingJoin);
 	}
 	if (pending?.config) {
 		await writeProjectConfig(project, pending.config);
@@ -977,6 +1001,77 @@ async function restoreOrCreateProject(
 	await writePendingBootstrap(project, { version: 1, sources: sourceHashes, config });
 	await writeProjectConfig(project, config);
 	await removePendingBootstrap(project);
+	return config;
+}
+
+async function joinSharedProject(
+	project: FsDir,
+	repo: Repo,
+	historyUrl: AutomergeUrl,
+	pending: Awaited<ReturnType<typeof readPendingJoin>>
+): Promise<ProjectConfig> {
+	if (pending && pending.historyUrl !== historyUrl) {
+		throw new Error('The selected folder has an unfinished join for a different project.');
+	}
+	if (!pending) await writePendingJoin(project, { version: 1, historyUrl });
+
+	const controller = new AbortController();
+	const timeout = setTimeout(
+		() =>
+			controller.abort(
+				new Error('Could not find the shared project. Ask the owner to keep it open and try again.')
+			),
+		15_000
+	);
+	const historyHandle = await repo
+		.find<ProjectHistoryDocument>(historyUrl, { signal: controller.signal })
+		.finally(() => clearTimeout(timeout));
+	if (!isProjectHistoryDocument(historyHandle.doc())) {
+		throw new Error('The invitation does not point to a Digitable project history.');
+	}
+
+	let branchId: ProjectBranchId;
+	let graph: ProjectGraph;
+	while (true) {
+		const currentBranchId = historyHandle.doc()?.checkedOutBranchId;
+		if (!currentBranchId) throw new Error('The shared project has no checked-out branch.');
+		const resolved = await resolveBranchGraph(repo, historyHandle, currentBranchId);
+		if (historyHandle.doc()?.checkedOutBranchId !== currentBranchId) continue;
+		branchId = resolved.branchId;
+		graph = resolved.graph;
+		break;
+	}
+
+	await repo.flush([
+		historyHandle.documentId,
+		graph.projectHandle.documentId,
+		...Array.from(graph.memberHandles.values(), (handle) => handle.documentId)
+	]);
+	const config: ProjectConfig = {
+		version: 3,
+		historyUrl,
+		branchId,
+		rootUrl: graph.projectHandle.url,
+		rootHeads: graph.projectHandle.heads(),
+		projections: Object.fromEntries(
+			Object.entries(graph.project.members).map(([memberId, member]) => {
+				const handle = memberHandle(graph, memberId);
+				return [
+					memberId,
+					{
+						path: member.path,
+						url: member.url,
+						heads: handle.heads(),
+						hash: null,
+						materializeOnly: true
+					}
+				];
+			})
+		)
+	};
+	await writePendingJoin(project, { version: 1, historyUrl, config });
+	await writeProjectConfig(project, config);
+	await removePendingJoin(project);
 	return config;
 }
 

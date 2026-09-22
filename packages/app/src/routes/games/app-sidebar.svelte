@@ -16,6 +16,7 @@
 	import { UserRound } from '@lucide/svelte';
 	import type { ProjectSession, RemotePresenceState } from '$lib/collaboration';
 	import ProjectBranches from './project-branches.svelte';
+	import ShareProjectPopover from './share-project-popover.svelte';
 
 	let {
 		games,
@@ -71,6 +72,11 @@
 		{#if projectSession}
 			{#key projectSession.rootUrl}
 				<ProjectBranches session={projectSession} />
+				{#if user}
+					<div class="px-2 pb-2">
+						<ShareProjectPopover session={projectSession} />
+					</div>
+				{/if}
 			{/key}
 		{/if}
 	</Sidebar.Header>

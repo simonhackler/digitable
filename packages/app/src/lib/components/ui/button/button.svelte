@@ -50,8 +50,8 @@
 </script>
 
 <script lang="ts">
-	import type { Pathname } from '$app/types';
 	import { resolve } from '$app/paths';
+	const resolvePath = resolve as unknown as (path: string) => string;
 
 	let {
 		class: className,
@@ -84,7 +84,7 @@
 			bind:this={ref}
 			data-slot="button"
 			class={cn(buttonVariants({ variant, size }), className)}
-			href={resolve(href as Pathname)}
+			href={resolvePath(href)}
 			aria-disabled={undefined}
 			role={undefined}
 			tabindex={undefined}

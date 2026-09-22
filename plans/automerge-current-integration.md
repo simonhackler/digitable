@@ -23,7 +23,7 @@ The project scanner deliberately ignores unknown paths. It also excludes:
 
 Generated images below `assets/generated/**` are synchronized because project data can reference them as authoring inputs.
 
-Synchronization currently connects same-origin browser tabs through `BroadcastChannel`. There is no cross-device sync service yet.
+Synchronization connects same-origin browser tabs through `BroadcastChannel` and signed-in browsers through the authenticated `/app/sync` WebSocket service.
 
 ## Project Graph
 
@@ -192,6 +192,16 @@ Coordination uses:
 
 Local save status distinguishes synchronization work from idle state. It does not imply acknowledgement from another device.
 
+## Project Sharing
+
+The project-history Automerge URL is the stable sharing identity. Share links use `/app/games/join#automerge:<document-id>` so the capability remains in the browser fragment rather than ordinary HTTP requests and access logs.
+
+Sharing uses signed-in bearer capabilities. The reverse proxy authenticates the WebSocket connection, the sync server does not announce stored documents, and any signed-in user who knows a document URL can request it. Links grant edit access to the complete project history and can be forwarded; there are no project roles, membership records, expiry, or revocation yet.
+
+Joining creates `.automerge/pending-join.json` before loading remote data. The client resolves and validates the history document, checked-out branch, root, and linked member documents, flushes them into project-local Repo storage, then writes a version-3 config whose projections are marked materialization-only. The normal reconciler creates every recognized project file without importing absent or stale destination bytes as edits. Failed joins remain resumable for the same history URL.
+
+The active branch is loaded eagerly. Other branches and checkpoints remain available through the shared history document and are fetched when opened. A workspace scan prevents joining the same history URL into a second local folder.
+
 ## Ephemeral Presence
 
 Each open project session attaches one application-owned presence service to the stable root document handle. Presence uses Automerge Repo's `DocHandle.broadcast()` and `ephemeral-message` event; cursor state is never written to an Automerge document or the filesystem.
@@ -302,7 +312,9 @@ Existing regressions cover:
 
 ## Current Boundaries
 
-- Synchronization is same-browser only.
+- Sharing links are bearer capabilities with edit access and cannot be individually revoked.
+- The sync service does not expose remote acknowledgement, quota management, garbage collection, or end-to-end encryption.
+- Joined projects are materialized independently in each browser workspace; there is no account-level cloud project list.
 - Presence regions follow receiver DOM geometry but do not yet expose semantic ProseMirror, spreadsheet-cell, or SVG user-space positions.
 - Setup table collaboration remains text-based rather than semantic.
 - Remote semantic SVG changes currently install a complete sanitized SVG projection. Incremental keyed DOM reconciliation and undo rebasing remain future work.
@@ -322,7 +334,7 @@ Existing regressions cover:
 3. Bind the mounted spreadsheet editor directly to component data documents.
 4. Add keyed SVG DOM reconciliation and rebase local undo history across compatible remote edits.
 5. Add remote SVG selection rendering and text-frame resize previews.
-6. Add authenticated cross-device Automerge networking.
+6. Add account-backed project membership, roles, and capability revocation if bearer links are no longer sufficient.
 7. Add a workspace project registry and project deletion tombstones.
 8. Add binary deduplication and retention policy if repository growth requires it.
 9. Add semantic presence adapters for ProseMirror cursors and spreadsheet cells where DOM regions are not precise enough.

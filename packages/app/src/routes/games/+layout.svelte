@@ -29,6 +29,7 @@
 	import { page } from '$app/state';
 	import {
 		createPresenceSurfaceRegistry,
+		createProjectNetwork,
 		createDocumentState,
 		createCheckpointWorkspace,
 		createProjectPresenceState,
@@ -138,6 +139,7 @@
 
 		let openingError: string | null = null;
 		const opened = await openProjectSession(projectDir.data, {
+			network: createProjectNetwork(window.location.href, Boolean(page.data.user)),
 			saveDebounceMs: 0,
 			checkpointId: activeCheckpointId,
 			onBranchCheckout: () => {
@@ -146,6 +148,8 @@
 				target.searchParams.delete('checkpoint');
 				target.searchParams.delete('baseline');
 				void (async () => {
+					// The target preserves the current base path and is already a full URL.
+					// eslint-disable-next-line svelte/no-navigation-without-resolve
 					if (target.href !== page.url.href) await goto(target, { replaceState: true });
 					await openActiveProject(fileSystem, gameName, true);
 				})();
