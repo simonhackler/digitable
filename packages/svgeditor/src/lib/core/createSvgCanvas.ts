@@ -6,7 +6,6 @@ import type {
 	Bounds,
 	RemoteSvgInteraction,
 	SvgClaim,
-	SvgClaimDomain,
 	SvgCanvasConfig,
 	SvgCanvasRawApi,
 	SvgEditorApi,
@@ -15,6 +14,7 @@ import type {
 	SvgInteractionKind,
 	SvgInteractionPreview
 } from './types';
+import { svgInteractionClaimDomains, svgInteractionClaims } from './types';
 import { SVG_NODE_ID_ATTRIBUTE } from '../crdt/codec';
 import type { NodeId, Paint, Stroke } from '../crdt/model';
 
@@ -836,11 +836,6 @@ export const createSvgCanvas = ({
 			.flatMap((arg) => (Array.isArray(arg) ? arg : [arg]))
 			.filter((item): item is Element => item instanceof Element);
 
-	const claimDomains = (kind: SvgInteractionKind): SvgClaimDomain[] => {
-		if (kind === 'fill' || kind === 'stroke') return [kind];
-		if (kind === 'resize') return ['geometry', 'transform'];
-		return ['transform'];
-	};
 	const getNodeId = (element: Element) => {
 		const value = element.getAttribute(SVG_NODE_ID_ATTRIBUTE);
 		return value ? (value as NodeId) : null;
@@ -868,8 +863,6 @@ export const createSvgCanvas = ({
 			seen.add(next);
 		}
 	};
-	const claimsFor = (kind: SvgInteractionKind, nodeIds: NodeId[]): SvgClaim[] =>
-		nodeIds.flatMap((nodeId) => claimDomains(kind).map((domain) => ({ nodeId, domain })));
 	const parsePaint = (value: string | null): Paint => {
 		const normalized = value?.trim() ?? '';
 		if (!normalized || normalized === 'none') return { kind: 'none' };
@@ -934,7 +927,7 @@ export const createSvgCanvas = ({
 
 	let remoteInteractions = initialRemoteInteractions;
 	let blockedClaims = initialBlockedClaims;
-	type LocalInteraction = RemoteSvgInteraction & {
+	type LocalInteraction = Omit<RemoteSvgInteraction, 'claims'> & {
 		elements: Element[];
 		attribute?: 'fill' | 'stroke';
 		baselineAttributes?: (string | null)[];
@@ -956,7 +949,7 @@ export const createSvgCanvas = ({
 	const previewEntries = new Map<NodeId, PreviewEntry>();
 
 	const isBlocked = (kind: SvgInteractionKind, nodeIds: NodeId[]) => {
-		const domains = claimDomains(kind);
+		const domains = svgInteractionClaimDomains(kind);
 		return blockedClaims.some(
 			(claim) => domains.includes(claim.domain) && nodeIds.includes(claim.nodeId)
 		);
@@ -971,7 +964,7 @@ export const createSvgCanvas = ({
 			phase,
 			interactionId: interaction.interactionId,
 			nodeIds: [...interaction.nodeIds],
-			claims: interaction.claims.map((claim) => ({ ...claim })),
+			claims: svgInteractionClaims(preview.kind, interaction.nodeIds),
 			preview,
 			...(interaction.color ? { color: interaction.color } : {})
 		});
@@ -1277,7 +1270,6 @@ export const createSvgCanvas = ({
 			localInteraction = {
 				interactionId: createInteractionId(),
 				nodeIds,
-				claims: claimsFor(payload.kind, nodeIds),
 				preview,
 				elements
 			};
@@ -1787,7 +1779,6 @@ export const createSvgCanvas = ({
 		localInteraction = {
 			interactionId: createInteractionId(),
 			nodeIds,
-			claims: claimsFor(kind, nodeIds),
 			preview,
 			elements,
 			attribute,

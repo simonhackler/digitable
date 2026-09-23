@@ -93,34 +93,9 @@ async function resolveCheckpointRoot(
 	const checkpointIds = Object.keys(checkpoint.members);
 	if (
 		projectIds.length !== checkpointIds.length ||
-		projectIds.some((id) => {
-			const member = project.members[id];
-			const version = checkpoint.members[id];
-			return (
-				!version ||
-				member.kind !== version.kind ||
-				member.path !== version.path ||
-				member.url !== version.url ||
-				member.hash !== version.hash ||
-				member.componentId !== version.componentId
-			);
-		})
+		projectIds.some((id) => !checkpoint.members[id])
 	) {
 		throw new Error('The checkpoint member manifest does not match its project root.');
-	}
-	for (const [componentId, component] of Object.entries(project.components)) {
-		const references = [
-			[component.frontMemberId, 'component-svg'],
-			[component.backMemberId, 'component-svg'],
-			[component.dataMemberId, 'component-data']
-		] as const;
-		for (const [memberId, kind] of references) {
-			if (!memberId) continue;
-			const member = project.members[memberId];
-			if (!member || member.kind !== kind || member.componentId !== componentId) {
-				throw new Error(`Component ${component.name} has an inconsistent member manifest.`);
-			}
-		}
 	}
 	for (const member of Object.values(project.members)) {
 		if (member.componentId && !project.components[member.componentId]) {
@@ -141,14 +116,9 @@ function describeComponentStructure(
 	const renamed = previousIds.filter(
 		(id) => next.components[id] && previous.components[id].name !== next.components[id].name
 	);
-	const referencesChanged = previousIds.some((id) => {
-		const before = previous.components[id];
-		const after = next.components[id];
-		return after && !sameComponentReferences(before, after);
-	});
 	const operations = added.length + removed.length + renamed.length;
-	if (!operations && !referencesChanged) return undefined;
-	if (operations !== 1 || referencesChanged) return 'Updated project structure';
+	if (!operations) return undefined;
+	if (operations !== 1) return 'Updated project structure';
 	if (added.length === 1) return `Added deck ${quote(next.components[added[0]].name)}`;
 	if (removed.length === 1) return `Deleted deck ${quote(previous.components[removed[0]].name)}`;
 	const id = renamed[0];
@@ -207,12 +177,12 @@ async function describeMemberChange(
 	if (after.kind === 'asset') {
 		return description('Updated', `asset ${quote(filename(after.path))}`);
 	}
-	const component = componentForMember(previousProject, nextProject, change.id, after);
+	const component = componentForMember(previousProject, nextProject, after);
 	if (after.kind === 'component-data' && component) {
 		return description('Edited', `${quote(component.name)} spreadsheet`);
 	}
 	if (after.kind === 'component-svg' && component) {
-		const side = componentSide(previousProject, nextProject, change.id, after.path);
+		const side = classifyProjectFile(after.path)?.side;
 		if (side) return description('Edited', `${quote(component.name)} ${side} layout`);
 	}
 	return description('Edited', quote(after.path));
@@ -261,48 +231,12 @@ function describeMetadata(
 function componentForMember(
 	previous: ProjectDocument,
 	next: ProjectDocument,
-	memberId: string,
 	member: ProjectCheckpointMember
 ): ProjectComponent | undefined {
 	if (member.componentId) {
 		return next.components[member.componentId] ?? previous.components[member.componentId];
 	}
-	return (
-		Object.values(next.components).find((component) => referencesMember(component, memberId)) ??
-		Object.values(previous.components).find((component) => referencesMember(component, memberId))
-	);
-}
-
-function componentSide(
-	previous: ProjectDocument,
-	next: ProjectDocument,
-	memberId: string,
-	path: string
-): 'front' | 'back' | undefined {
-	for (const project of [next, previous]) {
-		const component = Object.values(project.components).find((value) =>
-			referencesMember(value, memberId)
-		);
-		if (component?.frontMemberId === memberId) return 'front';
-		if (component?.backMemberId === memberId) return 'back';
-	}
-	return classifyProjectFile(path)?.side;
-}
-
-function referencesMember(component: ProjectComponent, memberId: string): boolean {
-	return (
-		component.frontMemberId === memberId ||
-		component.backMemberId === memberId ||
-		component.dataMemberId === memberId
-	);
-}
-
-function sameComponentReferences(previous: ProjectComponent, next: ProjectComponent): boolean {
-	return (
-		previous.frontMemberId === next.frontMemberId &&
-		previous.backMemberId === next.backMemberId &&
-		previous.dataMemberId === next.dataMemberId
-	);
+	return undefined;
 }
 
 function description(verb: string, subject: string): MemberDescription {

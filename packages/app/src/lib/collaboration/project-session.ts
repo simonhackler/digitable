@@ -32,62 +32,42 @@ import {
 import {
 	AUTOMERGE_STORAGE_DIR,
 	PENDING_BOOTSTRAP_FILE,
-	readPendingBranchOperation,
 	readPendingBootstrap,
 	readPendingJoin,
 	readProjectConfig,
 	removePendingBootstrap,
-	removePendingBranchOperation,
 	removePendingJoin,
-	writePendingBranchOperation,
 	writePendingBootstrap,
 	writePendingJoin,
 	writeProjectConfig,
 	type ProjectConfig
 } from './project-config';
 import {
-	componentDataMember,
 	createProjectReconciler,
-	binaryMember,
-	importManagedTextMember,
-	markdownMember,
-	metadataMember,
-	svgMember,
-	textMember,
+	managedMember,
 	type ManagedMember,
 	type ReconciliationStatus
 } from './reconciler';
-import { decodeText, removeFile, snapshotFile, writeFile } from './filesystem';
+import { removeFile, snapshotFile, writeFile } from './filesystem';
 import { FsDirStorageAdapter } from './storage-adapter';
 import { withProjectLock } from './project-lock';
 import {
 	GAME_METADATA_MEMBER_ID,
-	isLegacyProjectDocument,
 	isMarkdownFileDocument,
-	isProjectDocument,
 	isProjectHistoryDocument,
-	isTextFileDocument,
-	type BinaryFileDocument,
-	type ComponentDataDocument,
 	type GameMetadataDocument,
-	type LegacyProjectDocument,
 	type MarkdownFileDocument,
 	type ProjectBranchId,
 	type ProjectCheckpointId,
-	type ProjectDocument,
 	type ProjectHistoryDocument,
-	type ProjectMemberDocument,
-	type TextFileDocument
+	type ProjectMemberDocument
 } from './model';
 import type { ProjectMergePlan, ProjectMergeResolution } from './project-merge';
-import { applyMarkdown } from './markdown/markdown-codec';
-import { svgFileMaterializer } from './svg-file';
 import {
 	classifyProjectFile,
 	projectComponentId,
 	projectMemberId,
 	scanProjectFiles,
-	type ProjectFileFingerprint,
 	type ProjectFileSource
 } from './project-files';
 import {
@@ -96,14 +76,10 @@ import {
 	createProjectHistory,
 	deleteProjectBranch,
 	forkProjectCheckpoint,
-	mergeProjectBranch,
 	prepareProjectMerge,
 	recordProjectCheckpoint,
 	renameProjectBranch,
-	resumeProjectMerge,
-	resolveBranchGraph,
-	upgradeProjectHistory,
-	type ProjectMergeProgress
+	resolveBranchGraph
 } from './project-history';
 
 const CollaborationError = defineErrors({
@@ -125,16 +101,6 @@ const CollaborationError = defineErrors({
 });
 export type CollaborationError = InferErrors<typeof CollaborationError>;
 
-async function reportProjectMergeProgress(progress: ProjectMergeProgress): Promise<void> {
-	if (!import.meta.env.DEV) return;
-	const hook = (
-		globalThis as typeof globalThis & {
-			__DIGITABLE_E2E_MERGE_PROGRESS__?: (progress: ProjectMergeProgress) => Promise<void>;
-		}
-	).__DIGITABLE_E2E_MERGE_PROGRESS__;
-	await hook?.(progress);
-}
-
 export type ProjectSession = {
 	name: string;
 	files: FsDir;
@@ -149,10 +115,8 @@ export type ProjectSession = {
 		componentName: string,
 		side: 'front' | 'back'
 	): DocHandle<SvgDocument> | undefined;
-	componentDataHandles: ReadonlyMap<string, DocHandle<ComponentDataDocument>>;
 	presence: ProjectPresence;
 	svgInteractions: ProjectSvgInteractions;
-	getConfig(): ProjectConfig;
 	getHistory(): ProjectHistoryDocument;
 	subscribeHistory(listener: (history: ProjectHistoryDocument) => void): () => void;
 	createCheckpoint(message?: string): Promise<Result<ProjectCheckpointId, CollaborationError>>;
@@ -211,39 +175,11 @@ export async function openProjectSession(
 			const restored = await withProjectLock(`bootstrap:${project.name}`, () =>
 				restoreOrCreateProject(project, projectRepo, hadStoredData, options.joinHistoryUrl)
 			);
-			if (!restored.historyUrl || !restored.branchId) {
-				throw new Error('The Automerge project history configuration is unavailable.');
-			}
 			const historyHandle = await projectRepo.find<ProjectHistoryDocument>(restored.historyUrl);
 			if (!isProjectHistoryDocument(historyHandle.doc())) {
 				throw new Error('The Automerge project history document is invalid.');
 			}
 			const lockId = restored.historyUrl;
-			await withProjectLock(lockId, async () => {
-				const pendingBranchOperation = await readPendingBranchOperation(project);
-				if (pendingBranchOperation?.version === 1) {
-					await mergeProjectBranch(
-						projectRepo,
-						historyHandle,
-						pendingBranchOperation.sourceBranchId,
-						pendingBranchOperation.targetBranchId,
-						(pending) => writePendingBranchOperation(project, pending),
-						reportProjectMergeProgress
-					);
-					await removePendingBranchOperation(project);
-				}
-				await upgradeProjectHistory(projectRepo, historyHandle);
-				if (pendingBranchOperation?.version === 2) {
-					await resumeProjectMerge(
-						projectRepo,
-						historyHandle,
-						pendingBranchOperation,
-						(pending) => writePendingBranchOperation(project, pending),
-						reportProjectMergeProgress
-					);
-					await removePendingBranchOperation(project);
-				}
-			});
 			const activeBranch = await resolveBranchGraph(projectRepo, historyHandle);
 			const branchId = activeBranch.branchId;
 			if (options.checkpointId) {
@@ -258,7 +194,6 @@ export async function openProjectSession(
 					historyHandle,
 					branchId,
 					graph: checkpointGraph,
-					config: restored,
 					options
 				});
 			}
@@ -286,19 +221,10 @@ export async function openProjectSession(
 					latestConfig?.branchId === branchId ? latestConfig : branchConfig
 				);
 				graph = ensured.graph;
-				const migrated = await migrateRulesDocument(project, projectRepo, graph, ensured.config);
-				graph = migrated.graph;
-				const migratedSvgs = await migrateSvgDocuments(
-					project,
-					projectRepo,
-					graph,
-					migrated.config
-				);
-				graph = migratedSvgs.graph;
 				const repaired = await repairProjectConfig(
 					project,
 					graph,
-					migratedSvgs.config?.branchId === branchId ? migratedSvgs.config : branchConfig
+					ensured.config.branchId === branchId ? ensured.config : branchConfig
 				);
 				return { graph, repaired };
 			});
@@ -365,7 +291,6 @@ export async function openProjectSession(
 				});
 				return checkpointPromise;
 			}
-			const fileCache = new Map<string, ProjectFileFingerprint>();
 			const members = managedMembers(graph, config);
 			const reconciler = createProjectReconciler({
 				fs: project,
@@ -392,7 +317,7 @@ export async function openProjectSession(
 				refreshPromise = (async () => {
 					do {
 						refreshAgain = false;
-						const scanned = await scanProjectFiles(project, fileCache);
+						const scanned = await scanProjectFiles(project);
 						const refreshed = await withProjectLock(lockId, async () => {
 							const latestConfig = await readProjectConfig(project);
 							if (historyHandle.doc()?.checkedOutBranchId !== branchId) {
@@ -556,10 +481,8 @@ export async function openProjectSession(
 				getRulesHandle: () => rulesHandle(graph),
 				getComponentSvgHandle: (componentName: string, side: 'front' | 'back') =>
 					componentSvgHandle(graph, componentName, side),
-				componentDataHandles: graph.componentDataHandles,
 				presence,
 				svgInteractions,
-				getConfig: reconciler.getConfig,
 				getHistory: () => historyHandle.doc()!,
 				subscribeHistory: (listener: (history: ProjectHistoryDocument) => void) => {
 					const notify = () => {
@@ -645,11 +568,8 @@ export async function openProjectSession(
 											projectRepo,
 											historyHandle,
 											plan,
-											resolutions,
-											(pending) => writePendingBranchOperation(project, pending),
-											reportProjectMergeProgress
+											resolutions
 										);
-										await removePendingBranchOperation(project);
 										return checkpointId;
 									});
 									mergePlans.delete(planId);
@@ -662,7 +582,8 @@ export async function openProjectSession(
 				writeFiles: (files: Array<{ path: string; data: FsWriteData }>) =>
 					tryAsync({
 						try: async () => {
-							const changedIds: string[] = [];
+							const changedIds = new Set<string>();
+							let needsRefresh = false;
 							await withProjectLock(lockId, async () => {
 								const latestConfig = await readProjectConfig(project);
 								if (!latestConfig || latestConfig.branchId !== branchId) {
@@ -674,138 +595,31 @@ export async function openProjectSession(
 								graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
 								const repaired = await repairProjectConfig(project, graph, latestConfig);
 								config = repaired.config;
-								changedIds.push(...repaired.reconcileMemberIds);
+								for (const id of repaired.reconcileMemberIds) changedIds.add(id);
 								await Promise.all(files.map((file) => writeFile(project, file.path, file.data)));
 								const scanned = await scanProjectFiles(
 									project,
-									fileCache,
 									files.map((file) => file.path)
 								);
-								const membersByPath = new Map(
-									Object.entries(graph.project.members).map(([id, member]) => [
-										member.path,
-										{ id, member }
-									])
+								const refreshed = await refreshProjectInventory(
+									project,
+									projectRepo,
+									graph,
+									config,
+									scanned,
+									true
 								);
-								const managed = new Map(
-									managedMembers(graph, config).map((member) => [member.id, member])
-								);
-								const created = new Map<string, DocHandle<ProjectMemberDocument>>();
-								const createdIds = new Map<string, string>();
-								for (const source of scanned.files) {
-									const entry = membersByPath.get(source.path);
-									if (!entry) {
-										const id = projectMemberId();
-										createdIds.set(source.path, id);
-										created.set(id, await createProjectMemberHandle(projectRepo, source));
-										continue;
-									}
-									if (entry.member.kind !== source.kind) {
-										throw new Error(`${source.path} changed project file kind.`);
-									}
-									if (source.kind === 'asset') {
-										created.set(entry.id, await createProjectMemberHandle(projectRepo, source));
-										continue;
-									}
-									const projection = config.projections[entry.id];
-									const member = managed.get(entry.id);
-									if (!projection || !member) continue;
-									importManagedTextMember(
-										member,
-										projection,
-										decodeText((await snapshotFile(project, source.path))!.bytes),
-										source.snapshot.hash
-									);
-									changedIds.push(entry.id);
-								}
-								await projectRepo.flush([
-									...changedIds.flatMap((id) => {
-										const handle = graph.memberHandles.get(id);
-										return handle ? [handle.documentId] : [];
-									}),
-									...Array.from(created.values(), (handle) => handle.documentId)
-								]);
-								if (created.size) {
-									graph.projectHandle.change(
-										(root) => {
-											const componentIds = new Map(
-												Object.entries(root.components).map(([id, component]) => [
-													component.name,
-													id
-												])
-											);
-											for (const source of scanned.files) {
-												const existing = membersByPath.get(source.path);
-												const id = existing?.id ?? createdIds.get(source.path);
-												if (!id) continue;
-												const handle = created.get(id);
-												if (!handle) continue;
-												if (existing) {
-													root.members[id].url = handle.url;
-													root.members[id].hash = source.snapshot.hash;
-													continue;
-												}
-												const componentId = source.componentName
-													? (componentIds.get(source.componentName) ?? projectComponentId())
-													: undefined;
-												if (source.componentName && componentId && !root.components[componentId]) {
-													componentIds.set(source.componentName, componentId);
-													root.components[componentId] = { name: source.componentName };
-												}
-												root.members[id] = {
-													kind: source.kind,
-													path: source.path,
-													url: handle.url,
-													...(source.kind === 'asset' ? { hash: source.snapshot.hash } : {}),
-													...(componentId ? { componentId } : {})
-												};
-												if (!componentId) continue;
-												if (source.kind === 'component-data')
-													root.components[componentId].dataMemberId = id;
-												if (source.side === 'front')
-													root.components[componentId].frontMemberId = id;
-												if (source.side === 'back') root.components[componentId].backMemberId = id;
-											}
-										},
-										{ message: 'Write project files' }
-									);
-									await projectRepo.flush([graph.projectHandle.documentId]);
-								}
-								graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
-								const sourceByPath = new Map(scanned.files.map((source) => [source.path, source]));
-								const projections = Object.fromEntries(
-									Object.entries(graph.project.members).map(([id, member]) => {
-										const source = sourceByPath.get(member.path);
-										const previous = config.projections[id];
-										if (!source && previous?.path === member.path && previous.url === member.url) {
-											return [id, previous];
-										}
-										return [
-											id,
-											{
-												path: member.path,
-												url: member.url,
-												heads: memberHandle(graph, id).heads(),
-												hash: source?.snapshot.hash ?? previous?.hash ?? null
-											}
-										];
-									})
-								);
-								config = {
-									version: 3,
-									historyUrl: restored.historyUrl,
-									branchId,
-									rootUrl: graph.projectHandle.url,
-									rootHeads: graph.projectHandle.heads(),
-									projections
-								};
-								await writeProjectConfig(project, config);
+								graph = refreshed.graph;
+								config = refreshed.config;
+								needsRefresh = refreshed.scanChanged;
+								for (const id of refreshed.reconcileMemberIds) changedIds.add(id);
 								reconciler.replaceMembers(managedMembers(graph, config), config);
 							});
-							if (changedIds.length) {
-								await reconciler.requestReconcile(changedIds);
-								await reconciler.reconcileOrThrow();
+							if (needsRefresh) await refresh();
+							if (changedIds.size) {
+								await reconciler.requestReconcile([...changedIds]);
 							}
+							await reconciler.reconcileOrThrow();
 							if (refreshPromise) refreshAgain = true;
 						},
 						catch: (cause) =>
@@ -878,6 +692,8 @@ export async function openProjectSession(
 						try: async () => {
 							await branchOperationPromise;
 							await checkpointPromise;
+							presence.close();
+							svgInteractions.close();
 							if (historyHandle.doc()?.checkedOutBranchId !== branchId) {
 								await reconciler.stop();
 								await projectRepo.shutdown();
@@ -895,10 +711,10 @@ export async function openProjectSession(
 							CollaborationError.ProjectCloseFailed({ project: project.name, cause })
 					});
 					closed = true;
-					for (const [handle, listener] of checkpointListeners) handle.off('change', listener);
-					checkpointListeners.clear();
 					presence.close();
 					svgInteractions.close();
+					for (const [handle, listener] of checkpointListeners) handle.off('change', listener);
+					checkpointListeners.clear();
 					historyHandle.off('change', historyListener);
 					observer.stop();
 					graph.projectHandle.off('change', rootListener);
@@ -923,7 +739,6 @@ function createHistoricalProjectSession({
 	historyHandle,
 	branchId,
 	graph,
-	config,
 	options
 }: {
 	project: FsDir;
@@ -931,7 +746,6 @@ function createHistoricalProjectSession({
 	historyHandle: DocHandle<ProjectHistoryDocument>;
 	branchId: ProjectBranchId;
 	graph: ProjectGraph;
-	config: ProjectConfig;
 	options: OpenProjectSessionOptions;
 }): ProjectSession {
 	const presence = createProjectPresence(graph.projectHandle);
@@ -973,10 +787,8 @@ function createHistoricalProjectSession({
 		metadataHandle: graph.metadataHandle,
 		getRulesHandle: () => rulesHandle(graph),
 		getComponentSvgHandle: (componentName, side) => componentSvgHandle(graph, componentName, side),
-		componentDataHandles: graph.componentDataHandles,
 		presence,
 		svgInteractions,
-		getConfig: () => config,
 		getHistory: () => historyHandle.doc()!,
 		subscribeHistory: (listener) => {
 			const notify = () => listener(historyHandle.doc()!);
@@ -1044,10 +856,7 @@ async function restoreOrCreateProject(
 		}
 		if (pending?.config?.rootUrl === existing.rootUrl) await removePendingBootstrap(project);
 		if (pendingJoin?.historyUrl === existing.historyUrl) await removePendingJoin(project);
-		if (existing.version === 3) return existing;
-		const upgraded =
-			existing.version === 2 ? existing : await upgradeProject(project, repo, existing);
-		return addProjectHistory(project, repo, upgraded);
+		return existing;
 	}
 	if (pendingJoin?.config) {
 		if (joinHistoryUrl && pendingJoin.historyUrl !== joinHistoryUrl) {
@@ -1066,12 +875,7 @@ async function restoreOrCreateProject(
 	if (pending?.config) {
 		await writeProjectConfig(project, pending.config);
 		await removePendingBootstrap(project);
-		if (pending.config.version === 3) return pending.config;
-		const upgraded =
-			pending.config.version === 2
-				? pending.config
-				: await upgradeProject(project, repo, pending.config);
-		return addProjectHistory(project, repo, upgraded);
+		return pending.config;
 	}
 	if (!pending && hadStoredData) {
 		throw new Error(
@@ -1084,7 +888,7 @@ async function restoreOrCreateProject(
 		: (await snapshotFile(project, 'rules.md'))
 			? ['game.json', 'rules.md']
 			: ['game.json'];
-	const sources = await scanProjectFiles(project, undefined, bootstrapPaths);
+	const sources = await scanProjectFiles(project, bootstrapPaths);
 	const sourceHashes = Object.fromEntries(
 		sources.files.map(({ path, snapshot }) => [path, snapshot.hash])
 	);
@@ -1094,11 +898,13 @@ async function restoreOrCreateProject(
 	if (!pending) await writePendingBootstrap(project, { version: 1, sources: sourceHashes });
 
 	const graph = await createProjectGraph(repo, sources.files);
-	const baseConfig = configFromGraph(
+	const history = await createProjectHistory(repo, graph);
+	const config = configFromGraph(
 		graph,
-		sources.files.map(({ path, snapshot }) => ({ path, snapshot }))
+		sources.files.map(({ path, snapshot }) => ({ path, snapshot })),
+		history.url,
+		history.doc()!.checkedOutBranchId
 	);
-	const config = await addProjectHistory(project, repo, baseConfig);
 	await writePendingBootstrap(project, { version: 1, sources: sourceHashes, config });
 	await writeProjectConfig(project, config);
 	await removePendingBootstrap(project);
@@ -1176,27 +982,11 @@ async function joinSharedProject(
 	return config;
 }
 
-async function addProjectHistory(
-	project: FsDir,
-	repo: Repo,
-	config: ProjectConfig
-): Promise<ProjectConfig> {
-	const root = await repo.find<ProjectDocument>(config.rootUrl);
-	const graph = await resolveProjectGraph(repo, root);
-	const history = await createProjectHistory(repo, graph);
-	const upgraded: ProjectConfig = {
-		...config,
-		version: 3,
-		historyUrl: history.url,
-		branchId: history.doc()!.checkedOutBranchId
-	};
-	await writeProjectConfig(project, upgraded);
-	return upgraded;
-}
-
 function configFromGraph(
 	graph: ProjectGraph,
-	snapshots: Array<{ path: string; snapshot: { hash: string } }>
+	snapshots: Array<{ path: string; snapshot: { hash: string } }>,
+	historyUrl: AutomergeUrl,
+	branchId: ProjectBranchId
 ): ProjectConfig {
 	const project = graph.project;
 	const hashes = new Map(snapshots.map(({ path, snapshot }) => [path, snapshot.hash]));
@@ -1215,7 +1005,9 @@ function configFromGraph(
 		})
 	);
 	return {
-		version: 2,
+		version: 3,
+		historyUrl,
+		branchId,
 		rootUrl: graph.projectHandle.url,
 		rootHeads: graph.projectHandle.heads(),
 		projections
@@ -1229,39 +1021,9 @@ function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMemb
 		if (!projection || projection.path !== member.path || projection.url !== member.url) {
 			throw new Error(`Project configuration does not match member ${memberId}.`);
 		}
-		if (member.kind === 'game-metadata') {
-			if (memberId !== GAME_METADATA_MEMBER_ID) {
-				throw new Error(`Unexpected game metadata member ${memberId}.`);
-			}
-			return metadataMember(memberId, member.path, graph.metadataHandle);
-		}
 		const handle = graph.memberHandles.get(memberId);
 		if (!handle) throw new Error(`Automerge project member ${memberId} has no document handle.`);
-		if (member.kind === 'component-data') {
-			return componentDataMember(memberId, member.path, handle as DocHandle<ComponentDataDocument>);
-		}
-		if (member.kind === 'component-svg') {
-			if (!isSvgDocument(handle.doc())) {
-				throw new Error(`Component SVG member ${member.path} has an unsupported format.`);
-			}
-			return svgMember(memberId, member.path, handle as DocHandle<SvgDocument>);
-		}
-		if (member.kind === 'asset') {
-			if (!member.hash) throw new Error(`Binary member ${member.path} is missing its hash.`);
-			return binaryMember(
-				memberId,
-				member.path,
-				member.hash,
-				handle as DocHandle<BinaryFileDocument>
-			);
-		}
-		if (member.kind === 'rules') {
-			if (!isMarkdownFileDocument(handle.doc())) {
-				throw new Error(`Rules member ${member.path} has an unsupported format.`);
-			}
-			return markdownMember(memberId, member.path, handle as DocHandle<MarkdownFileDocument>);
-		}
-		return textMember(memberId, member.path, member.kind, handle as DocHandle<TextFileDocument>);
+		return managedMember(memberId, member, handle);
 	});
 	if (Object.keys(config.projections).length !== members.length) {
 		throw new Error('Project configuration contains projections not present in the project graph.');
@@ -1279,7 +1041,7 @@ async function ensureRulesDocument(
 		return { graph, config };
 	}
 	if (!(await snapshotFile(project, 'rules.md'))) await writeFile(project, 'rules.md', '');
-	const scanned = await scanProjectFiles(project, undefined, ['rules.md']);
+	const scanned = await scanProjectFiles(project, ['rules.md']);
 	const source = scanned.files[0];
 	if (!source) throw new Error('Could not read rules.md.');
 	const id = projectMemberId();
@@ -1314,107 +1076,6 @@ async function ensureRulesDocument(
 	return { graph: latest, config: nextConfig };
 }
 
-async function migrateRulesDocument(
-	project: FsDir,
-	repo: Repo,
-	graph: ProjectGraph,
-	config: ProjectConfig | undefined
-): Promise<{ graph: ProjectGraph; config: ProjectConfig | undefined }> {
-	const entry = Object.entries(graph.project.members).find(([, member]) => member.kind === 'rules');
-	if (!entry) return { graph, config };
-	const handle = graph.memberHandles.get(entry[0]);
-	const current = handle?.doc();
-	if (!handle || !isTextFileDocument(current)) return { graph, config };
-	const source = current.content;
-	handle.change(
-		(document) => {
-			const markdown = document as unknown as MarkdownFileDocument;
-			markdown.type = 'markdown-file';
-			markdown.schemaVersion = 1;
-			markdown.dialect = 'commonmark';
-			applyMarkdown(markdown, source);
-		},
-		{ message: 'Upgrade rules.md to collaborative rich text' }
-	);
-	await repo.flush([handle.documentId]);
-	const projection = config?.projections[entry[0]];
-	const migratedConfig =
-		config && projection
-			? {
-					...config,
-					projections: {
-						...config.projections,
-						[entry[0]]: { ...projection, heads: handle.heads() }
-					}
-				}
-			: config;
-	if (migratedConfig) await writeProjectConfig(project, migratedConfig);
-	return {
-		graph: await resolveProjectGraph(repo, graph.projectHandle),
-		config: migratedConfig
-	};
-}
-
-async function migrateSvgDocuments(
-	project: FsDir,
-	repo: Repo,
-	graph: ProjectGraph,
-	config: ProjectConfig | undefined
-): Promise<{ graph: ProjectGraph; config: ProjectConfig | undefined }> {
-	const migratedIds: string[] = [];
-	for (const [id, member] of Object.entries(graph.project.members)) {
-		if (member.kind !== 'component-svg') continue;
-		const handle = graph.memberHandles.get(id);
-		const current = handle?.doc();
-		if (!handle || !isTextFileDocument(current)) continue;
-		const parsed = svgFileMaterializer.parse(current.content, {
-			hash: config?.projections[id]?.hash ?? id
-		});
-		handle.change(
-			(document) => {
-				const svg = document as unknown as SvgDocument & { content?: string; type?: string };
-				delete svg.content;
-				delete svg.type;
-				svg.schemaVersion = parsed.schemaVersion;
-				svg.rootId = parsed.rootId;
-				svg.nodes = parsed.nodes;
-				svg.resources = parsed.resources;
-			},
-			{ message: `Upgrade ${member.path} to collaborative SVG` }
-		);
-		migratedIds.push(id);
-	}
-	if (migratedIds.length === 0) return { graph, config };
-	await repo.flush(
-		migratedIds.flatMap((id) => {
-			const handle = graph.memberHandles.get(id);
-			return handle ? [handle.documentId] : [];
-		})
-	);
-	const migratedConfig = config
-		? {
-				...config,
-				projections: Object.fromEntries(
-					Object.entries(config.projections).map(([id, projection]) => [
-						id,
-						migratedIds.includes(id)
-							? {
-									...projection,
-									heads: graph.memberHandles.get(id)?.heads() ?? projection.heads,
-									materializeOnly: true as const
-								}
-							: projection
-					])
-				)
-			}
-		: config;
-	if (migratedConfig) await writeProjectConfig(project, migratedConfig);
-	return {
-		graph: await resolveProjectGraph(repo, graph.projectHandle),
-		config: migratedConfig
-	};
-}
-
 function rulesHandle(graph: ProjectGraph): DocHandle<MarkdownFileDocument> | undefined {
 	const entry = Object.entries(graph.project.members).find(([, member]) => member.kind === 'rules');
 	if (!entry) return undefined;
@@ -1430,12 +1091,18 @@ function componentSvgHandle(
 	componentName: string,
 	side: 'front' | 'back'
 ): DocHandle<SvgDocument> | undefined {
-	const component = Object.values(graph.project.components).find(
-		(candidate) => candidate.name === componentName
+	const componentId = Object.entries(graph.project.components).find(
+		([, component]) => component.name === componentName
+	)?.[0];
+	if (!componentId) return undefined;
+	const entry = Object.entries(graph.project.members).find(
+		([, member]) =>
+			member.componentId === componentId &&
+			member.kind === 'component-svg' &&
+			classifyProjectFile(member.path)?.side === side
 	);
-	const memberId = side === 'front' ? component?.frontMemberId : component?.backMemberId;
-	if (!memberId) return undefined;
-	const handle = graph.memberHandles.get(memberId);
+	if (!entry) return undefined;
+	const handle = graph.memberHandles.get(entry[0]);
 	if (!handle || !isSvgDocument(handle.doc())) {
 		throw new Error(`Component "${componentName}" ${side} SVG has an unsupported format.`);
 	}
@@ -1525,40 +1192,6 @@ async function repairProjectConfig(
 	if (JSON.stringify(repaired) !== JSON.stringify(config))
 		await writeProjectConfig(project, repaired);
 	return { config: repaired, reconcileMemberIds };
-}
-
-async function upgradeProject(
-	project: FsDir,
-	repo: Repo,
-	config: ProjectConfig
-): Promise<ProjectConfig> {
-	const root = await repo.find<ProjectDocument | LegacyProjectDocument>(config.rootUrl);
-	const current = root.doc();
-	if (!isProjectDocument(current) && !isLegacyProjectDocument(current)) {
-		throw new Error('The Automerge root document is not a supported Digitable project.');
-	}
-	if (current.schemaVersion === 1) {
-		root.change(
-			(document) => {
-				const mutable = document as unknown as ProjectDocument;
-				const components: ProjectDocument['components'] = Object.fromEntries(
-					Object.entries(document.components).map(([id, component]) => [id, { ...component }])
-				);
-				for (const [componentId, component] of Object.entries(components)) {
-					if (!component.dataMemberId) continue;
-					const member = mutable.members[component.dataMemberId];
-					if (member) member.componentId = componentId;
-				}
-				mutable.components = components;
-				mutable.schemaVersion = 2;
-			},
-			{ message: 'Upgrade project file graph' }
-		);
-	}
-	await repo.flush([root.documentId]);
-	const upgraded: ProjectConfig = { ...config, version: 2, rootHeads: root.heads() };
-	await writeProjectConfig(project, upgraded);
-	return upgraded;
 }
 
 function sameSources(left: Record<string, string>, right: Record<string, string>): boolean {
@@ -1666,7 +1299,13 @@ async function refreshProjectInventory(
 		}
 	}
 
-	if (additions.length || replacements.length || deletions.size) {
+	const componentNames = new Set(
+		Object.values(current.components).map((component) => component.name)
+	);
+	const componentsChanged =
+		componentNames.size !== scanned.components.length ||
+		scanned.components.some((name) => !componentNames.has(name));
+	if (additions.length || replacements.length || deletions.size || componentsChanged) {
 		await repo.flush([
 			...additions.map(({ handle }) => handle.documentId),
 			...replacements.map(({ handle }) => handle.documentId)
@@ -1686,11 +1325,6 @@ async function refreshProjectInventory(
 					const expected = current.members[id];
 					if (!expected || document.members[id]?.url !== expected.url) continue;
 					delete document.members[id];
-					for (const component of Object.values(document.components)) {
-						if (component.frontMemberId === id) delete component.frontMemberId;
-						if (component.backMemberId === id) delete component.backMemberId;
-						if (component.dataMemberId === id) delete component.dataMemberId;
-					}
 				}
 				for (const replacement of replacements) {
 					const member = document.members[replacement.id];
@@ -1714,15 +1348,10 @@ async function refreshProjectInventory(
 						...(addition.source.kind === 'asset' ? { hash: addition.source.snapshot.hash } : {}),
 						...(componentId ? { componentId } : {})
 					};
-					if (!componentId) continue;
-					const component = document.components[componentId];
-					if (addition.source.kind === 'component-data') component.dataMemberId = addition.id;
-					if (addition.source.side === 'front') component.frontMemberId = addition.id;
-					if (addition.source.side === 'back') component.backMemberId = addition.id;
 				}
 				for (const [id, component] of Object.entries(document.components)) {
 					if (scanned.components.includes(component.name)) continue;
-					if (component.frontMemberId || component.backMemberId || component.dataMemberId) continue;
+					if (Object.values(document.members).some((member) => member.componentId === id)) continue;
 					delete document.components[id];
 				}
 			},

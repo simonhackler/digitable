@@ -1,6 +1,6 @@
 import { getContext, setContext } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
-import type { PresencePointer, PresenceSurfaceLayout } from './project-presence';
+import { presenceSurfaceLayout, type PresencePointer } from './project-presence';
 
 const DEFAULT_SURFACE_ID = 'project-page';
 const contextKey = Symbol('presence-surfaces');
@@ -222,12 +222,4 @@ export function createPresenceRegionAttachment(options: {
 					space: typeof options.space === 'function' ? options.space() : options.space
 				})(node)
 		: () => undefined;
-}
-
-function presenceSurfaceLayout(width: number): PresenceSurfaceLayout {
-	if (width < 640) return 'xs';
-	if (width < 768) return 'sm';
-	if (width < 1024) return 'md';
-	if (width < 1280) return 'lg';
-	return 'xl';
 }

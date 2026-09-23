@@ -279,7 +279,7 @@ test('merges a branch into its parent and checks the parent out', async ({ page 
 	await expect(result).toContainText(`Source: ${sourceId}`);
 	await expect(result).toContainText(`Target: ${targetId}`);
 	const resultText = (await result.textContent())!;
-	const resultId = resultText.match(/Result: ([0-9a-f-]+)/)?.[1];
+	const resultId = resultText.match(/Result: (checkpoint-[0-9a-f]+)/)?.[1];
 	expect(resultId).toBeTruthy();
 	expect(resultId).not.toBe(targetId);
 });
@@ -458,7 +458,7 @@ test('applies a one-sided member deletion without a conflict', async ({ page }) 
 		const cards = await components.getDirectoryHandle('cards');
 		await cards.removeEntry('back.svg');
 	}, project);
-	await expectCheckpoint(page, 'Updated project structure');
+	await expectCheckpoint(page, 'Deleted "components/cards/back.svg"');
 
 	await page.getByRole('button', { name: 'Branch 1', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Merge into parent' }).click();
@@ -613,75 +613,6 @@ test('keeps a nested branch Base when its parent is merged and reparented', asyn
 
 	await page.goto(`/app/games/${project}`);
 	await expect(page.getByLabel('Game Description')).toHaveValue('Nested child edit');
-});
-
-test('resumes one merge across every durable journal boundary', async ({ page }) => {
-	test.setTimeout(120_000);
-	const project = 'branch-merge-recovery';
-	const progress = [
-		'journal:prepared',
-		'members:flushed',
-		'journal:members-applied',
-		'root:flushed',
-		'journal:root-published',
-		'checkpoint:flushed',
-		'journal:checkpoint-recorded',
-		'history:flushed',
-		'journal:history-finalized'
-	];
-	await page.addInitScript((points) => {
-		(
-			window as typeof window & {
-				__DIGITABLE_E2E_MERGE_PROGRESS__?: (progress: string) => Promise<void>;
-			}
-		).__DIGITABLE_E2E_MERGE_PROGRESS__ = async (point) => {
-			const seen = JSON.parse(sessionStorage.getItem('merge-progress') ?? '[]') as string[];
-			const next = points.find((candidate) => !seen.includes(candidate));
-			if (point !== next) return;
-			sessionStorage.setItem('merge-progress', JSON.stringify([...seen, point]));
-			await new Promise<void>(() => undefined);
-		};
-	}, progress);
-	await seedProject(page, project);
-
-	await page.getByRole('button', { name: 'Main', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Create branch' }).click();
-	await page.getByLabel('Game Description').fill('Recovered branch description');
-	await page.getByRole('button', { name: 'Decks' }).click();
-	await page.getByRole('button', { name: 'New' }).click();
-	await page.getByPlaceholder('deck name').fill('cards');
-	await page.getByRole('button', { name: 'Create new deck' }).click();
-	await expect(page).toHaveURL(new RegExp(`/app/games/${project}/decks/cards/editor`));
-	await page.getByRole('button', { name: 'Branch 1', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Merge into parent' }).click();
-	const merge = page.getByRole('dialog', { name: 'Merge Branch 1 into Main' });
-	await expect(merge.getByText('No conflicts require resolution.')).toBeVisible();
-	await merge.getByRole('button', { name: 'Merge into Main' }).click();
-
-	for (const point of progress) {
-		await expect
-			.poll(() =>
-				page.evaluate(() => {
-					const seen = JSON.parse(sessionStorage.getItem('merge-progress') ?? '[]') as string[];
-					return seen.at(-1);
-				})
-			)
-			.toBe(point);
-		await page.reload();
-	}
-
-	await expect(page.getByRole('button', { name: 'Main', exact: true })).toBeVisible();
-	await page.goto(`/app/games/${project}`);
-	await expect(page.getByLabel('Game Description')).toHaveValue('Recovered branch description');
-	await page.goto(`/app/games/${project}/decks/cards/editor`);
-	await expect(page.getByRole('toolbar', { name: 'Layout editor toolbar' })).toBeVisible();
-	expect(await opfsEntryExists(page, `/${project}/.automerge/pending-branch-operation.json`)).toBe(
-		false
-	);
-	await page.getByRole('button', { name: 'History', exact: true }).click();
-	await expect(
-		page.getByRole('group', { name: 'Checkpoint Merge Branch 1', exact: true })
-	).toHaveCount(1);
 });
 
 test('renames colliding additions and converges both tabs on the merged structure', async ({

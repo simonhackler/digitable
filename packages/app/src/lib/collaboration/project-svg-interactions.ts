@@ -10,14 +10,14 @@ import type {
 	RemoteSvgInteraction,
 	Stroke,
 	SvgClaim,
-	SvgClaimDomain,
 	SvgInteractionKind,
 	SvgInteractionPreview
 } from '@svg-table/svgeditor';
+import { isSvgClaimDomain, isSvgInteractionKind, svgInteractionClaims } from '@svg-table/svgeditor';
 import type { ProjectDocument } from './model';
 
 const NAMESPACE = 'svg-table/project-svg-interactions';
-const PROTOCOL_VERSION = 1 as const;
+const PROTOCOL_VERSION = 2 as const;
 const HEARTBEAT_MS = 1_500;
 const LEASE_MS = 5_000;
 const HANDOFF_MS = 2_000;
@@ -26,7 +26,7 @@ const UPDATE_THROTTLE_MS = 40;
 const MAX_ID_LENGTH = 500;
 const MAX_TEXT_LENGTH = 4_096;
 const MAX_NODE_IDS = 256;
-const MAX_CLAIMS = 256;
+const MAX_CLAIMS = MAX_NODE_IDS * 2;
 const MAX_HEADS = 256;
 const MAX_HANDOFFS = 32;
 const MAX_NUMBER = 1_000_000_000;
@@ -35,8 +35,6 @@ export type ProjectSvgActiveInteraction = RemoteSvgInteraction & {
 	instanceId: string;
 	pageId: string;
 	documentId: string;
-	kind: SvgInteractionKind;
-	baseHeads: UrlHeads;
 };
 
 export type ProjectSvgInteractionHandoff = ProjectSvgActiveInteraction & {
@@ -53,10 +51,7 @@ export type ProjectSvgInteraction = {
 	interactionId: string;
 	pageId: string;
 	documentId: string;
-	kind: SvgInteractionKind;
 	nodeIds: NodeId[];
-	claims: SvgClaim[];
-	baseHeads: UrlHeads;
 	preview: SvgInteractionPreview;
 };
 
@@ -131,8 +126,7 @@ type PeerState = {
 type Tombstone = { revision: number; expiresAt: number };
 type Candidate = {
 	instanceId: string;
-	interaction: WireInteraction | WireHandoff;
-	handoff: boolean;
+	interaction: WireInteraction;
 	local: boolean;
 };
 type ChannelRecord = {
@@ -198,7 +192,7 @@ export function createProjectSvgInteractions(
 
 	function liveCandidates(now: number): Candidate[] {
 		const candidates: Candidate[] = [];
-		if (active) candidates.push({ instanceId, interaction: active, handoff: false, local: true });
+		if (active) candidates.push({ instanceId, interaction: active, local: true });
 		for (const peer of peers.values()) {
 			if (peer.receivedAt + LEASE_MS <= now) continue;
 			const owner = peer.snapshot.instanceId;
@@ -206,7 +200,6 @@ export function createProjectSvgInteractions(
 				candidates.push({
 					instanceId: owner,
 					interaction: peer.snapshot.active,
-					handoff: false,
 					local: false
 				});
 			}
@@ -226,7 +219,8 @@ export function createProjectSvgInteractions(
 					(winner) =>
 						winner.instanceId !== candidate.instanceId &&
 						winner.interaction.documentId === candidate.interaction.documentId &&
-						claimsConflict(winner.interaction.claims, candidate.interaction.claims)
+						winner.interaction.pageId === candidate.interaction.pageId &&
+						interactionsConflict(winner.interaction, candidate.interaction)
 				)
 			) {
 				continue;
@@ -243,9 +237,9 @@ export function createProjectSvgInteractions(
 				candidate.interaction.documentId === channel.documentId &&
 				candidate.interaction.pageId === channel.pageId
 		);
-		const remoteActive = visible
-			.filter((candidate) => !candidate.handoff)
-			.map((candidate) => publicInteraction(candidate.instanceId, candidate.interaction));
+		const remoteActive = visible.map((candidate) =>
+			publicInteraction(candidate.instanceId, candidate.interaction)
+		);
 		const remoteHandoffs = [...peers.values()].flatMap((peer) =>
 			peer.snapshot.handoffs.flatMap((handoff) => {
 				const key = handoffKey(peer.snapshot.instanceId, handoff.interactionId);
@@ -259,9 +253,9 @@ export function createProjectSvgInteractions(
 		return {
 			active: remoteActive,
 			handoffs: remoteHandoffs,
-			claims: visible
-				.filter((candidate) => !candidate.handoff)
-				.flatMap((candidate) => candidate.interaction.claims.map((claim) => ({ ...claim })))
+			claims: visible.flatMap((candidate) =>
+				svgInteractionClaims(candidate.interaction.preview.kind, candidate.interaction.nodeIds)
+			)
 		};
 	}
 
@@ -295,10 +289,6 @@ export function createProjectSvgInteractions(
 		return changed;
 	}
 
-	function arbitrate(): void {
-		notify();
-	}
-
 	function prune(): void {
 		if (closed) return;
 		const now = Date.now();
@@ -306,7 +296,6 @@ export function createProjectSvgInteractions(
 		if (active && activeUpdatedAt + LEASE_MS <= now) {
 			active = null;
 			activeChannel = null;
-			activeUpdatedAt = 0;
 			revision += 1;
 			localChanged = true;
 		}
@@ -332,7 +321,7 @@ export function createProjectSvgInteractions(
 			if (tombstone.expiresAt <= now) tombstones.delete(owner);
 		}
 		if (localChanged) broadcastState();
-		if (localChanged || remoteChanged) arbitrate();
+		if (localChanged || remoteChanged) notify();
 		if (!localChanged && !remoteChanged) notifyExpiredHandoffs(now);
 	}
 
@@ -341,7 +330,7 @@ export function createProjectSvgInteractions(
 			for (const handoff of peer.snapshot.handoffs) {
 				const key = handoffKey(peer.snapshot.instanceId, handoff.interactionId);
 				const seenAt = peer.handoffSeenAt.get(handoff.interactionId);
-				if (seenAt && seenAt + LEASE_MS <= now && !expiredHandoffs.has(key)) {
+				if (seenAt && seenAt + HANDOFF_MS <= now && !expiredHandoffs.has(key)) {
 					expiredHandoffs.add(key);
 					notify();
 					return;
@@ -382,7 +371,7 @@ export function createProjectSvgInteractions(
 			handoffSeenAt: seen
 		});
 		for (const channel of channels) observeRemoteHandoffs(channel);
-		arbitrate();
+		notify();
 	}
 
 	function onMessage({
@@ -411,7 +400,7 @@ export function createProjectSvgInteractions(
 			revision: message.revision,
 			expiresAt: now + TOMBSTONE_MS
 		});
-		arbitrate();
+		notify();
 	}
 
 	function clearHandoffMarks(owner: string): void {
@@ -430,8 +419,10 @@ export function createProjectSvgInteractions(
 		type: 'hello',
 		protocolVersion: PROTOCOL_VERSION
 	} satisfies InteractionMessage);
-	const heartbeat = setInterval(broadcastState, HEARTBEAT_MS);
-	const pruning = setInterval(prune, HEARTBEAT_MS);
+	const timer = setInterval(() => {
+		broadcastState();
+		prune();
+	}, HEARTBEAT_MS);
 
 	return {
 		forDocument(documentId, pageId) {
@@ -458,10 +449,7 @@ export function createProjectSvgInteractions(
 						interactionId: interaction.interactionId,
 						pageId,
 						documentId,
-						kind: interaction.kind,
 						nodeIds: [...interaction.nodeIds],
-						claims: interaction.claims.map((claim) => ({ ...claim })),
-						baseHeads: [...interaction.baseHeads] as UrlHeads,
 						preview: structuredClone(interaction.preview)
 					};
 					if (
@@ -469,7 +457,8 @@ export function createProjectSvgInteractions(
 							(candidate) =>
 								!candidate.local &&
 								candidate.interaction.documentId === documentId &&
-								claimsConflict(candidate.interaction.claims, proposed.claims)
+								candidate.interaction.pageId === pageId &&
+								interactionsConflict(candidate.interaction, proposed)
 						)
 					) {
 						return null;
@@ -486,7 +475,7 @@ export function createProjectSvgInteractions(
 								closed ||
 								active !== token ||
 								!isPreview(preview) ||
-								preview.kind !== token.kind
+								preview.kind !== token.preview.kind
 							) {
 								return;
 							}
@@ -498,7 +487,6 @@ export function createProjectSvgInteractions(
 						handoff(commitHeads) {
 							if (closed || active !== token || !isHeads(commitHeads)) return;
 							active = null;
-							activeUpdatedAt = 0;
 							activeChannel = null;
 							handoffs = [
 								...handoffs,
@@ -515,7 +503,6 @@ export function createProjectSvgInteractions(
 						cancel() {
 							if (closed || active !== token) return;
 							active = null;
-							activeUpdatedAt = 0;
 							activeChannel = null;
 							revision += 1;
 							broadcastState();
@@ -541,7 +528,7 @@ export function createProjectSvgInteractions(
 									commitHeads.every((head) => headsOrPredicate.includes(head));
 					record.containsHeads = predicate;
 					const remoteChanged = observeRemoteHandoffs(record);
-					if (remoteChanged) arbitrate();
+					if (remoteChanged) notify();
 				},
 				dispose() {
 					if (record.disposed) return;
@@ -550,7 +537,6 @@ export function createProjectSvgInteractions(
 					channels.delete(record);
 					if (activeChannel !== record) return;
 					active = null;
-					activeUpdatedAt = 0;
 					activeChannel = null;
 					revision += 1;
 					broadcastState();
@@ -569,11 +555,9 @@ export function createProjectSvgInteractions(
 				revision
 			} satisfies InteractionMessage);
 			closed = true;
-			clearInterval(heartbeat);
-			clearInterval(pruning);
+			clearInterval(timer);
 			handle.off('ephemeral-message', onMessage);
 			active = null;
-			activeUpdatedAt = 0;
 			activeChannel = null;
 			handoffs = [];
 			peers.clear();
@@ -598,10 +582,8 @@ function publicInteraction(
 		interactionId: interaction.interactionId,
 		pageId: interaction.pageId,
 		documentId: interaction.documentId,
-		kind: interaction.kind,
 		nodeIds: [...interaction.nodeIds],
-		claims: interaction.claims.map((claim) => ({ ...claim })),
-		baseHeads: [...interaction.baseHeads] as UrlHeads,
+		claims: svgInteractionClaims(interaction.preview.kind, interaction.nodeIds),
 		preview: structuredClone(interaction.preview)
 	};
 }
@@ -617,8 +599,6 @@ function cloneInteraction(interaction: WireInteraction): WireInteraction {
 	return {
 		...interaction,
 		nodeIds: [...interaction.nodeIds],
-		claims: interaction.claims.map((claim) => ({ ...claim })),
-		baseHeads: [...interaction.baseHeads] as UrlHeads,
 		preview: structuredClone(interaction.preview)
 	};
 }
@@ -640,9 +620,11 @@ function cloneSnapshot(snapshot: InteractionSnapshot): InteractionSnapshot {
 	};
 }
 
-function claimsConflict(left: SvgClaim[], right: SvgClaim[]): boolean {
-	return left.some((claim) =>
-		right.some(
+function interactionsConflict(left: WireInteraction, right: WireInteraction): boolean {
+	const leftClaims = svgInteractionClaims(left.preview.kind, left.nodeIds);
+	const rightClaims = svgInteractionClaims(right.preview.kind, right.nodeIds);
+	return leftClaims.some((claim) =>
+		rightClaims.some(
 			(candidate) => claim.nodeId === candidate.nodeId && claim.domain === candidate.domain
 		)
 	);
@@ -698,22 +680,34 @@ function isBeginInteraction(value: unknown): value is BeginProjectSvgInteraction
 	if (!exactKeys(value, ['interactionId', 'kind', 'nodeIds', 'claims', 'baseHeads', 'preview'])) {
 		return false;
 	}
-	return isInteractionFields(value);
+	if (
+		!isInteractionFields(value) ||
+		!isSvgInteractionKind(value.kind) ||
+		value.kind !== value.preview.kind ||
+		!isHeads(value.baseHeads)
+	) {
+		return false;
+	}
+	if (
+		!Array.isArray(value.claims) ||
+		value.claims.length === 0 ||
+		value.claims.length > MAX_CLAIMS ||
+		!value.claims.every(isClaim) ||
+		!unique(value.claims.map((claim) => `${claim.nodeId}\u0000${claim.domain}`))
+	) {
+		return false;
+	}
+	const expected = svgInteractionClaims(value.kind, value.nodeIds).map(
+		(claim) => `${claim.nodeId}\u0000${claim.domain}`
+	);
+	const actual = value.claims.map((claim) => `${claim.nodeId}\u0000${claim.domain}`);
+	return actual.length === expected.length && expected.every((claim) => actual.includes(claim));
 }
 
 function isWireInteraction(value: unknown): value is WireInteraction {
 	if (!isRecord(value)) return false;
 	if (
-		!exactKeys(value, [
-			'interactionId',
-			'pageId',
-			'documentId',
-			'kind',
-			'nodeIds',
-			'claims',
-			'baseHeads',
-			'preview'
-		]) ||
+		!exactKeys(value, ['interactionId', 'pageId', 'documentId', 'nodeIds', 'preview']) ||
 		!validId(value.pageId) ||
 		!validId(value.documentId)
 	) {
@@ -729,10 +723,7 @@ function isWireHandoff(value: unknown): value is WireHandoff {
 			'interactionId',
 			'pageId',
 			'documentId',
-			'kind',
 			'nodeIds',
-			'claims',
-			'baseHeads',
 			'preview',
 			'commitHeads'
 		]) ||
@@ -744,8 +735,11 @@ function isWireHandoff(value: unknown): value is WireHandoff {
 	return isWireInteraction(interaction);
 }
 
-function isInteractionFields(value: Record<string, unknown>): boolean {
-	if (!validId(value.interactionId) || !isKind(value.kind)) return false;
+function isInteractionFields(
+	value: Record<string, unknown>
+): value is Record<string, unknown> &
+	Pick<WireInteraction, 'interactionId' | 'nodeIds' | 'preview'> {
+	if (!validId(value.interactionId)) return false;
 	if (
 		!Array.isArray(value.nodeIds) ||
 		value.nodeIds.length === 0 ||
@@ -755,38 +749,7 @@ function isInteractionFields(value: Record<string, unknown>): boolean {
 	) {
 		return false;
 	}
-	const nodeIds: unknown[] = value.nodeIds;
-	if (
-		!Array.isArray(value.claims) ||
-		value.claims.length === 0 ||
-		value.claims.length > MAX_CLAIMS ||
-		!value.claims.every(isClaim) ||
-		!unique(value.claims.map((claim) => `${claim.nodeId}\u0000${claim.domain}`))
-	) {
-		return false;
-	}
-	const domains = claimDomains(value.kind);
-	const expectedClaims = nodeIds.flatMap((nodeId) =>
-		domains.map((domain) => `${nodeId}\u0000${domain}`)
-	);
-	const actualClaims = value.claims.map((claim) => `${claim.nodeId}\u0000${claim.domain}`);
-	if (
-		actualClaims.length !== expectedClaims.length ||
-		!expectedClaims.every((claim) => actualClaims.includes(claim))
-	) {
-		return false;
-	}
-	return isHeads(value.baseHeads) && isPreview(value.preview) && value.preview.kind === value.kind;
-}
-
-function claimDomains(kind: SvgInteractionKind): SvgClaimDomain[] {
-	if (kind === 'fill' || kind === 'stroke') return [kind];
-	if (kind === 'resize') return ['geometry', 'transform'];
-	return ['transform'];
-}
-
-function isKind(value: unknown): value is SvgInteractionKind {
-	return ['move', 'resize', 'rotate', 'fill', 'stroke'].includes(String(value));
+	return isPreview(value.preview);
 }
 
 function isClaim(value: unknown): value is SvgClaim {
@@ -794,12 +757,12 @@ function isClaim(value: unknown): value is SvgClaim {
 		isRecord(value) &&
 		exactKeys(value, ['nodeId', 'domain']) &&
 		validId(value.nodeId) &&
-		['transform', 'geometry', 'placement', 'fill', 'stroke', 'path'].includes(String(value.domain))
+		isSvgClaimDomain(value.domain)
 	);
 }
 
 function isPreview(value: unknown): value is SvgInteractionPreview {
-	if (!isRecord(value) || !isKind(value.kind)) return false;
+	if (!isRecord(value) || !isSvgInteractionKind(value.kind)) return false;
 	if (value.kind === 'move') {
 		return (
 			exactOptionalKeys(value, ['kind', 'delta'], ['bounds']) &&
@@ -858,9 +821,15 @@ function isStroke(value: unknown): value is Stroke {
 	if ('width' in value && !isNumber(value.width)) return false;
 	if ('miterLimit' in value && !isNumber(value.miterLimit)) return false;
 	if ('dashOffset' in value && !isNumber(value.dashOffset)) return false;
-	if ('lineCap' in value && !['butt', 'round', 'square'].includes(String(value.lineCap)))
+	if (
+		'lineCap' in value &&
+		(typeof value.lineCap !== 'string' || !['butt', 'round', 'square'].includes(value.lineCap))
+	)
 		return false;
-	if ('lineJoin' in value && !['miter', 'round', 'bevel'].includes(String(value.lineJoin)))
+	if (
+		'lineJoin' in value &&
+		(typeof value.lineJoin !== 'string' || !['miter', 'round', 'bevel'].includes(value.lineJoin))
+	)
 		return false;
 	if ('dashArray' in value && value.dashArray !== 'none') {
 		if (!Array.isArray(value.dashArray) || value.dashArray.length > 256) return false;
@@ -902,7 +871,7 @@ function isHeads(value: unknown): value is UrlHeads {
 }
 
 function isRevision(value: unknown): value is number {
-	return Number.isSafeInteger(value) && Number(value) >= 0;
+	return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isNumber(value: unknown): value is number {
@@ -910,12 +879,11 @@ function isNumber(value: unknown): value is number {
 }
 
 function validId(value: unknown): value is string {
-	return (
-		typeof value === 'string' &&
-		value.length > 0 &&
-		value.length <= MAX_ID_LENGTH &&
-		!/[\u0000-\u001f\u007f]/.test(value)
-	);
+	if (typeof value !== 'string' || value.length === 0 || value.length > MAX_ID_LENGTH) return false;
+	return !Array.from(value).some((character) => {
+		const code = character.charCodeAt(0);
+		return code <= 31 || code === 127;
+	});
 }
 
 function validText(value: unknown): value is string {

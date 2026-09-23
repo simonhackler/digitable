@@ -23,9 +23,6 @@ export type ProjectMember = {
 
 export type ProjectComponent = {
 	name: string;
-	frontMemberId?: string;
-	backMemberId?: string;
-	dataMemberId?: string;
 };
 
 export type ProjectDocument = {
@@ -43,9 +40,6 @@ export type ProjectBranch = {
 	rootUrl: AutomergeUrl;
 	parentBranchId?: ProjectBranchId;
 	baseCheckpointId?: ProjectCheckpointId;
-	baseBranchId?: ProjectBranchId;
-	/** Schema-1 name retained only while an existing history is being migrated. */
-	forkCheckpointId?: ProjectCheckpointId;
 	createdAt: number;
 	mergedAt?: number;
 	deletedAt?: number;
@@ -66,7 +60,6 @@ export type ProjectCheckpoint = {
 };
 
 export type ProjectMerge = {
-	id: string;
 	sourceBranchId: ProjectBranchId;
 	targetBranchId: ProjectBranchId;
 	baseCheckpointId: ProjectCheckpointId;
@@ -76,28 +69,13 @@ export type ProjectMerge = {
 	createdAt: number;
 };
 
-export type LegacyProjectMerge = Omit<
-	ProjectMerge,
-	'id' | 'baseCheckpointId' | 'targetCheckpointId'
->;
-
 export type ProjectHistoryDocument = {
 	type: 'digitable-project-history';
-	schemaVersion: 1 | 2;
+	schemaVersion: 2;
 	checkedOutBranchId: ProjectBranchId;
 	branches: Record<ProjectBranchId, ProjectBranch>;
 	checkpoints: Record<ProjectCheckpointId, ProjectCheckpoint>;
-	merges: Record<string, ProjectMerge | LegacyProjectMerge>;
-};
-
-export type LegacyProjectDocument = {
-	type: 'digitable-project';
-	schemaVersion: 1;
-	members: Record<
-		string,
-		{ kind: 'game-metadata' | 'component-data'; path: string; url: AutomergeUrl }
-	>;
-	components: Record<string, { name: string; dataMemberId?: string }>;
+	merges: Record<string, ProjectMerge>;
 };
 
 export type JsonValue =
@@ -174,23 +152,14 @@ export function isProjectDocument(value: unknown): value is ProjectDocument {
 	return (
 		Object.values(value.members).every(isProjectMember) &&
 		Object.values(value.components).every(
-			(component) =>
-				isObject(component) &&
-				typeof component.name === 'string' &&
-				(component.frontMemberId === undefined || typeof component.frontMemberId === 'string') &&
-				(component.backMemberId === undefined || typeof component.backMemberId === 'string') &&
-				(component.dataMemberId === undefined || typeof component.dataMemberId === 'string')
+			(component) => isObject(component) && typeof component.name === 'string'
 		)
 	);
 }
 
 export function isProjectHistoryDocument(value: unknown): value is ProjectHistoryDocument {
 	if (!isObject(value)) return false;
-	if (
-		value.type !== 'digitable-project-history' ||
-		(value.schemaVersion !== 1 && value.schemaVersion !== 2)
-	)
-		return false;
+	if (value.type !== 'digitable-project-history' || value.schemaVersion !== 2) return false;
 	if (
 		typeof value.checkedOutBranchId !== 'string' ||
 		!isObject(value.branches) ||
@@ -214,8 +183,6 @@ function isProjectBranch(value: unknown): value is ProjectBranch {
 		typeof value.createdAt === 'number' &&
 		(value.parentBranchId === undefined || typeof value.parentBranchId === 'string') &&
 		(value.baseCheckpointId === undefined || typeof value.baseCheckpointId === 'string') &&
-		(value.baseBranchId === undefined || typeof value.baseBranchId === 'string') &&
-		(value.forkCheckpointId === undefined || typeof value.forkCheckpointId === 'string') &&
 		(value.mergedAt === undefined || typeof value.mergedAt === 'number') &&
 		(value.deletedAt === undefined || typeof value.deletedAt === 'number')
 	);
@@ -237,43 +204,21 @@ function isProjectCheckpoint(value: unknown): value is ProjectCheckpoint {
 	);
 }
 
-function isProjectMerge(value: unknown): value is ProjectMerge | LegacyProjectMerge {
+function isProjectMerge(value: unknown): value is ProjectMerge {
 	return (
 		isObject(value) &&
 		typeof value.sourceBranchId === 'string' &&
 		typeof value.targetBranchId === 'string' &&
+		typeof value.baseCheckpointId === 'string' &&
 		typeof value.sourceCheckpointId === 'string' &&
+		typeof value.targetCheckpointId === 'string' &&
 		typeof value.resultCheckpointId === 'string' &&
-		typeof value.createdAt === 'number' &&
-		(value.id === undefined || typeof value.id === 'string') &&
-		(value.baseCheckpointId === undefined || typeof value.baseCheckpointId === 'string') &&
-		(value.targetCheckpointId === undefined || typeof value.targetCheckpointId === 'string')
+		typeof value.createdAt === 'number'
 	);
 }
 
 function isHeads(value: unknown): value is UrlHeads {
 	return Array.isArray(value) && value.every((head) => typeof head === 'string');
-}
-
-export function isLegacyProjectDocument(value: unknown): value is LegacyProjectDocument {
-	if (!isObject(value)) return false;
-	if (value.type !== 'digitable-project' || value.schemaVersion !== 1) return false;
-	if (!isObject(value.members) || !isObject(value.components)) return false;
-	return (
-		Object.values(value.members).every(
-			(member) =>
-				isObject(member) &&
-				(member.kind === 'game-metadata' || member.kind === 'component-data') &&
-				typeof member.path === 'string' &&
-				typeof member.url === 'string'
-		) &&
-		Object.values(value.components).every(
-			(component) =>
-				isObject(component) &&
-				typeof component.name === 'string' &&
-				(component.dataMemberId === undefined || typeof component.dataMemberId === 'string')
-		)
-	);
 }
 
 export function isGameMetadataDocument(value: unknown): value is GameMetadataDocument {

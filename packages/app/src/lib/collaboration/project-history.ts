@@ -1,5 +1,4 @@
-import { encodeHeads, type DocHandle, type Repo, type UrlHeads } from '@automerge/automerge-repo';
-import * as A from '@automerge/automerge';
+import type { DocHandle, Repo } from '@automerge/automerge-repo';
 import { assert } from '$lib/utils/assert';
 import {
 	isProjectDocument,
@@ -14,32 +13,18 @@ import {
 } from './model';
 import { isProjectMemberDocument, resolveProjectGraph, type ProjectGraph } from './project-graph';
 import { describeProjectCheckpoint } from './checkpoint-title';
+import { encodeText, hashBytes } from './filesystem';
 import { withProjectLock } from './project-lock';
 import {
-	applyProjectMergeMembers,
+	createMergedProjectRoot,
 	createProjectMergePlan,
-	publishProjectMergeRoot,
 	resolveProjectCheckpointSnapshot,
 	resolveProjectMergePlan,
-	type ProjectCheckpointSnapshot,
 	type ProjectMergePlan,
-	type ProjectMergeResolution,
-	type ResolvedProjectMerge
+	type ProjectMergeResolution
 } from './project-merge';
-import type { PendingMergeOperation } from './project-config';
 
 export const MAIN_BRANCH_ID = 'main';
-
-export type ProjectMergeProgress =
-	| 'journal:prepared'
-	| 'members:flushed'
-	| 'journal:members-applied'
-	| 'root:flushed'
-	| 'journal:root-published'
-	| 'checkpoint:flushed'
-	| 'journal:checkpoint-recorded'
-	| 'history:flushed'
-	| 'journal:history-finalized';
 
 export async function createProjectHistory(
 	repo: Repo,
@@ -62,40 +47,6 @@ export async function createProjectHistory(
 	});
 	await repo.flush([handle.documentId]);
 	return handle;
-}
-
-export async function upgradeProjectHistory(
-	repo: Repo,
-	historyHandle: DocHandle<ProjectHistoryDocument>
-): Promise<void> {
-	const history = historyHandle.doc();
-	assert(history, 'The project history is unavailable.');
-	if (history.schemaVersion === 2) {
-		for (const [branchId, branch] of Object.entries(history.branches)) {
-			if (branchId === MAIN_BRANCH_ID) continue;
-			assert(branch.baseCheckpointId, `Project branch "${branch.name}" has no Base checkpoint.`);
-			const base = history.checkpoints[branch.baseCheckpointId];
-			assert(base, `Project branch "${branch.name}" has an invalid Base checkpoint.`);
-		}
-		return;
-	}
-	historyHandle.change(
-		(document) => {
-			for (const [branchId, branch] of Object.entries(document.branches)) {
-				if (branchId === MAIN_BRANCH_ID) continue;
-				const checkpointId = branch.baseCheckpointId ?? branch.forkCheckpointId;
-				assert(checkpointId, `Project branch "${branch.name}" has no Base checkpoint.`);
-				const checkpoint = document.checkpoints[checkpointId];
-				assert(checkpoint, `Project branch "${branch.name}" has an invalid Base checkpoint.`);
-				branch.baseCheckpointId = checkpointId;
-				branch.baseBranchId = checkpoint.branchId;
-				delete branch.forkCheckpointId;
-			}
-			document.schemaVersion = 2;
-		},
-		{ message: 'Upgrade project history to schema 2' }
-	);
-	await repo.flush([historyHandle.documentId]);
 }
 
 export async function resolveBranchGraph(
@@ -205,7 +156,6 @@ export async function forkProjectCheckpoint(
 				rootUrl: root.url,
 				parentBranchId: checkpoint.branchId,
 				baseCheckpointId: checkpoint.id,
-				baseBranchId: checkpoint.branchId,
 				createdAt
 			};
 			history.checkpoints[branchCheckpoint.id] = branchCheckpoint;
@@ -232,16 +182,11 @@ export async function prepareProjectMerge(
 	assert(branch.parentBranchId, 'Main cannot be merged into a parent branch.');
 	const parent = history?.branches[branch.parentBranchId];
 	assert(parent, 'The parent branch does not exist.');
-	const baseCheckpointId = branch.baseCheckpointId ?? branch.forkCheckpointId;
+	const baseCheckpointId = branch.baseCheckpointId;
 	assert(baseCheckpointId, 'The source branch has no Base checkpoint.');
 	const baseCheckpoint = history?.checkpoints[baseCheckpointId];
 	assert(baseCheckpoint, 'The source branch Base checkpoint does not exist.');
-	if (branch.baseBranchId) {
-		assert(
-			baseCheckpoint.branchId === branch.baseBranchId,
-			'The Base checkpoint belongs to the wrong branch.'
-		);
-	}
+	assert(history?.branches[baseCheckpoint.branchId], 'The Base checkpoint branch is unavailable.');
 	const source = await resolveBranchGraph(repo, historyHandle, branchId);
 	const target = await resolveBranchGraph(repo, historyHandle, branch.parentBranchId);
 	const sourceCheckpointId = await recordProjectCheckpoint(
@@ -290,9 +235,7 @@ export async function commitProjectMerge(
 	repo: Repo,
 	historyHandle: DocHandle<ProjectHistoryDocument>,
 	plan: ProjectMergePlan,
-	resolutions: ProjectMergeResolution[],
-	writePending: (pending: PendingMergeOperation) => Promise<void>,
-	onProgress?: (progress: ProjectMergeProgress) => Promise<void>
+	resolutions: ProjectMergeResolution[]
 ): Promise<ProjectCheckpointId> {
 	const history = historyHandle.doc();
 	const sourceBranch = history?.branches[plan.sourceBranchId];
@@ -341,257 +284,67 @@ export async function commitProjectMerge(
 		'The reviewed merge plan is stale.'
 	);
 	const resolved = resolveProjectMergePlan(currentPlan, resolutions);
-	const appliedMemberHeads = await expectedProjectMergeMemberHeads(
+	const root = await createMergedProjectRoot({
 		repo,
-		snapshots[1],
-		snapshots[2],
-		resolved.mutableMemberIds
-	);
-	const pending: PendingMergeOperation = {
-		version: 2,
-		type: 'merge',
-		operationId: plan.id,
-		phase: 'prepared',
-		sourceBranchId: plan.sourceBranchId,
-		targetBranchId: plan.targetBranchId,
-		baseCheckpointId: plan.baseCheckpointId,
-		sourceCheckpointId: plan.sourceCheckpointId,
-		targetCheckpointId: plan.targetCheckpointId,
-		resolutions,
-		mutableMemberIds: resolved.mutableMemberIds,
-		finalMembers: resolved.members,
-		finalComponents: resolved.components,
-		appliedMemberHeads
-	};
-	await writePending(pending);
-	await onProgress?.('journal:prepared');
-	return resumeProjectMerge(repo, historyHandle, pending, writePending, onProgress);
-}
-
-export async function resumeProjectMerge(
-	repo: Repo,
-	historyHandle: DocHandle<ProjectHistoryDocument>,
-	pending: PendingMergeOperation,
-	writePending: (pending: PendingMergeOperation) => Promise<void>,
-	onProgress?: (progress: ProjectMergeProgress) => Promise<void>
-): Promise<ProjectCheckpointId> {
-	const history = historyHandle.doc();
-	assert(history, 'The project history is unavailable.');
-	if (pending.phase === 'history-finalized') {
-		assert(pending.resultCheckpointId, 'The finalized merge has no result checkpoint.');
-		const merge = history.merges[pending.operationId];
-		assert(
-			merge &&
-				'baseCheckpointId' in merge &&
-				merge.baseCheckpointId === pending.baseCheckpointId &&
-				merge.sourceCheckpointId === pending.sourceCheckpointId &&
-				merge.targetCheckpointId === pending.targetCheckpointId &&
-				merge.resultCheckpointId === pending.resultCheckpointId &&
-				history.checkpoints[pending.resultCheckpointId] &&
-				history.branches[pending.sourceBranchId]?.mergedAt !== undefined &&
-				history.checkedOutBranchId === pending.targetBranchId,
-			'The finalized merge history is incomplete.'
-		);
-		return pending.resultCheckpointId;
-	}
-	const baseCheckpoint = history.checkpoints[pending.baseCheckpointId];
-	const sourceCheckpoint = history.checkpoints[pending.sourceCheckpointId];
-	const targetCheckpoint = history.checkpoints[pending.targetCheckpointId];
-	assert(
-		baseCheckpoint && sourceCheckpoint && targetCheckpoint,
-		'A pending merge checkpoint is unavailable.'
-	);
-	const targetBranch = history.branches[pending.targetBranchId];
-	const sourceBranch = history.branches[pending.sourceBranchId];
-	assert(targetBranch && sourceBranch, 'A pending merge branch is unavailable.');
-	const [base, target, branch] = await Promise.all([
-		resolveProjectCheckpointSnapshot(repo, baseCheckpoint),
-		resolveProjectCheckpointSnapshot(repo, targetCheckpoint),
-		resolveProjectCheckpointSnapshot(repo, sourceCheckpoint)
-	]);
-	const reviewed = createProjectMergePlan({
-		id: pending.operationId,
-		sourceBranchId: pending.sourceBranchId,
-		targetBranchId: pending.targetBranchId,
-		sourceBranchName: sourceBranch.name,
-		targetBranchName: targetBranch.name,
-		base,
-		parent: target,
-		branch
+		parent: snapshots[1],
+		branch: snapshots[2],
+		resolved
 	});
-	const planned = resolveProjectMergePlan(reviewed, pending.resolutions);
-	const expectedMemberHeads = await expectedProjectMergeMemberHeads(
+	const graph = await resolveProjectGraph(repo, root);
+	const resultCheckpoint = await checkpointFromGraph(
 		repo,
-		target,
-		branch,
-		planned.mutableMemberIds
+		plan.targetBranchId,
+		graph,
+		`Merge ${sourceBranch.name}`
+	);
+	const [latestSource, latestTarget] = await Promise.all([
+		resolveBranchGraph(repo, historyHandle, plan.sourceBranchId),
+		resolveBranchGraph(repo, historyHandle, plan.targetBranchId)
+	]);
+	assert(
+		sameCheckpointGraphState(sourceCheckpoint, latestSource.graph),
+		'The source branch changed while applying the merge.'
 	);
 	assert(
-		JSON.stringify(planned.members) === JSON.stringify(pending.finalMembers) &&
-			JSON.stringify(planned.components) === JSON.stringify(pending.finalComponents) &&
-			JSON.stringify(planned.mutableMemberIds) === JSON.stringify(pending.mutableMemberIds) &&
-			sameHeadsRecord(expectedMemberHeads, pending.appliedMemberHeads),
-		'The pending merge journal does not match its reviewed checkpoints.'
+		sameCheckpointGraphState(targetCheckpoint, latestTarget.graph),
+		'The parent branch changed while applying the merge.'
 	);
-	const source = await resolveBranchGraph(repo, historyHandle, pending.sourceBranchId);
-	assert(
-		sameCheckpointGraphState(sourceCheckpoint, source.graph),
-		'The source branch changed after merge preparation.'
-	);
-	const targetRoot = await repo.find<ProjectDocument>(targetBranch.rootUrl);
-	const resolved: ResolvedProjectMerge = {
-		members: pending.finalMembers,
-		components: pending.finalComponents,
-		mutableMemberIds: pending.mutableMemberIds
-	};
-	if (pending.phase === 'prepared') {
-		const targetLive = await resolveBranchGraph(repo, historyHandle, pending.targetBranchId);
-		assert(
-			mergeMembersAreRecoverable(targetCheckpoint, targetLive.graph, pending.appliedMemberHeads),
-			'The parent changed after merge preparation.'
-		);
-		await applyProjectMergeMembers({ repo, branch, resolved });
-		for (const [memberId, heads] of Object.entries(pending.appliedMemberHeads)) {
-			const handle = await repo.find<ProjectMemberDocument>(resolved.members[memberId].url);
-			assert(
-				sameHeads(heads, handle.heads()),
-				`Parent member ${resolved.members[memberId].path} did not reach its planned state.`
-			);
-		}
-		await onProgress?.('members:flushed');
-		pending = { ...pending, phase: 'members-applied' };
-		await writePending(pending);
-		await onProgress?.('journal:members-applied');
-	}
-	if (pending.phase === 'members-applied') {
-		for (const [memberId, heads] of Object.entries(pending.appliedMemberHeads)) {
-			const handle = await repo.find<ProjectMemberDocument>(resolved.members[memberId].url);
-			assert(
-				sameHeads(heads, handle.heads()),
-				`Parent member ${resolved.members[memberId].path} changed during merge recovery.`
-			);
-		}
-		if (sameHeads(targetCheckpoint.rootHeads, targetRoot.heads())) {
-			await publishProjectMergeRoot(repo, targetRoot, resolved);
-		} else {
-			assert(
-				sameProjectStructure(targetRoot.doc(), resolved),
-				'The parent structure changed while applying the merge root.'
-			);
-		}
-		await onProgress?.('root:flushed');
-		pending = { ...pending, phase: 'root-published', publishedRootHeads: targetRoot.heads() };
-		await writePending(pending);
-		await onProgress?.('journal:root-published');
-	}
-	let resultCheckpointId = pending.resultCheckpointId;
-	if (pending.phase === 'root-published') {
-		assert(pending.publishedRootHeads, 'The pending merge is missing published root heads.');
-		assert(
-			sameHeads(pending.publishedRootHeads, targetRoot.heads()) &&
-				sameProjectStructure(targetRoot.doc(), resolved),
-			'The parent changed after the merge root was published.'
-		);
-		const graph = await resolveProjectGraph(repo, targetRoot);
-		resultCheckpointId = await recordProjectCheckpoint(
-			repo,
-			historyHandle,
-			pending.targetBranchId,
-			graph,
-			`Merge ${sourceBranch.name}`
-		);
-		await onProgress?.('checkpoint:flushed');
-		pending = { ...pending, phase: 'checkpoint-recorded', resultCheckpointId };
-		await writePending(pending);
-		await onProgress?.('journal:checkpoint-recorded');
-	}
-	assert(resultCheckpointId, 'The pending merge has no result checkpoint.');
-	if (pending.phase === 'checkpoint-recorded') {
-		assert(pending.publishedRootHeads, 'The pending merge is missing published root heads.');
-		assert(
-			sameHeads(pending.publishedRootHeads, targetRoot.heads()),
-			'The parent changed before merge history was finalized.'
-		);
-		historyHandle.change(
-			(document) => {
-				const existing = document.merges[pending.operationId];
-				if (!existing) {
-					const merge: ProjectMerge = {
-						id: pending.operationId,
-						sourceBranchId: pending.sourceBranchId,
-						targetBranchId: pending.targetBranchId,
-						baseCheckpointId: pending.baseCheckpointId,
-						sourceCheckpointId: pending.sourceCheckpointId,
-						targetCheckpointId: pending.targetCheckpointId,
-						resultCheckpointId: resultCheckpointId!,
-						createdAt: Date.now()
-					};
-					document.merges[pending.operationId] = merge;
-				}
-				document.branches[pending.sourceBranchId].mergedAt ??= Date.now();
-				for (const child of Object.values(document.branches)) {
-					if (child.parentBranchId === pending.sourceBranchId)
-						child.parentBranchId = pending.targetBranchId;
-				}
-				document.checkedOutBranchId = pending.targetBranchId;
-			},
-			{ message: `Merge ${sourceBranch.name} into ${targetBranch.name}` }
-		);
-		await repo.flush([historyHandle.documentId]);
-		await onProgress?.('history:flushed');
-		pending = { ...pending, phase: 'history-finalized', resultCheckpointId };
-		await writePending(pending);
-		await onProgress?.('journal:history-finalized');
-	}
-	return resultCheckpointId;
-}
 
-function sameProjectStructure(
-	project: ProjectDocument | undefined,
-	resolved: ResolvedProjectMerge
-): boolean {
-	if (!project) return false;
-	const memberIds = Object.keys(resolved.members);
-	const componentIds = Object.keys(resolved.components);
-	return (
-		memberIds.length === Object.keys(project.members).length &&
-		componentIds.length === Object.keys(project.components).length &&
-		memberIds.every(
-			(id) => JSON.stringify(project.members[id]) === JSON.stringify(resolved.members[id])
-		) &&
-		componentIds.every(
-			(id) => JSON.stringify(project.components[id]) === JSON.stringify(resolved.components[id])
-		)
+	const createdAt = Date.now();
+	historyHandle.change(
+		(document) => {
+			const currentSource = document.branches[plan.sourceBranchId];
+			const currentTarget = document.branches[plan.targetBranchId];
+			assert(
+				currentSource?.parentBranchId === plan.targetBranchId &&
+					currentSource.mergedAt === undefined &&
+					currentTarget?.rootUrl === targetCheckpoint.rootUrl,
+				'The merge branches changed while publishing the merge.'
+			);
+			assert(!document.merges[plan.id], 'The merge was already published.');
+			currentTarget.rootUrl = root.url;
+			document.checkpoints[resultCheckpoint.id] = resultCheckpoint;
+			const merge: ProjectMerge = {
+				sourceBranchId: plan.sourceBranchId,
+				targetBranchId: plan.targetBranchId,
+				baseCheckpointId: plan.baseCheckpointId,
+				sourceCheckpointId: plan.sourceCheckpointId,
+				targetCheckpointId: plan.targetCheckpointId,
+				resultCheckpointId: resultCheckpoint.id,
+				createdAt
+			};
+			document.merges[plan.id] = merge;
+			currentSource.mergedAt = createdAt;
+			for (const child of Object.values(document.branches)) {
+				if (child.parentBranchId === plan.sourceBranchId)
+					child.parentBranchId = plan.targetBranchId;
+			}
+			document.checkedOutBranchId = plan.targetBranchId;
+		},
+		{ message: `Merge ${sourceBranch.name} into ${targetBranch.name}` }
 	);
-}
-
-/** Recovers the schema-1 journal before history migration. */
-export async function mergeProjectBranch(
-	repo: Repo,
-	historyHandle: DocHandle<ProjectHistoryDocument>,
-	branchId: ProjectBranchId,
-	targetBranchId: ProjectBranchId,
-	writePending: (pending: PendingMergeOperation) => Promise<void>,
-	onProgress?: (progress: ProjectMergeProgress) => Promise<void>
-): Promise<ProjectCheckpointId> {
-	await upgradeProjectHistory(repo, historyHandle);
-	const history = historyHandle.doc();
-	const branch = history?.branches[branchId];
-	assert(branch, `Project branch "${branchId}" does not exist.`);
-	assert(
-		branch.parentBranchId === targetBranchId,
-		'The interrupted legacy merge target has changed.'
-	);
-	const completed = Object.values(history?.merges ?? {}).find(
-		(merge) =>
-			merge.sourceBranchId === branchId &&
-			(!branch.parentBranchId || merge.targetBranchId === branch.parentBranchId)
-	);
-	if (completed) return completed.resultCheckpointId;
-	assert(branch.mergedAt === undefined, 'The interrupted legacy merge has no merge record.');
-	const plan = await prepareProjectMerge(repo, historyHandle, branchId);
-	assert(plan.conflicts.length === 0, 'The interrupted legacy merge now requires review.');
-	return commitProjectMerge(repo, historyHandle, plan, [], writePending, onProgress);
+	await repo.flush([historyHandle.documentId]);
+	return resultCheckpoint.id;
 }
 
 export function checkoutProjectBranch(
@@ -689,7 +442,7 @@ async function checkpointFromGraph(
 	}
 	const members = Object.fromEntries(resolved.map(([id, member]) => [id, member]));
 	return {
-		id: crypto.randomUUID(),
+		id: await checkpointId(branchId, graph.projectHandle.url, rootHeads, members),
 		branchId,
 		createdAt: Date.now(),
 		message,
@@ -697,6 +450,25 @@ async function checkpointFromGraph(
 		rootHeads,
 		members
 	};
+}
+
+async function checkpointId(
+	branchId: ProjectBranchId,
+	rootUrl: string,
+	rootHeads: readonly string[],
+	members: ProjectCheckpoint['members']
+): Promise<ProjectCheckpointId> {
+	const state = {
+		branchId,
+		rootUrl,
+		rootHeads: [...rootHeads].sort(),
+		members: Object.fromEntries(
+			Object.entries(members)
+				.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+				.map(([id, member]) => [id, { url: member.url, heads: [...member.heads].sort() }])
+		)
+	};
+	return `checkpoint-${await hashBytes(encodeText(JSON.stringify(state)))}`;
 }
 
 function sameHeads(left: readonly string[], right: readonly string[]): boolean {
@@ -738,75 +510,5 @@ function sameCheckpointGraphState(checkpoint: ProjectCheckpoint, graph: ProjectG
 			const handle = graph.memberHandles.get(id);
 			return !!handle && handle.url === member.url && sameHeads(handle.heads(), member.heads);
 		})
-	);
-}
-
-async function expectedProjectMergeMemberHeads(
-	repo: Repo,
-	target: ProjectCheckpointSnapshot,
-	branch: ProjectCheckpointSnapshot,
-	memberIds: string[]
-): Promise<Record<string, UrlHeads>> {
-	return Object.fromEntries(
-		await Promise.all(
-			memberIds.map(async (memberId) => {
-				const targetMember = target.checkpoint.members[memberId];
-				const branchMember = branch.checkpoint.members[memberId];
-				assert(targetMember && branchMember, 'A mutable merge member is unavailable.');
-				const [targetHandle, branchHandle] = await Promise.all([
-					repo.find<ProjectMemberDocument>(targetMember.url),
-					repo.find<ProjectMemberDocument>(branchMember.url)
-				]);
-				const targetDocument = targetHandle.view(targetMember.heads).doc();
-				const branchDocument = branchHandle.view(branchMember.heads).doc();
-				if (!targetDocument || !branchDocument) {
-					throw new Error(`Mutable member ${targetMember.path} is unavailable.`);
-				}
-				assert(
-					isProjectMemberDocument(targetMember.kind, targetDocument) &&
-						isProjectMemberDocument(branchMember.kind, branchDocument),
-					`Mutable member ${targetMember.path} is unavailable.`
-				);
-				const merged = A.merge<ProjectMemberDocument>(A.clone(targetDocument), branchDocument);
-				return [memberId, encodeHeads(A.getHeads(merged))] as const;
-			})
-		)
-	);
-}
-
-function mergeMembersAreRecoverable(
-	checkpoint: ProjectCheckpoint,
-	graph: ProjectGraph,
-	expected: Record<string, readonly string[]>
-): boolean {
-	if (
-		checkpoint.rootUrl !== graph.projectHandle.url ||
-		!sameHeads(checkpoint.rootHeads, graph.projectHandle.heads())
-	) {
-		return false;
-	}
-	const checkpointIds = Object.keys(checkpoint.members);
-	const projectIds = Object.keys(graph.projectHandle.doc()?.members ?? {});
-	return (
-		checkpointIds.length === projectIds.length &&
-		checkpointIds.every((id) => {
-			const member = checkpoint.members[id];
-			const handle = graph.memberHandles.get(id);
-			if (!handle || handle.url !== member.url) return false;
-			return (
-				sameHeads(handle.heads(), member.heads) || sameHeads(handle.heads(), expected[id] ?? [])
-			);
-		})
-	);
-}
-
-function sameHeadsRecord(
-	left: Record<string, readonly string[]>,
-	right: Record<string, readonly string[]>
-): boolean {
-	const ids = Object.keys(left);
-	return (
-		ids.length === Object.keys(right).length &&
-		ids.every((id) => sameHeads(left[id], right[id] ?? []))
 	);
 }

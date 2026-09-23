@@ -8,58 +8,15 @@ import {
 	type FsWriteData
 } from '$lib/components/file-browser/adapters/adapter';
 import { Ok } from 'wellcrafted/result';
-import { componentDataMaterializer } from './component-data';
-import { encodeText } from './filesystem';
-import { gameMetadataMaterializer } from './game-metadata';
-import { markdownFileMaterializer } from './markdown/markdown-file';
-import {
-	isBinaryFileDocument,
-	isComponentDataDocument,
-	isGameMetadataDocument,
-	isMarkdownFileDocument,
-	isTextFileDocument
-} from './model';
 import type { ProjectGraph } from './project-graph';
-import { svgFileMaterializer } from './svg-file';
-import { textFileMaterializer } from './text-file';
-import { isSvgDocument } from '@svg-table/svgeditor';
+import { managedMember, serializeManagedMember } from './reconciler';
 
 export function createCheckpointProjectFiles(graph: ProjectGraph, name: string): FsDir {
 	const files = new Map<string, Uint8Array>();
 	for (const [id, member] of Object.entries(graph.project.members)) {
-		const document = graph.memberHandles.get(id)?.doc();
-		if (member.kind === 'game-metadata' && isGameMetadataDocument(document)) {
-			files.set(member.path, encodeText(gameMetadataMaterializer.serialize(document)));
-			continue;
-		}
-		if (member.kind === 'component-data' && isComponentDataDocument(document)) {
-			files.set(member.path, encodeText(componentDataMaterializer.serialize(document)));
-			continue;
-		}
-		if (member.kind === 'component-svg' && isSvgDocument(document)) {
-			files.set(member.path, encodeText(svgFileMaterializer.serialize(document)));
-			continue;
-		}
-		if (member.kind === 'rules' && isMarkdownFileDocument(document)) {
-			files.set(member.path, encodeText(markdownFileMaterializer.serialize(document)));
-			continue;
-		}
-		if (member.kind === 'asset' && isBinaryFileDocument(document)) {
-			files.set(member.path, Uint8Array.from(document.content));
-			continue;
-		}
-		if (
-			isTextFileDocument(document) &&
-			(member.kind === 'component-svg' ||
-				member.kind === 'rules' ||
-				member.kind === 'table-setup' ||
-				member.kind === 'feedback-registry' ||
-				member.kind === 'feedback-markdown')
-		) {
-			files.set(member.path, encodeText(textFileMaterializer(member.kind).serialize(document)));
-			continue;
-		}
-		throw new Error(`Checkpoint member ${member.path} has an unsupported format.`);
+		const handle = graph.memberHandles.get(id);
+		if (!handle) throw new Error(`Checkpoint member ${member.path} is unavailable.`);
+		files.set(member.path, serializeManagedMember(managedMember(id, member, handle)));
 	}
 	return checkpointDir(name, files, '');
 }

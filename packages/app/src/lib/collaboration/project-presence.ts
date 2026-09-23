@@ -11,6 +11,20 @@ const PEER_TTL_MS = 60_000;
 
 export type PresenceSurfaceLayout = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
+const PRESENCE_SURFACE_LAYOUTS: PresenceSurfaceLayout[] = ['xs', 'sm', 'md', 'lg', 'xl'];
+
+export function isPresenceSurfaceLayout(value: unknown): value is PresenceSurfaceLayout {
+	return typeof value === 'string' && PRESENCE_SURFACE_LAYOUTS.some((layout) => layout === value);
+}
+
+export function presenceSurfaceLayout(width: number): PresenceSurfaceLayout {
+	if (width < 640) return 'xs';
+	if (width < 768) return 'sm';
+	if (width < 1024) return 'md';
+	if (width < 1280) return 'lg';
+	return 'xl';
+}
+
 type PresenceCoordinates = { x: number; y: number };
 
 export type PresencePointer =
@@ -114,8 +128,8 @@ export function createProjectPresence(handle: DocHandle<ProjectDocument>): Proje
 
 	handle.on('ephemeral-message', onMessage);
 	handle.broadcast({ type: 'presence-hello', version: VERSION } satisfies PresenceMessage);
-	const heartbeat = window.setInterval(broadcastState, HEARTBEAT_MS);
-	const pruning = window.setInterval(() => {
+	const timer = window.setInterval(() => {
+		broadcastState();
 		const threshold = Date.now() - PEER_TTL_MS;
 		let changed = false;
 		for (const [peerId, peer] of peers) {
@@ -157,8 +171,7 @@ export function createProjectPresence(handle: DocHandle<ProjectDocument>): Proje
 			if (closed) return;
 			handle.broadcast({ type: 'presence-leave', version: VERSION } satisfies PresenceMessage);
 			closed = true;
-			window.clearInterval(heartbeat);
-			window.clearInterval(pruning);
+			window.clearInterval(timer);
 			handle.off('ephemeral-message', onMessage);
 			peers.clear();
 			notify();
@@ -197,10 +210,7 @@ function isPresenceMessage(value: unknown): value is PresenceMessage {
 	if (pointer.kind !== 'surface' && pointer.kind !== 'region') return false;
 	if (!validId(pointer.surfaceId)) return false;
 	if (pointer.kind === 'region' && !validId(pointer.regionId)) return false;
-	if (
-		pointer.kind === 'surface' &&
-		!['xs', 'sm', 'md', 'lg', 'xl'].includes(String(pointer.layout))
-	) {
+	if (pointer.kind === 'surface' && !isPresenceSurfaceLayout(pointer.layout)) {
 		return false;
 	}
 	return (

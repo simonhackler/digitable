@@ -37,6 +37,37 @@ export type SvgClaim = {
 	domain: SvgClaimDomain;
 };
 
+const SVG_INTERACTION_KINDS: SvgInteractionKind[] = ['move', 'resize', 'rotate', 'fill', 'stroke'];
+
+const SVG_CLAIM_DOMAINS: SvgClaimDomain[] = [
+	'transform',
+	'geometry',
+	'placement',
+	'fill',
+	'stroke',
+	'path'
+];
+
+export function isSvgInteractionKind(value: unknown): value is SvgInteractionKind {
+	return typeof value === 'string' && SVG_INTERACTION_KINDS.some((kind) => kind === value);
+}
+
+export function isSvgClaimDomain(value: unknown): value is SvgClaimDomain {
+	return typeof value === 'string' && SVG_CLAIM_DOMAINS.some((domain) => domain === value);
+}
+
+export function svgInteractionClaimDomains(kind: SvgInteractionKind): SvgClaimDomain[] {
+	if (kind === 'fill' || kind === 'stroke') return [kind];
+	if (kind === 'resize') return ['geometry', 'transform'];
+	return ['transform'];
+}
+
+export function svgInteractionClaims(kind: SvgInteractionKind, nodeIds: NodeId[]): SvgClaim[] {
+	return nodeIds.flatMap((nodeId) =>
+		svgInteractionClaimDomains(kind).map((domain) => ({ nodeId, domain }))
+	);
+}
+
 export type SvgInteractionPreview =
 	| { kind: 'move'; delta: Vec2; bounds?: Bounds }
 	| { kind: 'resize'; baseBounds: Bounds; bounds: Bounds }

@@ -1,13 +1,7 @@
-import {
-	isValidAutomergeUrl,
-	type AutomergeUrl,
-	type DocHandle,
-	type Repo
-} from '@automerge/automerge-repo';
+import { type AutomergeUrl, type DocHandle, type Repo } from '@automerge/automerge-repo';
 import { assert } from '$lib/utils/assert';
 import { hashBytes } from './filesystem';
 import {
-	GAME_METADATA_MEMBER_ID,
 	isBinaryFileDocument,
 	isProjectDocument,
 	type ProjectBranchId,
@@ -18,8 +12,7 @@ import {
 	type ProjectMember,
 	type ProjectMemberDocument
 } from './model';
-import { classifyProjectFile, type ProjectFileFingerprint } from './project-files';
-import { isProjectMemberDocument } from './project-graph';
+import { isProjectMemberDocument, validateProjectStructure } from './project-graph';
 
 export type ProjectMergeChange = {
 	kind:
@@ -29,7 +22,6 @@ export type ProjectMergeChange = {
 		| 'component-added'
 		| 'component-deleted'
 		| 'component-renamed'
-		| 'component-slot-changed'
 		| 'asset-replaced'
 		| 'mutable-content-merged';
 	label: string;
@@ -47,12 +39,10 @@ export type ProjectMergeConflictKind =
 	| 'component-delete-modify'
 	| 'component-name'
 	| 'component-name-collision'
-	| 'component-slot'
 	| 'asset-content'
 	| 'asset-delete-modify';
 
 type ConflictValue = string | null | ProjectMember | ProjectComponent;
-type ComponentSlot = 'frontMemberId' | 'backMemberId' | 'dataMemberId';
 type ProjectMergeConflictBase = {
 	id: string;
 	label: string;
@@ -67,19 +57,9 @@ type ProjectMergeConflictBase = {
 	branchComponentId?: string;
 	parentUrl?: AutomergeUrl;
 	branchUrl?: AutomergeUrl;
-	parentSlots?: Array<{ componentId: string; slot: ComponentSlot }>;
-	branchSlots?: Array<{ componentId: string; slot: ComponentSlot }>;
 	parentMembers?: Record<string, ProjectMember>;
 	branchMembers?: Record<string, ProjectMember>;
-	field?:
-		| 'kind'
-		| 'path'
-		| 'componentId'
-		| 'name'
-		| 'frontMemberId'
-		| 'backMemberId'
-		| 'dataMemberId'
-		| 'hash';
+	field?: 'kind' | 'path' | 'componentId' | 'name' | 'hash';
 };
 
 export type ProjectMergeConflict =
@@ -92,7 +72,6 @@ export type ProjectMergeConflict =
 	| (ProjectMergeConflictBase & { kind: 'component-delete-modify' })
 	| (ProjectMergeConflictBase & { kind: 'component-name' })
 	| (ProjectMergeConflictBase & { kind: 'component-name-collision' })
-	| (ProjectMergeConflictBase & { kind: 'component-slot' })
 	| (ProjectMergeConflictBase & { kind: 'asset-content' })
 	| (ProjectMergeConflictBase & { kind: 'asset-delete-modify' });
 
@@ -301,9 +280,7 @@ export function createProjectMergePlan({
 				base: baseMember,
 				parent: parentMember ?? null,
 				branch: branchMember ?? null,
-				memberId,
-				parentSlots: memberSlots(parent.project, memberId),
-				branchSlots: memberSlots(branch.project, memberId)
+				memberId
 			});
 			if (kind === 'asset-delete-modify') {
 				assetDetails[conflictId] = {
@@ -425,15 +402,7 @@ export function createProjectMergePlan({
 			if (!parentComponent && !branchComponent) continue;
 			const retained = parentComponent ?? branchComponent!;
 			const retainedProject = parentComponent ? parent : branch;
-			const changed =
-				!equal(baseComponent, retained) ||
-				componentMemberIds(baseComponent).some(
-					(memberId) =>
-						!sameHeads(
-							base.checkpoint.members[memberId]?.heads,
-							retainedProject.checkpoint.members[memberId]?.heads
-						)
-				);
+			const changed = componentChanged(base, retainedProject, componentId);
 			if (!changed) {
 				changes.push({
 					kind: 'component-deleted',
@@ -455,24 +424,17 @@ export function createProjectMergePlan({
 			continue;
 		}
 		const merged = structuredClone(parentComponent);
-		for (const field of ['name', 'frontMemberId', 'backMemberId', 'dataMemberId'] as const) {
-			const result = mergeValue(
-				baseComponent[field],
-				parentComponent[field],
-				branchComponent[field]
-			);
-			if (result.value === undefined && field !== 'name') delete merged[field];
-			if (result.value !== undefined) merged[field] = result.value as never;
-			if (result.conflict) {
-				conflict(field === 'name' ? 'component-name' : 'component-slot', {
-					label: `${baseComponent.name} has conflicting ${field} changes`,
-					base: baseComponent[field] ?? null,
-					parent: parentComponent[field] ?? null,
-					branch: branchComponent[field] ?? null,
-					componentId,
-					field
-				});
-			}
+		const result = mergeValue(baseComponent.name, parentComponent.name, branchComponent.name);
+		merged.name = result.value;
+		if (result.conflict) {
+			conflict('component-name', {
+				label: `${baseComponent.name} has conflicting name changes`,
+				base: baseComponent.name,
+				parent: parentComponent.name,
+				branch: branchComponent.name,
+				componentId,
+				field: 'name'
+			});
 		}
 		if (merged.name !== baseComponent.name && merged.name !== parentComponent.name) {
 			changes.push({
@@ -592,7 +554,7 @@ export function resolveProjectMergePlan(
 			continue;
 		}
 		if (conflict.memberId) {
-			applyMemberResolution(members, components, conflict, resolution);
+			applyMemberResolution(members, conflict, resolution);
 			continue;
 		}
 		if (conflict.componentId) applyComponentResolution(members, components, conflict, resolution);
@@ -628,169 +590,78 @@ export function validateProjectMergeResolutions(
 	}
 }
 
-export function validateProjectStructure(project: ProjectDocument): string[] {
-	const errors: string[] = [];
-	const metadata = Object.entries(project.members).filter(
-		([, member]) => member.kind === 'game-metadata'
-	);
-	if (
-		metadata.length !== 1 ||
-		metadata[0]?.[0] !== GAME_METADATA_MEMBER_ID ||
-		project.members[GAME_METADATA_MEMBER_ID]?.path !== 'game.json'
-	) {
-		errors.push('The project must contain exactly one $metadata game.json member.');
-	}
-	const paths = new Set<string>();
-	for (const [id, member] of Object.entries(project.members)) {
-		if (!isValidAutomergeUrl(member.url)) errors.push(`Member ${member.path} has an invalid URL.`);
-		const classification = classifyProjectFile(member.path);
-		if (!classification || classification.kind !== member.kind) {
-			errors.push(`Member ${member.path} is not a recognized ${member.kind} path.`);
-		}
-		if (paths.has(member.path)) errors.push(`Member path ${member.path} is not unique.`);
-		paths.add(member.path);
-		if (member.kind === 'asset' && !member.hash)
-			errors.push(`Asset ${member.path} is missing its hash.`);
-		if (member.kind !== 'asset' && member.hash !== undefined)
-			errors.push(`Mutable member ${member.path} cannot have an asset hash.`);
-		if (id === GAME_METADATA_MEMBER_ID && member.kind !== 'game-metadata')
-			errors.push('$metadata must identify game metadata.');
-	}
-	const names = new Set<string>();
-	const assignments = new Map<string, string>();
-	for (const [componentId, component] of Object.entries(project.components)) {
-		if (names.has(component.name)) errors.push(`Component name ${component.name} is not unique.`);
-		names.add(component.name);
-		for (const [slot, kind] of [
-			['frontMemberId', 'component-svg'],
-			['backMemberId', 'component-svg'],
-			['dataMemberId', 'component-data']
-		] as const) {
-			const memberId = component[slot];
-			if (!memberId) continue;
-			const member = project.members[memberId];
-			if (!member) {
-				errors.push(`Component ${component.name} references a missing ${slot}.`);
-				continue;
-			}
-			if (member.kind !== kind) errors.push(`Component ${component.name} has an invalid ${slot}.`);
-			if (member.componentId !== componentId)
-				errors.push(`Member ${member.path} belongs to the wrong component.`);
-			const previous = assignments.get(memberId);
-			if (previous && previous !== `${componentId}:${slot}`)
-				errors.push(`Member ${member.path} is assigned to incompatible component slots.`);
-			assignments.set(memberId, `${componentId}:${slot}`);
-		}
-	}
-	for (const [memberId, member] of Object.entries(project.members)) {
-		if (!member.componentId) continue;
-		const component = project.components[member.componentId];
-		if (!component) {
-			errors.push(`Member ${member.path} references a missing component.`);
+export async function createMergedProjectRoot({
+	repo,
+	parent,
+	branch,
+	resolved
+}: {
+	repo: Repo;
+	parent: ProjectCheckpointSnapshot;
+	branch: ProjectCheckpointSnapshot;
+	resolved: ResolvedProjectMerge;
+}): Promise<DocHandle<ProjectDocument>> {
+	const members = structuredClone(resolved.members);
+	const handles: DocHandle<ProjectMemberDocument>[] = [];
+	for (const [memberId, member] of Object.entries(members)) {
+		if (member.kind === 'asset') {
+			const handle = await repo.find<ProjectMemberDocument>(member.url);
+			const document = handle.doc();
+			assert(isBinaryFileDocument(document) && member.hash, `Asset ${member.path} is unavailable.`);
+			assert(
+				(await hashBytes(document.content)) === member.hash,
+				`Asset ${member.path} failed verification.`
+			);
 			continue;
 		}
-		const classification = classifyProjectFile(member.path);
-		if (classification?.componentName !== component.name)
-			errors.push(`Member ${member.path} does not match component ${component.name}.`);
-		const expectedSlot =
-			member.kind === 'component-data'
-				? 'dataMemberId'
-				: classification?.side === 'front'
-					? 'frontMemberId'
-					: classification?.side === 'back'
-						? 'backMemberId'
-						: undefined;
-		if (expectedSlot && component[expectedSlot] !== memberId)
-			errors.push(`Member ${member.path} is not assigned to its component slot.`);
-	}
-	return errors;
-}
 
-export async function applyProjectMerge({
-	repo,
-	targetRoot,
-	branch,
-	resolved
-}: {
-	repo: Repo;
-	targetRoot: DocHandle<ProjectDocument>;
-	branch: ProjectCheckpointSnapshot;
-	resolved: ResolvedProjectMerge;
-}): Promise<void> {
-	await applyProjectMergeMembers({ repo, branch, resolved });
-	await publishProjectMergeRoot(repo, targetRoot, resolved);
-}
-
-export async function applyProjectMergeMembers({
-	repo,
-	branch,
-	resolved
-}: {
-	repo: Repo;
-	branch: ProjectCheckpointSnapshot;
-	resolved: ResolvedProjectMerge;
-}): Promise<void> {
-	for (const memberId of resolved.mutableMemberIds) {
-		const targetMember = resolved.members[memberId];
-		const sourceMember = branch.checkpoint.members[memberId];
-		if (!targetMember || !sourceMember || targetMember.kind === 'asset') continue;
-		const target = await repo.find<ProjectMemberDocument>(targetMember.url);
-		const source = await repo.find<ProjectMemberDocument>(sourceMember.url);
-		target.merge(source.view(sourceMember.heads));
-		await repo.flush([target.documentId]);
-	}
-	for (const member of Object.values(resolved.members)) {
-		if (member.kind !== 'asset') continue;
-		const handle = await repo.find<ProjectMemberDocument>(member.url);
-		const document = handle.doc();
-		assert(isBinaryFileDocument(document) && member.hash, `Asset ${member.path} is unavailable.`);
+		const parentMember = parent.checkpoint.members[memberId];
+		const branchMember = branch.checkpoint.members[memberId];
+		const selected =
+			parentMember?.url === member.url
+				? parentMember
+				: branchMember?.url === member.url
+					? branchMember
+					: undefined;
+		assert(selected, `Mutable member ${member.path} has no reviewed version.`);
+		const source = await repo.find<ProjectMemberDocument>(selected.url);
+		const view = source.view(selected.heads);
 		assert(
-			(await hashBytes(document.content)) === member.hash,
-			`Asset ${member.path} failed verification.`
+			isProjectMemberDocument(member.kind, view.doc()),
+			`Mutable member ${member.path} is unavailable.`
 		);
+		if (!resolved.mutableMemberIds.includes(memberId)) continue;
+		assert(parentMember && branchMember, `Mutable member ${member.path} cannot be merged.`);
+		const parentHandle = await repo.find<ProjectMemberDocument>(parentMember.url);
+		const clone = repo.clone(parentHandle.view(parentMember.heads));
+		const branchHandle = await repo.find<ProjectMemberDocument>(branchMember.url);
+		const branchView = branchHandle.view(branchMember.heads);
+		assert(
+			isProjectMemberDocument(member.kind, branchView.doc()),
+			`Branch member ${member.path} is unavailable.`
+		);
+		clone.merge(branchView);
+		member.url = clone.url;
+		handles.push(clone);
 	}
-}
-
-export async function publishProjectMergeRoot(
-	repo: Repo,
-	targetRoot: DocHandle<ProjectDocument>,
-	resolved: ResolvedProjectMerge
-): Promise<void> {
-	targetRoot.change(
-		(project) => {
-			project.members = structuredClone(resolved.members);
-			project.components = structuredClone(resolved.components);
-		},
-		{ message: 'Publish structural branch merge' }
-	);
-	await repo.flush([targetRoot.documentId]);
-}
-
-export async function assetPreview(
-	repo: Repo,
-	url: AutomergeUrl
-): Promise<ProjectFileFingerprint & { bytes: Uint8Array }> {
-	const handle = await repo.find<ProjectMemberDocument>(url);
-	const document = handle.doc();
-	assert(isBinaryFileDocument(document), 'The selected asset is unavailable.');
-	return {
-		bytes: document.content,
-		hash: await hashBytes(document.content),
-		size: document.content.byteLength,
-		lastModified: 0
-	};
+	const root = repo.create<ProjectDocument>({
+		type: 'digitable-project',
+		schemaVersion: 2,
+		members,
+		components: structuredClone(resolved.components)
+	});
+	await repo.flush([root.documentId, ...handles.map((handle) => handle.documentId)]);
+	return root;
 }
 
 function applyMemberResolution(
 	members: ProjectDocument['members'],
-	components: ProjectDocument['components'],
 	conflict: ProjectMergeConflict,
 	resolution: ProjectMergeResolution
 ): void {
 	const id = conflict.memberId!;
 	if (resolution.choice === 'delete') {
 		delete members[id];
-		clearMemberSlots(components, id);
 		return;
 	}
 	if (resolution.choice === 'rename') {
@@ -800,10 +671,7 @@ function applyMemberResolution(
 	}
 	const selected = resolution.choice === 'branch' ? conflict.branch : conflict.parent;
 	if (selected === null) {
-		if (!conflict.field) {
-			delete members[id];
-			clearMemberSlots(components, id);
-		}
+		if (!conflict.field) delete members[id];
 		if (conflict.field === 'componentId') delete members[id].componentId;
 		if (conflict.field === 'hash') delete members[id].hash;
 		return;
@@ -825,11 +693,6 @@ function applyMemberResolution(
 	}
 	if (typeof selected === 'object' && 'path' in selected) {
 		members[id] = structuredClone(selected);
-		const slots = resolution.choice === 'branch' ? conflict.branchSlots : conflict.parentSlots;
-		for (const assignment of slots ?? []) {
-			if (components[assignment.componentId])
-				components[assignment.componentId][assignment.slot] = id;
-		}
 	}
 }
 
@@ -855,9 +718,6 @@ function applyComponentResolution(
 	const selected = resolution.choice === 'branch' ? conflict.branch : conflict.parent;
 	if (selected === null) {
 		if (!conflict.field) delete components[id];
-		if (conflict.field === 'frontMemberId') delete components[id].frontMemberId;
-		if (conflict.field === 'backMemberId') delete components[id].backMemberId;
-		if (conflict.field === 'dataMemberId') delete components[id].dataMemberId;
 		return;
 	}
 	if (conflict.field && components[id] && typeof selected === 'string') {
@@ -894,23 +754,36 @@ function memberStructure(member: ProjectMember): Omit<ProjectMember, 'url' | 'ha
 	return { kind: member.kind, path: member.path, componentId: member.componentId };
 }
 
-function componentMemberIds(component: ProjectComponent): string[] {
-	return [component.frontMemberId, component.backMemberId, component.dataMemberId].filter(
-		(value): value is string => !!value
-	);
+function componentMemberIds(project: ProjectDocument, componentId: string): string[] {
+	return Object.entries(project.members)
+		.filter(([, member]) => member.componentId === componentId)
+		.map(([id]) => id);
 }
 
-function memberSlots(
-	project: ProjectDocument,
-	memberId: string
-): Array<{ componentId: string; slot: ComponentSlot }> {
-	const result: Array<{ componentId: string; slot: ComponentSlot }> = [];
-	for (const [componentId, component] of Object.entries(project.components)) {
-		for (const slot of ['frontMemberId', 'backMemberId', 'dataMemberId'] as const) {
-			if (component[slot] === memberId) result.push({ componentId, slot });
+function componentChanged(
+	base: ProjectCheckpointSnapshot,
+	next: ProjectCheckpointSnapshot,
+	componentId: string
+): boolean {
+	if (!equal(base.project.components[componentId], next.project.components[componentId]))
+		return true;
+	const ids = new Set([
+		...componentMemberIds(base.project, componentId),
+		...componentMemberIds(next.project, componentId)
+	]);
+	for (const id of ids) {
+		const before = base.project.members[id];
+		const after = next.project.members[id];
+		if (!before || !after || !equal(memberStructure(before), memberStructure(after))) return true;
+		if (before.kind === 'asset' || after.kind === 'asset') {
+			if (before.hash !== after.hash) return true;
+			continue;
+		}
+		if (!sameHeads(base.checkpoint.members[id]?.heads, next.checkpoint.members[id]?.heads)) {
+			return true;
 		}
 	}
-	return result;
+	return false;
 }
 
 function componentMembers(
@@ -922,14 +795,6 @@ function componentMembers(
 			.filter(([, member]) => member.componentId === componentId)
 			.map(([id, member]) => [id, structuredClone(member)])
 	);
-}
-
-function clearMemberSlots(components: ProjectDocument['components'], memberId: string): void {
-	for (const component of Object.values(components)) {
-		if (component.frontMemberId === memberId) delete component.frontMemberId;
-		if (component.backMemberId === memberId) delete component.backMemberId;
-		if (component.dataMemberId === memberId) delete component.dataMemberId;
-	}
 }
 
 function sameHeads(

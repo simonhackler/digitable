@@ -32,14 +32,14 @@ Each project has one stable root Automerge document using schema version 2.
 The root document contains:
 
 - A dynamic member registry.
-- Stable component records independent of directory names.
+- Stable component records containing only identity and name.
 - Stable file member IDs independent of component renames.
 - File paths, document kinds, and linked Automerge URLs.
 - BLAKE3 hashes for binary members.
 
 New file and component records use opaque UUIDs. Existing IDs are preserved. Paths and component names are validated separately, so independent branches can represent different additions at the same path and report that ambiguity during merge instead of collapsing both additions into one registry key.
 
-Components are represented even when they have no `data.csv`. Their optional front, back, and data member references are stored separately.
+Components are represented even when they have no files. Members identify their owning component, while front, back, and data roles are derived from the validated member path and kind rather than duplicated component slot fields.
 
 Replicated member paths are validated against the recognized-file policy before their linked documents are resolved or materialized. A root document cannot use a member entry to overwrite `.automerge`, `tts-export`, or an unknown project path.
 
@@ -86,7 +86,7 @@ Known geometry, decomposed transforms, presentation, paint, image sources, path 
 
 The rendered hierarchy is derived from child-to-parent placements. Missing parents fall back deterministically, deleted ancestors hide descendants, and cycles are broken at a deterministic node ID. Stable node, path-command, and point identities are materialized as reserved SVG data attributes so filesystem edits can retain application identity.
 
-Existing linked text documents migrate in place without replacing their Automerge URL. External SVG changes are parsed and applied at the recorded projection heads, mutating existing semantic fields instead of replacing whole node objects.
+External SVG changes are parsed and applied at the recorded projection heads, mutating existing semantic fields instead of replacing whole node objects.
 
 The mounted layout editor binds directly to each side's document handle. Local editor changes use `changeAt()` from the heads represented by the canvas, while remote document changes install a sanitized projection without remounting the Svelte editor. Projection application preserves selection, mode, and zoom, suppresses local echo events, and clears SVG-Edit undo history because its commands retain DOM references replaced by a remote projection.
 
@@ -96,7 +96,7 @@ The mounted layout editor binds directly to each side's document handle. Local e
 
 The mounted rules editor binds directly to the member handle through `@automerge/prosemirror`. Local ProseMirror transactions update Automerge immediately, and remote Automerge patches update the mounted editor without a filesystem round trip or remount.
 
-Existing schema-version-1 text documents are migrated in place, preserving their linked Automerge URL. External filesystem changes are parsed as Markdown and applied with `changeAt()` at the recorded projection heads before being merged with the current rich-text document.
+External filesystem changes are parsed as Markdown and applied with `changeAt()` at the recorded projection heads before being merged with the current rich-text document.
 
 ### Binary assets
 
@@ -168,7 +168,7 @@ New-path writes are projection-first so UI navigation does not wait for whole-pr
 
 New projects bootstrap a stable root and the required `game.json` member before rendering. The remaining recognized inventory is adopted immediately in the background.
 
-Version 1 projects retain their existing root URL. Migration upgrades the root and config schema first, then dynamic inventory adopts the additional file types without replacing project identity.
+Projects created before Automerge bootstrap directly from their authoring files. Intermediate schemas created while this feature branch was under development are intentionally unsupported.
 
 Pending bootstrap configurations are recovered before source comparison. Existing Automerge storage without a config still fails safely instead of creating a replacement identity.
 
@@ -176,7 +176,7 @@ When the root and config differ after an interrupted root mutation, opening rebu
 
 Config version 2 records the root heads it represents. A tab that reads a newer shared config waits until its local root handle contains those heads before repairing or materializing project files.
 
-Per-member pending materialization journals continue to protect file/config updates. Structural component operations are serialized with Web Locks. Branch merges use a version-2 phased journal that stores the reviewed checkpoint IDs, resolutions, final root registries, stable operation ID, and completed phase without storing binary bytes.
+Per-member pending materialization journals protect file/config updates. Structural component operations are serialized with Web Locks. Branch merges build and flush an unpublished merged graph before atomically publishing it through the shared history document.
 
 ## Multi-Tab Coordination
 
@@ -259,11 +259,11 @@ Historical selection is per tab and URL-addressable through `checkpoint` and `ba
 
 Creating a branch from history produces a normal writable branch. Nested branches remember their parent and immutable Base checkpoint, merge upward, and retain that Base when an ancestor merge reparents them.
 
-History schema version 2 stores each branch's Base checkpoint and Base branch, and complete merge records containing Base, Source, Target, and Result checkpoint IDs. Existing schema-1 histories migrate in place without changing branch, checkpoint, root, member, or component identities; legacy merge records remain readable.
+History schema version 2 stores each branch's Base checkpoint and complete merge records containing Base, Source, Target, and Result checkpoint IDs.
 
-Merge preparation synchronizes the source, captures exact Source and Parent checkpoints, resolves the stored Base checkpoint, verifies immutable assets by BLAKE3, and builds a typed three-way structural plan without mutating Parent. The preview lists automatic operations, mutable CRDT merges, and typed conflicts. Commit rejects stale Source or Parent state, requires an explicit valid resolution for every conflict, merges mutable Branch checkpoint views into Parent member handles, verifies selected assets, and publishes the complete validated Parent root in one change.
+Merge preparation synchronizes the source, captures exact Source and Parent checkpoints, resolves the stored Base checkpoint, verifies immutable assets by BLAKE3, and builds a typed three-way structural plan without mutating Parent. The preview lists automatic operations, mutable CRDT merges, and typed conflicts. Commit rejects stale Source or Parent state, requires an explicit valid resolution for every conflict, clones mutable documents at the reviewed heads, applies CRDT merges to those private clones, and creates a new validated Parent root.
 
-`.automerge/pending-branch-operation.json` advances through prepared, members-applied, root-published, checkpoint-recorded, and history-finalized phases. Before mutation it stores the deterministic expected heads for every mutable merge member. Recovery runs under the project Web Lock, accepts each member only at its reviewed Parent or exact merged heads, accepts the Parent root only at its reviewed heads or exact planned structure, and uses the stable operation ID to produce one result checkpoint and merge record. This also covers a crash after durable member or root writes but before the next phase marker. Version-1 merge journals remain accepted for migration recovery and must still target their recorded Parent. Writable branches support component creation, rename, deletion, recognized member additions/removals, and immutable asset replacement; historical checkpoint sessions remain read-only.
+The merged member documents and root are flushed before publication. One Automerge history change then replaces the Parent branch root URL, records the Result checkpoint and merge, marks the source merged, reparents children, and checks out Parent. A crash before that change leaves only unreachable documents; after it, collaborators observe the complete merge. Writable branches support component creation, rename, deletion, recognized member additions/removals, and immutable asset replacement; historical checkpoint sessions remain read-only.
 
 ## Playtests And Exports
 
@@ -342,7 +342,7 @@ Existing regressions cover:
 - SVG text-frame resize does not yet emit the same semantic transition previews as ordinary SVG resize.
 - Remote SVG selections are not yet rendered independently from active interaction previews.
 - Binary documents are immutable but are not deduplicated by hash.
-- Component rename and deletion have config repair but no dedicated per-command operation journal.
+- Component rename and deletion rely on config repair rather than dedicated per-command operation journals.
 - Collaborative whole-project discovery and deletion require a workspace-level Automerge document.
 - Branches eagerly clone mutable project members rather than cloning documents only when they diverge.
 - Cross-device structural creation still relies on post-convergence collision validation; same-browser commands are serialized with the project Web Lock.

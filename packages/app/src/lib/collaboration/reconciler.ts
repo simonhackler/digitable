@@ -12,6 +12,8 @@ import {
 	type ComponentDataDocument,
 	type GameMetadataDocument,
 	type MarkdownFileDocument,
+	type ProjectMember,
+	type ProjectMemberDocument,
 	type TextFileDocument
 } from './model';
 import { textFileMaterializer } from './text-file';
@@ -83,90 +85,86 @@ export type ReconciliationStatus =
 	| { state: 'syncing' }
 	| { state: 'error'; memberId: string; path: string; message: string };
 
-export function metadataMember(
+export function managedMember(
 	id: string,
-	path: string,
-	handle: DocHandle<GameMetadataDocument>
+	member: ProjectMember,
+	handle: DocHandle<ProjectMemberDocument>
 ): ManagedMember {
-	return { id, path, handle, materializer: gameMetadataMaterializer };
-}
-
-export function componentDataMember(
-	id: string,
-	path: string,
-	handle: DocHandle<ComponentDataDocument>
-): ManagedMember {
-	return { id, path, handle, materializer: componentDataMaterializer };
-}
-
-export function textMember(
-	id: string,
-	path: string,
-	kind: Parameters<typeof textFileMaterializer>[0],
-	handle: DocHandle<TextFileDocument>
-): ManagedMember {
-	return { id, path, handle, materializer: textFileMaterializer(kind) };
-}
-
-export function svgMember(id: string, path: string, handle: DocHandle<SvgDocument>): ManagedMember {
-	return { id, path, handle, materializer: svgFileMaterializer };
-}
-
-export function markdownMember(
-	id: string,
-	path: string,
-	handle: DocHandle<MarkdownFileDocument>
-): ManagedMember {
-	return { id, path, handle, materializer: markdownFileMaterializer };
-}
-
-export function binaryMember(
-	id: string,
-	path: string,
-	hash: string,
-	handle: DocHandle<BinaryFileDocument>
-): ManagedMember {
-	return { id, path, hash, handle };
-}
-
-export function importManagedTextMember(
-	member: ManagedMember,
-	projection: ProjectConfig['projections'][string],
-	source: string,
-	hash: string
-): void {
-	if (!('materializer' in member)) throw new Error(`${member.path} is not a text project member.`);
-	if (member.materializer.kind === 'game-metadata') {
-		importTyped(member as MetadataMember, projection, source, hash);
-		return;
+	if (member.kind === 'game-metadata') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<GameMetadataDocument>,
+			materializer: gameMetadataMaterializer
+		};
 	}
-	if (member.materializer.kind === 'component-data') {
-		importTyped(member as ComponentDataMember, projection, source, hash);
-		return;
+	if (member.kind === 'component-data') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<ComponentDataDocument>,
+			materializer: componentDataMaterializer
+		};
 	}
-	if (member.materializer.kind === 'rules') {
-		importTyped(member as MarkdownMember, projection, source, hash);
-		return;
+	if (member.kind === 'component-svg') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<SvgDocument>,
+			materializer: svgFileMaterializer
+		};
 	}
-	if (member.materializer.kind === 'component-svg') {
-		importTyped(member as SvgMember, projection, source, hash);
-		return;
+	if (member.kind === 'rules') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<MarkdownFileDocument>,
+			materializer: markdownFileMaterializer
+		};
 	}
-	importTyped(member as TextMember, projection, source, hash);
+	if (member.kind === 'asset') {
+		if (!member.hash) throw new Error(`Binary member ${member.path} is missing its hash.`);
+		return {
+			id,
+			path: member.path,
+			hash: member.hash,
+			handle: handle as DocHandle<BinaryFileDocument>
+		};
+	}
+	return {
+		id,
+		path: member.path,
+		handle: handle as DocHandle<TextFileDocument>,
+		materializer: textFileMaterializer(member.kind)
+	};
 }
 
-function importTyped<T extends object, Source>(
-	member: { handle: DocHandle<T>; materializer: MemberMaterializer<T, Source>; path: string },
-	projection: ProjectConfig['projections'][string],
-	source: string,
-	hash: string
-): void {
-	const incoming = member.materializer.parse(source, { hash });
-	member.handle.changeAt(
-		projection.heads,
-		(document) => member.materializer.apply(document, incoming),
-		{ message: `Write ${member.path}` }
-	);
+export function serializeManagedMember(member: ManagedMember): Uint8Array {
+	const document = member.handle.doc();
+	if (!('materializer' in member)) {
+		if (!isBinaryFileDocument(document)) {
+			throw new Error(`Automerge binary document for ${member.path} is unavailable.`);
+		}
+		return Uint8Array.from(document.content);
+	}
+	if (member.materializer.kind === 'game-metadata') return serializeTyped(member as MetadataMember);
+	if (member.materializer.kind === 'component-data')
+		return serializeTyped(member as ComponentDataMember);
+	if (member.materializer.kind === 'rules') return serializeTyped(member as MarkdownMember);
+	if (member.materializer.kind === 'component-svg') return serializeTyped(member as SvgMember);
+	return serializeTyped(member as TextMember);
+}
+
+function serializeTyped<T extends object, Source>(member: {
+	handle: DocHandle<T>;
+	materializer: MemberMaterializer<T, Source>;
+	path: string;
+}): Uint8Array {
+	const document = member.handle.doc();
+	if (!document || !member.materializer.isDocument(document)) {
+		throw new Error(`Automerge document for ${member.path} has an unsupported format.`);
+	}
+	return encodeText(member.materializer.serialize(document));
 }
 
 export function createProjectReconciler({
@@ -390,6 +388,13 @@ export function createProjectReconciler({
 			before: { heads: projection.heads, hash: projection.hash },
 			after: desired
 		});
+		const revalidatedHash = (await snapshotFile(fs, member.path))?.hash ?? null;
+		if (revalidatedHash !== actualHash) {
+			await removePendingMaterialization(fs, member.id);
+			dirty = true;
+			dirtyMemberIds.add(member.id);
+			return;
+		}
 		if (actualHash !== desiredHash) {
 			await writeFile(fs, member.path, Uint8Array.from(desiredBytes).buffer);
 			if ((await snapshotFile(fs, member.path))?.hash !== desiredHash) {
@@ -439,7 +444,7 @@ export function createProjectReconciler({
 
 	async function run(): Promise<void> {
 		try {
-			await withProjectLock(initialConfig.historyUrl ?? initialConfig.rootUrl, async () => {
+			await withProjectLock(initialConfig.historyUrl, async () => {
 				const latest = await readProjectConfig(fs);
 				if (
 					!latest ||

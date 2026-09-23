@@ -1,4 +1,4 @@
-import type { DocHandle, Repo } from '@automerge/automerge-repo';
+import { isValidAutomergeUrl, type DocHandle, type Repo } from '@automerge/automerge-repo';
 import { isSvgDocument } from '@svg-table/svgeditor';
 import {
 	GAME_METADATA_MEMBER_ID,
@@ -8,7 +8,6 @@ import {
 	isMarkdownFileDocument,
 	isProjectDocument,
 	isTextFileDocument,
-	type ComponentDataDocument,
 	type GameMetadataDocument,
 	type MarkdownFileDocument,
 	type ProjectCheckpoint,
@@ -28,7 +27,6 @@ export type ProjectGraph = {
 	project: ProjectDocument;
 	metadataHandle: DocHandle<GameMetadataDocument>;
 	memberHandles: Map<string, DocHandle<ProjectMemberDocument>>;
-	componentDataHandles: Map<string, DocHandle<ComponentDataDocument>>;
 };
 
 export async function createProjectGraph(
@@ -64,11 +62,6 @@ export async function createProjectGraph(
 			...(componentId ? { componentId } : {})
 		};
 		memberHandles.set(id, handle);
-		if (!componentId) continue;
-		const component = components[componentId];
-		if (source.kind === 'component-data') component.dataMemberId = id;
-		if (source.side === 'front') component.frontMemberId = id;
-		if (source.side === 'back') component.backMemberId = id;
 	}
 
 	const projectHandle = repo.create<ProjectDocument>({
@@ -110,6 +103,8 @@ export async function resolveProjectGraph(
 		if (!isProjectDocument(project)) {
 			throw new Error('The Automerge root document is not a supported Digitable project.');
 		}
+		const errors = validateProjectStructure(project);
+		if (errors.length) throw new Error(errors[0]);
 		const resolved = await Promise.all(
 			Object.entries(project.members).map(async ([id, member]) => {
 				const classification = classifyProjectFile(member.path);
@@ -144,6 +139,8 @@ export async function resolveProjectGraphAtCheckpoint(
 	if (!isProjectDocument(project)) {
 		throw new Error('The Automerge project root is unavailable at the selected checkpoint.');
 	}
+	const errors = validateProjectStructure(project);
+	if (errors.length) throw new Error(errors[0]);
 	const resolved = await Promise.all(
 		Object.entries(project.members).map(async ([id, member]) => {
 			const version = checkpoint.members[id];
@@ -170,21 +167,11 @@ function graphFromHandles(
 	if (!metadataHandle || !isGameMetadataDocument(metadataHandle.doc())) {
 		throw new Error('The Automerge project is missing its game metadata member.');
 	}
-	const componentDataHandles = new Map<string, DocHandle<ComponentDataDocument>>();
-	for (const [componentId, component] of Object.entries(project.components)) {
-		if (!component.dataMemberId) continue;
-		const handle = memberHandles.get(component.dataMemberId);
-		if (!handle || !isComponentDataDocument(handle.doc())) {
-			throw new Error(`Component "${component.name}" has unsupported Automerge data.`);
-		}
-		componentDataHandles.set(componentId, handle as DocHandle<ComponentDataDocument>);
-	}
 	return {
 		projectHandle,
 		project,
 		metadataHandle: metadataHandle as DocHandle<GameMetadataDocument>,
-		memberHandles,
-		componentDataHandles
+		memberHandles
 	};
 }
 
@@ -199,7 +186,63 @@ export function isProjectMemberDocument(
 	if (kind === 'game-metadata') return isGameMetadataDocument(value);
 	if (kind === 'component-data') return isComponentDataDocument(value);
 	if (kind === 'asset') return isBinaryFileDocument(value);
-	if (kind === 'rules') return isMarkdownFileDocument(value) || isTextFileDocument(value);
-	if (kind === 'component-svg') return isSvgDocument(value) || isTextFileDocument(value);
+	if (kind === 'rules') return isMarkdownFileDocument(value);
+	if (kind === 'component-svg') return isSvgDocument(value);
 	return isTextFileDocument(value);
+}
+
+export function validateProjectStructure(project: ProjectDocument): string[] {
+	const errors: string[] = [];
+	const metadata = Object.entries(project.members).filter(
+		([, member]) => member.kind === 'game-metadata'
+	);
+	if (
+		metadata.length !== 1 ||
+		metadata[0]?.[0] !== GAME_METADATA_MEMBER_ID ||
+		project.members[GAME_METADATA_MEMBER_ID]?.path !== 'game.json'
+	) {
+		errors.push('The project must contain exactly one $metadata game.json member.');
+	}
+	const paths = new Set<string>();
+	for (const [id, member] of Object.entries(project.members)) {
+		if (!isValidAutomergeUrl(member.url)) errors.push(`Member ${member.path} has an invalid URL.`);
+		const classification = classifyProjectFile(member.path);
+		if (!classification || classification.kind !== member.kind) {
+			errors.push(`Member ${member.path} is not a recognized ${member.kind} path.`);
+		}
+		if (paths.has(member.path)) errors.push(`Member path ${member.path} is not unique.`);
+		paths.add(member.path);
+		if (member.kind === 'asset' && !member.hash)
+			errors.push(`Asset ${member.path} is missing its hash.`);
+		if (member.kind !== 'asset' && member.hash !== undefined)
+			errors.push(`Mutable member ${member.path} cannot have an asset hash.`);
+		if (id === GAME_METADATA_MEMBER_ID && member.kind !== 'game-metadata')
+			errors.push('$metadata must identify game metadata.');
+	}
+	const names = new Set<string>();
+	for (const component of Object.values(project.components)) {
+		if (names.has(component.name)) errors.push(`Component name ${component.name} is not unique.`);
+		names.add(component.name);
+	}
+	for (const member of Object.values(project.members)) {
+		const classification = classifyProjectFile(member.path);
+		if (classification?.componentName && !member.componentId) {
+			errors.push(`Component member ${member.path} has no owning component.`);
+			continue;
+		}
+		if (!classification?.componentName && member.componentId) {
+			errors.push(`Project member ${member.path} cannot belong to a component.`);
+			continue;
+		}
+		if (!member.componentId) continue;
+		const component = project.components[member.componentId];
+		if (!component) {
+			errors.push(`Member ${member.path} references a missing component.`);
+			continue;
+		}
+		if (classification?.componentName !== component.name) {
+			errors.push(`Member ${member.path} does not match component ${component.name}.`);
+		}
+	}
+	return errors;
 }

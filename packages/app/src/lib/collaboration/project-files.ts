@@ -22,8 +22,6 @@ export type ProjectFileSource = {
 
 export type ProjectFileFingerprint = {
 	hash: string;
-	lastModified: number;
-	size: number;
 };
 
 export function projectMemberId(): string {
@@ -36,7 +34,6 @@ export function projectComponentId(): string {
 
 export async function scanProjectFiles(
 	project: FsDir,
-	cache?: Map<string, ProjectFileFingerprint>,
 	requestedPaths?: string[]
 ): Promise<{
 	files: ProjectFileSource[];
@@ -54,11 +51,8 @@ export async function scanProjectFiles(
 					const file = await readFileRequired(project, path);
 					const bytes = new Uint8Array(await file.arrayBuffer());
 					const snapshot = {
-						hash: await hashBytes(bytes),
-						lastModified: file.lastModified,
-						size: file.size
+						hash: await hashBytes(bytes)
 					};
-					cache?.set(path, snapshot);
 					if (classification.componentName) components.add(classification.componentName);
 					return {
 						path,
@@ -112,12 +106,6 @@ export async function scanProjectFiles(
 				})
 			))
 		);
-	}
-	if (cache) {
-		const currentPaths = new Set(paths);
-		for (const path of cache.keys()) {
-			if (!currentPaths.has(path)) cache.delete(path);
-		}
 	}
 	return { files, components: [...components].sort() };
 }
