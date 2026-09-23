@@ -43,7 +43,7 @@ export async function createProjectGraph(
 	const componentIds = new Map<string, string>();
 	for (const source of sources) {
 		if (source.componentName && !componentIds.has(source.componentName)) {
-			componentIds.set(source.componentName, projectComponentId(source.componentName));
+			componentIds.set(source.componentName, projectComponentId());
 		}
 	}
 
@@ -53,8 +53,7 @@ export async function createProjectGraph(
 	);
 	const memberHandles = new Map<string, DocHandle<ProjectMemberDocument>>();
 	for (const source of sources) {
-		const id =
-			source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId(source.path);
+		const id = source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId();
 		const handle = await createProjectMemberHandle(repo, source);
 		const componentId = source.componentName ? componentIds.get(source.componentName) : undefined;
 		members[id] = {
@@ -120,7 +119,7 @@ export async function resolveProjectGraph(
 					);
 				}
 				const handle = await repo.find<ProjectMemberDocument>(member.url);
-				if (!isMemberDocument(member.kind, handle.doc())) {
+				if (!isProjectMemberDocument(member.kind, handle.doc())) {
 					throw new Error(`Automerge project member ${member.path} has an unsupported format.`);
 				}
 				return [id, handle] as const;
@@ -153,7 +152,7 @@ export async function resolveProjectGraphAtCheckpoint(
 			}
 			const source = await repo.find<ProjectMemberDocument>(version.url);
 			const handle = source.view(version.heads);
-			if (!isMemberDocument(member.kind, handle.doc())) {
+			if (!isProjectMemberDocument(member.kind, handle.doc())) {
 				throw new Error(`Project member ${member.path} is unavailable at the checkpoint.`);
 			}
 			return [id, handle] as const;
@@ -193,7 +192,7 @@ function sameHeads(left: readonly string[], right: readonly string[]): boolean {
 	return left.length === right.length && left.every((head) => right.includes(head));
 }
 
-function isMemberDocument(
+export function isProjectMemberDocument(
 	kind: ProjectDocument['members'][string]['kind'],
 	value: unknown
 ): boolean {

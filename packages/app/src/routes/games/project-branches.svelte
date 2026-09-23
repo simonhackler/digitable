@@ -14,6 +14,7 @@
 	} from '$lib/collaboration';
 	import { GitBranch, History, GitFork, GitMerge, MoreHorizontal, RotateCcw } from '@lucide/svelte';
 	import { onMount } from 'svelte';
+	import ProjectMergeDialog from './project-merge-dialog.svelte';
 
 	let { session }: { session: ProjectSession } = $props();
 	let historyUpdate = $state<ProjectHistoryDocument>();
@@ -21,6 +22,7 @@
 	let historyOpen = $state(false);
 	let pending = $state(false);
 	let error = $state('');
+	let mergeOpen = $state(false);
 	const checkpointId = $derived(page.url.searchParams.get('checkpoint'));
 	const baselineId = $derived(page.url.searchParams.get('baseline'));
 	const activeBranchId = $derived(session.branchId);
@@ -136,12 +138,6 @@
 		await run(() => session.renameBranch(activeBranchId, name));
 	}
 
-	async function merge() {
-		if (!branch?.parentBranchId || !window.confirm(`Merge "${branch.name}" into its parent?`))
-			return;
-		await run(() => session.mergeToParent());
-	}
-
 	async function remove() {
 		if (!branch?.parentBranchId || !window.confirm(`Delete "${branch.name}"?`)) return;
 		await run(() => session.deleteBranch(activeBranchId));
@@ -182,7 +178,10 @@
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item onSelect={rename}>Rename branch</DropdownMenu.Item>
 				{#if branch?.parentBranchId}
-					<DropdownMenu.Item onSelect={merge} disabled={session.readOnly}>
+					<DropdownMenu.Item
+						onSelect={() => (mergeOpen = true)}
+						disabled={session.readOnly || pending}
+					>
 						<GitMerge /> Merge into parent
 					</DropdownMenu.Item>
 					<DropdownMenu.Item onSelect={remove} variant="destructive"
@@ -250,6 +249,9 @@
 			{/if}
 			<div class="relative space-y-2 border-l pl-4">
 				{#each checkpoints as checkpoint (checkpoint.id)}
+					{@const merge = Object.values(history.merges).find(
+						(candidate) => candidate.resultCheckpointId === checkpoint.id
+					)}
 					<div
 						class="bg-card space-y-2 rounded-lg border p-3 shadow-xs"
 						role="group"
@@ -268,6 +270,26 @@
 							</div>
 							<MoreHorizontal class="text-muted-foreground size-4" />
 						</div>
+						{#if merge && 'baseCheckpointId' in merge}
+							<dl class="bg-muted/50 grid gap-1 rounded-md p-2 font-mono text-[10px]">
+								<div>
+									<dt class="inline font-sans font-medium">Base:</dt>
+									<dd class="inline">{merge.baseCheckpointId}</dd>
+								</div>
+								<div>
+									<dt class="inline font-sans font-medium">Source:</dt>
+									<dd class="inline">{merge.sourceCheckpointId}</dd>
+								</div>
+								<div>
+									<dt class="inline font-sans font-medium">Target:</dt>
+									<dd class="inline">{merge.targetCheckpointId}</dd>
+								</div>
+								<div>
+									<dt class="inline font-sans font-medium">Result:</dt>
+									<dd class="inline">{merge.resultCheckpointId}</dd>
+								</div>
+							</dl>
+						{/if}
 						<div class="flex flex-wrap gap-2">
 							<Button size="sm" variant="outline" onclick={() => view(checkpoint)}>View</Button>
 							<Button
@@ -287,3 +309,7 @@
 		</div>
 	</Sheet.Content>
 </Sheet.Root>
+
+{#if mergeOpen}
+	<ProjectMergeDialog bind:open={mergeOpen} {session} />
+{/if}

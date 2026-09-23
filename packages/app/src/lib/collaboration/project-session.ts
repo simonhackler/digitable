@@ -79,6 +79,7 @@ import {
 	type ProjectMemberDocument,
 	type TextFileDocument
 } from './model';
+import type { ProjectMergePlan, ProjectMergeResolution } from './project-merge';
 import { applyMarkdown } from './markdown/markdown-codec';
 import { svgFileMaterializer } from './svg-file';
 import {
@@ -91,13 +92,18 @@ import {
 } from './project-files';
 import {
 	checkoutProjectBranch,
+	commitProjectMerge,
 	createProjectHistory,
 	deleteProjectBranch,
 	forkProjectCheckpoint,
 	mergeProjectBranch,
+	prepareProjectMerge,
 	recordProjectCheckpoint,
 	renameProjectBranch,
-	resolveBranchGraph
+	resumeProjectMerge,
+	resolveBranchGraph,
+	upgradeProjectHistory,
+	type ProjectMergeProgress
 } from './project-history';
 
 const CollaborationError = defineErrors({
@@ -118,6 +124,16 @@ const CollaborationError = defineErrors({
 	})
 });
 export type CollaborationError = InferErrors<typeof CollaborationError>;
+
+async function reportProjectMergeProgress(progress: ProjectMergeProgress): Promise<void> {
+	if (!import.meta.env.DEV) return;
+	const hook = (
+		globalThis as typeof globalThis & {
+			__DIGITABLE_E2E_MERGE_PROGRESS__?: (progress: ProjectMergeProgress) => Promise<void>;
+		}
+	).__DIGITABLE_E2E_MERGE_PROGRESS__;
+	await hook?.(progress);
+}
 
 export type ProjectSession = {
 	name: string;
@@ -147,7 +163,11 @@ export type ProjectSession = {
 	checkoutBranch(branchId: ProjectBranchId): Promise<Result<void, CollaborationError>>;
 	renameBranch(branchId: ProjectBranchId, name: string): Promise<Result<void, CollaborationError>>;
 	deleteBranch(branchId: ProjectBranchId): Promise<Result<void, CollaborationError>>;
-	mergeToParent(): Promise<Result<ProjectCheckpointId, CollaborationError>>;
+	prepareMergeToParent(): Promise<Result<ProjectMergePlan, CollaborationError>>;
+	commitMergeToParent(
+		planId: string,
+		resolutions: ProjectMergeResolution[]
+	): Promise<Result<ProjectCheckpointId, CollaborationError>>;
 	writeFiles(
 		files: Array<{ path: string; data: FsWriteData }>
 	): Promise<Result<void, CollaborationError>>;
@@ -198,11 +218,32 @@ export async function openProjectSession(
 			if (!isProjectHistoryDocument(historyHandle.doc())) {
 				throw new Error('The Automerge project history document is invalid.');
 			}
-			const pendingBranchOperation = await readPendingBranchOperation(project);
-			if (pendingBranchOperation?.type === 'merge') {
-				await mergeProjectBranch(projectRepo, historyHandle, pendingBranchOperation.sourceBranchId);
-				await removePendingBranchOperation(project);
-			}
+			const lockId = restored.historyUrl;
+			await withProjectLock(lockId, async () => {
+				const pendingBranchOperation = await readPendingBranchOperation(project);
+				if (pendingBranchOperation?.version === 1) {
+					await mergeProjectBranch(
+						projectRepo,
+						historyHandle,
+						pendingBranchOperation.sourceBranchId,
+						pendingBranchOperation.targetBranchId,
+						(pending) => writePendingBranchOperation(project, pending),
+						reportProjectMergeProgress
+					);
+					await removePendingBranchOperation(project);
+				}
+				await upgradeProjectHistory(projectRepo, historyHandle);
+				if (pendingBranchOperation?.version === 2) {
+					await resumeProjectMerge(
+						projectRepo,
+						historyHandle,
+						pendingBranchOperation,
+						(pending) => writePendingBranchOperation(project, pending),
+						reportProjectMergeProgress
+					);
+					await removePendingBranchOperation(project);
+				}
+			});
 			const activeBranch = await resolveBranchGraph(projectRepo, historyHandle);
 			const branchId = activeBranch.branchId;
 			if (options.checkpointId) {
@@ -222,7 +263,6 @@ export async function openProjectSession(
 				});
 			}
 			const rootHandle = activeBranch.graph.projectHandle;
-			const lockId = restored.historyUrl;
 			const branchConfig: ProjectConfig = {
 				...restored,
 				version: 3,
@@ -268,6 +308,8 @@ export async function openProjectSession(
 			let closed = false;
 			let checkpointTimer: ReturnType<typeof setTimeout> | undefined;
 			let checkpointPromise: Promise<void> | undefined;
+			let checkpointDirty = false;
+			let checkpointPaused = false;
 			const checkpointListeners = new Map<DocHandle<unknown>, () => void>();
 			function replaceCheckpointListeners(): void {
 				const handles: DocHandle<unknown>[] = [
@@ -288,28 +330,38 @@ export async function openProjectSession(
 			}
 			function scheduleCheckpoint(): void {
 				if (closed || historyHandle.doc()?.checkedOutBranchId !== branchId) return;
+				if (checkpointPaused || checkpointPromise) {
+					checkpointDirty = true;
+					return;
+				}
 				if (checkpointTimer) clearTimeout(checkpointTimer);
 				checkpointTimer = setTimeout(() => {
 					checkpointTimer = undefined;
-					void recordCheckpoint();
+					void recordCheckpoint().catch((cause) => {
+						options.onStatus?.({
+							state: 'error',
+							memberId: '$project',
+							path: '.automerge/history',
+							message: cause instanceof Error ? cause.message : String(cause)
+						});
+					});
 				}, 750);
 			}
 			function recordCheckpoint(): Promise<void> {
 				if (closed || historyHandle.doc()?.checkedOutBranchId !== branchId)
 					return Promise.resolve();
-				if (checkpointPromise) return checkpointPromise;
+				if (checkpointPromise) {
+					checkpointDirty = true;
+					return checkpointPromise;
+				}
+				checkpointDirty = false;
 				checkpointPromise = (async () => {
 					await refresh();
 					await reconciler.reconcileOrThrow();
-					await recordProjectCheckpoint(
-						projectRepo,
-						historyHandle,
-						branchId,
-						graph,
-						'Project edit'
-					);
+					await recordProjectCheckpoint(projectRepo, historyHandle, branchId, graph);
 				})().finally(() => {
 					checkpointPromise = undefined;
+					if (checkpointDirty) scheduleCheckpoint();
 				});
 				return checkpointPromise;
 			}
@@ -351,7 +403,6 @@ export async function openProjectSession(
 							}
 							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
 							config = latestConfig?.branchId === branchId ? latestConfig : reconciler.getConfig();
-							if (branchId !== 'main') assertBranchStructureUnchanged(graph, scanned);
 							return refreshProjectInventory(project, projectRepo, graph, config, scanned);
 						});
 						graph = refreshed.graph;
@@ -405,6 +456,8 @@ export async function openProjectSession(
 			const presence = createProjectPresence(graph.projectHandle);
 			const svgInteractions = createProjectSvgInteractions(graph.projectHandle);
 			let localBranchChange = false;
+			let branchOperationPromise: Promise<void> | undefined;
+			const mergePlans = new Map<string, ProjectMergePlan>();
 			const historyListener = () => {
 				if (localBranchChange) return;
 				const nextBranchId = historyHandle.doc()?.checkedOutBranchId;
@@ -417,16 +470,61 @@ export async function openProjectSession(
 				await refresh();
 				await reconciler.reconcileOrThrow();
 			}
-			async function branchOperation<T>(operation: () => Promise<T>): Promise<T> {
-				localBranchChange = true;
-				try {
-					const result = await operation();
-					const nextBranchId = historyHandle.doc()?.checkedOutBranchId;
-					if (nextBranchId && nextBranchId !== branchId) options.onBranchCheckout?.(nextBranchId);
-					return result;
-				} finally {
-					localBranchChange = false;
+			async function explicitCheckpointOperation<T>(operation: () => Promise<T>): Promise<T> {
+				checkpointPaused = true;
+				if (checkpointTimer) {
+					clearTimeout(checkpointTimer);
+					checkpointTimer = undefined;
 				}
+				try {
+					await checkpointPromise;
+					if (checkpointTimer) {
+						clearTimeout(checkpointTimer);
+						checkpointTimer = undefined;
+					}
+					checkpointDirty = false;
+					return await operation();
+				} finally {
+					checkpointPaused = false;
+					if (checkpointDirty) scheduleCheckpoint();
+				}
+			}
+			async function recordExplicitCheckpoint(message: string): Promise<ProjectCheckpointId> {
+				let checkpointId: ProjectCheckpointId;
+				do {
+					checkpointDirty = false;
+					await synchronize();
+					checkpointId = await recordProjectCheckpoint(
+						projectRepo,
+						historyHandle,
+						branchId,
+						graph,
+						message
+					);
+				} while (checkpointDirty);
+				return checkpointId;
+			}
+			function branchOperation<T>(operation: () => Promise<T>): Promise<T> {
+				localBranchChange = true;
+				const promise = (async () => {
+					try {
+						const result = await operation();
+						const nextBranchId = historyHandle.doc()?.checkedOutBranchId;
+						if (nextBranchId && nextBranchId !== branchId) options.onBranchCheckout?.(nextBranchId);
+						return result;
+					} finally {
+						localBranchChange = false;
+					}
+				})();
+				const completion = promise.then(
+					() => undefined,
+					() => undefined
+				);
+				branchOperationPromise = completion;
+				void completion.then(() => {
+					if (branchOperationPromise === completion) branchOperationPromise = undefined;
+				});
+				return promise;
 			}
 			function command(operation: () => Promise<void>): Promise<Result<void, CollaborationError>> {
 				return tryAsync({
@@ -453,7 +551,7 @@ export async function openProjectSession(
 				historyUrl: restored.historyUrl,
 				branchId,
 				readOnly: false,
-				canEditStructure: branchId === 'main',
+				canEditStructure: true,
 				metadataHandle: graph.metadataHandle,
 				getRulesHandle: () => rulesHandle(graph),
 				getComponentSvgHandle: (componentName: string, side: 'front' | 'back') =>
@@ -474,10 +572,7 @@ export async function openProjectSession(
 				},
 				createCheckpoint: (message = 'Checkpoint') =>
 					tryAsync({
-						try: async () => {
-							await synchronize();
-							return recordProjectCheckpoint(projectRepo, historyHandle, branchId, graph, message);
-						},
+						try: () => explicitCheckpointOperation(() => recordExplicitCheckpoint(message)),
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
@@ -485,8 +580,10 @@ export async function openProjectSession(
 					tryAsync({
 						try: () =>
 							branchOperation(async () => {
-								await synchronize();
-								return forkProjectCheckpoint(projectRepo, historyHandle, checkpointId, name);
+								return explicitCheckpointOperation(async () => {
+									await synchronize();
+									return forkProjectCheckpoint(projectRepo, historyHandle, checkpointId, name);
+								});
 							}),
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
@@ -495,16 +592,11 @@ export async function openProjectSession(
 					tryAsync({
 						try: () =>
 							branchOperation(async () => {
-								await synchronize();
-								await recordProjectCheckpoint(
-									projectRepo,
-									historyHandle,
-									branchId,
-									graph,
-									'Before branch switch'
-								);
-								checkoutProjectBranch(historyHandle, nextBranchId);
-								await projectRepo.flush([historyHandle.documentId]);
+								await explicitCheckpointOperation(async () => {
+									await recordExplicitCheckpoint('Before branch switch');
+									checkoutProjectBranch(historyHandle, nextBranchId);
+									await projectRepo.flush([historyHandle.documentId]);
+								});
 							}),
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
@@ -528,42 +620,48 @@ export async function openProjectSession(
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
-				mergeToParent: () =>
+				prepareMergeToParent: () =>
 					tryAsync({
 						try: () =>
-							branchOperation(async () => {
+							explicitCheckpointOperation(async () => {
 								await synchronize();
-								const result = await mergeProjectBranch(
-									projectRepo,
-									historyHandle,
-									branchId,
-									async (targetBranchId) =>
-										writePendingBranchOperation(project, {
-											version: 1,
-											type: 'merge',
-											sourceBranchId: branchId,
-											targetBranchId
-										})
-								);
-								await removePendingBranchOperation(project);
-								return result;
+								const plan = await prepareProjectMerge(projectRepo, historyHandle, branchId);
+								mergePlans.clear();
+								mergePlans.set(plan.id, plan);
+								return plan;
 							}),
+						catch: (cause) =>
+							CollaborationError.SynchronizationFailed({ project: project.name, cause })
+					}),
+				commitMergeToParent: (planId: string, resolutions: ProjectMergeResolution[]) =>
+					tryAsync({
+						try: () =>
+							branchOperation(() =>
+								explicitCheckpointOperation(async () => {
+									const plan = mergePlans.get(planId);
+									if (!plan) throw new Error('The merge preview is stale. Review the merge again.');
+									const result = await withProjectLock(lockId, async () => {
+										const checkpointId = await commitProjectMerge(
+											projectRepo,
+											historyHandle,
+											plan,
+											resolutions,
+											(pending) => writePendingBranchOperation(project, pending),
+											reportProjectMergeProgress
+										);
+										await removePendingBranchOperation(project);
+										return checkpointId;
+									});
+									mergePlans.delete(planId);
+									return result;
+								})
+							),
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
 				writeFiles: (files: Array<{ path: string; data: FsWriteData }>) =>
 					tryAsync({
 						try: async () => {
-							if (branchId !== 'main') {
-								for (const file of files) {
-									const member = Object.values(graph.project.members).find(
-										(candidate) => candidate.path === file.path
-									);
-									if (!member || member.kind === 'asset') {
-										throw new Error('Branches cannot add project files or replace assets yet.');
-									}
-								}
-							}
 							const changedIds: string[] = [];
 							await withProjectLock(lockId, async () => {
 								const latestConfig = await readProjectConfig(project);
@@ -593,13 +691,13 @@ export async function openProjectSession(
 									managedMembers(graph, config).map((member) => [member.id, member])
 								);
 								const created = new Map<string, DocHandle<ProjectMemberDocument>>();
+								const createdIds = new Map<string, string>();
 								for (const source of scanned.files) {
 									const entry = membersByPath.get(source.path);
 									if (!entry) {
-										created.set(
-											projectMemberId(source.path),
-											await createProjectMemberHandle(projectRepo, source)
-										);
+										const id = projectMemberId();
+										createdIds.set(source.path, id);
+										created.set(id, await createProjectMemberHandle(projectRepo, source));
 										continue;
 									}
 									if (entry.member.kind !== source.kind) {
@@ -638,7 +736,8 @@ export async function openProjectSession(
 											);
 											for (const source of scanned.files) {
 												const existing = membersByPath.get(source.path);
-												const id = existing?.id ?? projectMemberId(source.path);
+												const id = existing?.id ?? createdIds.get(source.path);
+												if (!id) continue;
 												const handle = created.get(id);
 												if (!handle) continue;
 												if (existing) {
@@ -647,8 +746,7 @@ export async function openProjectSession(
 													continue;
 												}
 												const componentId = source.componentName
-													? (componentIds.get(source.componentName) ??
-														projectComponentId(source.componentName))
+													? (componentIds.get(source.componentName) ?? projectComponentId())
 													: undefined;
 												if (source.componentName && componentId && !root.components[componentId]) {
 													componentIds.set(source.componentName, componentId);
@@ -715,7 +813,6 @@ export async function openProjectSession(
 					}),
 				renameComponent: (oldName: string, newName: string) =>
 					command(async () => {
-						if (branchId !== 'main') throw new Error('Branches cannot rename components yet.');
 						const document = graph.project;
 						const component = Object.entries(document.components).find(
 							([, value]) => value.name === oldName
@@ -742,7 +839,6 @@ export async function openProjectSession(
 					}),
 				deleteComponent: (name: string) =>
 					command(async () => {
-						if (branchId !== 'main') throw new Error('Branches cannot delete components yet.');
 						const document = graph.project;
 						const component = Object.entries(document.components).find(
 							([, value]) => value.name === name
@@ -773,11 +869,31 @@ export async function openProjectSession(
 					}),
 				close: async () => {
 					if (closed) return { data: undefined, error: null };
+					checkpointPaused = true;
 					if (checkpointTimer) {
 						clearTimeout(checkpointTimer);
 						checkpointTimer = undefined;
-						await recordCheckpoint().catch(() => undefined);
 					}
+					const closedSession = await tryAsync({
+						try: async () => {
+							await branchOperationPromise;
+							await checkpointPromise;
+							if (historyHandle.doc()?.checkedOutBranchId !== branchId) {
+								await reconciler.stop();
+								await projectRepo.shutdown();
+								return;
+							}
+							do {
+								checkpointDirty = false;
+								await synchronize();
+								await recordProjectCheckpoint(projectRepo, historyHandle, branchId, graph);
+							} while (checkpointDirty);
+							await reconciler.stop();
+							await projectRepo.shutdown();
+						},
+						catch: (cause) =>
+							CollaborationError.ProjectCloseFailed({ project: project.name, cause })
+					});
 					closed = true;
 					for (const [handle, listener] of checkpointListeners) handle.off('change', listener);
 					checkpointListeners.clear();
@@ -786,22 +902,6 @@ export async function openProjectSession(
 					historyHandle.off('change', historyListener);
 					observer.stop();
 					graph.projectHandle.off('change', rootListener);
-					const closedSession = await tryAsync({
-						try: async () => {
-							if (historyHandle.doc()?.checkedOutBranchId !== branchId) {
-								await reconciler.stop();
-								await projectRepo.shutdown();
-								return;
-							}
-							await refreshPromise;
-							await refresh();
-							await reconciler.reconcileOrThrow();
-							await reconciler.stop();
-							await projectRepo.shutdown();
-						},
-						catch: (cause) =>
-							CollaborationError.ProjectCloseFailed({ project: project.name, cause })
-					});
 					if (closedSession.error) {
 						await reconciler.stop();
 						await projectRepo.shutdown().catch(() => undefined);
@@ -909,7 +1009,8 @@ function createHistoricalProjectSession({
 				catch: (cause) => CollaborationError.SynchronizationFailed({ project: project.name, cause })
 			}),
 		deleteBranch: () => readOnly<void>(),
-		mergeToParent: () => readOnly<ProjectCheckpointId>(),
+		prepareMergeToParent: () => readOnly<ProjectMergePlan>(),
+		commitMergeToParent: () => readOnly<ProjectCheckpointId>(),
 		writeFiles: () => readOnly<void>(),
 		renameComponent: () => readOnly<void>(),
 		deleteComponent: () => readOnly<void>(),
@@ -1181,7 +1282,7 @@ async function ensureRulesDocument(
 	const scanned = await scanProjectFiles(project, undefined, ['rules.md']);
 	const source = scanned.files[0];
 	if (!source) throw new Error('Could not read rules.md.');
-	const id = projectMemberId(source.path);
+	const id = projectMemberId();
 	const handle = await createProjectMemberHandle(repo, source);
 	await repo.flush([handle.documentId]);
 	graph.projectHandle.change(
@@ -1371,6 +1472,25 @@ async function repairProjectConfig(
 ): Promise<{ config: ProjectConfig; reconcileMemberIds: string[] }> {
 	const document = graph.project;
 	const reconcileMemberIds: string[] = [];
+	const paths = new Set(Object.values(document.members).map((member) => member.path));
+	const componentNames = new Set(
+		Object.values(document.components).map((component) => component.name)
+	);
+	const removedComponents = new Set<string>();
+	for (const [id, projection] of Object.entries(config.projections)) {
+		if (document.members[id]?.path === projection.path || paths.has(projection.path)) continue;
+		const classification = classifyProjectFile(projection.path);
+		if (!classification) continue;
+		if (classification.componentName && !componentNames.has(classification.componentName)) {
+			if (removedComponents.has(classification.componentName)) continue;
+			removedComponents.add(classification.componentName);
+			await removeFile(project, joinFsPath(COMPONENTS_DIR, classification.componentName), {
+				recursive: true
+			});
+			continue;
+		}
+		await removeFile(project, projection.path);
+	}
 	const projections = Object.fromEntries(
 		await Promise.all(
 			Object.entries(document.members).map(async ([id, member]) => {
@@ -1446,28 +1566,6 @@ function sameSources(left: Record<string, string>, right: Record<string, string>
 	return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key]);
 }
 
-function assertBranchStructureUnchanged(
-	graph: ProjectGraph,
-	scanned: Awaited<ReturnType<typeof scanProjectFiles>>
-): void {
-	const membersByPath = new Map(
-		Object.values(graph.project.members).map((member) => [member.path, member])
-	);
-	for (const source of scanned.files) {
-		const member = membersByPath.get(source.path);
-		if (!member) throw new Error(`Branches cannot add project file ${source.path} yet.`);
-		if (member.kind !== source.kind) throw new Error(`${source.path} changed project file kind.`);
-		if (member.kind === 'asset' && member.hash !== source.snapshot.hash) {
-			throw new Error(`Branches cannot replace binary asset ${source.path} yet.`);
-		}
-		membersByPath.delete(source.path);
-	}
-	const missing = [...membersByPath.values()].find(
-		(member) => member.kind !== 'rules' && member.kind !== 'game-metadata'
-	);
-	if (missing) throw new Error(`Branches cannot delete project file ${missing.path} yet.`);
-}
-
 async function refreshProjectInventory(
 	project: FsDir,
 	repo: Repo,
@@ -1513,8 +1611,7 @@ async function refreshProjectInventory(
 				scanChanged = true;
 				continue;
 			}
-			const id =
-				source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId(source.path);
+			const id = source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId();
 			additions.push({
 				id,
 				source,
@@ -1581,7 +1678,7 @@ async function refreshProjectInventory(
 				);
 				for (const name of scanned.components) {
 					if (componentIds.has(name)) continue;
-					const id = projectComponentId(name);
+					const id = projectComponentId();
 					componentIds.set(name, id);
 					document.components[id] = { name };
 				}

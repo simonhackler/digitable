@@ -1,6 +1,4 @@
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
-import { blake3 } from '@noble/hashes/blake3.js';
-import { bytesToHex } from '@noble/hashes/utils.js';
 import { componentDataMaterializer } from './component-data';
 import { decodeText, hashBytes, readFile } from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
@@ -28,12 +26,12 @@ export type ProjectFileFingerprint = {
 	size: number;
 };
 
-export function projectMemberId(path: string): string {
-	return `file-${hexId(path)}`;
+export function projectMemberId(): string {
+	return crypto.randomUUID();
 }
 
-export function projectComponentId(name: string): string {
-	return `component-${hexId(name)}`;
+export function projectComponentId(): string {
+	return crypto.randomUUID();
 }
 
 export async function scanProjectFiles(
@@ -160,10 +158,6 @@ export function classifyProjectFile(path: string):
 		componentName: component[1],
 		side: component[2] === 'front.svg' ? 'front' : 'back'
 	};
-}
-
-function hexId(value: string): string {
-	return bytesToHex(blake3(new TextEncoder().encode(value)));
 }
 
 async function walkKnownFiles(project: FsDir, path = ''): Promise<string[]> {

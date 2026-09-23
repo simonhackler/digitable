@@ -1,5 +1,6 @@
 export * from './component-data';
 export * from './checkpoint-filesystem';
+export * from './checkpoint-title';
 export * from './document-state.svelte';
 export * from './file-observer';
 export * from './filesystem';
@@ -11,6 +12,7 @@ export * from './project-config';
 export * from './project-graph';
 export * from './project-history';
 export * from './project-lock';
+export * from './project-merge';
 export * from './project-presence';
 export * from './project-presence-state.svelte';
 export * from './presence-page';

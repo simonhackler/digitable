@@ -42,6 +42,9 @@ export type ProjectBranch = {
 	name: string;
 	rootUrl: AutomergeUrl;
 	parentBranchId?: ProjectBranchId;
+	baseCheckpointId?: ProjectCheckpointId;
+	baseBranchId?: ProjectBranchId;
+	/** Schema-1 name retained only while an existing history is being migrated. */
 	forkCheckpointId?: ProjectCheckpointId;
 	createdAt: number;
 	mergedAt?: number;
@@ -63,20 +66,28 @@ export type ProjectCheckpoint = {
 };
 
 export type ProjectMerge = {
+	id: string;
 	sourceBranchId: ProjectBranchId;
 	targetBranchId: ProjectBranchId;
+	baseCheckpointId: ProjectCheckpointId;
 	sourceCheckpointId: ProjectCheckpointId;
+	targetCheckpointId: ProjectCheckpointId;
 	resultCheckpointId: ProjectCheckpointId;
 	createdAt: number;
 };
 
+export type LegacyProjectMerge = Omit<
+	ProjectMerge,
+	'id' | 'baseCheckpointId' | 'targetCheckpointId'
+>;
+
 export type ProjectHistoryDocument = {
 	type: 'digitable-project-history';
-	schemaVersion: 1;
+	schemaVersion: 1 | 2;
 	checkedOutBranchId: ProjectBranchId;
 	branches: Record<ProjectBranchId, ProjectBranch>;
 	checkpoints: Record<ProjectCheckpointId, ProjectCheckpoint>;
-	merges: Record<string, ProjectMerge>;
+	merges: Record<string, ProjectMerge | LegacyProjectMerge>;
 };
 
 export type LegacyProjectDocument = {
@@ -175,7 +186,11 @@ export function isProjectDocument(value: unknown): value is ProjectDocument {
 
 export function isProjectHistoryDocument(value: unknown): value is ProjectHistoryDocument {
 	if (!isObject(value)) return false;
-	if (value.type !== 'digitable-project-history' || value.schemaVersion !== 1) return false;
+	if (
+		value.type !== 'digitable-project-history' ||
+		(value.schemaVersion !== 1 && value.schemaVersion !== 2)
+	)
+		return false;
 	if (
 		typeof value.checkedOutBranchId !== 'string' ||
 		!isObject(value.branches) ||
@@ -198,6 +213,8 @@ function isProjectBranch(value: unknown): value is ProjectBranch {
 		isValidAutomergeUrl(value.rootUrl) &&
 		typeof value.createdAt === 'number' &&
 		(value.parentBranchId === undefined || typeof value.parentBranchId === 'string') &&
+		(value.baseCheckpointId === undefined || typeof value.baseCheckpointId === 'string') &&
+		(value.baseBranchId === undefined || typeof value.baseBranchId === 'string') &&
 		(value.forkCheckpointId === undefined || typeof value.forkCheckpointId === 'string') &&
 		(value.mergedAt === undefined || typeof value.mergedAt === 'number') &&
 		(value.deletedAt === undefined || typeof value.deletedAt === 'number')
@@ -220,14 +237,17 @@ function isProjectCheckpoint(value: unknown): value is ProjectCheckpoint {
 	);
 }
 
-function isProjectMerge(value: unknown): value is ProjectMerge {
+function isProjectMerge(value: unknown): value is ProjectMerge | LegacyProjectMerge {
 	return (
 		isObject(value) &&
 		typeof value.sourceBranchId === 'string' &&
 		typeof value.targetBranchId === 'string' &&
 		typeof value.sourceCheckpointId === 'string' &&
 		typeof value.resultCheckpointId === 'string' &&
-		typeof value.createdAt === 'number'
+		typeof value.createdAt === 'number' &&
+		(value.id === undefined || typeof value.id === 'string') &&
+		(value.baseCheckpointId === undefined || typeof value.baseCheckpointId === 'string') &&
+		(value.targetCheckpointId === undefined || typeof value.targetCheckpointId === 'string')
 	);
 }
 

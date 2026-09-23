@@ -1,6 +1,8 @@
 import { parseFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import { isValidAutomergeUrl, type AutomergeUrl, type UrlHeads } from '@automerge/automerge-repo';
 import { readText, removeFile, writeFile } from './filesystem';
+import { isProjectDocument, type ProjectDocument } from './model';
+import type { ProjectMergeResolution } from './project-merge';
 
 export const AUTOMERGE_DIR = '.automerge';
 export const AUTOMERGE_STORAGE_DIR = '.automerge/storage';
@@ -50,12 +52,38 @@ export type PendingJoin = {
 	config?: ProjectConfig;
 };
 
-export type PendingBranchOperation = {
+export type LegacyPendingMergeOperation = {
 	version: 1;
 	type: 'merge';
 	sourceBranchId: string;
 	targetBranchId: string;
 };
+
+export type PendingMergeOperation = {
+	version: 2;
+	type: 'merge';
+	operationId: string;
+	phase:
+		| 'prepared'
+		| 'members-applied'
+		| 'root-published'
+		| 'checkpoint-recorded'
+		| 'history-finalized';
+	sourceBranchId: string;
+	targetBranchId: string;
+	baseCheckpointId: string;
+	sourceCheckpointId: string;
+	targetCheckpointId: string;
+	resolutions: ProjectMergeResolution[];
+	mutableMemberIds: string[];
+	finalMembers: ProjectDocument['members'];
+	finalComponents: ProjectDocument['components'];
+	appliedMemberHeads: Record<string, UrlHeads>;
+	publishedRootHeads?: UrlHeads;
+	resultCheckpointId?: string;
+};
+
+export type PendingBranchOperation = LegacyPendingMergeOperation | PendingMergeOperation;
 
 export async function readProjectConfig(fs: FsDir): Promise<ProjectConfig | undefined> {
 	const source = await readText(fs, PROJECT_CONFIG_FILE);
@@ -120,20 +148,74 @@ export async function readPendingBranchOperation(
 	const source = await readText(fs, PENDING_BRANCH_OPERATION_FILE);
 	if (source === undefined) return undefined;
 	const value = parseJson(source, PENDING_BRANCH_OPERATION_FILE);
+	if (!isObject(value) || value.type !== 'merge') {
+		throw new Error(`${PENDING_BRANCH_OPERATION_FILE} has an unsupported format.`);
+	}
 	if (
-		!isObject(value) ||
-		value.version !== 1 ||
-		value.type !== 'merge' ||
+		value.version === 1 &&
+		typeof value.sourceBranchId === 'string' &&
+		typeof value.targetBranchId === 'string'
+	) {
+		return {
+			version: 1,
+			type: 'merge',
+			sourceBranchId: value.sourceBranchId,
+			targetBranchId: value.targetBranchId
+		};
+	}
+	const phases = [
+		'prepared',
+		'members-applied',
+		'root-published',
+		'checkpoint-recorded',
+		'history-finalized'
+	];
+	const project = {
+		type: 'digitable-project',
+		schemaVersion: 2,
+		members: value.finalMembers,
+		components: value.finalComponents
+	};
+	if (
+		value.version !== 2 ||
+		typeof value.operationId !== 'string' ||
+		typeof value.phase !== 'string' ||
+		!phases.includes(value.phase) ||
 		typeof value.sourceBranchId !== 'string' ||
-		typeof value.targetBranchId !== 'string'
+		typeof value.targetBranchId !== 'string' ||
+		typeof value.baseCheckpointId !== 'string' ||
+		typeof value.sourceCheckpointId !== 'string' ||
+		typeof value.targetCheckpointId !== 'string' ||
+		!Array.isArray(value.resolutions) ||
+		!value.resolutions.every(isProjectMergeResolution) ||
+		!Array.isArray(value.mutableMemberIds) ||
+		!value.mutableMemberIds.every((id) => typeof id === 'string') ||
+		!isProjectDocument(project) ||
+		!isHeadsRecord(value.appliedMemberHeads) ||
+		(value.publishedRootHeads !== undefined && !isHeads(value.publishedRootHeads)) ||
+		(value.resultCheckpointId !== undefined && typeof value.resultCheckpointId !== 'string')
 	) {
 		throw new Error(`${PENDING_BRANCH_OPERATION_FILE} has an unsupported format.`);
 	}
 	return {
-		version: 1,
+		version: 2,
 		type: 'merge',
+		operationId: value.operationId,
+		phase: value.phase as PendingMergeOperation['phase'],
 		sourceBranchId: value.sourceBranchId,
-		targetBranchId: value.targetBranchId
+		targetBranchId: value.targetBranchId,
+		baseCheckpointId: value.baseCheckpointId,
+		sourceCheckpointId: value.sourceCheckpointId,
+		targetCheckpointId: value.targetCheckpointId,
+		resolutions: value.resolutions,
+		mutableMemberIds: value.mutableMemberIds,
+		finalMembers: project.members,
+		finalComponents: project.components,
+		appliedMemberHeads: value.appliedMemberHeads as Record<string, UrlHeads>,
+		publishedRootHeads:
+			value.publishedRootHeads === undefined ? undefined : (value.publishedRootHeads as UrlHeads),
+		resultCheckpointId:
+			typeof value.resultCheckpointId === 'string' ? value.resultCheckpointId : undefined
 	};
 }
 
@@ -288,4 +370,25 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isProjectMergeResolution(value: unknown): value is ProjectMergeResolution {
+	return (
+		isObject(value) &&
+		typeof value.conflictId === 'string' &&
+		(value.choice === 'parent' ||
+			value.choice === 'branch' ||
+			value.choice === 'delete' ||
+			value.choice === 'rename') &&
+		(value.name === undefined || typeof value.name === 'string') &&
+		(value.path === undefined || typeof value.path === 'string')
+	);
+}
+
+function isHeads(value: unknown): value is UrlHeads {
+	return Array.isArray(value) && value.every((head) => typeof head === 'string');
+}
+
+function isHeadsRecord(value: unknown): value is Record<string, UrlHeads> {
+	return isObject(value) && Object.values(value).every(isHeads);
 }

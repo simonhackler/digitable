@@ -37,7 +37,7 @@ The root document contains:
 - File paths, document kinds, and linked Automerge URLs.
 - BLAKE3 hashes for binary members.
 
-File and component IDs for newly discovered paths are deterministic BLAKE3-based IDs. This prevents separate tabs from creating different registry keys for the same path.
+New file and component records use opaque UUIDs. Existing IDs are preserved. Paths and component names are validated separately, so independent branches can represent different additions at the same path and report that ambiguity during merge instead of collapsing both additions into one registry key.
 
 Components are represented even when they have no `data.csv`. Their optional front, back, and data member references are stored separately.
 
@@ -176,7 +176,7 @@ When the root and config differ after an interrupted root mutation, opening rebu
 
 Config version 2 records the root heads it represents. A tab that reads a newer shared config waits until its local root handle contains those heads before repairing or materializing project files.
 
-Per-member pending materialization journals continue to protect file/config updates. Structural component operations are serialized with Web Locks. A dedicated multi-step structural operation journal is not yet implemented.
+Per-member pending materialization journals continue to protect file/config updates. Structural component operations are serialized with Web Locks. Branch merges use a version-2 phased journal that stores the reviewed checkpoint IDs, resolutions, final root registries, stable operation ID, and completed phase without storing binary bytes.
 
 ## Multi-Tab Coordination
 
@@ -187,7 +187,7 @@ Coordination uses:
 - BroadcastChannel for document synchronization.
 - Web Locks for bootstrap, root/config changes, reconciliation, and storage adapter mutations.
 - Latest-config rereads while holding the project lock.
-- Deterministic IDs and commit-time path revalidation.
+- Opaque creation IDs and commit-time path revalidation.
 - Projected heads to prevent stale filesystem imports.
 
 Local save status distinguishes synchronization work from idle state. It does not imply acknowledgement from another device.
@@ -247,15 +247,23 @@ The history document contains:
 - Complete immutable project checkpoints.
 - Merge records and branch tombstones.
 
-Each branch is a normal complete project graph. Forking clones the root and every member at the selected checkpoint heads, then rewrites the cloned root to those cloned member URLs. This eager clone model deliberately preserves the existing editor, reconciler, and filesystem contracts; branch-local copy-on-write overlays can be introduced later without changing the branch or checkpoint schema.
+Each branch is a normal complete project graph. Forking clones the root and mutable members at the selected checkpoint heads, then rewrites the cloned root to those cloned mutable member URLs. Immutable binary members initially reuse the checkpoint URL and hash. This eager mutable-clone model deliberately preserves the existing editor, reconciler, and filesystem contracts; branch-local copy-on-write overlays can be introduced later without changing the branch or checkpoint schema.
 
 A checkpoint records the root URL and heads plus the URL, heads, kind, path, hash, and component identity of every member referenced by that root. Checkpoints are therefore exact project-wide manifests and do not reconstruct other documents by timestamp. Durable root and member changes are checkpointed after a short quiet period and before branch switches and merges.
+
+New automatic checkpoints receive concise semantic titles derived from the immutable previous and candidate checkpoint views. Stable component and member IDs identify deck structure changes, metadata fields, rules, layouts, spreadsheets, table setup, playtests, and assets; multiple independent changes are combined or summarized by file count. Explicit operation and user-provided messages retain precedence, existing checkpoints are never rewritten, and an unavailable or unsupported historical view falls back to `Project edit` without blocking persistence. The 750 millisecond trailing quiet period is unchanged. Changes arriving during checkpoint capture mark the recorder dirty and schedule a later pass, while explicit operations and session close cancel pending timers, await active capture, synchronize, and drain pending changes before continuing.
 
 Branch checkout is shared by every tab that has the project open because all tabs also share one materialized project directory. A checkout first synchronizes and checkpoints the current branch, updates the history document, and then every tab closes and reopens its session against the selected branch. Reconciliation verifies both history identity and branch ID before importing filesystem bytes, so files materialized by a new checkout cannot be imported into the old branch.
 
 Historical selection is per tab and URL-addressable through `checkpoint` and `baseline` search parameters. Opening a checkpoint resolves read-only root and member handles at its exact heads and never runs the filesystem observer or reconciler. A read-only virtual `FsDir` materializes the checkpoint's typed documents in memory for setup, spreadsheet, play, and export readers without touching the real project directory. Session and filesystem mutations reject historical writes, and the authoring UI disables direct editor controls. The baseline is independent from the displayed checkpoint and currently drives changed-file summaries in the history sheet.
 
-Creating a branch from history produces a normal writable branch. Nested branches remember their parent, merge upward, and are reparented when an ancestor is merged. Merge preflights member structure and binary compatibility, merges corresponding CRDT members, records source and result checkpoints, and is protected by `.automerge/pending-branch-operation.json` so an interrupted multi-document merge can be retried safely. Structural and binary divergence currently fail preflight rather than being merged incorrectly.
+Creating a branch from history produces a normal writable branch. Nested branches remember their parent and immutable Base checkpoint, merge upward, and retain that Base when an ancestor merge reparents them.
+
+History schema version 2 stores each branch's Base checkpoint and Base branch, and complete merge records containing Base, Source, Target, and Result checkpoint IDs. Existing schema-1 histories migrate in place without changing branch, checkpoint, root, member, or component identities; legacy merge records remain readable.
+
+Merge preparation synchronizes the source, captures exact Source and Parent checkpoints, resolves the stored Base checkpoint, verifies immutable assets by BLAKE3, and builds a typed three-way structural plan without mutating Parent. The preview lists automatic operations, mutable CRDT merges, and typed conflicts. Commit rejects stale Source or Parent state, requires an explicit valid resolution for every conflict, merges mutable Branch checkpoint views into Parent member handles, verifies selected assets, and publishes the complete validated Parent root in one change.
+
+`.automerge/pending-branch-operation.json` advances through prepared, members-applied, root-published, checkpoint-recorded, and history-finalized phases. Before mutation it stores the deterministic expected heads for every mutable merge member. Recovery runs under the project Web Lock, accepts each member only at its reviewed Parent or exact merged heads, accepts the Parent root only at its reviewed heads or exact planned structure, and uses the stable operation ID to produce one result checkpoint and merge record. This also covers a crash after durable member or root writes but before the next phase marker. Version-1 merge journals remain accepted for migration recovery and must still target their recorded Parent. Writable branches support component creation, rename, deletion, recognized member additions/removals, and immutable asset replacement; historical checkpoint sessions remain read-only.
 
 ## Playtests And Exports
 
@@ -299,6 +307,18 @@ Focused Playwright coverage verifies:
 - Exact read-only checkpoint views and independent comparison baselines.
 - Forking from latest and historical checkpoints.
 - Merge-to-parent materialization.
+- Three-way structural merge of a branch component addition/rename with an independent Parent metadata edit.
+- Merge preview and explicit prepare/commit flow.
+- Delete/modify conflict preview and Parent component restoration.
+- Automatic immutable asset replacement merge and explicit different-byte asset conflict resolution.
+- Identical asset replacement without a conflict and one-sided member deletion.
+- Same-path and same-name collision preview, rename resolution, and two-tab structural convergence.
+- Parent component rename composed with Branch member edits while the Base checkpoint retains its original paths and asset bytes.
+- Nested child Base retention after ancestor merge and reparenting.
+- Reload recovery after every journal phase and the durable pre-marker member/root/checkpoint/history boundaries.
+- Exact Base, Source, Target, and Result merge history IDs.
+- Semantic automatic checkpoint titles for metadata, every supported member kind, deck structure, asset replacement, and grouped multi-file changes.
+- Preservation of initial, branch-point, fork, and merge checkpoint messages.
 
 Existing regressions cover:
 
@@ -322,10 +342,10 @@ Existing regressions cover:
 - SVG text-frame resize does not yet emit the same semantic transition previews as ordinary SVG resize.
 - Remote SVG selections are not yet rendered independently from active interaction previews.
 - Binary documents are immutable but are not deduplicated by hash.
-- Structural operations have config repair but no dedicated operation journal.
+- Component rename and deletion have config repair but no dedicated per-command operation journal.
 - Collaborative whole-project discovery and deletion require a workspace-level Automerge document.
-- Branches eagerly clone all project members rather than cloning documents only when they diverge.
-- Branch merges currently reject structural changes and immutable asset replacement.
+- Branches eagerly clone mutable project members rather than cloning documents only when they diverge.
+- Cross-device structural creation still relies on post-convergence collision validation; same-browser commands are serialized with the project Web Lock.
 
 ## Next Steps
 
@@ -339,4 +359,3 @@ Existing regressions cover:
 8. Add binary deduplication and retention policy if repository growth requires it.
 9. Add semantic presence adapters for ProseMirror cursors and spreadsheet cells where DOM regions are not precise enough.
 10. Replace eager branch member cloning with per-document copy-on-write if project size makes it necessary.
-11. Add three-way structural and immutable asset branch merging.
