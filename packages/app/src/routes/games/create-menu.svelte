@@ -109,7 +109,7 @@
 					<Sidebar.MenuSub>
 						{#if projectSession.canEditStructure}
 							<Sidebar.MenuSubItem>
-								<NewDeckDialog {activeGame} {fileSystem} {projectSession} {onDeckCreated} />
+								<NewDeckDialog {activeGame} {projectSession} {onDeckCreated} />
 							</Sidebar.MenuSubItem>
 						{/if}
 						{#each activeGame?.decks ?? [] as deck (deck.name)}

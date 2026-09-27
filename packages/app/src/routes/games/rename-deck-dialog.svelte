@@ -6,7 +6,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import { TextCursorInput } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import { z } from 'zod';
@@ -66,21 +65,12 @@
 			return;
 		}
 
-		const componentsDir = await projectFolder.openDir(COMPONENTS_DIR);
-		if (componentsDir.error) {
-			console.error(componentsDir.error);
-			error = componentsDir.error.message;
-			return;
-		}
-
-		const files = await componentsDir.data.list();
-		if (files.error) {
-			console.error(files.error);
-			error = files.error.message;
-			return;
-		}
-
-		if (files.data.some((candidate) => candidate.name === newName)) {
+		const targetPrefix = `components/${newName}/`;
+		if (
+			[...projectSession.members('component-svg'), ...projectSession.members('component-data')].some(
+				(member) => member.path.startsWith(targetPrefix)
+			)
+		) {
 			error = `Deck "${newName}" already exists.`;
 			return;
 		}

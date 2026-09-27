@@ -1,11 +1,19 @@
 import { Assets, Container, Sprite, type Texture } from 'pixi.js';
-import { loadSvgsAndData } from '../../routes/games/[gameName]/data-loader';
+import {
+	loadSvgsAndData,
+	loadSvgsAndDataForSidesFromSnapshot
+} from '../../routes/games/[gameName]/data-loader';
 import { generateSvg, loadSvgTemplate } from '../../routes/games/[gameName]/svg-helpers';
 import '@pixi/layout';
 import { LayoutContainer } from '@pixi/layout/components';
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { ParsedSvg } from './initComponent';
 import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+import {
+	decodeText,
+	serializeProjectMember,
+	type ProjectSnapshot
+} from '$lib/collaboration';
 
 const serializer = new XMLSerializer();
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -170,35 +178,51 @@ export async function createHybridContainer(
 export async function loadAndProcessCards(
 	projectName: string,
 	cardName: string,
-	fileSystem: FsDir
+	source: FsDir | ProjectSnapshot
 ): Promise<ParsedSvg[]> {
-	const deckDir = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR, cardName));
-	if (deckDir.error) throw new Error(deckDir.error.message);
-
-	const [frontFile, backFile] = await Promise.all([
-		deckDir.data.readText('front.svg'),
-		deckDir.data.readText('back.svg')
-	]);
-	if (frontFile.error) {
-		throw new Error(frontFile.error.message);
+	let svgTextFront: string;
+	let svgTextBack: string;
+	if ('rootUrl' in source) {
+		const front = source.member('component-svg', `components/${cardName}/front.svg`);
+		const back = source.member('component-svg', `components/${cardName}/back.svg`);
+		if (!front || !back) throw new Error(`Component "${cardName}" is missing an SVG template.`);
+		svgTextFront = decodeText(serializeProjectMember('component-svg', front.document));
+		svgTextBack = decodeText(serializeProjectMember('component-svg', back.document));
+	} else {
+		const deckDir = await source.openDir(joinFsPath(projectName, COMPONENTS_DIR, cardName));
+		if (deckDir.error) throw new Error(deckDir.error.message);
+		const [frontFile, backFile] = await Promise.all([
+			deckDir.data.readText('front.svg'),
+			deckDir.data.readText('back.svg')
+		]);
+		if (frontFile.error) throw new Error(frontFile.error.message);
+		if (backFile.error) throw new Error(backFile.error.message);
+		svgTextFront = frontFile.data;
+		svgTextBack = backFile.data;
 	}
-	if (backFile.error) {
-		throw new Error(backFile.error.message);
-	}
-	const svgTextFront = frontFile.data;
-	const svgTextBack = backFile.data;
-
 	const svgTemplateFront = loadSvgTemplate(svgTextFront);
 	const svgTemplateBack = loadSvgTemplate(svgTextBack);
-
-	const loadedSvgsAndData = await loadSvgsAndData(
-		projectName,
-		cardName,
-		fileSystem,
-		svgTemplateFront,
-		svgTemplateBack,
-		true
-	);
+	const loadedSvgsAndData =
+		'rootUrl' in source
+			? await loadSvgsAndDataForSidesFromSnapshot(
+					projectName,
+					cardName,
+					source,
+					[
+						{ template: svgTemplateFront },
+						{ template: svgTemplateBack, columnPrefix: 'back_' }
+					],
+					source.member('component-data', `components/${cardName}/data.csv`)?.document,
+					true
+				)
+			: await loadSvgsAndData(
+					projectName,
+					cardName,
+					source,
+					svgTemplateFront,
+					svgTemplateBack,
+					true
+				);
 	if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
 	const { spreadsheetData, imagePaths } = loadedSvgsAndData.data;
 	const idIndex = spreadsheetData.cols.findIndex((x) => x.title == 'id');

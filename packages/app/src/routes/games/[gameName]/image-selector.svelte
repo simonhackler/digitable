@@ -5,14 +5,16 @@
 		type ButtonSize,
 		type ButtonVariant
 	} from '$lib/components/ui/button/index.js';
-	import { joinFsPath, type FsEntry } from '$lib/components/file-browser/adapters/adapter';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { cn } from '$lib/utils/utils.js';
 	import { requireParam } from '$lib/utils/assert';
 	import { Image, Loader2, Upload } from '@lucide/svelte';
-	import { getActiveProjectContext, getFileSystemContext } from '../context';
-	import { isImageFileName, listProjectImageFiles, resolveImageReference } from './data-loader';
-	import { ASSETS_DIR } from '$lib/workspace/project-layout';
+	import { getActiveProjectContext } from '../context';
+	import {
+		isImageFileName,
+		listSessionImageFiles,
+		resolveSessionImageReference
+	} from './data-loader';
 
 	type ImageChoice = {
 		path: string;
@@ -56,7 +58,6 @@
 	let wasOpen = false;
 
 	const gameName = $derived(requireParam('gameName'));
-	const filesystem = getFileSystemContext();
 	const project = getActiveProjectContext();
 
 	function revokeChoiceUrls(nextChoices: ImageChoice[]) {
@@ -71,11 +72,11 @@
 		loading = true;
 		errorMessage = '';
 		try {
-			const paths = await listProjectImageFiles(filesystem, gameName);
+			const paths = listSessionImageFiles(project.session);
 			const nextChoices = await Promise.all(
 				paths.map(async (path) => ({
 					path,
-					previewUrl: await resolveImageReference(filesystem, gameName, path)
+					previewUrl: await resolveSessionImageReference(project.session, gameName, path)
 				}))
 			);
 			revokeChoiceUrls(choices);
@@ -157,24 +158,19 @@
 		errorMessage = '';
 		loading = true;
 		try {
-			const uploadDir = await filesystem.ensureDir(joinFsPath(gameName, ASSETS_DIR, 'uploads'));
-			if (uploadDir.error) throw new Error(uploadDir.error.message);
-
-			const existingEntries = await uploadDir.data.list();
 			const existingNames = new Set(
-				existingEntries.error
-					? []
-					: existingEntries.data
-							.filter((entry: FsEntry) => entry.kind === 'file')
-							.map((entry: FsEntry) => entry.name)
+				listSessionImageFiles(project.session)
+					.filter((path) => path.startsWith('uploads/'))
+					.map((path) => path.slice('uploads/'.length))
 			);
 			const fileName = uniqueFileName(sanitizeFileName(file.name), existingNames);
-			const written = await project.session.writeFiles([
-				{ path: joinFsPath(ASSETS_DIR, 'uploads', fileName), data: file }
-			]);
+			const written = await project.session.put({
+				path: `assets/uploads/${fileName}`,
+				data: file
+			});
 			if (written.error) throw new Error(written.error.message);
 
-			const imagePath = joinFsPath('uploads', fileName);
+			const imagePath = `uploads/${fileName}`;
 			await refreshImages();
 			await selectImage(imagePath);
 		} catch (error) {

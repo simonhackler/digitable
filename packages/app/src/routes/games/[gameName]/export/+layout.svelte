@@ -1,64 +1,47 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getFileSystemContext } from '../../context';
-	import { loadSvgsAndData } from '../data-loader';
+	import { getActiveProjectContext } from '../../context';
+	import { loadSvgsAndDataForSidesFromSnapshot } from '../data-loader';
 	import { generateSvg, loadSvgTemplate } from '../svg-helpers';
 	import type { Project } from './types';
 	import { ProjectData, setProjectDataContext } from './export-context.svelte';
-	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { requireParam } from '$lib/utils/assert';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import { decodeText, serializeProjectMember } from '$lib/collaboration';
 
 	const projectName = $derived(requireParam('gameName'));
-	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const useDataUrls = $derived(page.route.id !== '/games/[gameName]/export/paper');
 
 	const { children } = $props();
 
-	async function getFoldersToExport(fileSystem: FsDir, projectName: string, useDataUrls: boolean) {
+	async function getFoldersToExport(projectName: string, useDataUrls: boolean) {
 		const projectData = new ProjectData();
-		const componentsDir = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
-		if (componentsDir.error) {
-			throw new Error(componentsDir.error.message);
-		}
-
-		const componentEntries = await componentsDir.data.list();
-		if (componentEntries.error) throw new Error(componentEntries.error.message);
-
-		for (const entry of componentEntries.data) {
-			if (entry.kind !== 'directory') continue;
-
-			const deckDir = await componentsDir.data.openDir(entry.name);
-			if (deckDir.error) continue;
-
-			const deckEntries = await deckDir.data.list();
-			if (deckEntries.error) continue;
-
-			const deckFileNames = new Set(deckEntries.data.map((file) => file.name));
-			if (
-				!deckFileNames.has('front.svg') ||
-				!deckFileNames.has('back.svg') ||
-				!deckFileNames.has('data.csv')
-			) {
-				continue;
-			}
-
-			const [frontFile, backFile] = await Promise.all([
-				deckDir.data.readText('front.svg'),
-				deckDir.data.readText('back.svg')
-			]);
-
-			if (frontFile.error || backFile.error) continue;
-
-			const svgTemplateFront = loadSvgTemplate(frontFile.data);
-			const svgTemplateBack = loadSvgTemplate(backFile.data);
-
-			const loadedSvgsAndData = await loadSvgsAndData(
+		const captured = await project.session.snapshot();
+		if (captured.error) throw new Error(captured.error.message);
+		const snapshot = captured.data;
+		for (const front of snapshot
+			.members('component-svg')
+			.filter((member) => member.path.endsWith('/front.svg'))) {
+			const name = front.path.split('/')[1];
+			if (!name) continue;
+			const back = snapshot.member('component-svg', `components/${name}/back.svg`);
+			const data = snapshot.member('component-data', `components/${name}/data.csv`);
+			if (!back || !data) continue;
+			const svgTemplateFront = loadSvgTemplate(
+				decodeText(serializeProjectMember('component-svg', front.document))
+			);
+			const svgTemplateBack = loadSvgTemplate(
+				decodeText(serializeProjectMember('component-svg', back.document))
+			);
+			const loadedSvgsAndData = await loadSvgsAndDataForSidesFromSnapshot(
 				projectName,
-				entry.name,
-				fileSystem,
-				svgTemplateFront,
-				svgTemplateBack,
+				name,
+				snapshot,
+				[
+					{ template: svgTemplateFront },
+					{ template: svgTemplateBack, columnPrefix: 'back_' }
+				],
+				data.document,
 				useDataUrls
 			);
 			if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
@@ -88,7 +71,7 @@
 			const proj: Project = {
 				svgsFront,
 				svgsBack,
-				name: entry.name
+				name
 			};
 			projectData.projects.push(proj);
 		}
@@ -96,7 +79,7 @@
 		return projectData;
 	}
 
-	const getFoldersProm = $derived(getFoldersToExport(fileSystem, projectName, useDataUrls));
+	const getFoldersProm = $derived(getFoldersToExport(projectName, useDataUrls));
 	setProjectDataContext(() => getFoldersProm);
 </script>
 

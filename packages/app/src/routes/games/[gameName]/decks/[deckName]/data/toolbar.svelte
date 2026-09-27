@@ -6,8 +6,6 @@
 	import ImageSelectionModal from './image-selection-modal.svelte';
 	import type { ImageGenResponse } from './image-generator.js';
 	import { getActiveProjectContext } from '../../../../context';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
-	import { ASSETS_DIR } from '$lib/workspace/project-layout';
 	import { FlipHorizontal2, LayoutTemplate } from '@lucide/svelte';
 	import GameTopBar from '../../../../game-top-bar.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.js';
@@ -59,9 +57,10 @@
 			const blob = await response.blob();
 			const filename = `${image.rowId}_${timestamp}_${image.columnName}.png`;
 			const file = new File([blob], filename, { type: blob.type });
-			const written = await project.session.writeFiles([
-				{ path: joinFsPath(ASSETS_DIR, 'generated', file.name), data: file }
-			]);
+			const written = await project.session.put({
+				path: `assets/generated/${file.name}`,
+				data: file
+			});
 			if (written.error) {
 				throw new Error(`Failed to save generated image ${filename}: ${written.error.message}`);
 			}

@@ -2,7 +2,7 @@ import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { DocHandle, Repo } from '@automerge/automerge-repo';
 import type { SvgDocument } from '@svg-table/svgeditor';
 import { componentDataMaterializer } from './component-data';
-import { decodeText, encodeText, hashBytes, snapshotFile, writeFile } from './filesystem';
+import { decodeText, encodeText, hashBytes, removeFile, snapshotFile, writeFile } from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
 import { markdownFileMaterializer } from './markdown/markdown-file';
 import type { MemberMaterializer } from './materializer';
@@ -83,7 +83,8 @@ export type ManagedMember =
 export type ReconciliationStatus =
 	| { state: 'idle' }
 	| { state: 'syncing' }
-	| { state: 'error'; memberId: string; path: string; message: string };
+	| { state: 'error'; scope: 'member'; memberId: string; path: string; message: string }
+	| { state: 'error'; scope: 'checkpoint' | 'project'; path: string; message: string };
 
 export function managedMember(
 	id: string,
@@ -432,6 +433,7 @@ export function createProjectReconciler({
 					lastError ??= error;
 					onStatus({
 						state: 'error',
+						scope: 'member',
 						memberId: member.id,
 						path: member.path,
 						message: error.message
@@ -462,7 +464,7 @@ export function createProjectReconciler({
 			lastError = cause instanceof Error ? cause : new Error(String(cause));
 			onStatus({
 				state: 'error',
-				memberId: '$project',
+				scope: 'project',
 				path: '.automerge/config.json',
 				message: lastError.message
 			});
@@ -500,6 +502,40 @@ export function createProjectReconciler({
 		saveTimer = setTimeout(() => void requestReconcile(dirtyMemberIds), saveDebounceMs);
 	}
 
+	async function removePathsWhileLocked(paths: Iterable<string>): Promise<void> {
+		const unique = [...new Set(paths)];
+		if (!unique.length) return;
+		await Promise.all(unique.map((path) => removeFile(fs, path)));
+		const directories = new Set<string>();
+		for (const path of unique) {
+			const parts = path.split('/');
+			while (parts.length > 2) {
+				parts.pop();
+				directories.add(parts.join('/'));
+			}
+		}
+		for (const path of [...directories].sort((left, right) => right.length - left.length)) {
+			const entries = await fs.list(path);
+			if (entries.error?.name === 'NotFoundError' || (!entries.error && entries.data.length)) continue;
+			if (entries.error) throw new Error(entries.error.message, { cause: entries.error });
+			await removeFile(fs, path);
+		}
+	}
+
+	async function removePaths(paths: Iterable<string>): Promise<void> {
+		const unique = [...new Set(paths)];
+		if (!unique.length) return;
+		onStatus({ state: 'syncing' });
+		await withProjectLock(initialConfig.historyUrl, async () => {
+			const latest = await readProjectConfig(fs);
+			if (!latest || latest.historyUrl !== initialConfig.historyUrl) {
+				throw new Error('Automerge project configuration changed while the project was open.');
+			}
+			await removePathsWhileLocked(unique);
+		});
+		if (!lastError) onStatus({ state: 'idle' });
+	}
+
 	return {
 		async start(reconcile = true): Promise<void> {
 			replaceMembers(members, config);
@@ -533,6 +569,8 @@ export function createProjectReconciler({
 			return config;
 		},
 		requestReconcile,
+		removePaths,
+		removePathsWhileLocked,
 		replaceMembers
 	};
 }

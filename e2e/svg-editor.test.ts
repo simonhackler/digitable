@@ -712,6 +712,48 @@ svgEditorTest(
 	}
 );
 
+svgEditorTest(
+	'navigation preserves text alignment and top-origin text frames',
+	async (page) => {
+		await openWesternSvgEditor(page);
+		await selectEffectZone(page);
+		await page.getByRole('button', { name: 'Align text right' }).click();
+		await expect
+			.poll(() =>
+				page.evaluate(() => document.querySelector('#effect_zone')?.getAttribute('text-align'))
+			)
+			.toBe('right');
+		const baseline = await page
+			.locator('#effect_zone tspan')
+			.first()
+			.getAttribute('y');
+		expect(baseline).not.toBeNull();
+
+		await page.goto('/app/games/western-cards/decks/western/data');
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+		await expect(page.locator('[data-card-previews] #effect_zone').first()).toHaveAttribute(
+			'text-align',
+			'right'
+		);
+		await expect(page.locator('[data-card-previews] #effect_zone tspan').first()).toHaveAttribute(
+			'y',
+			baseline!
+		);
+
+		await page.goto('/app/games/western-cards/decks/western/editor?e2e');
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
+		await page.goto('/app/games/western-cards/decks/western/data');
+		await expect(page.locator('[data-card-previews] #effect_zone').first()).toHaveAttribute(
+			'text-align',
+			'right'
+		);
+		await expect(page.locator('[data-card-previews] #effect_zone tspan').first()).toHaveAttribute(
+			'y',
+			baseline!
+		);
+	}
+);
+
 svgEditorTest('typing text in layout editor persists front svg', async (page) => {
 	await openWesternSvgEditor(page);
 	const frontPath = '/western-cards/components/western/front.svg';

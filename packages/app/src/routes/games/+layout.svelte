@@ -31,7 +31,6 @@
 		createPresenceSurfaceRegistry,
 		createProjectNetwork,
 		createDocumentState,
-		createCheckpointWorkspace,
 		createProjectPresenceState,
 		gameMetadataMaterializer,
 		openProjectSession,
@@ -148,8 +147,6 @@
 				target.searchParams.delete('checkpoint');
 				target.searchParams.delete('baseline');
 				void (async () => {
-					// The target preserves the current base path and is already a full URL.
-					// eslint-disable-next-line svelte/no-navigation-without-resolve
 					if (target.href !== page.url.href) await goto(target, { replaceState: true });
 					await openActiveProject(fileSystem, gameName, true);
 				})();
@@ -157,7 +154,7 @@
 			onStatus: (status) => {
 				if (generation !== projectGeneration) return;
 				activeProjectState.reconciliation = status;
-				if (status.state === 'error' && status.memberId === '$project') {
+				if (status.state === 'error' && status.scope === 'project') {
 					openingError = status.message;
 					activeProjectState.phase = 'error';
 					activeProjectState.error = status.message;
@@ -192,9 +189,7 @@
 				);
 			})
 		};
-		viewFileSystemState.adapter = opened.data.readOnly
-			? createCheckpointWorkspace(fileSystem, gameName, opened.data.files)
-			: fileSystem;
+		viewFileSystemState.adapter = fileSystem;
 		configurePresence(opened.data);
 		activeProjectState.phase = 'ready';
 	}

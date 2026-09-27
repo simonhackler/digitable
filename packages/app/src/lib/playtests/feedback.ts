@@ -1,8 +1,4 @@
-import {
-	joinFsPath,
-	type FsDir,
-	type FsError
-} from '$lib/components/file-browser/adapters/adapter';
+import type { ProjectSession } from '$lib/collaboration';
 import { Err, Ok, tryAsync, trySync, type Result } from 'wellcrafted/result';
 
 const REGISTRY_PATH = 'feedback/playtests.json';
@@ -33,7 +29,7 @@ type FetchFeedbackError = {
 	cause: unknown;
 };
 
-export type PlaytestFeedbackImportError = FsError | FetchFeedbackError;
+export type PlaytestFeedbackImportError = Error | FetchFeedbackError;
 
 const emptyRegistry = (): PlaytestFeedbackRegistry => ({
 	version: 1,
@@ -74,74 +70,58 @@ function feedbackFileName(feedback: RemotePlaytestFeedback): string {
 	return `${time}-${safeFilePart(feedback.authorName || 'player')}-${safeFilePart(feedback.title)}-${feedback.id.slice(0, 8)}.md`;
 }
 
-export async function readPlaytestFeedbackRegistry(
-	gameDir: FsDir
-): Promise<Result<PlaytestFeedbackRegistry, FsError>> {
-	const existing = await gameDir.readText(REGISTRY_PATH);
-	if (existing.error) {
-		if (existing.error.name === 'NotFoundError') return Ok(emptyRegistry());
-		return Err(existing.error);
-	}
-
-	return trySync({
-		try: () => {
-			const parsed = JSON.parse(existing.data) as PlaytestFeedbackRegistry;
-			if (parsed.version !== 1 || !Array.isArray(parsed.playtests)) return emptyRegistry();
-			return parsed;
-		},
+export function readPlaytestFeedbackRegistry(session: ProjectSession): PlaytestFeedbackRegistry {
+	const document = session.member('feedback-registry', REGISTRY_PATH)?.handle.doc();
+	if (!document) return emptyRegistry();
+	const parsedResult = trySync({
+		try: () => JSON.parse(document.content) as PlaytestFeedbackRegistry,
 		catch: () => Ok(emptyRegistry())
 	});
-}
-
-async function writePlaytestFeedbackRegistry(
-	gameDir: FsDir,
-	registry: PlaytestFeedbackRegistry
-): Promise<Result<void, FsError>> {
-	console.log('writing:');
-	console.log(registry);
-	const written = await gameDir.write(REGISTRY_PATH, JSON.stringify(registry, null, 2));
-	if (written.error) {
-		return Err(written.error);
-	}
-	return Ok(undefined);
+	const parsed = parsedResult.data;
+	if (parsed.version !== 1 || !Array.isArray(parsed.playtests)) return emptyRegistry();
+	return parsed;
 }
 
 export async function registerPlaytestFeedbackImport(
-	gameDir: FsDir,
+	session: ProjectSession,
 	playtestId: string,
 	playtestName: string
-): Promise<Result<void, FsError>> {
-	const registry = await readPlaytestFeedbackRegistry(gameDir);
-	if (registry.error) return Err(registry.error);
-
-	const existing = registry.data.playtests.find((playtest) => playtest.playtestId === playtestId);
+): Promise<Result<void, Error>> {
+	const registry = readPlaytestFeedbackRegistry(session);
+	const existing = registry.playtests.find((playtest) => playtest.playtestId === playtestId);
 	if (existing) return Ok(undefined);
-
-	return writePlaytestFeedbackRegistry(gameDir, {
-		...registry.data,
-		playtests: [
-			...registry.data.playtests,
+	const written = await session.put({
+		path: REGISTRY_PATH,
+		data: JSON.stringify(
 			{
-				playtestId,
-				name: playtestName,
-				createdAt: new Date().toISOString(),
-				importedFeedbackIds: []
-			}
-		]
+				...registry,
+				playtests: [
+					...registry.playtests,
+					{
+						playtestId,
+						name: playtestName,
+						createdAt: new Date().toISOString(),
+						importedFeedbackIds: []
+					}
+				]
+			},
+			null,
+			2
+		)
 	});
+	return written.error ? Err(new Error(written.error.message)) : Ok(undefined);
 }
 
 export async function importRegisteredPlaytestFeedback(input: {
-	gameDir: FsDir;
+	session: ProjectSession;
 	fetchFeedback: (playtestId: string) => Promise<RemotePlaytestFeedback[]>;
 }): Promise<Result<number, PlaytestFeedbackImportError>> {
-	const registry = await readPlaytestFeedbackRegistry(input.gameDir);
-	if (registry.error) return Err(registry.error);
-
+	const registry = readPlaytestFeedbackRegistry(input.session);
 	let importedCount = 0;
-	let nextRegistry = registry.data;
+	let nextRegistry = registry;
+	const files: Array<{ path: `feedback/${string}.md`; data: string }> = [];
 
-	for (const playtest of registry.data.playtests) {
+	for (const playtest of registry.playtests) {
 		const importedIds = new Set(playtest.importedFeedbackIds);
 		const feedback = await tryAsync({
 			try: () => input.fetchFeedback(playtest.playtestId),
@@ -153,11 +133,8 @@ export async function importRegisteredPlaytestFeedback(input: {
 		for (const note of feedbackData) {
 			if (importedIds.has(note.id)) continue;
 
-			const writePath = joinFsPath('feedback', sessionFolder(playtest), feedbackFileName(note));
-			const written = await input.gameDir.write(writePath, note.markdown);
-			if (written.error) {
-				return Err(written.error);
-			}
+			const writePath = `feedback/${sessionFolder(playtest)}/${feedbackFileName(note)}` as `feedback/${string}.md`;
+			files.push({ path: writePath, data: note.markdown });
 			importedIds.add(note.id);
 			importedCount += 1;
 		}
@@ -173,8 +150,11 @@ export async function importRegisteredPlaytestFeedback(input: {
 	}
 
 	if (importedCount > 0) {
-		const written = await writePlaytestFeedbackRegistry(input.gameDir, nextRegistry);
-		if (written.error) return Err(written.error);
+		const written = await input.session.put([
+			...files,
+			{ path: REGISTRY_PATH, data: JSON.stringify(nextRegistry, null, 2) }
+		]);
+		if (written.error) return Err(new Error(written.error.message));
 	}
 
 	return Ok(importedCount);

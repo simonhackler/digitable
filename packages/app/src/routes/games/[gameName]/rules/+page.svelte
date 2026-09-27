@@ -10,7 +10,7 @@
 	const project = getActiveProjectContext();
 	const projectState = getActiveProjectState();
 	const gameName = requireParam('gameName');
-	const handle = project.session.getRulesHandle();
+	const handle = project.session.member('rules', 'rules.md')?.handle;
 	assert(handle, 'The project session is missing its rules document.');
 
 	let view = $state<EditorView>();

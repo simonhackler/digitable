@@ -14,6 +14,8 @@ const files = [
 		type: 'application/json',
 		contents: JSON.stringify({
 			name: 'TTS Local Images',
+			minPlayers: 1,
+			maxPlayers: 4,
 			description: 'Small project for TTS export e2e coverage.',
 			tags: []
 		})

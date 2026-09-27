@@ -1,4 +1,9 @@
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+import {
+	serializeProjectMember,
+	type ProjectMemberKind,
+	type ProjectSnapshot
+} from '$lib/collaboration';
 
 export type PlaytestUploadFile = {
 	path: string;
@@ -33,49 +38,44 @@ function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 	return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-async function walkFiles(
-	fsDir: FsDir,
-	rootPath: string,
-	currentPath = ''
+export async function exportProjectSnapshotForPlaytest(
+	snapshot: ProjectSnapshot
 ): Promise<PlaytestUploadFile[]> {
-	const listPath = currentPath ? joinFsPath(rootPath, currentPath) : rootPath;
-	const entries = listPath ? await fsDir.list(listPath) : await fsDir.list();
-	if (entries.error) {
-		throw new Error(entries.error.message);
-	}
-
-	const files: PlaytestUploadFile[] = [];
-	for (const entry of entries.data) {
-		if (!currentPath && (entry.name === '.automerge' || entry.name === 'tts-export')) continue;
-		const relativePath = currentPath ? joinFsPath(currentPath, entry.name) : entry.name;
-		const sourcePath = joinFsPath(rootPath, relativePath);
-
-		if (entry.kind === 'directory') {
-			files.push(...(await walkFiles(fsDir, rootPath, relativePath)));
-			continue;
-		}
-
-		const file = await fsDir.read(sourcePath);
-		if (file.error) {
-			throw new Error(file.error.message);
-		}
-
-		files.push({
-			path: relativePath,
-			contentBase64: await blobToBase64(file.data),
-			contentType: file.data.type || 'application/octet-stream',
-			size: file.data.size
-		});
-	}
-
-	return files.sort((a, b) => a.path.localeCompare(b.path));
+	const kinds: ProjectMemberKind[] = [
+		'game-metadata',
+		'rules',
+		'component-svg',
+		'component-data',
+		'table-setup',
+		'feedback-registry',
+		'feedback-markdown',
+		'asset'
+	];
+	const files = kinds.flatMap((kind) => snapshot.members(kind));
+	return Promise.all(
+		files
+			.sort((a, b) => a.path.localeCompare(b.path))
+			.map(async (member) => {
+				const bytes = serializeProjectMember(member.kind, member.document);
+				const blob = new Blob([bytesToArrayBuffer(bytes)]);
+				return {
+					path: member.path,
+					contentBase64: await blobToBase64(blob),
+					contentType: contentType(member.path),
+					size: bytes.byteLength
+				};
+			})
+	);
 }
 
-export async function exportProjectForPlaytest(
-	fsDir: FsDir,
-	projectName = ''
-): Promise<PlaytestUploadFile[]> {
-	return walkFiles(fsDir, projectName);
+function contentType(path: string): string {
+	if (path.endsWith('.svg')) return 'image/svg+xml';
+	if (path.endsWith('.csv')) return 'text/csv';
+	if (path.endsWith('.json')) return 'application/json';
+	if (path.endsWith('.md')) return 'text/markdown';
+	if (path.endsWith('.png')) return 'image/png';
+	if (/\.jpe?g$/i.test(path)) return 'image/jpeg';
+	return 'application/octet-stream';
 }
 
 export function playtestImportFolderName(projectName: string, playtestId: string): string {

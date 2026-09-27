@@ -14,7 +14,6 @@
 	import { zod4 } from 'sveltekit-superforms/adapters';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
-	import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
 	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import {
@@ -27,12 +26,10 @@
 
 	let {
 		activeGame,
-		fileSystem,
 		projectSession,
 		onDeckCreated
 	}: {
 		activeGame: Game | null;
-		fileSystem: FsDir;
 		projectSession: ProjectSession;
 		onDeckCreated: (deckName: string) => void;
 	} = $props();
@@ -106,7 +103,7 @@
 		const frontSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		const backSvg = createEmptySvg(normalizedWidth, normalizedHeight);
 		const serializer = new XMLSerializer();
-		const created = await projectSession.writeFiles([
+		const created = await projectSession.put([
 			{
 				path: `${COMPONENTS_DIR}/${deckName}/front.svg`,
 				data: serializer.serializeToString(frontSvg)
@@ -138,19 +135,13 @@
 		presetId: PremadeDeckPresetId
 	) {
 		const path = `/games/${activeGame.name}/decks/${deckName}/data`;
-		const created = await createPremadeDeck({ fileSystem, deckName, presetId });
+		const inputs = await createPremadeDeck({ deckName, presetId });
+		const created = await projectSession.put(inputs);
 		if (created.error) {
 			console.error(created.error);
 			createDeckError = 'Could not create the pre-made deck.';
 			return false;
 		}
-		const synchronized = await projectSession.sync();
-		if (synchronized.error) {
-			console.error(synchronized.error);
-			createDeckError = 'Could not synchronize the pre-made deck.';
-			return false;
-		}
-
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
 		await goto(resolve(path));

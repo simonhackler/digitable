@@ -6,7 +6,8 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { decodeText } from '$lib/collaboration/filesystem';
+	import { serializeProjectMember } from '$lib/collaboration/project-member-codec';
 	import { requireParam } from '$lib/utils/assert';
 	import {
 		createEditorController,
@@ -21,13 +22,13 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
 	import { useDebounce } from 'runed';
-	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
-	import { getActiveProjectContext, getFileSystemContext } from '../../context';
+	import { ASSETS_DIR } from '$lib/workspace/project-layout';
+	import { getActiveProjectContext } from '../../context';
 	import {
 		getProjectFilePath,
 		isEmbeddedImageReference,
-		loadSpreadsheetData,
-		resolveImageReference
+		loadSpreadsheetDataFromDocument,
+		resolveSessionImageReference
 	} from '../data-loader';
 	import { generateSvg, getSvgDataMapForSides, loadSvgTemplate } from '../svg-helpers';
 	import { ImageEditor } from '../decks/[deckName]/data/custom-image';
@@ -81,11 +82,8 @@
 		| { kind: 'deck'; deckName: string; label: string }
 		| { kind: 'card'; deckName: string; cardId: string; label: string };
 
-	const fileSystem = getFileSystemContext();
 	const project = getActiveProjectContext();
 	const projectName = $derived(requireParam('gameName'));
-
-	const tableSvgPath = $derived(joinFsPath(projectName, TABLE_SVG_PATH));
 
 	function sortedUniqueStrings(values: string[]) {
 		return [...new Set(values)].sort((a, b) => a.localeCompare(b));
@@ -127,7 +125,12 @@
 				const href = getImageHref(image).trim();
 				if (!href || isEmbeddedImageReference(href)) return;
 
-				const resolvedHref = await resolveImageReference(fileSystem, projectName, href, true);
+				const resolvedHref = await resolveSessionImageReference(
+					project.session,
+					projectName,
+					href,
+					true
+				);
 				setImageHref(image, resolvedHref);
 			})
 		);
@@ -184,11 +187,14 @@
 	async function loadDeckEntry(deckName: string, frontSvgText: string): Promise<DeckEntry> {
 		const frontTemplate = loadSvgTemplate(frontSvgText);
 		const svgData = getSvgDataMapForSides([{ template: frontTemplate }]);
-		const loadedSpreadsheetData = await loadSpreadsheetData(
+		const dataDocument = project.session.member(
+			'component-data',
+			`components/${deckName}/data.csv`
+		)?.handle.doc();
+		const loadedSpreadsheetData = loadSpreadsheetDataFromDocument(
 			svgData,
-			projectName,
 			deckName,
-			fileSystem
+			dataDocument
 		);
 		if (loadedSpreadsheetData.error) throw new Error(loadedSpreadsheetData.error.message);
 		const spreadsheetData = loadedSpreadsheetData.data;
@@ -223,34 +229,31 @@
 	}
 
 	async function loadDeckLibrary(): Promise<DeckEntry[]> {
-		const componentsDir = await fileSystem.openDir(joinFsPath(projectName, COMPONENTS_DIR));
-		if (componentsDir.error) throw new Error(componentsDir.error.message);
-		const entries = await componentsDir.data.list();
-		if (entries.error) throw new Error(entries.error.message);
 		const decks = await Promise.all(
-			entries.data
-				.filter((entry) => entry.kind === 'directory')
-				.sort((a, b) => a.name.localeCompare(b.name))
-				.map(async (entry) => {
-					const front = await fileSystem.readText(
-						joinFsPath(projectName, COMPONENTS_DIR, entry.name, 'front.svg')
+			project.session
+				.members('component-svg')
+				.filter((member) => member.path.endsWith('/front.svg'))
+				.sort((a, b) => a.path.localeCompare(b.path))
+				.map(async (member) => {
+					const deckName = member.path.split('/')[1];
+					const document = member.handle.doc();
+					if (!deckName || !document) return null;
+					return loadDeckEntry(
+						deckName,
+						decodeText(serializeProjectMember('component-svg', document))
 					);
-					if (front.error) {
-						if (front.error.name === 'NotFoundError') return null;
-						throw new Error(front.error.message);
-					}
-					return loadDeckEntry(entry.name, front.data);
 				})
 		);
 		return decks.filter((deck) => deck !== null);
 	}
 
 	async function loadEditorSvg(): Promise<string> {
-		const svgRead = await fileSystem.readText(tableSvgPath);
-		if (svgRead.error) {
-			return emptyTableSvg(createDefaultTable().table);
-		}
-		return resolveSvgImagesForEditor(svgRead.data, projectName);
+		const document = project.session.member('table-setup', TABLE_SVG_PATH)?.handle.doc();
+		if (!document) return emptyTableSvg(createDefaultTable().table);
+		return resolveSvgImagesForEditor(
+			decodeText(serializeProjectMember('table-setup', document)),
+			projectName
+		);
 	}
 
 	const fallbackTable = createDefaultTable();
@@ -996,7 +999,7 @@
 	}
 
 	async function saveTableSvg(svg: string): Promise<void> {
-		const svgWrite = await project.session.writeFiles([{ path: TABLE_SVG_PATH, data: svg }]);
+		const svgWrite = await project.session.put({ path: TABLE_SVG_PATH, data: svg });
 		if (svgWrite.error) throw new Error(svgWrite.error.message);
 	}
 

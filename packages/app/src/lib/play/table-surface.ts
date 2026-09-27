@@ -4,6 +4,7 @@ import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted
 import { Err, Ok, trySync, type Result } from 'wellcrafted/result';
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { BoardGameItemNew } from '$lib/pixi/item';
+import { decodeText, serializeProjectMember, type ProjectSnapshot } from '$lib/collaboration';
 import {
 	createDefaultTable,
 	TABLE_SVG_PATH,
@@ -90,6 +91,13 @@ export async function loadRequiredTable({
 	if (localTable.error) return Err(localTable.error);
 
 	return Ok(localTable.data);
+}
+
+export function loadRequiredTableSnapshot(snapshot: ProjectSnapshot): TableLoad {
+	const member = snapshot.member('table-setup', TABLE_SVG_PATH);
+	if (!member) return TableLoadError.TableSvgMissing({ path: TABLE_SVG_PATH });
+	const svg = decodeText(serializeProjectMember('table-setup', member.document));
+	return parseLocalTable(svg, TABLE_SVG_PATH);
 }
 
 export function normalizeRotation(value: number) {

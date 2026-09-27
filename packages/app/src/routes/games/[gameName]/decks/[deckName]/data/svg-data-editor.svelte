@@ -7,7 +7,7 @@
 	import jspreadsheet, { type JspreadsheetInstanceElement } from 'jspreadsheet-ce';
 	import type { Attachment } from 'svelte/attachments';
 	import { ScrollState } from 'runed';
-	import { getActiveProjectContext, getFileSystemContext } from '../../../../context';
+	import { getActiveProjectContext } from '../../../../context';
 	import {
 		generateSvg,
 		updateSvg,
@@ -17,10 +17,11 @@
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';
-	import { loadSvgsAndDataForSides, resolveImageReference } from '../../../data-loader';
+	import {
+		loadSvgsAndDataForSidesFromDocument,
+		resolveSessionImageReference
+	} from '../../../data-loader';
 	import { assert, requireParam } from '$lib/utils/assert';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import { ImageEditor } from './custom-image';
 	import { getDeckSideIndexContext } from '../svg-context.svelte';
@@ -48,18 +49,26 @@
 
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(requireParam('deckName'));
-	const fileSystem = getFileSystemContext();
 	const project = getActiveProjectContext();
 	const deckSideIndex = getDeckSideIndexContext();
 	const sides: SvgSide[] = $derived([
 		{ template: svgTemplateFront, columnPrefix: '' },
 		{ template: svgTemplateBack, columnPrefix: 'back_' }
 	]);
+	const dataMember = $derived(
+		project.session.member('component-data', `components/${cardName}/data.csv`)
+	);
 
 	const loadedSvgsAndData = $derived(
-		await loadSvgsAndDataForSides(projectName, cardName, fileSystem, sides, false, {
-			missingDataCsv: 'generate'
-		})
+		await loadSvgsAndDataForSidesFromDocument(
+			projectName,
+			cardName,
+			project.session,
+			sides,
+			dataMember?.handle.doc(),
+			false,
+			{ missingDataCsv: 'generate' }
+		)
 	);
 	const loadedData = $derived.by(() => {
 		if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
@@ -150,10 +159,11 @@
 		if (!rows.length) return;
 		const header = spreadsheet[0].getHeaders(true) as string[];
 
-		const csvText = Papa.unparse([header, ...rows]);
-		const res = await project.session.writeFiles([
-			{ path: joinFsPath(COMPONENTS_DIR, cardName, 'data.csv'), data: csvText }
-		]);
+		const csvText = Papa.unparse([header, ...rows], { newline: '\n' });
+		const res = await project.session.put({
+			path: `components/${cardName}/data.csv`,
+			data: csvText
+		});
 		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);
 	}
 
@@ -369,7 +379,10 @@
 		const headers = spreadsheet[0].getHeaders(true) as string[];
 		const columns = spreadsheet[0].getConfig()?.columns ?? [];
 		if (columns[x]?.type === ImageEditor && !imagePaths.has(value)) {
-			imagePaths.set(value, await resolveImageReference(fileSystem, projectName, value));
+			imagePaths.set(
+				value,
+				await resolveSessionImageReference(project.session, projectName, value)
+			);
 		}
 		updateCardSvgColumn(cards[y], headers[x], value);
 		cards = [...cards]; //TODO FORCE update for imageSelectionModal, very hacky.

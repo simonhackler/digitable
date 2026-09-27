@@ -1,17 +1,12 @@
-import {
-	joinFsPath,
-	type FsDir,
-	type FsWriteData
-} from '$lib/components/file-browser/adapters/adapter';
-import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 import {
 	Repo,
 	type AutomergeUrl,
+	type Doc,
 	type DocHandle,
 	type NetworkAdapterInterface,
 	type UrlHeads
 } from '@automerge/automerge-repo';
-import { isSvgDocument, type SvgDocument } from '@svg-table/svgeditor';
 import { BroadcastChannelNetworkAdapter } from '@automerge/automerge-repo-network-broadcastchannel';
 import { createProjectPresence, type ProjectPresence } from './project-presence';
 import {
@@ -21,7 +16,6 @@ import {
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
 import { tryAsync, type Result } from 'wellcrafted/result';
 import { createProjectFileObserver } from './file-observer';
-import { createCheckpointProjectFiles } from './checkpoint-filesystem';
 import {
 	createProjectGraph,
 	createProjectMemberHandle,
@@ -48,19 +42,21 @@ import {
 	type ManagedMember,
 	type ReconciliationStatus
 } from './reconciler';
-import { removeFile, snapshotFile, writeFile } from './filesystem';
+import { encodeText, hashBytes, snapshotFile, writeFile } from './filesystem';
 import { FsDirStorageAdapter } from './storage-adapter';
 import { withProjectLock } from './project-lock';
 import {
 	GAME_METADATA_MEMBER_ID,
-	isMarkdownFileDocument,
 	isProjectHistoryDocument,
 	type GameMetadataDocument,
-	type MarkdownFileDocument,
 	type ProjectBranchId,
 	type ProjectCheckpointId,
 	type ProjectHistoryDocument,
-	type ProjectMemberDocument
+	type ProjectInputPath,
+	type ProjectMemberDocument,
+	type ProjectMemberDocumentFor,
+	type ProjectMemberKind,
+	type ProjectMemberPathFor
 } from './model';
 import type { ProjectMergePlan, ProjectMergeResolution } from './project-merge';
 import {
@@ -81,6 +77,11 @@ import {
 	renameProjectBranch,
 	resolveBranchGraph
 } from './project-history';
+import {
+	applyProjectMemberBytes,
+	projectMemberCodec,
+	seedProjectMember
+} from './project-member-codec';
 
 const CollaborationError = defineErrors({
 	ProjectOpenFailed: ({ project, cause }: { project: string; cause: unknown }) => ({
@@ -101,20 +102,60 @@ const CollaborationError = defineErrors({
 });
 export type CollaborationError = InferErrors<typeof CollaborationError>;
 
+export type ProjectMemberRef<K extends ProjectMemberKind> = {
+	id: string;
+	kind: K;
+	path: ProjectMemberPathFor<K>;
+	componentId?: string;
+	handle: DocHandle<ProjectMemberDocumentFor<K>>;
+};
+
+export type ProjectSnapshotMember<K extends ProjectMemberKind> = {
+	id: string;
+	kind: K;
+	path: ProjectMemberPathFor<K>;
+	componentId?: string;
+	heads: UrlHeads;
+	document: Doc<ProjectMemberDocumentFor<K>>;
+};
+
+export type ProjectSnapshot = {
+	rootUrl: AutomergeUrl;
+	rootHeads: UrlHeads;
+	components: ReadonlyArray<{ id: string; name: string }>;
+	member<K extends ProjectMemberKind>(
+		kind: K,
+		path: ProjectMemberPathFor<K>
+	): ProjectSnapshotMember<K> | undefined;
+	members<K extends ProjectMemberKind>(kind: K): ProjectSnapshotMember<K>[];
+};
+
+export type ProjectInputData = string | Blob | ArrayBuffer | ArrayBufferView;
+export type ProjectInput = { path: ProjectInputPath; data: ProjectInputData };
+
 export type ProjectSession = {
 	name: string;
-	files: FsDir;
 	rootUrl: AutomergeUrl;
 	historyUrl: AutomergeUrl;
 	branchId: ProjectBranchId;
 	readOnly: boolean;
 	canEditStructure: boolean;
+	member<K extends ProjectMemberKind>(
+		kind: K,
+		path: ProjectMemberPathFor<K>
+	): ProjectMemberRef<K> | undefined;
+	members<K extends ProjectMemberKind>(kind: K): ProjectMemberRef<K>[];
+	subscribeInventory(listener: () => void): () => void;
+	snapshot(): Promise<Result<ProjectSnapshot, CollaborationError>>;
+	put(
+		input: ProjectInput | ProjectInput[],
+		options?: { message?: string }
+	): Promise<Result<void, CollaborationError>>;
+	remove(
+		path: ProjectInputPath | ProjectInputPath[],
+		options?: { message?: string }
+	): Promise<Result<void, CollaborationError>>;
 	metadataHandle: DocHandle<GameMetadataDocument>;
-	getRulesHandle(): DocHandle<MarkdownFileDocument> | undefined;
-	getComponentSvgHandle(
-		componentName: string,
-		side: 'front' | 'back'
-	): DocHandle<SvgDocument> | undefined;
 	presence: ProjectPresence;
 	svgInteractions: ProjectSvgInteractions;
 	getHistory(): ProjectHistoryDocument;
@@ -132,9 +173,6 @@ export type ProjectSession = {
 		planId: string,
 		resolutions: ProjectMergeResolution[]
 	): Promise<Result<ProjectCheckpointId, CollaborationError>>;
-	writeFiles(
-		files: Array<{ path: string; data: FsWriteData }>
-	): Promise<Result<void, CollaborationError>>;
 	renameComponent(oldName: string, newName: string): Promise<Result<void, CollaborationError>>;
 	deleteComponent(name: string): Promise<Result<void, CollaborationError>>;
 	sync(): Promise<Result<void, CollaborationError>>;
@@ -150,6 +188,86 @@ export type OpenProjectSessionOptions = {
 	checkpointId?: ProjectCheckpointId;
 	onBranchCheckout?: (branchId: ProjectBranchId) => void;
 };
+
+function graphMember<K extends ProjectMemberKind>(
+	graph: ProjectGraph,
+	kind: K,
+	path: ProjectMemberPathFor<K>
+): ProjectMemberRef<K> | undefined {
+	const entry = Object.entries(graph.project.members).find(
+		([, member]) => member.kind === kind && member.path === path
+	);
+	if (!entry) return undefined;
+	const handle = graph.memberHandles.get(entry[0]);
+	if (!handle || !projectMemberCodec(kind).isDocument(handle.doc())) return undefined;
+	return {
+		id: entry[0],
+		kind,
+		path,
+		...(entry[1].componentId ? { componentId: entry[1].componentId } : {}),
+		handle: handle as DocHandle<ProjectMemberDocumentFor<K>>
+	};
+}
+
+function graphMembers<K extends ProjectMemberKind>(
+	graph: ProjectGraph,
+	kind: K
+): ProjectMemberRef<K>[] {
+	return Object.values(graph.project.members)
+		.filter((member) => member.kind === kind)
+		.flatMap((member) => {
+			const ref = graphMember(graph, kind, member.path as ProjectMemberPathFor<K>);
+			return ref ? [ref] : [];
+		});
+}
+
+function snapshotGraph(graph: ProjectGraph): ProjectSnapshot {
+	const rootHeads = [...graph.projectHandle.heads()] as UrlHeads;
+	const root = graph.projectHandle.view(rootHeads).doc();
+	if (!root) throw new Error('The Automerge project root is unavailable.');
+	const members = Object.entries(root.members).map(([id, member]) => {
+		const source = graph.memberHandles.get(id);
+		if (!source) throw new Error(`Automerge project member ${member.path} is unavailable.`);
+		const heads = [...source.heads()] as UrlHeads;
+		const document = source.view(heads).doc();
+		if (!document || !projectMemberCodec(member.kind).isDocument(document)) {
+			throw new Error(`Automerge project member ${member.path} has an unsupported format.`);
+		}
+		return {
+			id,
+			kind: member.kind,
+			path: member.path,
+			...(member.componentId ? { componentId: member.componentId } : {}),
+			heads,
+			document
+		};
+	});
+	return {
+		rootUrl: graph.projectHandle.url,
+		rootHeads,
+		components: Object.entries(root.components).map(([id, component]) => ({
+			id,
+			name: component.name
+		})),
+		member(kind, path) {
+			return members.find(
+				(member) => member.kind === kind && member.path === path
+			) as ProjectSnapshotMember<typeof kind> | undefined;
+		},
+		members(kind) {
+			return members.filter(
+				(member) => member.kind === kind
+			) as ProjectSnapshotMember<typeof kind>[];
+		}
+	};
+}
+
+async function inputBytes(data: ProjectInputData): Promise<Uint8Array> {
+	if (typeof data === 'string') return encodeText(data);
+	if (data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+	if (data instanceof ArrayBuffer) return new Uint8Array(data);
+	return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+}
 
 export async function openProjectSession(
 	project: FsDir,
@@ -236,6 +354,10 @@ export async function openProjectSession(
 			let checkpointPromise: Promise<void> | undefined;
 			let checkpointDirty = false;
 			let checkpointPaused = false;
+			const inventoryListeners = new Set<() => void>();
+			const notifyInventory = () => {
+				for (const listener of inventoryListeners) listener();
+			};
 			const checkpointListeners = new Map<DocHandle<unknown>, () => void>();
 			function replaceCheckpointListeners(): void {
 				const handles: DocHandle<unknown>[] = [
@@ -266,7 +388,7 @@ export async function openProjectSession(
 					void recordCheckpoint().catch((cause) => {
 						options.onStatus?.({
 							state: 'error',
-							memberId: '$project',
+							scope: 'checkpoint',
 							path: '.automerge/history',
 							message: cause instanceof Error ? cause.message : String(cause)
 						});
@@ -317,8 +439,8 @@ export async function openProjectSession(
 				refreshPromise = (async () => {
 					do {
 						refreshAgain = false;
-						const scanned = await scanProjectFiles(project);
 						const refreshed = await withProjectLock(lockId, async () => {
+							const scanned = await scanProjectFiles(project);
 							const latestConfig = await readProjectConfig(project);
 							if (historyHandle.doc()?.checkedOutBranchId !== branchId) {
 								throw new Error('The checked-out project branch changed.');
@@ -328,12 +450,21 @@ export async function openProjectSession(
 							}
 							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
 							config = latestConfig?.branchId === branchId ? latestConfig : reconciler.getConfig();
-							return refreshProjectInventory(project, projectRepo, graph, config, scanned);
+							const refreshed = await refreshProjectInventory(
+								project,
+								projectRepo,
+								graph,
+								config,
+								scanned
+							);
+							await reconciler.removePathsWhileLocked(refreshed.removedPaths);
+							return refreshed;
 						});
 						graph = refreshed.graph;
 						config = refreshed.config;
 						replaceCheckpointListeners();
 						reconciler.replaceMembers(managedMembers(graph, config), config);
+						notifyInventory();
 						if (refreshed.reconcileMemberIds.length) {
 							void reconciler.requestReconcile(refreshed.reconcileMemberIds);
 						}
@@ -353,7 +484,7 @@ export async function openProjectSession(
 					}
 					options.onStatus?.({
 						state: 'error',
-						memberId: '$project',
+						scope: 'project',
 						path: '.automerge/config.json',
 						message: cause instanceof Error ? cause.message : String(cause)
 					});
@@ -370,6 +501,8 @@ export async function openProjectSession(
 				await reconciler.stop();
 				throw started.error;
 			}
+			await reconciler.removePaths(repaired.removedPaths);
+			await refresh();
 			if (repaired.reconcileMemberIds.length) {
 				await reconciler.requestReconcile(repaired.reconcileMemberIds);
 				await reconciler.reconcileOrThrow();
@@ -377,7 +510,6 @@ export async function openProjectSession(
 			const rootListener = requestRefresh;
 			graph.projectHandle.on('change', rootListener);
 			observer.start();
-			requestRefresh();
 			const presence = createProjectPresence(graph.projectHandle);
 			const svgInteractions = createProjectSvgInteractions(graph.projectHandle);
 			let localBranchChange = false;
@@ -451,36 +583,276 @@ export async function openProjectSession(
 				});
 				return promise;
 			}
-			function command(operation: () => Promise<void>): Promise<Result<void, CollaborationError>> {
-				return tryAsync({
-					try: async () => {
-						await withProjectLock(lockId, async () => {
-							const latestConfig = await readProjectConfig(project);
-							if (latestConfig?.rootHeads) {
-								await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+			async function putInputs(
+				input: ProjectInput | ProjectInput[],
+				message = 'Update project files'
+			): Promise<void> {
+				const inputs = Array.isArray(input) ? input : [input];
+				const paths = new Set<string>();
+				const prepared = await Promise.all(
+					inputs.map(async (item) => {
+						if (paths.has(item.path)) throw new Error(`Duplicate project input path ${item.path}.`);
+						paths.add(item.path);
+						const classification = classifyProjectFile(item.path);
+						if (!classification) throw new Error(`Unsupported project input path ${item.path}.`);
+						const bytes = await inputBytes(item.data);
+						const hash = await hashBytes(bytes);
+						return {
+							path: item.path,
+							classification,
+							bytes,
+							hash,
+							seed: seedProjectMember(classification.kind, bytes, {
+								hash,
+								allowMissingIds: true
+							})
+						};
+					})
+				);
+				const changedIds = new Set<string>();
+				const removedPaths = new Set<string>();
+				await withProjectLock(lockId, async () => {
+					const latestConfig = await readProjectConfig(project);
+					if (!latestConfig || latestConfig.branchId !== branchId) {
+						throw new Error('The Automerge project configuration is unavailable.');
+					}
+					if (latestConfig.rootHeads) {
+						await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+					}
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					config = latestConfig;
+
+					const components = new Map(
+						Object.entries(graph.project.components).map(([id, component]) => [component.name, id])
+					);
+					const createdComponents = new Map<string, string>();
+					const additions: Array<{
+						id: string;
+						kind: ProjectMemberKind;
+						path: string;
+						url: AutomergeUrl;
+						hash?: string;
+						componentId?: string;
+					}> = [];
+					const replacements = new Map<
+						string,
+						{ url: AutomergeUrl; hash: string }
+					>();
+					const flushIds = new Set<DocHandle<ProjectMemberDocument>['documentId']>();
+
+					for (const item of prepared) {
+						const existing = Object.entries(graph.project.members).find(
+							([, member]) => member.path === item.path
+						);
+						if (existing) {
+							if (existing[1].kind !== item.classification.kind) {
+								throw new Error(`Project member ${item.path} has an incompatible kind.`);
 							}
-							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
-							if (latestConfig?.branchId === branchId) config = latestConfig;
-							await operation();
+							if (item.classification.kind !== 'asset') {
+								const handle = graph.memberHandles.get(existing[0]);
+								if (!handle) throw new Error(`Project member ${item.path} is unavailable.`);
+								applyProjectMemberBytes(
+									item.classification.kind,
+									handle,
+									item.bytes,
+									{ hash: item.hash, allowMissingIds: true },
+									message
+								);
+								changedIds.add(existing[0]);
+								flushIds.add(handle.documentId);
+								continue;
+							}
+							const handle = projectRepo.create<ProjectMemberDocument>(item.seed.document);
+							if (item.seed.initialize) {
+								handle.change((document) => item.seed.initialize!(document), { message });
+							}
+							replacements.set(existing[0], { url: handle.url, hash: item.hash });
+							changedIds.add(existing[0]);
+							flushIds.add(handle.documentId);
+							continue;
+						}
+
+						const id =
+							item.classification.kind === 'game-metadata'
+								? GAME_METADATA_MEMBER_ID
+								: projectMemberId();
+						if (id === GAME_METADATA_MEMBER_ID && graph.project.members[id]) {
+							throw new Error('The project already has game metadata.');
+						}
+						const handle = projectRepo.create<ProjectMemberDocument>(item.seed.document);
+						if (item.seed.initialize) {
+							handle.change((document) => item.seed.initialize!(document), { message });
+						}
+						const componentName = item.classification.componentName;
+						let componentId = componentName ? components.get(componentName) : undefined;
+						if (componentName && !componentId) {
+							componentId = createdComponents.get(componentName);
+							if (!componentId) {
+								componentId = projectComponentId();
+								createdComponents.set(componentName, componentId);
+							}
+						}
+						additions.push({
+							id,
+							kind: item.classification.kind,
+							path: item.path,
+							url: handle.url,
+							...(item.classification.kind === 'asset' ? { hash: item.hash } : {}),
+							...(componentId ? { componentId } : {})
 						});
-						await refresh();
-					},
-					catch: (cause) =>
-						CollaborationError.SynchronizationFailed({ project: project.name, cause })
+						changedIds.add(id);
+						flushIds.add(handle.documentId);
+					}
+
+					if (additions.length || replacements.size || createdComponents.size) {
+						graph.projectHandle.change(
+							(root) => {
+								for (const [name, id] of createdComponents) root.components[id] = { name };
+								for (const addition of additions) {
+									root.members[addition.id] = {
+										kind: addition.kind,
+										path: addition.path,
+										url: addition.url,
+										...(addition.hash ? { hash: addition.hash } : {}),
+										...(addition.componentId ? { componentId: addition.componentId } : {})
+									};
+								}
+								for (const [id, replacement] of replacements) {
+									root.members[id].url = replacement.url;
+									root.members[id].hash = replacement.hash;
+								}
+							},
+							{ message }
+						);
+						flushIds.add(graph.projectHandle.documentId);
+					}
+
+					await projectRepo.flush([...flushIds]);
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					const repaired = await repairProjectConfig(project, graph, config);
+					config = repaired.config;
+					for (const id of repaired.reconcileMemberIds) changedIds.add(id);
+					for (const path of repaired.removedPaths) removedPaths.add(path);
+					replaceCheckpointListeners();
+					reconciler.replaceMembers(managedMembers(graph, config), config);
+					await reconciler.removePathsWhileLocked(removedPaths);
+					notifyInventory();
 				});
+				void reconciler.requestReconcile(changedIds);
+			}
+			async function removeInputs(
+				path: ProjectInputPath | ProjectInputPath[],
+				message = 'Remove project files'
+			): Promise<void> {
+				const paths = new Set(Array.isArray(path) ? path : [path]);
+				if (paths.has('game.json')) throw new Error('Project metadata cannot be removed.');
+				const removedPaths = new Set<string>();
+				const reconcileMemberIds = new Set<string>();
+				await withProjectLock(lockId, async () => {
+					const latestConfig = await readProjectConfig(project);
+					if (!latestConfig || latestConfig.branchId !== branchId) {
+						throw new Error('The Automerge project configuration is unavailable.');
+					}
+					if (latestConfig.rootHeads) {
+						await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+					}
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					const ids = Object.entries(graph.project.members)
+						.filter(([, member]) => paths.has(member.path as ProjectInputPath))
+						.map(([id]) => id);
+					if (!ids.length) return;
+					graph.projectHandle.change(
+						(root) => {
+							for (const id of ids) delete root.members[id];
+							const usedComponents = new Set(
+								Object.values(root.members).flatMap((member) =>
+									member.componentId ? [member.componentId] : []
+								)
+							);
+							for (const id of Object.keys(root.components)) {
+								if (!usedComponents.has(id)) delete root.components[id];
+							}
+						},
+						{ message }
+					);
+					await projectRepo.flush([graph.projectHandle.documentId]);
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					const repaired = await repairProjectConfig(project, graph, latestConfig);
+					config = repaired.config;
+					for (const removedPath of repaired.removedPaths) removedPaths.add(removedPath);
+					for (const id of repaired.reconcileMemberIds) reconcileMemberIds.add(id);
+					replaceCheckpointListeners();
+					reconciler.replaceMembers(managedMembers(graph, config), config);
+					await reconciler.removePathsWhileLocked(removedPaths);
+					notifyInventory();
+				});
+				await reconciler.requestReconcile(reconcileMemberIds);
+				await reconciler.reconcileOrThrow();
+			}
+			async function changeComponentStructure(operation: () => void): Promise<void> {
+				const removedPaths = new Set<string>();
+				const reconcileMemberIds = new Set<string>();
+				await withProjectLock(lockId, async () => {
+					const latestConfig = await readProjectConfig(project);
+					if (!latestConfig || latestConfig.branchId !== branchId) {
+						throw new Error('The Automerge project configuration is unavailable.');
+					}
+					if (latestConfig.rootHeads) {
+						await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+					}
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					operation();
+					await projectRepo.flush([graph.projectHandle.documentId]);
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					const repaired = await repairProjectConfig(project, graph, latestConfig);
+					config = repaired.config;
+					for (const path of repaired.removedPaths) removedPaths.add(path);
+					for (const id of repaired.reconcileMemberIds) reconcileMemberIds.add(id);
+					replaceCheckpointListeners();
+					reconciler.replaceMembers(managedMembers(graph, config), config);
+					await reconciler.removePathsWhileLocked(removedPaths);
+					notifyInventory();
+				});
+				await reconciler.requestReconcile(reconcileMemberIds);
+				await reconciler.reconcileOrThrow();
 			}
 			return {
 				name: project.name,
-				files: project,
 				rootUrl: graph.projectHandle.url,
 				historyUrl: restored.historyUrl,
 				branchId,
 				readOnly: false,
 				canEditStructure: true,
+				member: <K extends ProjectMemberKind>(kind: K, path: ProjectMemberPathFor<K>) =>
+					graphMember(graph, kind, path),
+				members: <K extends ProjectMemberKind>(kind: K) => graphMembers(graph, kind),
+				subscribeInventory: (listener: () => void) => {
+					inventoryListeners.add(listener);
+					listener();
+					return () => inventoryListeners.delete(listener);
+				},
+				snapshot: () =>
+					tryAsync({
+						try: async () => snapshotGraph(graph),
+						catch: (cause) =>
+							CollaborationError.SynchronizationFailed({ project: project.name, cause })
+					}),
+				put: (input: ProjectInput | ProjectInput[], putOptions?: { message?: string }) =>
+					tryAsync({
+						try: () => putInputs(input, putOptions?.message),
+						catch: (cause) =>
+							CollaborationError.SynchronizationFailed({ project: project.name, cause })
+					}),
+				remove: (
+					path: ProjectInputPath | ProjectInputPath[],
+					removeOptions?: { message?: string }
+				) =>
+					tryAsync({
+						try: () => removeInputs(path, removeOptions?.message),
+						catch: (cause) =>
+							CollaborationError.SynchronizationFailed({ project: project.name, cause })
+					}),
 				metadataHandle: graph.metadataHandle,
-				getRulesHandle: () => rulesHandle(graph),
-				getComponentSvgHandle: (componentName: string, side: 'front' | 'back') =>
-					componentSvgHandle(graph, componentName, side),
 				presence,
 				svgInteractions,
 				getHistory: () => historyHandle.doc()!,
@@ -579,101 +951,55 @@ export async function openProjectSession(
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
-				writeFiles: (files: Array<{ path: string; data: FsWriteData }>) =>
+				renameComponent: (oldName: string, newName: string) =>
 					tryAsync({
-						try: async () => {
-							const changedIds = new Set<string>();
-							let needsRefresh = false;
-							await withProjectLock(lockId, async () => {
-								const latestConfig = await readProjectConfig(project);
-								if (!latestConfig || latestConfig.branchId !== branchId) {
-									throw new Error('The Automerge project configuration is unavailable.');
-								}
-								if (latestConfig.rootHeads) {
-									await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
-								}
-								graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
-								const repaired = await repairProjectConfig(project, graph, latestConfig);
-								config = repaired.config;
-								for (const id of repaired.reconcileMemberIds) changedIds.add(id);
-								await Promise.all(files.map((file) => writeFile(project, file.path, file.data)));
-								const scanned = await scanProjectFiles(
-									project,
-									files.map((file) => file.path)
+						try: () =>
+							changeComponentStructure(() => {
+								const document = graph.project;
+								const component = Object.entries(document.components).find(
+									([, value]) => value.name === oldName
 								);
-								const refreshed = await refreshProjectInventory(
-									project,
-									projectRepo,
-									graph,
-									config,
-									scanned,
-									true
+								if (!component) throw new Error(`Component "${oldName}" does not exist.`);
+								if (Object.values(document.components).some((value) => value.name === newName)) {
+									throw new Error(`Component "${newName}" already exists.`);
+								}
+								const source = `components/${oldName}`;
+								const target = `components/${newName}`;
+								graph.projectHandle.change(
+									(root) => {
+										root.components[component[0]].name = newName;
+										for (const member of Object.values(root.members)) {
+											if (member.componentId !== component[0]) continue;
+											member.path = `${target}/${member.path.slice(source.length + 1)}`;
+										}
+									},
+									{ message: `Rename component ${oldName} to ${newName}` }
 								);
-								graph = refreshed.graph;
-								config = refreshed.config;
-								needsRefresh = refreshed.scanChanged;
-								for (const id of refreshed.reconcileMemberIds) changedIds.add(id);
-								reconciler.replaceMembers(managedMembers(graph, config), config);
-							});
-							if (needsRefresh) await refresh();
-							if (changedIds.size) {
-								await reconciler.requestReconcile([...changedIds]);
-							}
-							await reconciler.reconcileOrThrow();
-							if (refreshPromise) refreshAgain = true;
-						},
+							}),
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
-				renameComponent: (oldName: string, newName: string) =>
-					command(async () => {
-						const document = graph.project;
-						const component = Object.entries(document.components).find(
-							([, value]) => value.name === oldName
-						);
-						if (!component) throw new Error(`Component "${oldName}" does not exist.`);
-						if (Object.values(document.components).some((value) => value.name === newName)) {
-							throw new Error(`Component "${newName}" already exists.`);
-						}
-						const source = joinFsPath(COMPONENTS_DIR, oldName);
-						const target = joinFsPath(COMPONENTS_DIR, newName);
-						const moved = await project.move(source, target);
-						if (moved.error) throw new Error(moved.error.message, { cause: moved.error });
-						graph.projectHandle.change(
-							(root) => {
-								root.components[component[0]].name = newName;
-								for (const member of Object.values(root.members)) {
-									if (member.componentId !== component[0]) continue;
-									member.path = `${target}/${member.path.slice(source.length + 1)}`;
-								}
-							},
-							{ message: `Rename component ${oldName} to ${newName}` }
-						);
-						await projectRepo.flush([graph.projectHandle.documentId]);
-					}),
 				deleteComponent: (name: string) =>
-					command(async () => {
-						const document = graph.project;
-						const component = Object.entries(document.components).find(
-							([, value]) => value.name === name
-						);
-						if (!component) throw new Error(`Component "${name}" does not exist.`);
-						const removed = await project.remove(joinFsPath(COMPONENTS_DIR, name), {
-							recursive: true
-						});
-						if (removed.error && removed.error.name !== 'NotFoundError') {
-							throw new Error(removed.error.message, { cause: removed.error });
-						}
-						graph.projectHandle.change(
-							(root) => {
-								for (const [id, member] of Object.entries(root.members)) {
-									if (member.componentId === component[0]) delete root.members[id];
-								}
-								delete root.components[component[0]];
-							},
-							{ message: `Delete component ${name}` }
-						);
-						await projectRepo.flush([graph.projectHandle.documentId]);
+					tryAsync({
+						try: () =>
+							changeComponentStructure(() => {
+								const document = graph.project;
+								const component = Object.entries(document.components).find(
+									([, value]) => value.name === name
+								);
+								if (!component) throw new Error(`Component "${name}" does not exist.`);
+								graph.projectHandle.change(
+									(root) => {
+										for (const [id, member] of Object.entries(root.members)) {
+											if (member.componentId === component[0]) delete root.members[id];
+										}
+										delete root.components[component[0]];
+									},
+									{ message: `Delete component ${name}` }
+								);
+							}),
+						catch: (cause) =>
+							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
 				sync: () =>
 					tryAsync({
@@ -778,15 +1104,27 @@ function createHistoricalProjectSession({
 		}) as Promise<Result<T, CollaborationError>>;
 	return {
 		name: project.name,
-		files: createCheckpointProjectFiles(graph, project.name),
 		rootUrl: graph.projectHandle.url,
 		historyUrl: historyHandle.url,
 		branchId,
 		readOnly: true,
 		canEditStructure: false,
+		member: <K extends ProjectMemberKind>(kind: K, path: ProjectMemberPathFor<K>) =>
+			graphMember(graph, kind, path),
+		members: <K extends ProjectMemberKind>(kind: K) => graphMembers(graph, kind),
+		subscribeInventory: (listener: () => void) => {
+			listener();
+			return () => undefined;
+		},
+		snapshot: () =>
+			tryAsync({
+				try: async () => snapshotGraph(graph),
+				catch: (cause) =>
+					CollaborationError.SynchronizationFailed({ project: project.name, cause })
+			}),
+		put: () => readOnly<void>(),
+		remove: () => readOnly<void>(),
 		metadataHandle: graph.metadataHandle,
-		getRulesHandle: () => rulesHandle(graph),
-		getComponentSvgHandle: (componentName, side) => componentSvgHandle(graph, componentName, side),
 		presence,
 		svgInteractions,
 		getHistory: () => historyHandle.doc()!,
@@ -823,7 +1161,6 @@ function createHistoricalProjectSession({
 		deleteBranch: () => readOnly<void>(),
 		prepareMergeToParent: () => readOnly<ProjectMergePlan>(),
 		commitMergeToParent: () => readOnly<ProjectCheckpointId>(),
-		writeFiles: () => readOnly<void>(),
 		renameComponent: () => readOnly<void>(),
 		deleteComponent: () => readOnly<void>(),
 		sync: () => tryAsync({ try: async () => undefined, catch: () => undefined as never }),
@@ -1076,39 +1413,6 @@ async function ensureRulesDocument(
 	return { graph: latest, config: nextConfig };
 }
 
-function rulesHandle(graph: ProjectGraph): DocHandle<MarkdownFileDocument> | undefined {
-	const entry = Object.entries(graph.project.members).find(([, member]) => member.kind === 'rules');
-	if (!entry) return undefined;
-	const handle = graph.memberHandles.get(entry[0]);
-	if (!handle || !isMarkdownFileDocument(handle.doc())) {
-		throw new Error('The Automerge rules document has an unsupported format.');
-	}
-	return handle as DocHandle<MarkdownFileDocument>;
-}
-
-function componentSvgHandle(
-	graph: ProjectGraph,
-	componentName: string,
-	side: 'front' | 'back'
-): DocHandle<SvgDocument> | undefined {
-	const componentId = Object.entries(graph.project.components).find(
-		([, component]) => component.name === componentName
-	)?.[0];
-	if (!componentId) return undefined;
-	const entry = Object.entries(graph.project.members).find(
-		([, member]) =>
-			member.componentId === componentId &&
-			member.kind === 'component-svg' &&
-			classifyProjectFile(member.path)?.side === side
-	);
-	if (!entry) return undefined;
-	const handle = graph.memberHandles.get(entry[0]);
-	if (!handle || !isSvgDocument(handle.doc())) {
-		throw new Error(`Component "${componentName}" ${side} SVG has an unsupported format.`);
-	}
-	return handle as DocHandle<SvgDocument>;
-}
-
 function memberHandle(graph: ProjectGraph, memberId: string): DocHandle<ProjectMemberDocument> {
 	const handle = graph.memberHandles.get(memberId);
 	if (!handle) throw new Error(`Automerge project member ${memberId} has no document handle.`);
@@ -1136,28 +1440,15 @@ async function repairProjectConfig(
 	project: FsDir,
 	graph: ProjectGraph,
 	config: ProjectConfig
-): Promise<{ config: ProjectConfig; reconcileMemberIds: string[] }> {
+): Promise<{ config: ProjectConfig; reconcileMemberIds: string[]; removedPaths: string[] }> {
 	const document = graph.project;
 	const reconcileMemberIds: string[] = [];
 	const paths = new Set(Object.values(document.members).map((member) => member.path));
-	const componentNames = new Set(
-		Object.values(document.components).map((component) => component.name)
+	const removedPaths = Object.entries(config.projections).flatMap(([id, projection]) =>
+		document.members[id]?.path === projection.path || paths.has(projection.path)
+			? []
+			: [projection.path]
 	);
-	const removedComponents = new Set<string>();
-	for (const [id, projection] of Object.entries(config.projections)) {
-		if (document.members[id]?.path === projection.path || paths.has(projection.path)) continue;
-		const classification = classifyProjectFile(projection.path);
-		if (!classification) continue;
-		if (classification.componentName && !componentNames.has(classification.componentName)) {
-			if (removedComponents.has(classification.componentName)) continue;
-			removedComponents.add(classification.componentName);
-			await removeFile(project, joinFsPath(COMPONENTS_DIR, classification.componentName), {
-				recursive: true
-			});
-			continue;
-		}
-		await removeFile(project, projection.path);
-	}
 	const projections = Object.fromEntries(
 		await Promise.all(
 			Object.entries(document.members).map(async ([id, member]) => {
@@ -1191,7 +1482,7 @@ async function repairProjectConfig(
 	};
 	if (JSON.stringify(repaired) !== JSON.stringify(config))
 		await writeProjectConfig(project, repaired);
-	return { config: repaired, reconcileMemberIds };
+	return { config: repaired, reconcileMemberIds, removedPaths };
 }
 
 function sameSources(left: Record<string, string>, right: Record<string, string>): boolean {
@@ -1211,6 +1502,7 @@ async function refreshProjectInventory(
 	config: ProjectConfig;
 	reconcileMemberIds: string[];
 	scanChanged: boolean;
+	removedPaths: string[];
 }> {
 	const root = graph.projectHandle;
 	const current = graph.project;
@@ -1363,12 +1655,11 @@ async function refreshProjectInventory(
 	const latest = await resolveProjectGraph(repo, root);
 	const latestProject = latest.project;
 	const latestPaths = new Set(Object.values(latestProject.members).map((member) => member.path));
-	for (const [id, projection] of Object.entries(config.projections)) {
-		if (latestProject.members[id]?.path === projection.path || latestPaths.has(projection.path))
-			continue;
-		if (!classifyProjectFile(projection.path)) continue;
-		await removeFile(project, projection.path);
-	}
+	const removedPaths = Object.entries(config.projections).flatMap(([id, projection]) =>
+		latestProject.members[id]?.path === projection.path || latestPaths.has(projection.path)
+			? []
+			: [projection.path]
+	);
 	const sourceHashes = new Map(scanned.files.map((source) => [source.path, source.snapshot.hash]));
 	const localMemberIds = new Set([
 		...additions.map((addition) => addition.id),
@@ -1425,6 +1716,7 @@ async function refreshProjectInventory(
 		graph: latest,
 		config: nextConfig,
 		reconcileMemberIds: [...reconcileMemberIds],
-		scanChanged
+		scanChanged,
+		removedPaths
 	};
 }

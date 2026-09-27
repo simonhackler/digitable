@@ -24,8 +24,9 @@ function gamesTest(name: string, run: (page: Page) => Promise<void>) {
 
 async function showDeckInSidebar(page: Page, deckName: string) {
 	const deckLink = page.getByRole('link', { name: deckName, exact: true });
-	if (!(await deckLink.isVisible())) {
-		await page.getByRole('button', { name: 'Decks' }).click();
+	const decksButton = page.getByRole('button', { name: 'Decks' });
+	if ((await decksButton.getAttribute('aria-expanded')) !== 'true') {
+		await decksButton.click();
 	}
 	await expect(deckLink).toBeVisible();
 }
@@ -213,8 +214,7 @@ gamesTest('create new deck and delete it', async (page) => {
 	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
 	await page.reload();
 	await expect(page).toHaveURL(new RegExp(`/app/games/western-cards/decks/${deckName}/editor`));
-	await page.getByRole('button', { name: 'Decks' }).click();
-	await expect(page.getByRole('link', { name: deckName, exact: true })).toBeVisible();
+	await showDeckInSidebar(page, deckName);
 	await page.getByRole('button', { name: `More for ${deckName}` }).click();
 	await page.getByRole('menuitem', { name: 'Delete' }).click();
 	await expect(page.getByRole('link', { name: deckName, exact: true })).not.toBeVisible();
@@ -226,7 +226,7 @@ gamesTest(
 	async (page) => {
 		const originalDeckName = 'rename_source_deck';
 		const renamedDeckName = 'rename_target_deck';
-		const dataCsv = 'name,count\nScout,3\n';
+		const dataCsv = 'id,name,count\nscout,Scout,3\n';
 
 		await page.getByRole('main').getByText('western-cards').click();
 		await page.getByRole('button', { name: 'Decks' }).click();
@@ -266,7 +266,7 @@ gamesTest(
 		await expect(page).toHaveURL(
 			new RegExp(`/app/games/western-cards/decks/${renamedDeckName}/editor`)
 		);
-		await expect(page.getByRole('link', { name: renamedDeckName, exact: true })).toBeVisible();
+		await showDeckInSidebar(page, renamedDeckName);
 		await expect(page.getByRole('link', { name: originalDeckName, exact: true })).not.toBeVisible();
 		await expect(await opfsEntryExists(page, `/western-cards/components/${originalDeckName}`)).toBe(
 			false
@@ -285,8 +285,7 @@ gamesTest(
 		await expect(page).toHaveURL(
 			new RegExp(`/app/games/western-cards/decks/${renamedDeckName}/editor`)
 		);
-		await page.getByRole('button', { name: 'Decks' }).click();
-		await expect(page.getByRole('link', { name: renamedDeckName, exact: true })).toBeVisible();
+		await showDeckInSidebar(page, renamedDeckName);
 		await expect(page.getByRole('link', { name: originalDeckName, exact: true })).not.toBeVisible();
 	}
 );

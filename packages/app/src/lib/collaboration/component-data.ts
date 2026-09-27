@@ -16,7 +16,7 @@ export const componentDataMaterializer: MemberMaterializer<ComponentDataDocument
 	kind: 'component-data',
 	parse(source, context) {
 		const allowMissingIds = context.allowMissingIds !== false;
-		const parsed = Papa.parse<string[]>(source, { skipEmptyLines: true });
+		const parsed = Papa.parse<string[]>(source.replace(/\r\n/g, '\n'), { skipEmptyLines: true });
 		if (parsed.errors.length) {
 			throw new Error(
 				`data.csv is invalid: ${parsed.errors.map((error) => error.message).join('; ')}`
@@ -118,7 +118,7 @@ export const componentDataMaterializer: MemberMaterializer<ComponentDataDocument
 	},
 	serialize(document) {
 		const table = componentDataTable(document);
-		return `${Papa.unparse([table.header, ...table.data])}\n`;
+		return `${Papa.unparse([table.header, ...table.data], { newline: '\n' })}\n`;
 	},
 	isDocument: isComponentDataDocument
 };

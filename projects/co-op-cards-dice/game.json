@@ -1,0 +1,8 @@
+{
+  "name": "co-op-cards-dice",
+  "minPlayers": 2,
+  "maxPlayers": 2,
+  "description": "A co-op roguelike/lite card game.",
+  "tags": [],
+  "digitableVersion": "0.0.1"
+}

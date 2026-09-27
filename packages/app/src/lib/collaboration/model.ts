@@ -144,6 +144,35 @@ export type ProjectMemberDocument =
 	| MarkdownFileDocument
 	| BinaryFileDocument;
 
+export type ProjectMemberDocumentByKind = {
+	'game-metadata': GameMetadataDocument;
+	'component-data': ComponentDataDocument;
+	'component-svg': SvgDocument;
+	rules: MarkdownFileDocument;
+	'table-setup': TextFileDocument;
+	'feedback-registry': TextFileDocument;
+	'feedback-markdown': TextFileDocument;
+	asset: BinaryFileDocument;
+};
+
+export type ProjectMemberPathByKind = {
+	'game-metadata': 'game.json';
+	'component-data': `components/${string}/data.csv`;
+	'component-svg':
+		| `components/${string}/front.svg`
+		| `components/${string}/back.svg`;
+	rules: 'rules.md';
+	'table-setup': 'setup/table.svg';
+	'feedback-registry': 'feedback/playtests.json';
+	'feedback-markdown': `feedback/${string}.md`;
+	asset: `assets/${string}`;
+};
+
+export type ProjectMemberDocumentFor<K extends ProjectMemberKind> =
+	ProjectMemberDocumentByKind[K];
+export type ProjectMemberPathFor<K extends ProjectMemberKind> = ProjectMemberPathByKind[K];
+export type ProjectInputPath = ProjectMemberPathByKind[ProjectMemberKind];
+
 export function isProjectDocument(value: unknown): value is ProjectDocument {
 	if (!isObject(value)) return false;
 	if (value.type !== 'digitable-project' || value.schemaVersion !== 2) return false;

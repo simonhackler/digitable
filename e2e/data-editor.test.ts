@@ -15,13 +15,17 @@ async function seedDataEditorProjects(page: Page) {
 	await page.locator('main').waitFor();
 	await page.setContent('<!doctype html><html><body><h1>OPFS seed</h1></body></html>');
 	await seedProjectFiles(page, 'western-cards');
-	await seedProjectFiles(page, 'map');
+	await seedProjectFiles(page, 'pixi-play-smoke');
+	await seedProjectFiles(page, 'pixi-play-three-card');
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
 	await migrateProjectsIfPrompted(page);
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
 	await expect(page.getByRole('main').getByText('western-cards', { exact: true })).toBeVisible();
-	await expect(page.getByRole('main').getByText('map', { exact: true })).toBeVisible();
+	await expect(page.getByRole('main').getByText('pixi-play-smoke', { exact: true })).toBeVisible();
+	await expect(
+		page.getByRole('main').getByText('pixi-play-three-card', { exact: true })
+	).toBeVisible();
 }
 
 async function withDataEditorPage(run: (page: Page) => Promise<void>) {
@@ -44,6 +48,11 @@ function dataEditorTest(name: string, run: (page: Page) => Promise<void>) {
 async function openWesternDataEditor(page: Page) {
 	await page.goto('/app/games/western-cards/decks/western/data');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+}
+
+async function openSmokeDataEditor(page: Page) {
+	await page.goto('/app/games/pixi-play-smoke/decks/western/data');
+	await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke\/decks\/western\/data/);
 }
 
 async function spreadsheetHeaders(page: Page) {
@@ -81,23 +90,23 @@ async function imageHrefText(page: Page, id: string) {
 }
 
 async function seedProjectImageColumn(page: Page) {
-	const frontPath = '/western-cards/components/western/front.svg';
+	const frontPath = '/pixi-play-smoke/components/western/front.svg';
 	const frontSvg = await readOpfsText(page, frontPath);
 	if (!frontSvg.includes('id="portrait"')) {
 		const svgWithImageField = frontSvg.replace(
-			/(<text\b[^>]*\bid="effect_zone")/,
-			'<image id="portrait" href="../../assets/portrait.svg" x="2" y="2" width="10" height="10"/>\n   $1'
+			'</svg>',
+			'<image id="portrait" href="../../assets/portrait.svg" x="2" y="2" width="10" height="10"/>\n</svg>'
 		);
 		await writeOpfsText(page, frontPath, svgWithImageField);
 	}
 	await writeOpfsText(
 		page,
-		'/western-cards/assets/portrait.svg',
+		'/pixi-play-smoke/assets/portrait.svg',
 		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="red"/></svg>'
 	);
-	await writeOpfsText(page, '/western-cards/assets/notes.txt', 'not an image');
-	await page.goto('/app/games/western-cards/decks/western/data');
-	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+	await writeOpfsText(page, '/pixi-play-smoke/assets/notes.txt', 'not an image');
+	await page.goto('/app/games/pixi-play-smoke/decks/western/data');
+	await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke\/decks\/western\/data/);
 	await expect.poll(() => spreadsheetHeaders(page)).toContain('portrait');
 }
 
@@ -165,9 +174,10 @@ test.describe.serial('data editor', () => {
 		if (!dataEditorContext) throw new Error('Data editor context was not initialized');
 		const peer = await dataEditorContext.newPage();
 		try {
-			await Promise.all([openWesternDataEditor(page), openWesternDataEditor(peer)]);
+			await Promise.all([openSmokeDataEditor(page), openSmokeDataEditor(peer)]);
 			const preview = page.locator('[data-card-previews] svg').first();
-			await expect(preview).toBeVisible();
+			const peerPreview = peer.locator('[data-card-previews] svg').first();
+			await Promise.all([expect(preview).toBeVisible(), expect(peerPreview).toBeVisible()]);
 			const box = await preview.boundingBox();
 			if (!box) throw new Error('Card preview was not visible');
 
@@ -189,20 +199,27 @@ test.describe.serial('data editor', () => {
 	});
 
 	dataEditorTest('generated fallback spreadsheet data is saved to csv', async (page) => {
-		const frontSvg = await readOpfsText(page, '/map/components/map/front.svg');
+		const frontSvg = await readOpfsText(
+			page,
+			'/pixi-play-three-card/components/western/front.svg'
+		);
 		const expectedColumn = frontSvg.match(/<text\b[^>]*\bid="([^"]+)"/)?.[1];
 		expect(expectedColumn).toBeTruthy();
 
-		await removeOpfsFile(page, '/map/components/map/data.csv');
-		await expect(await opfsEntryExists(page, '/map/components/map/data.csv')).toBe(false);
+		await removeOpfsFile(page, '/pixi-play-three-card/components/western/data.csv');
+		await expect(
+			await opfsEntryExists(page, '/pixi-play-three-card/components/western/data.csv')
+		).toBe(false);
 
-		await page.goto('/app/games/map/decks/map/data');
-		await expect(page).toHaveURL(/\/app\/games\/map\/decks\/map\/data/);
+		await page.goto('/app/games/pixi-play-three-card/decks/western/data');
+		await expect(page).toHaveURL(/\/app\/games\/pixi-play-three-card\/decks\/western\/data/);
 		await expect.poll(() => spreadsheetHeaders(page)).toContain(expectedColumn);
 		await expect(page.getByText('Saved')).toBeVisible();
 
-		await expect.poll(() => opfsEntryExists(page, '/map/components/map/data.csv')).toBe(true);
-		const csv = await readOpfsText(page, '/map/components/map/data.csv');
+		await expect
+			.poll(() => opfsEntryExists(page, '/pixi-play-three-card/components/western/data.csv'))
+			.toBe(true);
+		const csv = await readOpfsText(page, '/pixi-play-three-card/components/western/data.csv');
 		expect(csv).toContain('id');
 		expect(csv).toContain(expectedColumn);
 	});
@@ -281,12 +298,12 @@ test.describe.serial('data editor', () => {
 		await expect(page.getByText('Saved')).toBeVisible();
 		await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
 
-		await page.goto('/app/games/western-cards/decks/western/editor');
-		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
-		await page.goto('/app/games/western-cards/decks/western/data');
+		await page.goto('/app/games/pixi-play-smoke/decks/western/editor');
+		await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke\/decks\/western\/editor/);
+		await page.goto('/app/games/pixi-play-smoke/decks/western/data');
 
 		await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
-		const savedCsv = await readOpfsText(page, '/western-cards/components/western/data.csv');
+		const savedCsv = await readOpfsText(page, '/pixi-play-smoke/components/western/data.csv');
 		expect(savedCsv).toContain('portrait.svg');
 	});
 
@@ -324,9 +341,14 @@ test.describe.serial('data editor', () => {
 
 			await expect(await dataCell(page, 'portrait')).toContainText('uploads/Uploaded-Portrait.svg');
 			await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
+			await expect
+				.poll(() =>
+					opfsEntryExists(page, '/pixi-play-smoke/assets/uploads/Uploaded-Portrait.svg')
+				)
+				.toBe(true);
 			const uploaded = await readOpfsText(
 				page,
-				'/western-cards/assets/uploads/Uploaded-Portrait.svg'
+				'/pixi-play-smoke/assets/uploads/Uploaded-Portrait.svg'
 			);
 			expect(uploaded).toContain('<circle');
 		}
@@ -433,7 +455,7 @@ test.describe.serial('data editor', () => {
 		const data = await readOpfsText(page, '/western-cards/components/french_builtin/data.csv');
 		expect(data).toContain('card_face');
 		expect(data).toContain('ace_of_spades.png');
-		expect(data.split('\n')).toHaveLength(55);
+		expect(data.trimEnd().split('\n')).toHaveLength(55);
 		await expect(page.locator('main svg image').first()).toBeVisible();
 	});
 

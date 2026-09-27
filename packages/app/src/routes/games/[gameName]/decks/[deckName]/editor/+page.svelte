@@ -21,12 +21,11 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { FlipHorizontal2, Table2, Upload } from '@lucide/svelte';
 	import placeholderFrontSvg from '../../../../../../../static/placeholder.svg?raw';
-	import { getActiveProjectContext, getFileSystemContext } from '../../../../context';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
-	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import { getActiveProjectContext } from '../../../../context';
+	import { ASSETS_DIR } from '$lib/workspace/project-layout';
 	import { requireParam } from '$lib/utils/assert';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
-	import { isEmbeddedImageReference, resolveImageReference } from '../../../data-loader';
+	import { isEmbeddedImageReference, resolveSessionImageReference } from '../../../data-loader';
 	import ImageSelector from '../../../image-selector.svelte';
 	import { getDeckSideIndexContext, getToLoadSvgsContext } from '../svg-context.svelte';
 	import GameTopBar from '../../../../game-top-bar.svelte';
@@ -58,7 +57,6 @@
 	const XLINK_NS = 'http://www.w3.org/1999/xlink';
 	const ORIGINAL_HREF_ATTR = 'data-digitable-original-href';
 
-	const fileSystem = getFileSystemContext();
 	const project = getActiveProjectContext();
 	const game = $derived(requireParam('gameName'));
 	const deck = $derived(requireParam('deckName'));
@@ -185,8 +183,14 @@
 
 	$effect(() => {
 		const componentName = deck;
-		const frontHandle = project.session.getComponentSvgHandle(componentName, 'front');
-		const backHandle = project.session.getComponentSvgHandle(componentName, 'back');
+		const frontHandle = project.session.member(
+			'component-svg',
+			`components/${componentName}/front.svg`
+		)?.handle;
+		const backHandle = project.session.member(
+			'component-svg',
+			`components/${componentName}/back.svg`
+		)?.handle;
 		const nextFrontBinding = frontHandle ? createSvgDocumentBinding(frontHandle) : null;
 		const nextBackBinding = backHandle ? createSvgDocumentBinding(backHandle) : null;
 		frontBinding = nextFrontBinding;
@@ -202,7 +206,10 @@
 	$effect(() => {
 		const componentName = deck;
 		const currentSide = side;
-		const handle = project.session.getComponentSvgHandle(componentName, currentSide);
+		const handle = project.session.member(
+			'component-svg',
+			`components/${componentName}/${currentSide}.svg`
+		)?.handle;
 		const pageId = projectPresencePage(page.route.id, page.params).id;
 		if (!handle) {
 			interactionChannel = null;
@@ -274,16 +281,20 @@
 		if (!value) return;
 		const nextMeta = nextSide === 'front' ? frontMeta : backMeta;
 		const nextValue = preserveCanvasMeta ? applySvgMeta(value, nextMeta) : value;
-		const written = await project.session.writeFiles([
-			{ path: joinFsPath(COMPONENTS_DIR, deck, `${nextSide}.svg`), data: nextValue }
-		]);
+		const written = await project.session.put({
+			path: `components/${deck}/${nextSide}.svg`,
+			data: nextValue
+		});
 		if (written.error) {
 			console.error(`Upload failed for ${nextSide}.svg`, written.error);
 			return;
 		}
 		const currentBinding = nextSide === 'front' ? frontBinding : backBinding;
 		if (!currentBinding) {
-			const handle = project.session.getComponentSvgHandle(deck, nextSide);
+			const handle = project.session.member(
+				'component-svg',
+				`components/${deck}/${nextSide}.svg`
+			)?.handle;
 			if (handle) {
 				const binding = createSvgDocumentBinding(handle);
 				if (nextSide === 'front') frontBinding = binding;
@@ -343,7 +354,7 @@
 	async function applySvgEditorImageSelection(imagePath: string) {
 		if (!imagePickerTarget || !imagePath) return;
 		const href = projectImagePathToSvgHref(imagePath);
-		const resolvedHref = await resolveImageReference(fileSystem, game, href, true);
+		const resolvedHref = await resolveSessionImageReference(project.session, game, href, true);
 		const attributes = { [ORIGINAL_HREF_ATTR]: href };
 		if (imagePickerTarget.mode === 'replace') {
 			imagePickerTarget.controller.setSelectedImageHref(resolvedHref, { attributes });
@@ -355,7 +366,7 @@
 	async function applySvgEditorImageHref(controller: EditorController, value: string) {
 		const href = normalizeSvgImageFileInput(value);
 		if (!href) return;
-		const resolvedHref = await resolveImageReference(fileSystem, game, href, true);
+		const resolvedHref = await resolveSessionImageReference(project.session, game, href, true);
 		controller.setSelectedImageHref(resolvedHref, {
 			attributes: { [ORIGINAL_HREF_ATTR]: href }
 		});
@@ -374,7 +385,11 @@
 				const href = getImageHref(image).trim();
 				if (!href || isEmbeddedImageReference(href)) return;
 
-				const resolvedHref = await resolveImageReference(fileSystem, projectName, href);
+				const resolvedHref = await resolveSessionImageReference(
+					project.session,
+					projectName,
+					href
+				);
 				image.setAttribute(ORIGINAL_HREF_ATTR, href);
 				setImageHref(image, resolvedHref);
 				if (resolvedHref.startsWith('blob:')) objectUrls.push(resolvedHref);
@@ -415,9 +430,10 @@
 	});
 
 	const writePlaceholderSvg = async () => {
-		const placeholderWrite = await project.session.writeFiles([
-			{ path: joinFsPath(ASSETS_DIR, 'placeholder.svg'), data: placeholderFrontSvg }
-		]);
+		const placeholderWrite = await project.session.put({
+			path: `${ASSETS_DIR}/placeholder.svg`,
+			data: placeholderFrontSvg
+		});
 		if (placeholderWrite.error) console.error(placeholderWrite.error);
 	};
 
