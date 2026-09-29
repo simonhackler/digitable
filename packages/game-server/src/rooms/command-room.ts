@@ -458,9 +458,12 @@ export class StackCommand extends Command<
         const player = this.state.players.get(payload.sessionId);
         if (!player) return;
 
-        for (const id of ids) {
+        for (const [index, id] of ids.entries()) {
             const targetStack = this.state.stacks.get(id);
             if (targetStack) {
+                if (index == 0) {
+                    continue;
+                }
                 forStackIds.push(...targetStack.componentIds);
                 if (id !== sourceId) consumedStackIds.push(id);
             } else {
