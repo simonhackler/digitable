@@ -9,6 +9,10 @@
 		"svgedit/packages/svgcanvas",
 		"vendor/svelte-lexical/packages/svelte-lexical"
 	],
+	"overrides": {
+		"node-os-utils": "2.0.5",
+		"nanoid": "3.3.12"
+	},
 	"scripts": {
 		"build:svelte-lexical": "bun run --cwd vendor/svelte-lexical/packages/svelte-lexical svelte-kit sync && bun run --cwd vendor/svelte-lexical/packages/svelte-lexical svelte-package",
 		"dev": "concurrently \"bun run --filter=@svg-table/app dev\" \"bun run --filter=boardgame-server start\"",

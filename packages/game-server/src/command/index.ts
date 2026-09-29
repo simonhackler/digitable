@@ -2,7 +2,7 @@ import type { Room } from 'colyseus';
 import debug from 'debug';
 const debugCommand = debug('colyseus:command');
 
-export abstract class Command<R extends Room = Room, Payload = unknown> {
+export abstract class Command<R extends Room<any> = Room<any>, Payload = unknown> {
 	payload: Payload;
 
 	room: R;
@@ -19,11 +19,11 @@ export abstract class Command<R extends Room = Room, Payload = unknown> {
 	abstract execute(
 		payload: this['payload']
 	):
-		| Array<Command>
-		| Command
+		| Array<Command<R>>
+		| Command<R>
 		| void
-		| Promise<Array<Command>>
-		| Promise<Command>
+		| Promise<Array<Command<R>>>
+		| Promise<Command<R>>
 		| Promise<unknown>;
 
 	/**
@@ -35,7 +35,7 @@ export abstract class Command<R extends Room = Room, Payload = unknown> {
 	}
 }
 
-export class Dispatcher<R extends Room> {
+export class Dispatcher<R extends Room<any>> {
 	room: R;
 	stopped: boolean = false;
 
@@ -51,7 +51,7 @@ export class Dispatcher<R extends Room> {
 		this.stopped = false;
 	}
 
-	dispatch<T extends Command>(command: T, payload?: T['payload']): void | Promise<unknown> {
+	dispatch<T extends Command<R>>(command: T, payload?: T['payload']): void | Promise<unknown> {
 		if (this.stopped) {
 			debugCommand(
 				`dispatcher is stopped -> ${command.constructor.name} ${command.payload ? `(${JSON.stringify(command.payload)})` : ''}`
@@ -84,7 +84,7 @@ export class Dispatcher<R extends Room> {
 		const result = command.execute(command.payload);
 
 		if (result instanceof Promise) {
-			return (result as Promise<Command[]>).then(async (childCommands) => {
+			return (result as Promise<Command<R>[]>).then(async (childCommands) => {
 				const nextCommands = this.getNextCommands(childCommands);
 
 				for (let i = 0; i < nextCommands.length; i++) {
@@ -112,7 +112,7 @@ export class Dispatcher<R extends Room> {
 	}
 
 	// | Array<Promise<Command[] | void>>
-	private getNextCommands(nextCommands: void | Command | Command[]): Command[] {
+	private getNextCommands(nextCommands: void | Command<R> | Command<R>[]): Command<R>[] {
 		if (!nextCommands) {
 			return [];
 		}
