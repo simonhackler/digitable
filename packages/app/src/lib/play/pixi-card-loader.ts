@@ -9,11 +9,7 @@ import { LayoutContainer } from '@pixi/layout/components';
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { ParsedSvg } from './initComponent';
 import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
-import {
-	decodeText,
-	serializeProjectMember,
-	type ProjectSnapshot
-} from '$lib/collaboration';
+import { decodeText, serializeProjectMember, type ProjectSnapshot } from '$lib/collaboration';
 
 const serializer = new XMLSerializer();
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -208,10 +204,7 @@ export async function loadAndProcessCards(
 					projectName,
 					cardName,
 					source,
-					[
-						{ template: svgTemplateFront },
-						{ template: svgTemplateBack, columnPrefix: 'back_' }
-					],
+					[{ template: svgTemplateFront }, { template: svgTemplateBack, columnPrefix: 'back_' }],
 					source.member('component-data', `components/${cardName}/data.csv`)?.document,
 					true
 				)

@@ -107,9 +107,7 @@
 		errorMessage = null;
 		const registry = readPlaytestFeedbackRegistry(project.session);
 		playtests = registry.playtests;
-		await Promise.all(
-			registry.playtests.map((playtest) => loadFeedbackFor(playtest.playtestId))
-		);
+		await Promise.all(registry.playtests.map((playtest) => loadFeedbackFor(playtest.playtestId)));
 		await importFeedback();
 	}
 

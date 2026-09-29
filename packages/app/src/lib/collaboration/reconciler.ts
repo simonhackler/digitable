@@ -2,7 +2,14 @@ import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 import type { DocHandle, Repo } from '@automerge/automerge-repo';
 import type { SvgDocument } from '@svg-table/svgeditor';
 import { componentDataMaterializer } from './component-data';
-import { decodeText, encodeText, hashBytes, removeFile, snapshotFile, writeFile } from './filesystem';
+import {
+	decodeText,
+	encodeText,
+	hashBytes,
+	removeFile,
+	snapshotFile,
+	writeFile
+} from './filesystem';
 import { gameMetadataMaterializer } from './game-metadata';
 import { markdownFileMaterializer } from './markdown/markdown-file';
 import type { MemberMaterializer } from './materializer';
@@ -516,7 +523,8 @@ export function createProjectReconciler({
 		}
 		for (const path of [...directories].sort((left, right) => right.length - left.length)) {
 			const entries = await fs.list(path);
-			if (entries.error?.name === 'NotFoundError' || (!entries.error && entries.data.length)) continue;
+			if (entries.error?.name === 'NotFoundError' || (!entries.error && entries.data.length))
+				continue;
 			if (entries.error) throw new Error(entries.error.message, { cause: entries.error });
 			await removeFile(fs, path);
 		}

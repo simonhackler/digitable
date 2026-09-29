@@ -385,11 +385,7 @@
 				const href = getImageHref(image).trim();
 				if (!href || isEmbeddedImageReference(href)) return;
 
-				const resolvedHref = await resolveSessionImageReference(
-					project.session,
-					projectName,
-					href
-				);
+				const resolvedHref = await resolveSessionImageReference(project.session, projectName, href);
 				image.setAttribute(ORIGINAL_HREF_ATTR, href);
 				setImageHref(image, resolvedHref);
 				if (resolvedHref.startsWith('blob:')) objectUrls.push(resolvedHref);

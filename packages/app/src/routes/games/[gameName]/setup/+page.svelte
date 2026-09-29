@@ -187,15 +187,10 @@
 	async function loadDeckEntry(deckName: string, frontSvgText: string): Promise<DeckEntry> {
 		const frontTemplate = loadSvgTemplate(frontSvgText);
 		const svgData = getSvgDataMapForSides([{ template: frontTemplate }]);
-		const dataDocument = project.session.member(
-			'component-data',
-			`components/${deckName}/data.csv`
-		)?.handle.doc();
-		const loadedSpreadsheetData = loadSpreadsheetDataFromDocument(
-			svgData,
-			deckName,
-			dataDocument
-		);
+		const dataDocument = project.session
+			.member('component-data', `components/${deckName}/data.csv`)
+			?.handle.doc();
+		const loadedSpreadsheetData = loadSpreadsheetDataFromDocument(svgData, deckName, dataDocument);
 		if (loadedSpreadsheetData.error) throw new Error(loadedSpreadsheetData.error.message);
 		const spreadsheetData = loadedSpreadsheetData.data;
 		const imagePaths = linkedImagePaths(spreadsheetData);

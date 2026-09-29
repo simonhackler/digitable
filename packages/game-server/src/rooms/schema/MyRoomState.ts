@@ -208,6 +208,8 @@ export class Player extends Schema {
 	}
 }
 
+// Will this have to become reworked into a GameObject type schema?
+// We will also need a data option to describe the cards and everything
 export class BoardGameRoomState extends Schema {
 	@type('string') phase: RoomPhase;
 	@type('string') roomName: string;

@@ -250,14 +250,14 @@ function snapshotGraph(graph: ProjectGraph): ProjectSnapshot {
 			name: component.name
 		})),
 		member(kind, path) {
-			return members.find(
-				(member) => member.kind === kind && member.path === path
-			) as ProjectSnapshotMember<typeof kind> | undefined;
+			return members.find((member) => member.kind === kind && member.path === path) as
+				| ProjectSnapshotMember<typeof kind>
+				| undefined;
 		},
 		members(kind) {
-			return members.filter(
-				(member) => member.kind === kind
-			) as ProjectSnapshotMember<typeof kind>[];
+			return members.filter((member) => member.kind === kind) as ProjectSnapshotMember<
+				typeof kind
+			>[];
 		}
 	};
 }
@@ -634,10 +634,7 @@ export async function openProjectSession(
 						hash?: string;
 						componentId?: string;
 					}> = [];
-					const replacements = new Map<
-						string,
-						{ url: AutomergeUrl; hash: string }
-					>();
+					const replacements = new Map<string, { url: AutomergeUrl; hash: string }>();
 					const flushIds = new Set<DocHandle<ProjectMemberDocument>['documentId']>();
 
 					for (const item of prepared) {
@@ -1119,8 +1116,7 @@ function createHistoricalProjectSession({
 		snapshot: () =>
 			tryAsync({
 				try: async () => snapshotGraph(graph),
-				catch: (cause) =>
-					CollaborationError.SynchronizationFailed({ project: project.name, cause })
+				catch: (cause) => CollaborationError.SynchronizationFailed({ project: project.name, cause })
 			}),
 		put: () => readOnly<void>(),
 		remove: () => readOnly<void>(),

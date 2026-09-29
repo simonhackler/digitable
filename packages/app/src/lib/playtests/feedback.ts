@@ -133,7 +133,8 @@ export async function importRegisteredPlaytestFeedback(input: {
 		for (const note of feedbackData) {
 			if (importedIds.has(note.id)) continue;
 
-			const writePath = `feedback/${sessionFolder(playtest)}/${feedbackFileName(note)}` as `feedback/${string}.md`;
+			const writePath =
+				`feedback/${sessionFolder(playtest)}/${feedbackFileName(note)}` as `feedback/${string}.md`;
 			files.push({ path: writePath, data: note.markdown });
 			importedIds.add(note.id);
 			importedCount += 1;

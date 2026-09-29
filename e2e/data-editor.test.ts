@@ -10,22 +10,23 @@ import {
 
 let dataEditorContext: BrowserContext | null = null;
 
-async function seedDataEditorProjects(page: Page) {
+async function seedDataEditorProjects(
+	page: Page,
+	projects = ['western-cards', 'pixi-play-single-card', 'pixi-play-smoke', 'pixi-play-three-card']
+) {
 	await page.goto('/app/games');
 	await page.locator('main').waitFor();
 	await page.setContent('<!doctype html><html><body><h1>OPFS seed</h1></body></html>');
-	await seedProjectFiles(page, 'western-cards');
-	await seedProjectFiles(page, 'pixi-play-smoke');
-	await seedProjectFiles(page, 'pixi-play-three-card');
+	for (const project of projects) {
+		await seedProjectFiles(page, project);
+	}
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
 	await migrateProjectsIfPrompted(page);
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
-	await expect(page.getByRole('main').getByText('western-cards', { exact: true })).toBeVisible();
-	await expect(page.getByRole('main').getByText('pixi-play-smoke', { exact: true })).toBeVisible();
-	await expect(
-		page.getByRole('main').getByText('pixi-play-three-card', { exact: true })
-	).toBeVisible();
+	for (const project of projects) {
+		await expect(page.getByRole('main').getByText(project, { exact: true })).toBeVisible();
+	}
 }
 
 async function withDataEditorPage(run: (page: Page) => Promise<void>) {
@@ -50,9 +51,9 @@ async function openWesternDataEditor(page: Page) {
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
 }
 
-async function openSmokeDataEditor(page: Page) {
-	await page.goto('/app/games/pixi-play-smoke/decks/western/data');
-	await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke\/decks\/western\/data/);
+async function openSingleCardDataEditor(page: Page) {
+	await page.goto('/app/games/pixi-play-single-card/decks/western/data');
+	await expect(page).toHaveURL(/\/app\/games\/pixi-play-single-card\/decks\/western\/data/);
 }
 
 async function spreadsheetHeaders(page: Page) {
@@ -89,24 +90,9 @@ async function imageHrefText(page: Page, id: string) {
 	return page.evaluate(async (href) => fetch(href).then((response) => response.text()), href);
 }
 
-async function seedProjectImageColumn(page: Page) {
-	const frontPath = '/pixi-play-smoke/components/western/front.svg';
-	const frontSvg = await readOpfsText(page, frontPath);
-	if (!frontSvg.includes('id="portrait"')) {
-		const svgWithImageField = frontSvg.replace(
-			'</svg>',
-			'<image id="portrait" href="../../assets/portrait.svg" x="2" y="2" width="10" height="10"/>\n</svg>'
-		);
-		await writeOpfsText(page, frontPath, svgWithImageField);
-	}
-	await writeOpfsText(
-		page,
-		'/pixi-play-smoke/assets/portrait.svg',
-		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="red"/></svg>'
-	);
-	await writeOpfsText(page, '/pixi-play-smoke/assets/notes.txt', 'not an image');
-	await page.goto('/app/games/pixi-play-smoke/decks/western/data');
-	await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke\/decks\/western\/data/);
+async function openSingleCardImageEditor(page: Page) {
+	await page.goto('/app/games/pixi-play-single-card/decks/western/data');
+	await expect(page).toHaveURL(/\/app\/games\/pixi-play-single-card\/decks\/western\/data/);
 	await expect.poll(() => spreadsheetHeaders(page)).toContain('portrait');
 }
 
@@ -131,6 +117,36 @@ async function removeOpfsFile(page: Page, sourcePath: string) {
 async function openNewDeckDialog(page: Page) {
 	await page.locator('[data-sidebar="content"]').getByRole('button', { name: 'New' }).click();
 }
+
+test('shows collaborators over card previews', async ({ browser }, testInfo) => {
+	const context = await browser.newContext({
+		baseURL: testInfo.project.use.baseURL as string | undefined
+	});
+	const page = await context.newPage();
+	const peer = await context.newPage();
+	try {
+		await seedDataEditorProjects(page, ['pixi-play-single-card']);
+		await Promise.all([openSingleCardDataEditor(page), openSingleCardDataEditor(peer)]);
+		const preview = page.locator('[data-card-previews] svg').first();
+		const peerPreview = peer.locator('[data-card-previews] svg').first();
+		await Promise.all([expect(preview).toBeVisible(), expect(peerPreview).toBeVisible()]);
+		const box = await preview.boundingBox();
+		if (!box) throw new Error('Card preview was not visible');
+
+		await page.mouse.move(box.x + 5, box.y + 5);
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
+		const cursor = peer.getByLabel('Collaborator cursor');
+		await expect(cursor).toBeVisible({ timeout: 10_000 });
+		await expect(cursor).toHaveAttribute('data-presence-region', 'card-previews');
+
+		await peer.getByRole('button', { name: 'Decks' }).click();
+		await expect(
+			peer.locator('a[href$="/decks/western/editor"]').getByLabel('Collaborator is viewing western')
+		).toBeVisible({ timeout: 10_000 });
+	} finally {
+		await context.close();
+	}
+});
 
 test.describe.serial('data editor', () => {
 	test.beforeAll(async ({ browser }, testInfo) => {
@@ -170,56 +186,25 @@ test.describe.serial('data editor', () => {
 		await expect(page.locator('h1')).toBeVisible();
 	});
 
-	dataEditorTest('shows collaborators over card previews', async (page) => {
-		if (!dataEditorContext) throw new Error('Data editor context was not initialized');
-		const peer = await dataEditorContext.newPage();
-		try {
-			await Promise.all([openSmokeDataEditor(page), openSmokeDataEditor(peer)]);
-			const preview = page.locator('[data-card-previews] svg').first();
-			const peerPreview = peer.locator('[data-card-previews] svg').first();
-			await Promise.all([expect(preview).toBeVisible(), expect(peerPreview).toBeVisible()]);
-			const box = await preview.boundingBox();
-			if (!box) throw new Error('Card preview was not visible');
-
-			await page.mouse.move(box.x + 5, box.y + 5);
-			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
-			const cursor = peer.getByLabel('Collaborator cursor');
-			await expect(cursor).toBeVisible({ timeout: 10_000 });
-			await expect(cursor).toHaveAttribute('data-presence-region', 'card-previews');
-
-			await peer.getByRole('button', { name: 'Decks' }).click();
-			await expect(
-				peer
-					.locator('a[href$="/decks/western/editor"]')
-					.getByLabel('Collaborator is viewing western')
-			).toBeVisible({ timeout: 10_000 });
-		} finally {
-			await peer.close();
-		}
-	});
-
 	dataEditorTest('generated fallback spreadsheet data is saved to csv', async (page) => {
-		const frontSvg = await readOpfsText(
-			page,
-			'/pixi-play-three-card/components/western/front.svg'
-		);
+		const frontSvg = await readOpfsText(page, '/pixi-play-smoke/components/western/front.svg');
 		const expectedColumn = frontSvg.match(/<text\b[^>]*\bid="([^"]+)"/)?.[1];
 		expect(expectedColumn).toBeTruthy();
 
-		await removeOpfsFile(page, '/pixi-play-three-card/components/western/data.csv');
-		await expect(
-			await opfsEntryExists(page, '/pixi-play-three-card/components/western/data.csv')
-		).toBe(false);
+		await removeOpfsFile(page, '/pixi-play-smoke/components/western/data.csv');
+		await expect(await opfsEntryExists(page, '/pixi-play-smoke/components/western/data.csv')).toBe(
+			false
+		);
 
-		await page.goto('/app/games/pixi-play-three-card/decks/western/data');
-		await expect(page).toHaveURL(/\/app\/games\/pixi-play-three-card\/decks\/western\/data/);
+		await page.goto('/app/games/pixi-play-smoke/decks/western/data');
+		await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke\/decks\/western\/data/);
 		await expect.poll(() => spreadsheetHeaders(page)).toContain(expectedColumn);
 		await expect(page.getByText('Saved')).toBeVisible();
 
 		await expect
-			.poll(() => opfsEntryExists(page, '/pixi-play-three-card/components/western/data.csv'))
+			.poll(() => opfsEntryExists(page, '/pixi-play-smoke/components/western/data.csv'))
 			.toBe(true);
-		const csv = await readOpfsText(page, '/pixi-play-three-card/components/western/data.csv');
+		const csv = await readOpfsText(page, '/pixi-play-smoke/components/western/data.csv');
 		expect(csv).toContain('id');
 		expect(csv).toContain(expectedColumn);
 	});
@@ -286,7 +271,7 @@ test.describe.serial('data editor', () => {
 	});
 
 	dataEditorTest('image column edits update preview and persist after navigation', async (page) => {
-		await seedProjectImageColumn(page);
+		await openSingleCardImageEditor(page);
 
 		const headers = await spreadsheetHeaders(page);
 		expect(headers).toContain('portrait');
@@ -298,19 +283,19 @@ test.describe.serial('data editor', () => {
 		await expect(page.getByText('Saved')).toBeVisible();
 		await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
 
-		await page.goto('/app/games/pixi-play-smoke/decks/western/editor');
-		await expect(page).toHaveURL(/\/app\/games\/pixi-play-smoke\/decks\/western\/editor/);
-		await page.goto('/app/games/pixi-play-smoke/decks/western/data');
+		await page.goto('/app/games/pixi-play-single-card/decks/western/editor');
+		await expect(page).toHaveURL(/\/app\/games\/pixi-play-single-card\/decks\/western\/editor/);
+		await page.goto('/app/games/pixi-play-single-card/decks/western/data');
 
 		await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
-		const savedCsv = await readOpfsText(page, '/pixi-play-smoke/components/western/data.csv');
+		const savedCsv = await readOpfsText(page, '/pixi-play-single-card/components/western/data.csv');
 		expect(savedCsv).toContain('portrait.svg');
 	});
 
 	dataEditorTest(
 		'image picker lists project images and fills a selected image cell',
 		async (page) => {
-			await seedProjectImageColumn(page);
+			await openSingleCardImageEditor(page);
 
 			await (await dataCell(page, 'portrait')).click();
 			await page.getByRole('button', { name: 'Select Image' }).click();
@@ -327,7 +312,7 @@ test.describe.serial('data editor', () => {
 	dataEditorTest(
 		'image upload writes to assets uploads and fills the selected image cell',
 		async (page) => {
-			await seedProjectImageColumn(page);
+			await openSingleCardImageEditor(page);
 
 			await (await dataCell(page, 'portrait')).click();
 			await page.getByRole('button', { name: 'Select Image' }).click();
@@ -343,42 +328,54 @@ test.describe.serial('data editor', () => {
 			await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
 			await expect
 				.poll(() =>
-					opfsEntryExists(page, '/pixi-play-smoke/assets/uploads/Uploaded-Portrait.svg')
+					opfsEntryExists(page, '/pixi-play-single-card/assets/uploads/Uploaded-Portrait.svg')
 				)
 				.toBe(true);
 			const uploaded = await readOpfsText(
 				page,
-				'/pixi-play-smoke/assets/uploads/Uploaded-Portrait.svg'
+				'/pixi-play-single-card/assets/uploads/Uploaded-Portrait.svg'
 			);
 			expect(uploaded).toContain('<circle');
 		}
 	);
 
 	dataEditorTest('flipped cards use back-prefixed image column values', async (page) => {
+		for (const side of ['front', 'back']) {
+			const path = `/pixi-play-three-card/components/western/${side}.svg`;
+			const svg = await readOpfsText(page, path);
+			await writeOpfsText(
+				page,
+				path,
+				svg.replace(
+					'</svg>',
+					'<image id="background" href="../../assets/front-bg.svg" width="63" height="88"/>\n</svg>'
+				)
+			);
+		}
 		await writeOpfsText(
 			page,
-			'/western-cards/assets/front-bg.svg',
+			'/pixi-play-three-card/assets/front-bg.svg',
 			'<svg xmlns="http://www.w3.org/2000/svg"><title>front-bg-marker</title></svg>'
 		);
 		await writeOpfsText(
 			page,
-			'/western-cards/assets/back-bg.svg',
+			'/pixi-play-three-card/assets/back-bg.svg',
 			'<svg xmlns="http://www.w3.org/2000/svg"><title>back-bg-marker</title></svg>'
 		);
-		const csv = await readOpfsText(page, '/western-cards/components/western/data.csv');
+		const csv = await readOpfsText(page, '/pixi-play-three-card/components/western/data.csv');
 		const [headerLine, firstRowLine, ...rest] = csv.split(/\r?\n/);
 		const headers = headerLine.split(',');
 		const firstRow = firstRowLine.split(',');
-		firstRow[headers.indexOf('background')] = 'front-bg.svg';
-		firstRow[headers.indexOf('back_background')] = 'back-bg.svg';
+		headers.push('background', 'back_background');
+		firstRow.push('front-bg.svg', 'back-bg.svg');
 		await writeOpfsText(
 			page,
-			'/western-cards/components/western/data.csv',
-			[headerLine, firstRow.join(','), ...rest].join('\n')
+			'/pixi-play-three-card/components/western/data.csv',
+			[headers.join(','), firstRow.join(','), ...rest].join('\n')
 		);
 
-		await page.goto('/app/games/western-cards/decks/western/data');
-		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+		await page.goto('/app/games/pixi-play-three-card/decks/western/data');
+		await expect(page).toHaveURL(/\/app\/games\/pixi-play-three-card\/decks\/western\/data/);
 		await expect.poll(() => imageHrefText(page, 'background')).toContain('front-bg-marker');
 
 		await page.getByRole('button', { name: 'Back' }).click();
@@ -420,6 +417,12 @@ test.describe.serial('data editor', () => {
 			await page.getByRole('button', { name: 'Create new deck' }).click();
 			await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/comma_two\/editor/);
 
+			await expect
+				.poll(() => opfsEntryExists(page, '/western-cards/components/comma_one/front.svg'))
+				.toBe(true);
+			await expect
+				.poll(() => opfsEntryExists(page, '/western-cards/components/comma_two/front.svg'))
+				.toBe(true);
 			const firstFront = await readOpfsText(page, '/western-cards/components/comma_one/front.svg');
 			expect(firstFront).toContain('viewBox="0 0 55.9 87.1"');
 			const secondFront = await readOpfsText(page, '/western-cards/components/comma_two/front.svg');
@@ -481,7 +484,7 @@ test.describe.serial('data editor', () => {
 		const data = await readOpfsText(page, '/western-cards/components/numbers_builtin/data.csv');
 		expect(data).toContain('Red 1');
 		expect(data).toContain('Yellow 13');
-		expect(data.split('\n')).toHaveLength(53);
+		expect(data.trimEnd().split('\n')).toHaveLength(53);
 		await expect(page.locator('main svg image').first()).toBeVisible();
 	});
 
@@ -507,7 +510,7 @@ test.describe.serial('data editor', () => {
 		const data = await readOpfsText(page, '/western-cards/components/tarot_builtin/data.csv');
 		expect(data).toContain('tarot_group');
 		expect(data).toContain('tarot_fool.svg');
-		expect(data.split('\n')).toHaveLength(79);
+		expect(data.trimEnd().split('\n')).toHaveLength(79);
 		await expect(page.locator('main svg image').first()).toBeVisible();
 	});
 });

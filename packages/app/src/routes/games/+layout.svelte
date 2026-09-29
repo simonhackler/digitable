@@ -27,6 +27,7 @@
 	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
 	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import {
 		createPresenceSurfaceRegistry,
 		createProjectNetwork,
@@ -38,7 +39,7 @@
 		setPresenceSurfaceRegistry,
 		type ProjectSession
 	} from '$lib/collaboration';
-	import { afterNavigate, beforeNavigate, goto, onNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { Ok, trySync } from 'wellcrafted/result';
 	import CollaborativeCursorLayer from '$lib/collaboration/collaborative-cursor-layer.svelte';
 
@@ -298,6 +299,7 @@
 			}
 
 			await onSetOpfsAdapter(root.data);
+			await goto(resolve('/games'));
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') return;
 			migrationError = error instanceof Error ? error.message : 'Could not select projects folder.';
@@ -346,17 +348,6 @@
 	afterNavigate(() => {
 		if (isInspectingProjects || projectsToMigrate === null || projectsToMigrate.length) return;
 		void openActiveProject(fileSystem, page.params.gameName);
-	});
-
-	onNavigate(async ({ from, to }) => {
-		const active = activeProjectState.current;
-		if (!active) return;
-		if (from?.params?.gameName === active.key && to?.params?.gameName === active.key) return;
-		const synchronized = await active.session.sync();
-		if (!synchronized.error) return;
-		activeProjectState.phase = 'error';
-		activeProjectState.error = synchronized.error.message;
-		throw new Error(synchronized.error.message);
 	});
 
 	beforeNavigate(({ cancel, willUnload }) => {

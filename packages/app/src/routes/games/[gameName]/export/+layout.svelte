@@ -37,10 +37,7 @@
 				projectName,
 				name,
 				snapshot,
-				[
-					{ template: svgTemplateFront },
-					{ template: svgTemplateBack, columnPrefix: 'back_' }
-				],
+				[{ template: svgTemplateFront }, { template: svgTemplateBack, columnPrefix: 'back_' }],
 				data.document,
 				useDataUrls
 			);

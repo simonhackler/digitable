@@ -67,9 +67,10 @@
 
 		const targetPrefix = `components/${newName}/`;
 		if (
-			[...projectSession.members('component-svg'), ...projectSession.members('component-data')].some(
-				(member) => member.path.startsWith(targetPrefix)
-			)
+			[
+				...projectSession.members('component-svg'),
+				...projectSession.members('component-data')
+			].some((member) => member.path.startsWith(targetPrefix))
 		) {
 			error = `Deck "${newName}" already exists.`;
 			return;

@@ -158,9 +158,7 @@ export type ProjectMemberDocumentByKind = {
 export type ProjectMemberPathByKind = {
 	'game-metadata': 'game.json';
 	'component-data': `components/${string}/data.csv`;
-	'component-svg':
-		| `components/${string}/front.svg`
-		| `components/${string}/back.svg`;
+	'component-svg': `components/${string}/front.svg` | `components/${string}/back.svg`;
 	rules: 'rules.md';
 	'table-setup': 'setup/table.svg';
 	'feedback-registry': 'feedback/playtests.json';
@@ -168,8 +166,7 @@ export type ProjectMemberPathByKind = {
 	asset: `assets/${string}`;
 };
 
-export type ProjectMemberDocumentFor<K extends ProjectMemberKind> =
-	ProjectMemberDocumentByKind[K];
+export type ProjectMemberDocumentFor<K extends ProjectMemberKind> = ProjectMemberDocumentByKind[K];
 export type ProjectMemberPathFor<K extends ProjectMemberKind> = ProjectMemberPathByKind[K];
 export type ProjectInputPath = ProjectMemberPathByKind[ProjectMemberKind];
 

@@ -58,6 +58,7 @@
 		}
 
 		await onSetOpfsAdapter(root.data);
+		await goto(resolve('/games'));
 	}
 
 	function onProjectChange(project: Game) {
