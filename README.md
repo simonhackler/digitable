@@ -17,6 +17,3 @@ Try it out at: https://digitable.ink/
 
 use devenv
 `devenv up`
-
-> [!WARNING] Some parts of this project are heavily "vibe coded". This mainly involves the svg editors.
-> I did this to experiment with agents, but I consider this hands off approach now a mistake. It will take some time to clean up the resulting code

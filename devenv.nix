@@ -10,6 +10,7 @@
   dbPort = 54329;
   sitePort = config.processes.proxy.ports.http.value;
   appPort = config.processes.app.ports.http.value;
+  docsPort = config.processes.docs.ports.http.value;
   studioPort = config.processes.studio.ports.http.value;
   serverPort = config.processes.game-server.ports.http.value;
   syncServerPort = config.processes.sync-server.ports.http.value;
@@ -46,6 +47,11 @@
   caddyfile = pkgs.writeText "digitable-devenv.Caddyfile" ''
     {
       admin off
+    }
+
+    http://docs.localhost:${toString sitePort} {
+        encode zstd gzip
+        reverse_proxy 127.0.0.1:${toString docsPort}
     }
 
     http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
@@ -154,6 +160,7 @@ in {
     DISCORD_CLIENT_SECRET = discordClientSecret;
     WEB_ORIGIN = studioOrigin;
     SECOND_WEB_ORIGIN = "";
+    PUBLIC_DOCS_URL = "http://docs.localhost:${toString sitePort}";
     AUTH_COOKIE_DOMAIN = "";
     REPLICATE_API_TOKEN = "tmp";
 
@@ -288,6 +295,7 @@ in {
       ports.http.allocate = 5174;
       exec = "bun run --filter=studio dev -- --host 127.0.0.1 --port ${toString studioPort} --strictPort";
       env.ORIGIN = studioOrigin;
+      env.PUBLIC_DOCS_URL = "http://docs.localhost:${toString sitePort}";
     };
 
     app = {
@@ -300,6 +308,11 @@ in {
       env.PORT = toString appPort;
       env.ORIGIN = studioOrigin;
       env.PUBLIC_GAME_SERVER_URL = "ws://localhost:${toString serverPort}";
+    };
+
+    docs = {
+      ports.http.allocate = 4321;
+      exec = "bun run --filter=@digitable/docs dev -- --host 127.0.0.1 --port ${toString docsPort} --strictPort";
     };
 
     game-server = {
