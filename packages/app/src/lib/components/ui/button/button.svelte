@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	/* eslint-disable svelte/no-navigation-without-resolve -- Dynamic hrefs are resolved by resolvePath. */
 	import { cn, type WithElementRef } from '$lib/utils/utils.js';
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 	import { type VariantProps, tv } from 'tailwind-variants';

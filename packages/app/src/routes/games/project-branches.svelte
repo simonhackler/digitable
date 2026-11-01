@@ -114,6 +114,7 @@
 		const url = new URL(page.url);
 		url.searchParams.set('checkpoint', checkpoint.id);
 		url.searchParams.delete('baseline');
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- url is based on the current page.
 		void goto(url);
 	}
 
@@ -121,6 +122,7 @@
 		const url = new URL(page.url);
 		if (baselineId === checkpoint.id) url.searchParams.delete('baseline');
 		else url.searchParams.set('baseline', checkpoint.id);
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- url is based on the current page.
 		void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
@@ -128,6 +130,7 @@
 		const url = new URL(page.url);
 		url.searchParams.delete('checkpoint');
 		url.searchParams.delete('baseline');
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- url is based on the current page.
 		void goto(url);
 	}
 

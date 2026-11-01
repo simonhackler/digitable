@@ -148,6 +148,7 @@
 				target.searchParams.delete('checkpoint');
 				target.searchParams.delete('baseline');
 				void (async () => {
+					// eslint-disable-next-line svelte/no-navigation-without-resolve -- target is a URL based on the current page.
 					if (target.href !== page.url.href) await goto(target, { replaceState: true });
 					await openActiveProject(fileSystem, gameName, true);
 				})();

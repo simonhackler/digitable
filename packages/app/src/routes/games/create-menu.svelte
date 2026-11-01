@@ -1,4 +1,5 @@
 <script lang="ts">
+	/* eslint-disable svelte/no-navigation-without-resolve -- projectViewHref preserves query parameters on resolved paths. */
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { resolve } from '$app/paths';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';

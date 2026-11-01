@@ -7,7 +7,6 @@ import type { MaterializerContext, MemberMaterializer } from './materializer';
 import {
 	isBinaryFileDocument,
 	type BinaryFileDocument,
-	type MarkdownFileDocument,
 	type ProjectMemberDocument,
 	type ProjectMemberKind
 } from './model';
