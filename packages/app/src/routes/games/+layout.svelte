@@ -5,7 +5,12 @@
 	import PickFolder from '../../lib/components/pick-folder.svelte';
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import type { Game } from './types';
-	import { setFileSystemContext, setGamesContext } from './context';
+	import {
+		setActiveProjectState,
+		setFileSystemContext,
+		setGamesContext,
+		type ActiveProjectState
+	} from './context';
 	import { generateAgentFiles } from '$lib/utils/agent-generator.js';
 	import { isPlaytestImportFolderName } from '$lib/playtests/project-transfer';
 	import { Button } from '$lib/components/ui/button';
@@ -20,14 +25,38 @@
 		writeProjectsRootMarker
 	} from '$lib/workspace/projects-root';
 	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
+	import {
+		createPresenceSurfaceRegistry,
+		createProjectNetwork,
+		createDocumentState,
+		createProjectPresenceState,
+		gameMetadataMaterializer,
+		openProjectSession,
+		projectPresencePage,
+		setPresenceSurfaceRegistry,
+		type ProjectSession
+	} from '$lib/collaboration';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { Ok, trySync } from 'wellcrafted/result';
+	import CollaborativeCursorLayer from '$lib/collaboration/collaborative-cursor-layer.svelte';
 
 	let fileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
 	const fileSystem = $derived(fileSystemState.adapter);
-	setFileSystemContext(fileSystemState);
+	let viewFileSystemState: { adapter: FsDir | null } = $state({ adapter: null });
+	setFileSystemContext(viewFileSystemState);
 	const gamesState: { existingGames: Game[] | null } = $state({ existingGames: null });
 	const games = $derived(gamesState.existingGames);
 	setGamesContext(gamesState);
+	const activeProjectState: ActiveProjectState = $state({
+		phase: 'idle',
+		current: null,
+		reconciliation: { state: 'idle' },
+		error: null
+	});
+	setActiveProjectState(activeProjectState);
 	let projectsToMigrate = $state<string[] | null>(null);
 	let migrationError = $state('');
 	let isMigrating = $state(false);
@@ -36,7 +65,136 @@
 	let canPickProjectsFolder = $state(false);
 	let migrationDigitableVersion = $state<string | undefined>();
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
+	const activeGameName = $derived(page.params.gameName);
+	const activeCheckpointId = $derived(page.url.searchParams.get('checkpoint') ?? undefined);
+	const activeViewKey = $derived(`${activeGameName ?? ''}:${activeCheckpointId ?? 'latest'}`);
+	const presencePage = $derived(projectPresencePage(page.route.id, page.params));
+	const surfaces = createPresenceSurfaceRegistry();
+	const presenceSurface = surfaces.surface({ id: 'project-page' });
+	setPresenceSurfaceRegistry(surfaces);
+	let projectGeneration = 0;
 
+	function configurePresence(session: ProjectSession): void {
+		session.presence.setParticipant({ displayName: page.data.user?.name || 'Collaborator' });
+		session.presence.setPage(presencePage.id);
+	}
+
+	async function closeActiveProject() {
+		projectGeneration += 1;
+		const active = activeProjectState.current;
+		activeProjectState.current = null;
+		activeProjectState.phase = 'idle';
+		activeProjectState.error = null;
+		activeProjectState.reconciliation = { state: 'idle' };
+		viewFileSystemState.adapter = fileSystem;
+		if (!active) return;
+		active.metadata.destroy();
+		active.presence.destroy();
+		await active.session.close();
+	}
+
+	async function openActiveProject(
+		fileSystem: FsDir | null,
+		gameName: string | undefined,
+		force = false
+	) {
+		const active = activeProjectState.current;
+		if (
+			!force &&
+			active &&
+			activeProjectState.phase === 'ready' &&
+			active.key === gameName &&
+			active.viewKey === activeViewKey &&
+			fileSystem
+		) {
+			configurePresence(active.session);
+			return;
+		}
+		const generation = ++projectGeneration;
+		const previous = activeProjectState.current;
+		activeProjectState.current = null;
+		activeProjectState.error = null;
+		activeProjectState.reconciliation = { state: 'idle' };
+		activeProjectState.phase = fileSystem && gameName ? 'opening' : 'idle';
+
+		if (previous) {
+			previous.metadata.destroy();
+			previous.presence.destroy();
+			const closed = await previous.session.close();
+			if (closed.error && generation === projectGeneration) {
+				activeProjectState.phase = 'error';
+				activeProjectState.error = closed.error.message;
+				return;
+			}
+		}
+		if (generation !== projectGeneration || !fileSystem || !gameName) return;
+
+		const projectDir = await fileSystem.openDir(gameName);
+		if (generation !== projectGeneration) return;
+		if (projectDir.error) {
+			activeProjectState.phase = 'error';
+			activeProjectState.error = projectDir.error.message;
+			return;
+		}
+
+		let openingError: string | null = null;
+		const opened = await openProjectSession(projectDir.data, {
+			network: createProjectNetwork(window.location.href, Boolean(page.data.user)),
+			saveDebounceMs: 0,
+			checkpointId: activeCheckpointId,
+			onBranchCheckout: () => {
+				if (generation !== projectGeneration) return;
+				const target = new URL(page.url);
+				target.searchParams.delete('checkpoint');
+				target.searchParams.delete('baseline');
+				void (async () => {
+					// eslint-disable-next-line svelte/no-navigation-without-resolve -- target is a URL based on the current page.
+					if (target.href !== page.url.href) await goto(target, { replaceState: true });
+					await openActiveProject(fileSystem, gameName, true);
+				})();
+			},
+			onStatus: (status) => {
+				if (generation !== projectGeneration) return;
+				activeProjectState.reconciliation = status;
+				if (status.state === 'error' && status.scope === 'project') {
+					openingError = status.message;
+					activeProjectState.phase = 'error';
+					activeProjectState.error = status.message;
+				}
+			}
+		});
+		if (generation !== projectGeneration) {
+			if (!opened.error) await opened.data.close();
+			return;
+		}
+		if (opened.error) {
+			activeProjectState.phase = 'error';
+			activeProjectState.error = opened.error.message;
+			return;
+		}
+		if (openingError) {
+			await opened.data.close();
+			return;
+		}
+
+		activeProjectState.current = {
+			key: gameName,
+			viewKey: activeViewKey,
+			session: opened.data,
+			presence: createProjectPresenceState(opened.data.presence),
+			metadata: createDocumentState(opened.data.metadataHandle, (metadata) => {
+				if (generation !== projectGeneration || !metadata || !gamesState.existingGames) return;
+				gamesState.existingGames = gamesState.existingGames.map((game) =>
+					game.name === gameName
+						? { ...game, description: metadata.description, tags: [...metadata.tags] }
+						: game
+				);
+			})
+		};
+		viewFileSystemState.adapter = fileSystem;
+		configurePresence(opened.data);
+		activeProjectState.phase = 'ready';
+	}
 	async function getGames(fileSystem: Readonly<FsDir>) {
 		const root = await fileSystem.list();
 		if (root.error) return [];
@@ -56,11 +214,16 @@
 
 			const gameFile = await projectDir.data.readText('game.json');
 			let description = '';
-			let tags = [];
+			let tags: string[] = [];
 			if (!gameFile.error) {
-				const gameData = JSON.parse(gameFile.data);
-				description = gameData.description;
-				tags = gameData.tags || [];
+				const { data: metadata } = trySync({
+					try: () => gameMetadataMaterializer.parse(gameFile.data, { hash: '' }),
+					catch: () => Ok(null)
+				});
+				if (metadata) {
+					description = metadata.description;
+					tags = metadata.tags;
+				}
 			}
 
 			const componentEntries = await listProjectComponents(projectDir.data);
@@ -103,11 +266,13 @@
 	}
 
 	async function onSetOpfsAdapter(adapter: FsDir) {
+		await closeActiveProject();
 		migrationError = '';
 		projectsToMigrate = null;
 		gamesState.existingGames = null;
 		isInspectingProjects = true;
 		fileSystemState.adapter = adapter;
+		viewFileSystemState.adapter = adapter;
 		await generateAgentFiles(adapter);
 		const marker = await readProjectsRootMarker(adapter);
 		migrationDigitableVersion = marker.error ? undefined : marker.data.digitableVersion;
@@ -119,6 +284,7 @@
 		projectsToMigrate = migrations;
 		gamesState.existingGames = migrations.length ? null : await getGames(adapter);
 		isInspectingProjects = false;
+		if (!migrations.length) await openActiveProject(adapter, page.params.gameName);
 	}
 
 	async function selectDifferentProjectsFolder() {
@@ -134,6 +300,7 @@
 			}
 
 			await onSetOpfsAdapter(root.data);
+			await goto(resolve('/games'));
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') return;
 			migrationError = error instanceof Error ? error.message : 'Could not select projects folder.';
@@ -170,6 +337,7 @@
 		projectsToMigrate = [];
 		gamesState.existingGames = await getGames(fileSystem);
 		isMigrating = false;
+		await openActiveProject(fileSystem, page.params.gameName);
 	}
 
 	let { children } = $props();
@@ -177,13 +345,41 @@
 	onMount(() => {
 		canPickProjectsFolder = 'showDirectoryPicker' in window;
 	});
+
+	afterNavigate(() => {
+		if (isInspectingProjects || projectsToMigrate === null || projectsToMigrate.length) return;
+		void openActiveProject(fileSystem, page.params.gameName);
+	});
+
+	beforeNavigate(({ cancel, willUnload }) => {
+		if (willUnload && activeProjectState.reconciliation.state === 'syncing') cancel();
+	});
+
+	onDestroy(() => {
+		surfaces.close();
+		void closeActiveProject();
+	});
 </script>
 
 <Sidebar.Provider>
 	{#if fileSystem && games}
-		<AppSidebar {games} {fileSystem} {onSetOpfsAdapter} />
+		<AppSidebar
+			{games}
+			{fileSystem}
+			{onSetOpfsAdapter}
+			projectSession={activeProjectState.current?.session ?? null}
+			peers={activeProjectState.current?.presence.peers ?? []}
+		/>
 	{/if}
-	<main class="relative min-w-0 flex-1">
+	<main class="relative min-w-0 flex-1" {@attach presenceSurface}>
+		{#if activeProjectState.current?.session.readOnly}
+			<div
+				class="border-primary/20 bg-primary/10 text-primary absolute top-2 right-3 z-40 rounded-full border px-3 py-1 text-xs font-medium shadow-sm"
+				role="status"
+			>
+				Viewing historical checkpoint · Read only
+			</div>
+		{/if}
 		{#if !fileSystem}
 			<div class="mt-12 flex w-full flex-col items-center justify-center gap-4 text-xl">
 				<PickFolder {onSetOpfsAdapter}></PickFolder>
@@ -226,13 +422,34 @@
 					</div>
 				</div>
 			</div>
-		{:else}
+		{:else if activeGameName && activeProjectState.phase === 'opening'}
+			<p class="text-muted-foreground p-6 text-sm">Opening project...</p>
+		{:else if activeGameName && activeProjectState.phase === 'error'}
+			<div class="flex min-h-screen items-center justify-center p-6">
+				<div class="border-border bg-background max-w-lg space-y-4 rounded-lg border p-6 shadow-sm">
+					<p class="text-destructive text-sm" role="alert">{activeProjectState.error}</p>
+					<Button onclick={() => openActiveProject(fileSystem, activeGameName)}>Retry</Button>
+				</div>
+			</div>
+		{:else if !activeGameName || activeProjectState.current?.key === activeGameName}
 			<svelte:boundary>
 				{#snippet pending()}
 					<p>loading...</p>
 				{/snippet}
-				{@render children?.()}
+				{#key activeProjectState.current?.viewKey}
+					{@render children?.()}
+				{/key}
 			</svelte:boundary>
+		{/if}
+		{#if activeProjectState.current && !activeProjectState.current.session.readOnly && presencePage.pointerEnabled}
+			{#key activeProjectState.current.session.rootUrl}
+				<CollaborativeCursorLayer
+					presence={activeProjectState.current.session.presence}
+					pageId={presencePage.id}
+					{surfaces}
+					peers={activeProjectState.current.presence.peers}
+				/>
+			{/key}
 		{/if}
 	</main>
 </Sidebar.Provider>

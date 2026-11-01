@@ -7,19 +7,26 @@
 	import { Plus } from '@lucide/svelte';
 	import type { Game } from './types.js';
 	import CreateGamePopover from './create-game-popover.svelte';
+	import { peersOnProjectPages, type RemotePresenceState } from '$lib/collaboration';
+	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
 
 	let {
 		games,
 		activeProject,
-		onProjectChange
+		onProjectChange,
+		peers
 	}: {
 		games: Game[];
 		activeProject: Game | null;
 		onProjectChange: (project: Game) => void;
+		peers: RemotePresenceState[];
 	} = $props();
 
 	const sidebar = useSidebar();
 	let createGameOpen = $state(false);
+	const overviewPeers = $derived(
+		peersOnProjectPages(peers, '/games/[gameName]', { gameName: activeProject?.name })
+	);
 </script>
 
 <Sidebar.Menu>
@@ -44,6 +51,7 @@
 								</span>
 								<!-- <span class="truncate text-xs">{activeProject.plan}</span> -->
 							</div>
+							<SidebarPresenceAvatars peers={overviewPeers} pageLabel={activeProject.name} />
 							<ChevronsUpDownIcon class="ml-auto" />
 						</Sidebar.MenuButton>
 					{/snippet}

@@ -14,21 +14,27 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
+	import type { ProjectSession, RemotePresenceState } from '$lib/collaboration';
+	import ProjectBranches from './project-branches.svelte';
+	import ShareProjectPopover from './share-project-popover.svelte';
 
 	let {
 		games,
 		fileSystem,
-		onSetOpfsAdapter
+		onSetOpfsAdapter,
+		projectSession,
+		peers
 	}: {
 		games: Game[];
 		fileSystem: FsDir;
 		onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => Promise<void>;
+		projectSession: ProjectSession | null;
+		peers: RemotePresenceState[];
 	} = $props();
 
 	let activeProject = $derived.by(() => {
 		const game = games.find((game) => game.name === page.params.gameName);
-		if (game) return game;
-		return games.length > 0 ? games[0] : null;
+		return game ?? null;
 	});
 
 	// TODO why have this bs be null?
@@ -52,6 +58,7 @@
 		}
 
 		await onSetOpfsAdapter(root.data);
+		await goto(resolve('/games'));
 	}
 
 	function onProjectChange(project: Game) {
@@ -62,15 +69,32 @@
 
 <Sidebar.Root>
 	<Sidebar.Header>
-		<ProjectSwitcher {games} {activeProject} {onProjectChange} />
+		<ProjectSwitcher {games} {activeProject} {onProjectChange} {peers} />
+		{#if projectSession}
+			{#key projectSession.rootUrl}
+				<ProjectBranches session={projectSession} />
+				{#if user}
+					<div class="px-2 pb-2">
+						<ShareProjectPopover session={projectSession} />
+					</div>
+				{/if}
+			{/key}
+		{/if}
 	</Sidebar.Header>
 	{#if projectFolderResult.error}
 		<!-- Todo display error -->
 	{:else}
 		<Sidebar.Content>
-			<CreateMenu activeGame={activeProject} fileSystem={projectFolderResult.data} />
-			<ExportMenu activeGame={activeProject} />
-			<PlaySidebarMenu activeGame={activeProject} />
+			{#if projectSession}
+				<CreateMenu
+					activeGame={activeProject}
+					fileSystem={projectFolderResult.data}
+					{projectSession}
+					{peers}
+				/>
+			{/if}
+			<ExportMenu activeGame={activeProject} {peers} />
+			<PlaySidebarMenu activeGame={activeProject} {peers} />
 			<Sidebar.Group />
 		</Sidebar.Content>
 	{/if}

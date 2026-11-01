@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export type Mapping = { src: string; dest: string };
 
-const EXCLUDED_DIRECTORY_NAMES = new Set(['feedback', 'tts-export']);
+const EXCLUDED_DIRECTORY_NAMES = new Set(['.automerge', 'feedback', 'tts-export']);
 const SEED_CONCURRENCY = 4;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultProjectsDir = path.resolve(here, '../../projects');
@@ -17,7 +17,12 @@ const shouldSeedProjectEntry = (name: string) => !name.startsWith('.');
 
 const shouldSeedPath = (dest: string) => {
 	const parts = dest.split('/').filter(Boolean);
-	return !parts.includes('tts-export') && !parts.includes('system') && !parts.includes('files');
+	return (
+		!parts.includes('.automerge') &&
+		!parts.includes('tts-export') &&
+		!parts.includes('system') &&
+		!parts.includes('files')
+	);
 };
 
 const shouldSeedProjectAsset = (dest: string, includeFileAssets: boolean) => {
@@ -291,6 +296,21 @@ export async function readOpfsText(page: Page, sourcePath: string) {
 		}
 		const handle = await dir.getFileHandle(fileName);
 		return handle.getFile().then((file) => file.text());
+	}, sourcePath);
+}
+
+export async function readOpfsBytes(page: Page, sourcePath: string) {
+	return page.evaluate(async (sourcePath) => {
+		const storage = navigator.storage as StorageManager & {
+			getDirectory: () => Promise<FileSystemDirectoryHandle>;
+		};
+		const root = await storage.getDirectory();
+		const parts = sourcePath.replace(/^\/+/, '').split('/');
+		const fileName = parts.pop()!;
+		let dir = root;
+		for (const part of parts) dir = await dir.getDirectoryHandle(part);
+		const handle = await dir.getFileHandle(fileName);
+		return Array.from(new Uint8Array(await (await handle.getFile()).arrayBuffer()));
 	}, sourcePath);
 }
 

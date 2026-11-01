@@ -12,6 +12,7 @@ const APP_BASE = '/app';
 
 const publicPathPrefixes = [
 	`${APP_BASE}/api/auth`,
+	`${APP_BASE}/api/sync-auth`,
 	resolvePath('/api/legal/accept-current'),
 	resolvePath('/legal/accept'),
 	resolvePath('/sign-in'),

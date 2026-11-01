@@ -7,7 +7,7 @@
 	import jspreadsheet, { type JspreadsheetInstanceElement } from 'jspreadsheet-ce';
 	import type { Attachment } from 'svelte/attachments';
 	import { ScrollState } from 'runed';
-	import { getFileSystemContext } from '../../../../context';
+	import { getActiveProjectContext } from '../../../../context';
 	import {
 		generateSvg,
 		updateSvg,
@@ -17,13 +17,15 @@
 	import { defaultContextMenuItems, type SheetContextMenuItem } from './default-contextmenu';
 	import Toolbar from './toolbar.svelte';
 	import { type CellValue } from 'jspreadsheet-ce';
-	import { loadSvgsAndDataForSides, resolveImageReference } from '../../../data-loader';
+	import {
+		loadSvgsAndDataForSidesFromDocument,
+		resolveSessionImageReference
+	} from '../../../data-loader';
 	import { assert, requireParam } from '$lib/utils/assert';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import { ImageEditor } from './custom-image';
 	import { getDeckSideIndexContext } from '../svg-context.svelte';
+	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
 
 	const {
 		svgTemplateFront,
@@ -47,17 +49,26 @@
 
 	const projectName = $derived(requireParam('gameName'));
 	const cardName = $derived(requireParam('deckName'));
-	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const deckSideIndex = getDeckSideIndexContext();
 	const sides: SvgSide[] = $derived([
 		{ template: svgTemplateFront, columnPrefix: '' },
 		{ template: svgTemplateBack, columnPrefix: 'back_' }
 	]);
+	const dataMember = $derived(
+		project.session.member('component-data', `components/${cardName}/data.csv`)
+	);
 
 	const loadedSvgsAndData = $derived(
-		await loadSvgsAndDataForSides(projectName, cardName, fileSystem, sides, false, {
-			missingDataCsv: 'generate'
-		})
+		await loadSvgsAndDataForSidesFromDocument(
+			projectName,
+			cardName,
+			project.session,
+			sides,
+			dataMember?.handle.doc(),
+			false,
+			{ missingDataCsv: 'generate' }
+		)
 	);
 	const loadedData = $derived.by(() => {
 		if (loadedSvgsAndData.error) throw new Error(loadedSvgsAndData.error.message);
@@ -85,6 +96,14 @@
 	const svgsToShow = $derived(cards.map((card) => card.sides[activeSideIndex] ?? card.sides[0]));
 
 	let spreadsheet: jspreadsheet.WorksheetInstance[] = $state([]);
+	const spreadsheetPresence = createPresenceRegionAttachment({
+		id: 'spreadsheet',
+		space: 'scroll'
+	});
+	const cardPreviewPresence = createPresenceRegionAttachment({
+		id: 'card-previews',
+		space: 'visible'
+	});
 	let selectionRects: SVGRectElement[] = [];
 	let saveStatus = $state<'saved' | 'saving' | 'error'>('saved');
 	let activeSavePromises = $state<Promise<void>[]>([]);
@@ -140,14 +159,11 @@
 		if (!rows.length) return;
 		const header = spreadsheet[0].getHeaders(true) as string[];
 
-		const csvText = Papa.unparse([header, ...rows]);
-		const csvFile = new File([csvText], 'data.csv', {
-			type: 'text/csv',
-			lastModified: Date.now()
+		const csvText = Papa.unparse([header, ...rows], { newline: '\n' });
+		const res = await project.session.put({
+			path: `components/${cardName}/data.csv`,
+			data: csvText
 		});
-		const deckDir = await fileSystem.ensureDir(joinFsPath(projectName, COMPONENTS_DIR, cardName));
-		if (deckDir.error) throw new Error(`Upload failed for data.csv: ${deckDir.error.message}`);
-		const res = await deckDir.data.write(csvFile.name, csvFile);
 		if (res.error) throw new Error(`Upload failed for data.csv: ${res.error.message}`);
 	}
 
@@ -363,7 +379,10 @@
 		const headers = spreadsheet[0].getHeaders(true) as string[];
 		const columns = spreadsheet[0].getConfig()?.columns ?? [];
 		if (columns[x]?.type === ImageEditor && !imagePaths.has(value)) {
-			imagePaths.set(value, await resolveImageReference(fileSystem, projectName, value));
+			imagePaths.set(
+				value,
+				await resolveSessionImageReference(project.session, projectName, value)
+			);
 		}
 		updateCardSvgColumn(cards[y], headers[x], value);
 		cards = [...cards]; //TODO FORCE update for imageSelectionModal, very hacky.
@@ -493,6 +512,8 @@
 			<div
 				bind:this={scrollEl}
 				class="flex w-full max-w-full flex-nowrap gap-2 overflow-x-auto overflow-y-hidden scroll-smooth rounded-md border whitespace-nowrap"
+				data-card-previews
+				{@attach cardPreviewPresence}
 			>
 				{#each svgsToShow as svg, i (svg.id)}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -536,7 +557,7 @@
 			<div class="grid w-fit grid-cols-[auto_auto] grid-rows-[auto_auto] gap-1">
 				<ContextMenu.Root>
 					<ContextMenu.Trigger>
-						<div id="spreadsheet" {@attach mountSpreadsheet}></div>
+						<div id="spreadsheet" {@attach spreadsheetPresence} {@attach mountSpreadsheet}></div>
 					</ContextMenu.Trigger>
 					<ContextMenu.Content>
 						{#each contextItems as item (item)}

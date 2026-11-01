@@ -1,29 +1,42 @@
 <script lang="ts">
-	import { onNavigate } from '$app/navigation';
 	import { asset } from '$app/paths';
+	import { page } from '$app/state';
 	import {
 		createEditorController,
+		createSvgDocumentBinding,
 		ReferenceEditor,
 		ReferenceEditorToolbar,
-		type ChangeEvent
+		type ChangeEvent,
+		type RemoteSvgInteraction,
+		type SvgClaim,
+		type SvgDocument,
+		type SvgDocumentBinding,
+		type SvgInteractionEvent
 	} from '@svg-table/svgeditor';
+	import { hasHeads } from '@automerge/automerge';
+	import { decodeHeads, type DocHandle, type UrlHeads } from '@automerge/automerge-repo';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { FlipHorizontal2, Table2, Upload } from '@lucide/svelte';
 	import placeholderFrontSvg from '../../../../../../../static/placeholder.svg?raw';
-	import { useDebounce } from 'runed';
-	import { getFileSystemContext } from '../../../../context';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
-	import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import { getActiveProjectContext } from '../../../../context';
+	import { ASSETS_DIR } from '$lib/workspace/project-layout';
 	import { requireParam } from '$lib/utils/assert';
 	import { createEmptySvg } from '$lib/utils/svg-helpers.js';
-	import { isEmbeddedImageReference, resolveImageReference } from '../../../data-loader';
+	import { isEmbeddedImageReference, resolveSessionImageReference } from '../../../data-loader';
 	import ImageSelector from '../../../image-selector.svelte';
 	import { getDeckSideIndexContext, getToLoadSvgsContext } from '../svg-context.svelte';
 	import GameTopBar from '../../../../game-top-bar.svelte';
 	import { Separator } from '$lib/components/ui/separator';
+	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
+	import { projectPresencePage } from '$lib/collaboration/presence-page';
+	import { presenceColor } from '$lib/collaboration/project-presence';
+	import type {
+		ProjectSvgInteractionChannel,
+		ProjectSvgInteractionLease
+	} from '$lib/collaboration/project-svg-interactions';
 
 	const SVG_EDITOR_ASSET_BASE_PATH = asset('/svgedit/images');
 
@@ -44,10 +57,9 @@
 	const XLINK_NS = 'http://www.w3.org/1999/xlink';
 	const ORIGINAL_HREF_ATTR = 'data-digitable-original-href';
 
-	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const game = $derived(requireParam('gameName'));
 	const deck = $derived(requireParam('deckName'));
-	const folder = $derived(joinFsPath(game, COMPONENTS_DIR, deck));
 	const dataPath = $derived(`/games/${game}/decks/${deck}/data`);
 	const maxSvgUploadSize = 12 * 1024 * 1024;
 	const deckSideIndex = getDeckSideIndexContext();
@@ -102,12 +114,7 @@
 		};
 	};
 
-	const applySvgMeta = (value: string, meta: SvgMeta): string => {
-		if (!value) return value;
-		if (!meta.width && !meta.height && !meta.viewBox) return value;
-		const doc = new DOMParser().parseFromString(value, 'image/svg+xml');
-		const root = doc.documentElement;
-		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+	const applySvgMetaToRoot = (root: Element, meta: SvgMeta) => {
 		if (meta.width) root.setAttribute('width', meta.width);
 		if (meta.height) root.setAttribute('height', meta.height);
 		if (meta.viewBox) root.setAttribute('viewBox', meta.viewBox);
@@ -118,26 +125,131 @@
 				root.setAttribute('viewBox', `0 0 ${w} ${h}`);
 			}
 		}
+	};
+
+	const applySvgMeta = (value: string, meta: SvgMeta): string => {
+		if (!value) return value;
+		if (!meta.width && !meta.height && !meta.viewBox) return value;
+		const doc = new DOMParser().parseFromString(value, 'image/svg+xml');
+		const root = doc.documentElement;
+		if (!root || root.tagName.toLowerCase() !== 'svg') return value;
+		applySvgMetaToRoot(root, meta);
 		return new XMLSerializer().serializeToString(doc);
 	};
+	const containsHeads = (handle: DocHandle<SvgDocument>, heads: UrlHeads) =>
+		hasHeads(handle.fullDoc(), decodeHeads(heads));
 
 	const loadSvgTemplates = getToLoadSvgsContext();
 	const svgs = $derived(await loadSvgTemplates());
 
-	let front = $derived(svgs.frontText);
-	let back = $derived(svgs.backText);
-	let frontMeta = $derived(getSvgMeta(svgs.frontText));
-	let backMeta = $derived(getSvgMeta(svgs.backText));
+	let frontBinding = $state.raw<SvgDocumentBinding | null>(null);
+	let backBinding = $state.raw<SvgDocumentBinding | null>(null);
+	let frontOverride = $state<string | null>(null);
+	let backOverride = $state<string | null>(null);
+	let interactionSide = $state<Side | null>(null);
+	let interactionSvg = $state<string | null>(null);
+	const front = $derived(
+		interactionSide === 'front' && interactionSvg !== null
+			? interactionSvg
+			: (frontBinding?.current ?? frontOverride ?? svgs.frontText)
+	);
+	const back = $derived(
+		interactionSide === 'back' && interactionSvg !== null
+			? interactionSvg
+			: (backBinding?.current ?? backOverride ?? svgs.backText)
+	);
+	const frontMeta = $derived(getSvgMeta(front));
+	const backMeta = $derived(getSvgMeta(back));
 	const sideIndex = $derived(deckSideIndex.sideIndex);
 	const side = $derived(sideIndex === 0 ? 'front' : 'back');
 	const editorKey = $derived(`${game}/${deck}/${side}`);
+	const svgEditorPresence = createPresenceRegionAttachment({
+		id: () => `svg-editor:${deck}:${side}`
+	});
 	let blankWidth = $state(63);
 	let blankHeight = $state(88);
 	let createTemplatesDialogOpen = $state(false);
 	let uploadInput: HTMLInputElement | null = $state(null);
 	let imageSelectorOpen = $state(false);
 	let imagePickerTarget = $state<ImagePickerTarget | null>(null);
+	let remoteInteractions = $state.raw<RemoteSvgInteraction[]>([]);
+	let blockedClaims = $state.raw<SvgClaim[]>([]);
+	let interactionChannel = $state.raw<ProjectSvgInteractionChannel | null>(null);
+	let activeInteractionId: string | null = null;
+	let activeInteractionLease: ProjectSvgInteractionLease | null = null;
+	let activeInteractionBaseHeads: UrlHeads | null = null;
+	let pendingCommitHeads: UrlHeads | null = null;
 	const editorController = createEditorController();
+
+	$effect(() => {
+		const componentName = deck;
+		const frontHandle = project.session.member(
+			'component-svg',
+			`components/${componentName}/front.svg`
+		)?.handle;
+		const backHandle = project.session.member(
+			'component-svg',
+			`components/${componentName}/back.svg`
+		)?.handle;
+		const nextFrontBinding = frontHandle ? createSvgDocumentBinding(frontHandle) : null;
+		const nextBackBinding = backHandle ? createSvgDocumentBinding(backHandle) : null;
+		frontBinding = nextFrontBinding;
+		backBinding = nextBackBinding;
+		frontOverride = null;
+		backOverride = null;
+		return () => {
+			nextFrontBinding?.destroy();
+			nextBackBinding?.destroy();
+		};
+	});
+
+	$effect(() => {
+		const componentName = deck;
+		const currentSide = side;
+		const handle = project.session.member(
+			'component-svg',
+			`components/${componentName}/${currentSide}.svg`
+		)?.handle;
+		const pageId = projectPresencePage(page.route.id, page.params).id;
+		if (!handle) {
+			interactionChannel = null;
+			remoteInteractions = [];
+			blockedClaims = [];
+			return;
+		}
+		const channel = project.session.svgInteractions.forDocument(String(handle.documentId), pageId);
+		interactionChannel = channel;
+		const unsubscribe = channel.subscribe((state) => {
+			queueMicrotask(() => {
+				if (interactionChannel !== channel) return;
+				remoteInteractions = [...state.handoffs, ...state.active].map((interaction) => ({
+					...interaction,
+					color: presenceColor(interaction.instanceId)
+				}));
+				blockedClaims = state.claims;
+			});
+		});
+		const observeHeads = () =>
+			channel.observeHeads((commitHeads) => containsHeads(handle, commitHeads));
+		handle.on('change', observeHeads);
+		observeHeads();
+
+		return () => {
+			if (activeInteractionLease) activeInteractionLease.cancel();
+			activeInteractionLease = null;
+			activeInteractionId = null;
+			activeInteractionBaseHeads = null;
+			pendingCommitHeads = null;
+			interactionSide = null;
+			interactionSvg = null;
+			if (interactionChannel === channel) interactionChannel = null;
+			unsubscribe();
+			handle.off('change', observeHeads);
+			channel.dispose();
+			remoteInteractions = [];
+			blockedClaims = [];
+		};
+	});
 
 	const svg = $derived(side === 'front' ? front : back);
 	const editorSvg = $derived(await resolveSvgImagesForEditor(svg, game));
@@ -169,27 +281,35 @@
 		if (!value) return;
 		const nextMeta = nextSide === 'front' ? frontMeta : backMeta;
 		const nextValue = preserveCanvasMeta ? applySvgMeta(value, nextMeta) : value;
-		const file = new File([nextValue], `${nextSide}.svg`, { type: 'image/svg+xml' });
-		const deckDir = await fileSystem.ensureDir(folder);
-		if (deckDir.error) {
-			console.error(`Upload failed for ${nextSide}.svg`, deckDir.error);
-			return;
-		}
-		const written = await deckDir.data.write(file.name, file);
+		const written = await project.session.put({
+			path: `components/${deck}/${nextSide}.svg`,
+			data: nextValue
+		});
 		if (written.error) {
 			console.error(`Upload failed for ${nextSide}.svg`, written.error);
 			return;
+		}
+		const currentBinding = nextSide === 'front' ? frontBinding : backBinding;
+		if (!currentBinding) {
+			const handle = project.session.member(
+				'component-svg',
+				`components/${deck}/${nextSide}.svg`
+			)?.handle;
+			if (handle) {
+				const binding = createSvgDocumentBinding(handle);
+				if (nextSide === 'front') frontBinding = binding;
+				if (nextSide === 'back') backBinding = binding;
+			}
 		}
 		if (updateState) setSvgSide(nextSide, nextValue);
 	};
 
 	const setSvgSide = (nextSide: Side, value: string) => {
 		if (nextSide === 'front') {
-			front = value;
-			frontMeta = getSvgMeta(value);
-		} else {
-			back = value;
-			backMeta = getSvgMeta(value);
+			frontOverride = value;
+		}
+		if (nextSide === 'back') {
+			backOverride = value;
 		}
 		deckSideIndex.setSideIndex(sideIndexForSide(nextSide));
 	};
@@ -234,7 +354,7 @@
 	async function applySvgEditorImageSelection(imagePath: string) {
 		if (!imagePickerTarget || !imagePath) return;
 		const href = projectImagePathToSvgHref(imagePath);
-		const resolvedHref = await resolveImageReference(fileSystem, game, href, true);
+		const resolvedHref = await resolveSessionImageReference(project.session, game, href, true);
 		const attributes = { [ORIGINAL_HREF_ATTR]: href };
 		if (imagePickerTarget.mode === 'replace') {
 			imagePickerTarget.controller.setSelectedImageHref(resolvedHref, { attributes });
@@ -246,7 +366,7 @@
 	async function applySvgEditorImageHref(controller: EditorController, value: string) {
 		const href = normalizeSvgImageFileInput(value);
 		if (!href) return;
-		const resolvedHref = await resolveImageReference(fileSystem, game, href, true);
+		const resolvedHref = await resolveSessionImageReference(project.session, game, href, true);
 		controller.setSelectedImageHref(resolvedHref, {
 			attributes: { [ORIGINAL_HREF_ATTR]: href }
 		});
@@ -265,7 +385,7 @@
 				const href = getImageHref(image).trim();
 				if (!href || isEmbeddedImageReference(href)) return;
 
-				const resolvedHref = await resolveImageReference(fileSystem, projectName, href);
+				const resolvedHref = await resolveSessionImageReference(project.session, projectName, href);
 				image.setAttribute(ORIGINAL_HREF_ATTR, href);
 				setImageHref(image, resolvedHref);
 				if (resolvedHref.startsWith('blob:')) objectUrls.push(resolvedHref);
@@ -278,7 +398,7 @@
 		};
 	}
 
-	function normalizeEditorSvgImages(value: string) {
+	function normalizeEditorSvg(value: string, meta: SvgMeta) {
 		if (!value) return value;
 
 		const doc = new DOMParser().parseFromString(value, SVG_MIME_TYPE);
@@ -291,6 +411,7 @@
 			setImageHref(image, originalHref);
 			image.removeAttribute(ORIGINAL_HREF_ATTR);
 		}
+		applySvgMetaToRoot(root, meta);
 
 		return new XMLSerializer().serializeToString(doc);
 	}
@@ -305,15 +426,10 @@
 	});
 
 	const writePlaceholderSvg = async () => {
-		const file = new File([placeholderFrontSvg], 'placeholder.svg', {
-			type: 'image/svg+xml'
+		const placeholderWrite = await project.session.put({
+			path: `${ASSETS_DIR}/placeholder.svg`,
+			data: placeholderFrontSvg
 		});
-		const filesDir = await fileSystem.ensureDir(joinFsPath(game, ASSETS_DIR));
-		if (filesDir.error) {
-			console.error(filesDir.error);
-			return;
-		}
-		const placeholderWrite = await filesDir.data.write(file.name, file);
 		if (placeholderWrite.error) console.error(placeholderWrite.error);
 	};
 
@@ -376,54 +492,71 @@
 			: `Add an image to the ${sideLabel(side)} SVG`
 	);
 
-	let activeSavePromises = $state<Promise<void>[]>([]);
-
-	const saveSvgAndTrack = (nextSide: Side, value: string) => {
-		const promise = writeSvgSide(nextSide, value, { preserveCanvasMeta: true, updateState: false });
-		activeSavePromises = [...activeSavePromises, promise];
-		void promise.finally(() => {
-			activeSavePromises = activeSavePromises.filter((activePromise) => activePromise !== promise);
-		});
-		return promise;
-	};
-
-	const saveFrontDebounced = useDebounce((value: string) => saveSvgAndTrack('front', value), 600);
-	const saveBackDebounced = useDebounce((value: string) => saveSvgAndTrack('back', value), 600);
-
-	const scheduleSave = (nextSide: Side, value: string) => {
-		const promise = nextSide === 'front' ? saveFrontDebounced(value) : saveBackDebounced(value);
-		void promise.catch((error) => {
-			console.error(`Failed to save ${nextSide}.svg`, error);
-		});
-	};
-
-	const flushPendingSaves = async () => {
-		await Promise.all([saveFrontDebounced.runScheduledNow(), saveBackDebounced.runScheduledNow()]);
-		await Promise.allSettled(activeSavePromises);
-	};
-
-	onNavigate(() => {
-		if (
-			!saveFrontDebounced.pending &&
-			!saveBackDebounced.pending &&
-			activeSavePromises.length === 0
-		) {
-			return;
-		}
-		return flushPendingSaves();
-	});
-
 	const handleChange = (event: CustomEvent<ChangeEvent>) => {
 		const { svg: value, source } = event.detail;
-		if (source !== 'user' || !value) return;
-		const normalizedValue = normalizeEditorSvgImages(value);
-		if (side === 'front') {
-			front = normalizedValue;
+		if (source === 'external') return;
+		if (!value) return;
+		const normalizedValue = normalizeEditorSvg(value, activeMeta);
+		const binding = side === 'front' ? frontBinding : backBinding;
+		if (binding) {
+			pendingCommitHeads = binding.change(
+				normalizedValue,
+				activeInteractionBaseHeads ?? binding.heads
+			);
+			return;
 		}
-		if (side === 'back') {
-			back = normalizedValue;
+		void writeSvgSide(side, normalizedValue, { updateState: false });
+	};
+
+	const handleInteraction = (event: CustomEvent<SvgInteractionEvent>) => {
+		const interaction = event.detail;
+		const binding = side === 'front' ? frontBinding : backBinding;
+		if (interaction.phase === 'start') {
+			pendingCommitHeads = null;
+			interactionSide = side;
+			interactionSvg = svg;
+			activeInteractionId = interaction.interactionId;
+			activeInteractionBaseHeads = binding ? ([...binding.heads] as UrlHeads) : null;
+			activeInteractionLease = null;
+			const channel = interactionChannel;
+			if (channel && binding) {
+				queueMicrotask(() => {
+					if (activeInteractionId !== interaction.interactionId || interactionChannel !== channel)
+						return;
+					activeInteractionLease = channel.begin({
+						interactionId: interaction.interactionId,
+						kind: interaction.preview.kind,
+						nodeIds: interaction.nodeIds,
+						claims: interaction.claims,
+						baseHeads: binding.heads,
+						preview: interaction.preview
+					});
+				});
+			}
+			return;
 		}
-		scheduleSave(side, normalizedValue);
+		if (interaction.interactionId !== activeInteractionId) return;
+		if (interaction.phase === 'update') {
+			activeInteractionLease?.update(interaction.preview);
+			return;
+		}
+		if (interaction.phase === 'commit') {
+			const commitHeads = pendingCommitHeads ?? binding?.heads;
+			if (commitHeads) {
+				activeInteractionLease?.update(interaction.preview);
+				activeInteractionLease?.handoff(commitHeads);
+			} else {
+				activeInteractionLease?.cancel();
+			}
+		} else {
+			activeInteractionLease?.cancel();
+		}
+		activeInteractionLease = null;
+		activeInteractionId = null;
+		activeInteractionBaseHeads = null;
+		pendingCommitHeads = null;
+		interactionSide = null;
+		interactionSvg = null;
 	};
 </script>
 
@@ -444,14 +577,16 @@
 			<FlipHorizontal2 class="size-4" />
 			{side === 'front' ? 'Back' : 'Front'}
 		</Button>
-		<ReferenceEditorToolbar
-			controller={editorController}
-			variant="actions"
-			framed={false}
-			wrap={false}
-			imageToolAction={(controller) => openImagePicker('insert', controller)}
-		/>
-		{@render uploadToolbarAction()}
+		{#if !project.session.readOnly}
+			<ReferenceEditorToolbar
+				controller={editorController}
+				variant="actions"
+				framed={false}
+				wrap={false}
+				imageToolAction={(controller) => openImagePicker('insert', controller)}
+			/>
+			{@render uploadToolbarAction()}
+		{/if}
 	</GameTopBar>
 
 	<input
@@ -464,7 +599,7 @@
 
 	{#if hasAnySvg && svg}
 		{#key editorKey}
-			<div class="min-h-0 flex-1 p-4">
+			<div class="min-h-0 flex-1 p-4" {@attach svgEditorPresence}>
 				<ReferenceEditor
 					value={editorSvg.value}
 					{config}
@@ -472,10 +607,16 @@
 					showActionToolbar={false}
 					assetBasePath={SVG_EDITOR_ASSET_BASE_PATH}
 					initialZoom="fit"
+					syncExternalValueUpdates={true}
+					centerOnExternalValueChange={false}
+					readonly={project.session.readOnly}
+					{remoteInteractions}
+					{blockedClaims}
 					imageToolAction={(controller) => openImagePicker('insert', controller)}
 					selectedImageChangeAction={(controller) => openImagePicker('replace', controller)}
 					selectedImageHrefApplyAction={applySvgEditorImageHref}
 					on:change={handleChange}
+					on:interaction={handleInteraction}
 				/>
 			</div>
 		{/key}

@@ -1,6 +1,6 @@
-import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 import { asset } from '$app/paths';
 import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
+import type { ProjectInput } from '$lib/collaboration';
 
 export type PremadeDeckPresetId = 'french-playing-cards' | 'number-color' | 'french-tarot';
 
@@ -26,7 +26,6 @@ type CardAsset = {
 };
 
 type CreatePremadeDeckInput = {
-	fileSystem: FsDir;
 	deckName: string;
 	presetId: PremadeDeckPresetId;
 };
@@ -108,15 +107,11 @@ export function getPremadeDeckPreset(id: PremadeDeckPresetId) {
 }
 
 export async function createPremadeDeck({
-	fileSystem,
 	deckName,
 	presetId
-}: CreatePremadeDeckInput) {
+}: CreatePremadeDeckInput): Promise<ProjectInput[]> {
 	const preset = getPremadeDeckPreset(presetId);
 	const cards = createCardAssets(preset);
-	const assetDir = await fileSystem.ensureDir(joinFsPath(ASSETS_DIR, 'premade-decks', preset.id));
-	if (assetDir.error) return assetDir;
-
 	const back = createBackAsset(preset);
 	const files = [
 		...cards.map((card) => ({ name: card.fileName, card })),
@@ -136,20 +131,18 @@ export async function createPremadeDeck({
 		}
 	];
 
-	for (const file of files) {
-		const sourcePath = 'sourcePath' in file.card ? file.card.sourcePath : undefined;
-		const content = sourcePath
-			? await fetch(asset(sourcePath)).then((response) => response.blob())
-			: (file.card.content ?? '');
-		const written = await assetDir.data.write(
-			file.name,
-			new File([content], file.name, { type: file.card.type })
-		);
-		if (written.error) return written;
-	}
-
-	const deckDir = await fileSystem.ensureDir(joinFsPath(COMPONENTS_DIR, deckName));
-	if (deckDir.error) return deckDir;
+	const assetInputs = await Promise.all(
+		files.map(async (file): Promise<ProjectInput> => {
+			const sourcePath = 'sourcePath' in file.card ? file.card.sourcePath : undefined;
+			const content = sourcePath
+				? await fetch(asset(sourcePath)).then((response) => response.blob())
+				: (file.card.content ?? '');
+			return {
+				path: `${ASSETS_DIR}/premade-decks/${preset.id}/${file.name}`,
+				data: new File([content], file.name, { type: file.card.type })
+			};
+		})
+	);
 
 	const frontSvg = createWrapperSvg(
 		preset.width,
@@ -169,21 +162,12 @@ export async function createPremadeDeck({
 		}))
 	);
 
-	const deckFiles = [
-		{ name: 'front.svg', content: frontSvg, type: 'image/svg+xml' },
-		{ name: 'back.svg', content: backSvg, type: 'image/svg+xml' },
-		{ name: 'data.csv', content: csv, type: 'text/csv' }
+	const deckFiles: ProjectInput[] = [
+		{ path: `${COMPONENTS_DIR}/${deckName}/front.svg`, data: frontSvg },
+		{ path: `${COMPONENTS_DIR}/${deckName}/back.svg`, data: backSvg },
+		{ path: `${COMPONENTS_DIR}/${deckName}/data.csv`, data: csv }
 	];
-
-	for (const file of deckFiles) {
-		const written = await deckDir.data.write(
-			file.name,
-			new File([file.content], file.name, { type: file.type })
-		);
-		if (written.error) return written;
-	}
-
-	return { data: undefined, error: undefined } as const;
+	return [...deckFiles, ...assetInputs];
 }
 
 function createCardAssets(preset: PremadeDeckPreset): CardAsset[] {

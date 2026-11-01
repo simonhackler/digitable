@@ -4,6 +4,13 @@ import type { Column } from 'jspreadsheet-ce';
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
 import { Err, Ok, tryAsync, type Result } from 'wellcrafted/result';
 import { parseCsvFile } from './csv-helper';
+import {
+	componentDataTable,
+	isBinaryFileDocument,
+	type ComponentDataDocument,
+	type ProjectSnapshot,
+	type ProjectSession
+} from '$lib/collaboration';
 import { ImageEditor } from './decks/[deckName]/data/custom-image';
 import { getSvgDataMapForSides, type SvgDataSide } from './svg-helpers';
 import type { ColumnWithData } from './types';
@@ -11,7 +18,16 @@ import type { ColumnWithData } from './types';
 const LOCAL_ASSET_MARKER = `/${ASSETS_DIR}/`;
 export const TRANSPARENT_IMAGE =
 	'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E';
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.avif']);
+const IMAGE_MIME_TYPES: Record<string, string> = {
+	'.png': 'image/png',
+	'.jpg': 'image/jpeg',
+	'.jpeg': 'image/jpeg',
+	'.webp': 'image/webp',
+	'.gif': 'image/gif',
+	'.svg': 'image/svg+xml',
+	'.avif': 'image/avif'
+};
+const IMAGE_EXTENSIONS = new Set(Object.keys(IMAGE_MIME_TYPES));
 
 const DataLoaderError = defineErrors({
 	DataCsvMissing: ({ path, deckName }: { path: string; deckName: string }) => ({
@@ -81,6 +97,14 @@ export const isImageFileName = (path: string) => {
 	return IMAGE_EXTENSIONS.has(trimmed.slice(lastDot));
 };
 
+function imageMimeType(path: string): string {
+	const normalized = path.trim().split(/[?#]/, 1)[0].toLowerCase();
+	const lastDot = normalized.lastIndexOf('.');
+	return lastDot < 0
+		? 'application/octet-stream'
+		: (IMAGE_MIME_TYPES[normalized.slice(lastDot)] ?? 'application/octet-stream');
+}
+
 export function getProjectFilePath(projectName: string, value: string): string | null {
 	const trimmed = value.trim();
 	if (!trimmed || isEmbeddedImageReference(trimmed)) return null;
@@ -116,6 +140,50 @@ export async function resolveImageReference(
 	if (file.error) return TRANSPARENT_IMAGE;
 
 	return useDataUrls ? await blobToDataUrl(file.data) : URL.createObjectURL(file.data);
+}
+
+export async function resolveSessionImageReference(
+	session: ProjectSession,
+	projectName: string,
+	value: string,
+	useDataUrls = false
+) {
+	const img = value.trim();
+	if (!img) return '';
+	if (isEmbeddedImageReference(img)) return img;
+	const filePath = getProjectFilePath(projectName, img);
+	if (!filePath) return TRANSPARENT_IMAGE;
+	const path = filePath.replace(new RegExp(`^/${projectName}/`), '') as `assets/${string}`;
+	const document = session.member('asset', path)?.handle.doc();
+	if (!isBinaryFileDocument(document)) return TRANSPARENT_IMAGE;
+	const blob = new Blob([Uint8Array.from(document.content)], { type: imageMimeType(path) });
+	return useDataUrls ? await blobToDataUrl(blob) : URL.createObjectURL(blob);
+}
+
+export async function resolveSnapshotImageReference(
+	snapshot: ProjectSnapshot,
+	projectName: string,
+	value: string,
+	useDataUrls = false
+) {
+	const img = value.trim();
+	if (!img) return '';
+	if (isEmbeddedImageReference(img)) return img;
+	const filePath = getProjectFilePath(projectName, img);
+	if (!filePath) return TRANSPARENT_IMAGE;
+	const path = filePath.replace(new RegExp(`^/${projectName}/`), '') as `assets/${string}`;
+	const document = snapshot.member('asset', path)?.document;
+	if (!isBinaryFileDocument(document)) return TRANSPARENT_IMAGE;
+	const blob = new Blob([Uint8Array.from(document.content)], { type: imageMimeType(path) });
+	return useDataUrls ? await blobToDataUrl(blob) : URL.createObjectURL(blob);
+}
+
+export function listSessionImageFiles(session: ProjectSession) {
+	return session
+		.members('asset')
+		.map((member) => member.path.slice(`${ASSETS_DIR}/`.length))
+		.filter(isImageFileName)
+		.sort((a, b) => a.localeCompare(b));
 }
 
 export async function listProjectImageFiles(fileSystem: FsDir, projectName: string) {
@@ -253,6 +321,21 @@ export async function loadSpreadsheetData(
 	return Ok(spreadsheetDataFromCsv(svgData, csvData.data));
 }
 
+export function loadSpreadsheetDataFromDocument(
+	svgData: Map<string, ColumnWithData>,
+	currentCard: string,
+	document: ComponentDataDocument | undefined,
+	options: LoadSpreadsheetDataOptions = {}
+): DataLoaderResult<SpreadsheetData> {
+	const path = joinFsPath(COMPONENTS_DIR, currentCard, 'data.csv');
+	if (!document) {
+		return options.missingDataCsv === 'generate'
+			? Ok(generatedSpreadsheetData(svgData))
+			: DataLoaderError.DataCsvMissing({ path, deckName: currentCard });
+	}
+	return Ok(spreadsheetDataFromCsv(svgData, componentDataTable(document)));
+}
+
 export async function loadImagePaths(
 	spreadsheetData: { cols: Column[]; data: string[][] },
 	fileSystem: FsDir,
@@ -285,6 +368,67 @@ export async function loadImagePaths(
 		})
 	);
 	return imagePaths;
+}
+
+export async function loadSessionImagePaths(
+	spreadsheetData: { cols: Column[]; data: string[][] },
+	session: ProjectSession,
+	projectName: string,
+	useDataUrls = false
+) {
+	const imageColumnIndexes = spreadsheetData.cols.flatMap((col, index) =>
+		col.type === ImageEditor ? [index] : []
+	);
+	const imageStrings = Array.from(
+		new Set(
+			spreadsheetData.data.flatMap((row) =>
+				imageColumnIndexes
+					.map((index) => row[index])
+					.filter((value) => value && value.trim() !== '')
+			)
+		)
+	);
+	const imagePaths = new Map<string, string>();
+	await Promise.all(
+		imageStrings.map(async (img) => {
+			imagePaths.set(
+				img,
+				img ? await resolveSessionImageReference(session, projectName, img, useDataUrls) : ''
+			);
+		})
+	);
+	return imagePaths;
+}
+
+export async function loadSnapshotImagePaths(
+	spreadsheetData: { cols: Column[]; data: string[][] },
+	snapshot: ProjectSnapshot,
+	projectName: string,
+	useDataUrls = false
+) {
+	const imageColumnIndexes = spreadsheetData.cols.flatMap((col, index) =>
+		col.type === ImageEditor ? [index] : []
+	);
+	const imageStrings = Array.from(
+		new Set(
+			spreadsheetData.data.flatMap((row) =>
+				imageColumnIndexes
+					.map((index) => row[index])
+					.filter((value) => value && value.trim() !== '')
+			)
+		)
+	);
+	return new Map(
+		await Promise.all(
+			imageStrings.map(
+				async (img) =>
+					[
+						img,
+						img ? await resolveSnapshotImageReference(snapshot, projectName, img, useDataUrls) : ''
+					] as const
+			)
+		)
+	);
 }
 
 export async function loadSvgsAndData(
@@ -335,4 +479,46 @@ export async function loadSvgsAndDataForSides(
 		spreadsheetData: spreadsheetData.data,
 		imagePaths
 	});
+}
+
+export async function loadSvgsAndDataForSidesFromDocument(
+	projectName: string,
+	cardName: string,
+	session: ProjectSession,
+	sides: SvgDataSide[],
+	document: ComponentDataDocument | undefined,
+	useDataUrls = true,
+	options: LoadSpreadsheetDataOptions = {}
+): Promise<DataLoaderResult<LoadedSvgsAndData>> {
+	const svgData = getSvgDataMapForSides(sides);
+	const spreadsheetData = loadSpreadsheetDataFromDocument(svgData, cardName, document, options);
+	if (spreadsheetData.error) return Err(spreadsheetData.error);
+	const imagePaths = await loadSessionImagePaths(
+		spreadsheetData.data,
+		session,
+		projectName,
+		useDataUrls
+	);
+	return Ok({ svgData, spreadsheetData: spreadsheetData.data, imagePaths });
+}
+
+export async function loadSvgsAndDataForSidesFromSnapshot(
+	projectName: string,
+	cardName: string,
+	snapshot: ProjectSnapshot,
+	sides: SvgDataSide[],
+	document: ComponentDataDocument | undefined,
+	useDataUrls = true,
+	options: LoadSpreadsheetDataOptions = {}
+): Promise<DataLoaderResult<LoadedSvgsAndData>> {
+	const svgData = getSvgDataMapForSides(sides);
+	const spreadsheetData = loadSpreadsheetDataFromDocument(svgData, cardName, document, options);
+	if (spreadsheetData.error) return Err(spreadsheetData.error);
+	const imagePaths = await loadSnapshotImagePaths(
+		spreadsheetData.data,
+		snapshot,
+		projectName,
+		useDataUrls
+	);
+	return Ok({ svgData, spreadsheetData: spreadsheetData.data, imagePaths });
 }

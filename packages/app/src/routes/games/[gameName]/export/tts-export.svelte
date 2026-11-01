@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { getFileSystemContext } from '../../context';
+	import { getActiveProjectContext, getFileSystemContext } from '../../context';
 	import { type Attachment } from 'svelte/attachments';
 	import { getProjectFilePath, isEmbeddedImageReference } from '../data-loader';
-	import { joinFsPath } from '$lib/components/file-browser/adapters/adapter';
+	import { isBinaryFileDocument } from '$lib/collaboration';
 
 	export interface Sheet {
 		name: string;
@@ -31,7 +31,8 @@
 		})
 	);
 	let sheetEl: HTMLDivElement;
-	const fileSytem = getFileSystemContext();
+	const project = getActiveProjectContext();
+	const fileSystem = getFileSystemContext();
 	const localImageCache: Record<string, LocalImage> = {};
 
 	const TRANSPARENT_IMAGE =
@@ -73,14 +74,15 @@
 		const cached = localImageCache[filePath];
 		if (cached) return cached;
 
-		const file = await fileSytem.read(joinFsPath(filePath));
-		if (file.error) {
+		const path = filePath.replace(new RegExp(`^/${gameName}/`), '') as `assets/${string}`;
+		const document = project.session.member('asset', path)?.handle.doc();
+		if (!isBinaryFileDocument(document)) {
 			localImageCache[filePath] = { type: 'href', href: TRANSPARENT_IMAGE };
 			return localImageCache[filePath];
 		}
 
-		const blob = file.data;
-		const isSvg = blob.type.includes(SVG_MIME_TYPE) || filePath.toLowerCase().endsWith('.svg');
+		const blob = new Blob([Uint8Array.from(document.content)]);
+		const isSvg = filePath.toLowerCase().endsWith('.svg');
 		localImageCache[filePath] = isSvg
 			? { type: 'svg', text: await blob.text() }
 			: { type: 'href', href: await blobToDataUrl(blob) };
@@ -270,7 +272,7 @@
 				lastModified: Date.now()
 			});
 
-			const exportDir = await fileSytem.ensureDir(exportFolderPath);
+			const exportDir = await fileSystem.ensureDir(exportFolderPath);
 			if (exportDir.error) throw exportDir.error;
 			const written = await exportDir.data.write(file.name, file);
 			if (written.error) throw written.error;

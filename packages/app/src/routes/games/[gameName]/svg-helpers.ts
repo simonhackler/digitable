@@ -3,6 +3,7 @@ import { applyPretextSvgText, getTextFontSize } from './pretext-svg-text';
 import type { ColumnWithData } from './types';
 
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
+const FRAME_ORIGIN_ATTR = 'data-svgedit-frame-origin';
 
 const getDirectTspans = (text: SVGTextElement) =>
 	Array.from(text.childNodes).filter(
@@ -53,8 +54,11 @@ export const getTextFrameBounds = (svg: SVGSVGElement, text: SVGTextElement) => 
 	const hasWrapBox = x && rawY && wrapWidth && wrapHeight;
 	if (hasWrapBox) {
 		const fontSize = getTextFontSize(text);
+		const topOrigin = text.getAttribute(FRAME_ORIGIN_ATTR) === 'top';
 		const y =
-			Number.isFinite(fontSize) && fontSize > 0 ? String(Number.parseFloat(rawY) - fontSize) : rawY;
+			topOrigin || !Number.isFinite(fontSize) || fontSize <= 0
+				? rawY
+				: String(Number.parseFloat(rawY) - fontSize);
 		return {
 			x,
 			y,
@@ -129,7 +133,12 @@ function applySvgTextData(svg: SVGSVGElement, text: SVGTextElement, data: string
 
 	if (frameBounds) {
 		text.setAttribute('x', frameBounds.x);
-		text.setAttribute('y', stringifyNumber((toNumber(frameBounds.y) ?? 0) + fontSize));
+		text.setAttribute(
+			'y',
+			text.getAttribute(FRAME_ORIGIN_ATTR) === 'top'
+				? frameBounds.y
+				: stringifyNumber((toNumber(frameBounds.y) ?? 0) + fontSize)
+		);
 		text.setAttribute('data-svgedit-wrap-width', frameBounds.width);
 		text.setAttribute('data-svgedit-wrap-height', frameBounds.height);
 		if (frameBounds.shapeId) {

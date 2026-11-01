@@ -13,9 +13,10 @@
   docsPort = config.processes.docs.ports.http.value;
   studioPort = config.processes.studio.ports.http.value;
   serverPort = config.processes.game-server.ports.http.value;
+  syncServerPort = config.processes.sync-server.ports.http.value;
   postgresPort = config.processes.postgres.ports.main.value;
   databaseUrl = "postgres://${dbUser}:${dbPass}@127.0.0.1:${toString postgresPort}/${dbName}";
-  minioApiPort = config.processes.minio.ports.console.value;
+  garageS3Port = config.processes.garage.ports.s3.value;
   studioOrigin = "http://localhost:${toString sitePort}";
   worktreePath = let
     devenvRoot = builtins.getEnv "DEVENV_ROOT";
@@ -55,6 +56,15 @@
 
     http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
       encode zstd gzip
+
+      handle /app/sync {
+        forward_auth 127.0.0.1:${toString appPort} {
+          uri /app/api/sync-auth
+          header_up Connection ""
+          header_up Upgrade ""
+        }
+        reverse_proxy 127.0.0.1:${toString syncServerPort}
+      }
 
       handle /app* {
         reverse_proxy 127.0.0.1:${toString appPort}
@@ -154,11 +164,9 @@ in {
     AUTH_COOKIE_DOMAIN = "";
     REPLICATE_API_TOKEN = "tmp";
 
-    S3_ENDPOINT = "http://127.0.0.1:${toString minioApiPort}";
+    S3_ENDPOINT = "http://127.0.0.1:${toString garageS3Port}";
     S3_REGION = "us-east-1";
     S3_BUCKET = "digitable-playtests";
-    S3_ACCESS_KEY_ID = "minioadmin";
-    S3_SECRET_ACCESS_KEY = "minioadmin";
     S3_FORCE_PATH_STYLE = "true";
 
     PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
@@ -182,8 +190,24 @@ in {
     ];
   };
 
-  services.minio = {
+  services.garage = {
     enable = true;
+    buckets = ["digitable-playtests"];
+    afterStart = ''
+      if ! garage key info playtests >/dev/null 2>&1; then
+        garage key create playtests >/dev/null
+      fi
+      garage bucket allow --read --write digitable-playtests --key playtests
+
+      key_info="$(garage key info --show-secret playtests)"
+      access_key="$(printf '%s\n' "$key_info" | sed -n 's/^Key ID:[[:space:]]*//p')"
+      secret_key="$(printf '%s\n' "$key_info" | sed -n 's/^Secret key:[[:space:]]*//p')"
+      test -n "$access_key" && test -n "$secret_key"
+
+      umask 077
+      printf 'export S3_ACCESS_KEY_ID=%s\nexport S3_SECRET_ACCESS_KEY=%s\n' \
+        "$access_key" "$secret_key" > "${config.env.DEVENV_STATE}/garage/playtests.env"
+    '';
   };
 
   processes.postgres.ready = lib.mkForce null;
@@ -276,7 +300,11 @@ in {
 
     app = {
       ports.http.allocate = 5173;
-      exec = "bun run --filter=@svg-table/app dev -- --host 127.0.0.1 --port ${toString appPort} --strictPort";
+      exec = ''
+        . "${config.env.DEVENV_STATE}/garage/playtests.env"
+        exec bun run --filter=@svg-table/app dev -- --host 127.0.0.1 --port ${toString appPort} --strictPort
+      '';
+      after = ["devenv:garage:configure"];
       env.PORT = toString appPort;
       env.ORIGIN = studioOrigin;
       env.PUBLIC_GAME_SERVER_URL = "ws://localhost:${toString serverPort}";
@@ -293,6 +321,17 @@ in {
       env.PORT = toString serverPort;
     };
 
+    sync-server = {
+      ports.http.allocate = 3030;
+      exec = ''
+        mkdir -p .devenv/state/automerge-sync
+        exec bun run --filter=@svg-table/sync-server start
+      '';
+      env.PORT = toString syncServerPort;
+      env.AUTOMERGE_DATA_DIR = "${worktreePath}/.devenv/state/automerge-sync";
+      env.AUTOMERGE_SYNC_ORIGIN = studioOrigin;
+    };
+
     proxy = {
       ports.http.allocate = 5180;
       exec = ''
@@ -307,6 +346,7 @@ in {
       after = [
         "devenv:processes:studio@started"
         "devenv:processes:app@started"
+        "devenv:processes:sync-server@started"
       ];
     };
   };

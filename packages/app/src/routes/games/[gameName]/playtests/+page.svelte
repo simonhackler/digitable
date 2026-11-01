@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { resolve } from '$app/paths';
-	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input';
@@ -12,17 +11,17 @@
 		type PlaytestFeedbackRegistry,
 		type RemotePlaytestFeedback
 	} from '$lib/playtests/feedback';
-	import { exportProjectForPlaytest } from '$lib/playtests/project-transfer';
+	import { exportProjectSnapshotForPlaytest } from '$lib/playtests/project-transfer';
 	import { requireParam } from '$lib/utils/assert';
 	import { Clipboard, ExternalLink } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { Err, tryAsync } from 'wellcrafted/result';
-	import { getFileSystemContext } from '../../context';
+	import { getActiveProjectContext } from '../../context';
 	import CreateRoomModal from '../../../playtests/[playtestId]/create-room-modal.svelte';
 
 	type RegisteredPlaytest = PlaytestFeedbackRegistry['playtests'][number];
 
-	const fileSystem = getFileSystemContext();
+	const project = getActiveProjectContext();
 	const projectName = $derived(requireParam('gameName'));
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -69,15 +68,6 @@
 		return withoutFrontmatter.trim();
 	}
 
-	async function openGameDir(): Promise<FsDir> {
-		const gameDir = await fileSystem.openDir(projectName);
-		if (gameDir.error) {
-			throw new Error(gameDir.error.message);
-		}
-
-		return gameDir.data;
-	}
-
 	async function fetchPlaytestFeedback(playtestId: string): Promise<RemotePlaytestFeedback[]> {
 		const response = await fetch(resolve('/api/playtests/[playtestId]/feedback', { playtestId }));
 		if (response.status === 403 || response.status === 404) {
@@ -115,26 +105,9 @@
 
 	async function loadPlaytests() {
 		errorMessage = null;
-		const gameDir = await tryAsync({
-			try: openGameDir,
-			catch: (cause) => Err(cause instanceof Error ? cause : new Error(String(cause)))
-		});
-		if (gameDir.error) {
-			errorMessage = messageFrom(gameDir.error, 'Could not open game folder');
-			return;
-		}
-
-		const registry = await readPlaytestFeedbackRegistry(gameDir.data);
-		if (registry.error) {
-			errorMessage = registry.error.message;
-			return;
-		}
-
-		playtests = registry.data.playtests;
-		console.log(playtests);
-		await Promise.all(
-			registry.data.playtests.map((playtest) => loadFeedbackFor(playtest.playtestId))
-		);
+		const registry = readPlaytestFeedbackRegistry(project.session);
+		playtests = registry.playtests;
+		await Promise.all(registry.playtests.map((playtest) => loadFeedbackFor(playtest.playtestId)));
 		await importFeedback();
 	}
 
@@ -150,8 +123,9 @@
 
 		const created = await tryAsync({
 			try: async () => {
-				const gameDir = await openGameDir();
-				const files = await exportProjectForPlaytest(fileSystem, projectName);
+				const captured = await project.session.snapshot();
+				if (captured.error) throw new Error(captured.error.message);
+				const files = await exportProjectSnapshotForPlaytest(captured.data);
 				// TODO: This shouldn't be an untyped api call.
 				const response = await fetch(resolve('/api/playtests'), {
 					method: 'POST',
@@ -171,12 +145,14 @@
 				}
 
 				const result = (await response.json()) as { playtestId: string };
-				console.log('registering playtest');
-				const registered = await registerPlaytestFeedbackImport(gameDir, result.playtestId, name);
+				const registered = await registerPlaytestFeedbackImport(
+					project.session,
+					result.playtestId,
+					name
+				);
 				if (registered.error) {
 					throw new Error(registered.error.message);
 				}
-
 				return result.playtestId;
 			},
 			catch: (cause) => Err(cause instanceof Error ? cause : new Error(String(cause)))
@@ -198,26 +174,17 @@
 
 		isImportingFeedback = true;
 		errorMessage = null;
-		const gameDir = await tryAsync({
-			try: openGameDir,
-			catch: (cause) => Err(cause instanceof Error ? cause : new Error(String(cause)))
-		});
-		if (gameDir.error) {
-			isImportingFeedback = false;
-			errorMessage = messageFrom(gameDir.error, 'Could not open game folder');
-			return;
-		}
-
 		const imported = await importRegisteredPlaytestFeedback({
-			gameDir: gameDir.data,
+			session: project.session,
 			fetchFeedback: fetchPlaytestFeedback
 		});
 
-		isImportingFeedback = false;
 		if (imported.error) {
+			isImportingFeedback = false;
 			errorMessage = messageFrom(imported.error, 'Could not import playtest feedback');
 			return;
 		}
+		isImportingFeedback = false;
 
 		if (imported.data > 0) {
 			statusMessage = `Imported ${imported.data} feedback ${imported.data === 1 ? 'note' : 'notes'}`;

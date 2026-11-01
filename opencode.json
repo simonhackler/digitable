@@ -5,5 +5,10 @@
 			"type": "local",
 			"command": ["bunx", "@sveltejs/mcp"]
 		}
+	},
+	"permission": {
+		"external_directory": {
+			"/home/simon/projects/automerge-test-todo/**": "allow"
+		}
 	}
 }

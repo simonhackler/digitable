@@ -1,0 +1,586 @@
+import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
+import type { DocHandle, Repo } from '@automerge/automerge-repo';
+import type { SvgDocument } from '@svg-table/svgeditor';
+import { componentDataMaterializer } from './component-data';
+import {
+	decodeText,
+	encodeText,
+	hashBytes,
+	removeFile,
+	snapshotFile,
+	writeFile
+} from './filesystem';
+import { gameMetadataMaterializer } from './game-metadata';
+import { markdownFileMaterializer } from './markdown/markdown-file';
+import type { MemberMaterializer } from './materializer';
+import {
+	isBinaryFileDocument,
+	type BinaryFileDocument,
+	type ComponentDataDocument,
+	type GameMetadataDocument,
+	type MarkdownFileDocument,
+	type ProjectMember,
+	type ProjectMemberDocument,
+	type TextFileDocument
+} from './model';
+import { textFileMaterializer } from './text-file';
+import { svgFileMaterializer } from './svg-file';
+import {
+	materializedStatesEqual,
+	readPendingMaterialization,
+	readProjectConfig,
+	removePendingMaterialization,
+	writePendingMaterialization,
+	writeProjectConfig,
+	type MaterializedState,
+	type ProjectConfig
+} from './project-config';
+import { withProjectLock } from './project-lock';
+
+type MetadataMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<GameMetadataDocument>;
+	materializer: MemberMaterializer<GameMetadataDocument>;
+};
+
+type ComponentDataMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<ComponentDataDocument>;
+	materializer: MemberMaterializer<ComponentDataDocument>;
+};
+
+type TextMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<TextFileDocument>;
+	materializer: MemberMaterializer<TextFileDocument>;
+};
+
+type SvgMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<SvgDocument>;
+	materializer: typeof svgFileMaterializer;
+};
+
+type MarkdownMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<MarkdownFileDocument>;
+	materializer: typeof markdownFileMaterializer;
+};
+
+type BinaryMember = {
+	id: string;
+	path: string;
+	handle: DocHandle<BinaryFileDocument>;
+	hash: string;
+};
+
+export type ManagedMember =
+	| MetadataMember
+	| ComponentDataMember
+	| SvgMember
+	| TextMember
+	| MarkdownMember
+	| BinaryMember;
+
+export type ReconciliationStatus =
+	| { state: 'idle' }
+	| { state: 'syncing' }
+	| { state: 'error'; scope: 'member'; memberId: string; path: string; message: string }
+	| { state: 'error'; scope: 'checkpoint' | 'project'; path: string; message: string };
+
+export function managedMember(
+	id: string,
+	member: ProjectMember,
+	handle: DocHandle<ProjectMemberDocument>
+): ManagedMember {
+	if (member.kind === 'game-metadata') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<GameMetadataDocument>,
+			materializer: gameMetadataMaterializer
+		};
+	}
+	if (member.kind === 'component-data') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<ComponentDataDocument>,
+			materializer: componentDataMaterializer
+		};
+	}
+	if (member.kind === 'component-svg') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<SvgDocument>,
+			materializer: svgFileMaterializer
+		};
+	}
+	if (member.kind === 'rules') {
+		return {
+			id,
+			path: member.path,
+			handle: handle as DocHandle<MarkdownFileDocument>,
+			materializer: markdownFileMaterializer
+		};
+	}
+	if (member.kind === 'asset') {
+		if (!member.hash) throw new Error(`Binary member ${member.path} is missing its hash.`);
+		return {
+			id,
+			path: member.path,
+			hash: member.hash,
+			handle: handle as DocHandle<BinaryFileDocument>
+		};
+	}
+	return {
+		id,
+		path: member.path,
+		handle: handle as DocHandle<TextFileDocument>,
+		materializer: textFileMaterializer(member.kind)
+	};
+}
+
+export function serializeManagedMember(member: ManagedMember): Uint8Array {
+	const document = member.handle.doc();
+	if (!('materializer' in member)) {
+		if (!isBinaryFileDocument(document)) {
+			throw new Error(`Automerge binary document for ${member.path} is unavailable.`);
+		}
+		return Uint8Array.from(document.content);
+	}
+	if (member.materializer.kind === 'game-metadata') return serializeTyped(member as MetadataMember);
+	if (member.materializer.kind === 'component-data')
+		return serializeTyped(member as ComponentDataMember);
+	if (member.materializer.kind === 'rules') return serializeTyped(member as MarkdownMember);
+	if (member.materializer.kind === 'component-svg') return serializeTyped(member as SvgMember);
+	return serializeTyped(member as TextMember);
+}
+
+function serializeTyped<T extends object, Source>(member: {
+	handle: DocHandle<T>;
+	materializer: MemberMaterializer<T, Source>;
+	path: string;
+}): Uint8Array {
+	const document = member.handle.doc();
+	if (!document || !member.materializer.isDocument(document)) {
+		throw new Error(`Automerge document for ${member.path} has an unsupported format.`);
+	}
+	return encodeText(member.materializer.serialize(document));
+}
+
+export function createProjectReconciler({
+	fs,
+	repo,
+	initialConfig,
+	members: initialMembers,
+	onStatus = () => undefined,
+	saveDebounceMs = 400
+}: {
+	fs: FsDir;
+	repo: Repo;
+	initialConfig: ProjectConfig;
+	members: ManagedMember[];
+	onStatus?: (status: ReconciliationStatus) => void;
+	saveDebounceMs?: number;
+}) {
+	let config = initialConfig;
+	let members = initialMembers;
+	let dirty = false;
+	const dirtyMemberIds = new Set<string>();
+	let stopped = false;
+	let runPromise: Promise<void> | undefined;
+	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+	let lastError: Error | undefined;
+	const listeners = new Map<string, { member: ManagedMember; listener: () => void }>();
+
+	function replaceMembers(nextMembers: ManagedMember[], nextConfig: ProjectConfig): void {
+		const nextIds = new Set(nextMembers.map((member) => member.id));
+		for (const [id, entry] of listeners) {
+			const next = nextMembers.find((member) => member.id === id);
+			if (next && next.handle === entry.member.handle) continue;
+			entry.member.handle.off('change', entry.listener);
+			listeners.delete(id);
+		}
+		members = nextMembers;
+		config = nextConfig;
+		if (stopped) return;
+		for (const member of members) {
+			if (listeners.has(member.id)) continue;
+			const listener = () => scheduleReconcile(member.id);
+			listeners.set(member.id, { member, listener });
+			member.handle.on('change', listener);
+		}
+		for (const id of [...listeners.keys()]) {
+			if (nextIds.has(id)) continue;
+			listeners.delete(id);
+		}
+	}
+
+	async function recoverMember(member: ManagedMember): Promise<void> {
+		const pending = await readPendingMaterialization(fs, member.id);
+		if (!pending) return;
+		const projection = config.projections[member.id];
+		if (!projection) {
+			await removePendingMaterialization(fs, member.id);
+			return;
+		}
+		const currentHash = (await snapshotFile(fs, pending.path))?.hash ?? null;
+		if (materializedStatesEqual(projection, pending.before) && currentHash === pending.after.hash) {
+			config = {
+				...config,
+				projections: {
+					...config.projections,
+					[member.id]: { ...projection, ...pending.after }
+				}
+			};
+			await writeProjectConfig(fs, config);
+		}
+		await removePendingMaterialization(fs, member.id);
+	}
+
+	async function reconcileTyped<T extends object, Source>(member: {
+		id: string;
+		path: string;
+		handle: DocHandle<T>;
+		materializer: MemberMaterializer<T, Source>;
+	}): Promise<void> {
+		await recoverMember(member as ManagedMember);
+		const projection = config.projections[member.id];
+		if (!projection) throw new Error(`Missing projection configuration for ${member.id}.`);
+		if (projection.path !== member.path || projection.url !== member.handle.url) {
+			throw new Error(`Projection configuration does not match ${member.id}.`);
+		}
+		const projectedDocument = projection.materializeOnly
+			? member.handle.doc()
+			: member.handle.view(projection.heads).doc();
+		if (!projectedDocument) {
+			throw new Error(
+				`Automerge document for ${member.path} has not loaded the projected heads yet.`
+			);
+		}
+
+		const actual = await snapshotFile(fs, member.path);
+		const actualHash = actual?.hash ?? null;
+		if (
+			!projection.materializeOnly &&
+			materializedStatesEqual(
+				{ heads: member.handle.heads(), hash: actualHash },
+				{ heads: projection.heads, hash: projection.hash }
+			)
+		) {
+			return;
+		}
+		if (!projection.materializeOnly && actual && actualHash !== projection.hash) {
+			const incoming = member.materializer.parse(decodeText(actual.bytes), { hash: actual.hash });
+			member.handle.changeAt(
+				projection.heads,
+				(document) => member.materializer.apply(document, incoming),
+				{ message: `Import external ${member.path}` }
+			);
+		}
+
+		const document = member.handle.doc();
+		if (!document) throw new Error(`Automerge document for ${member.path} is unavailable.`);
+		if (!member.materializer.isDocument(document)) {
+			throw new Error(`Automerge document for ${member.path} has an unsupported format.`);
+		}
+		const desiredHeads = member.handle.heads();
+		const desiredBytes = encodeText(member.materializer.serialize(document));
+		const desiredHash = await hashBytes(desiredBytes);
+		const desired: MaterializedState = { heads: desiredHeads, hash: desiredHash };
+		await repo.flush([member.handle.documentId]);
+
+		const beforeWriteHash = (await snapshotFile(fs, member.path))?.hash ?? null;
+		if (beforeWriteHash !== actualHash) {
+			dirty = true;
+			dirtyMemberIds.add(member.id);
+			return;
+		}
+		await writePendingMaterialization(fs, {
+			version: 1,
+			memberId: member.id,
+			path: member.path,
+			before: { heads: projection.heads, hash: projection.hash },
+			after: desired
+		});
+
+		const revalidatedHash = (await snapshotFile(fs, member.path))?.hash ?? null;
+		if (revalidatedHash !== actualHash) {
+			await removePendingMaterialization(fs, member.id);
+			dirty = true;
+			dirtyMemberIds.add(member.id);
+			return;
+		}
+		if (desiredHash !== actualHash) {
+			await writeFile(fs, member.path, Uint8Array.from(desiredBytes).buffer);
+			const writtenHash = (await snapshotFile(fs, member.path))?.hash ?? null;
+			if (writtenHash !== desiredHash) {
+				await removePendingMaterialization(fs, member.id);
+				dirty = true;
+				return;
+			}
+		}
+
+		config = {
+			...config,
+			projections: {
+				...config.projections,
+				[member.id]: {
+					path: projection.path,
+					url: projection.url,
+					...desired
+				}
+			}
+		};
+		await writeProjectConfig(fs, config);
+		await removePendingMaterialization(fs, member.id);
+	}
+
+	async function reconcileMember(member: ManagedMember): Promise<void> {
+		if ('materializer' in member) {
+			if (member.materializer.kind === 'game-metadata') {
+				await reconcileTyped(member as MetadataMember);
+				return;
+			}
+			if (member.materializer.kind === 'component-data') {
+				await reconcileTyped(member as ComponentDataMember);
+				return;
+			}
+			if (member.materializer.kind === 'rules') {
+				await reconcileTyped(member as MarkdownMember);
+				return;
+			}
+			if (member.materializer.kind === 'component-svg') {
+				await reconcileTyped(member as SvgMember);
+				return;
+			}
+			await reconcileTyped(member as TextMember);
+			return;
+		}
+		await recoverMember(member);
+		const projection = config.projections[member.id];
+		if (!projection) throw new Error(`Missing projection configuration for ${member.id}.`);
+		if (projection.path !== member.path || projection.url !== member.handle.url) {
+			throw new Error(`Projection configuration does not match ${member.id}.`);
+		}
+		const document = member.handle.doc();
+		if (!isBinaryFileDocument(document)) {
+			throw new Error(`Automerge binary document for ${member.path} is unavailable.`);
+		}
+		const desiredBytes = Uint8Array.from(document.content);
+		const desiredHash = await hashBytes(desiredBytes);
+		if (desiredHash !== member.hash) {
+			throw new Error(`Automerge binary document for ${member.path} failed hash verification.`);
+		}
+		const actualHash = (await snapshotFile(fs, member.path))?.hash ?? null;
+		const desired: MaterializedState = { heads: member.handle.heads(), hash: desiredHash };
+		if (
+			!projection.materializeOnly &&
+			materializedStatesEqual(desired, projection) &&
+			actualHash === desiredHash
+		) {
+			return;
+		}
+		await repo.flush([member.handle.documentId]);
+		await writePendingMaterialization(fs, {
+			version: 1,
+			memberId: member.id,
+			path: member.path,
+			before: { heads: projection.heads, hash: projection.hash },
+			after: desired
+		});
+		const revalidatedHash = (await snapshotFile(fs, member.path))?.hash ?? null;
+		if (revalidatedHash !== actualHash) {
+			await removePendingMaterialization(fs, member.id);
+			dirty = true;
+			dirtyMemberIds.add(member.id);
+			return;
+		}
+		if (actualHash !== desiredHash) {
+			await writeFile(fs, member.path, Uint8Array.from(desiredBytes).buffer);
+			if ((await snapshotFile(fs, member.path))?.hash !== desiredHash) {
+				throw new Error(`Could not verify materialized binary ${member.path}.`);
+			}
+		}
+		config = {
+			...config,
+			projections: {
+				...config.projections,
+				[member.id]: {
+					path: projection.path,
+					url: projection.url,
+					...desired
+				}
+			}
+		};
+		await writeProjectConfig(fs, config);
+		await removePendingMaterialization(fs, member.id);
+	}
+
+	async function runUnlocked(): Promise<void> {
+		onStatus({ state: 'syncing' });
+		lastError = undefined;
+		while (dirty && !stopped) {
+			dirty = false;
+			const ids = new Set(dirtyMemberIds);
+			dirtyMemberIds.clear();
+			for (const member of members) {
+				if (ids.size && !ids.has(member.id)) continue;
+				try {
+					await reconcileMember(member);
+				} catch (cause) {
+					const error = cause instanceof Error ? cause : new Error(String(cause));
+					lastError ??= error;
+					onStatus({
+						state: 'error',
+						scope: 'member',
+						memberId: member.id,
+						path: member.path,
+						message: error.message
+					});
+				}
+			}
+		}
+		if (!stopped && !lastError) onStatus({ state: 'idle' });
+	}
+
+	async function run(): Promise<void> {
+		try {
+			await withProjectLock(initialConfig.historyUrl, async () => {
+				const latest = await readProjectConfig(fs);
+				if (
+					!latest ||
+					latest.rootUrl !== initialConfig.rootUrl ||
+					latest.historyUrl !== initialConfig.historyUrl ||
+					latest.branchId !== initialConfig.branchId
+				) {
+					throw new Error('Automerge project configuration changed while the project was open.');
+				}
+				config = latest;
+				await runUnlocked();
+			});
+		} catch (cause) {
+			dirty = false;
+			lastError = cause instanceof Error ? cause : new Error(String(cause));
+			onStatus({
+				state: 'error',
+				scope: 'project',
+				path: '.automerge/config.json',
+				message: lastError.message
+			});
+		}
+	}
+
+	function requestReconcile(memberIds?: Iterable<string>): Promise<void> {
+		if (stopped) return Promise.resolve();
+		if (saveTimer) clearTimeout(saveTimer);
+		saveTimer = undefined;
+		dirty = true;
+		if (memberIds) {
+			for (const id of memberIds) dirtyMemberIds.add(id);
+		} else {
+			dirtyMemberIds.clear();
+		}
+		if (!runPromise) {
+			runPromise = run().finally(() => {
+				runPromise = undefined;
+				if (dirty && !stopped) void requestReconcile();
+			});
+		}
+		return runPromise;
+	}
+
+	function scheduleReconcile(memberId: string): void {
+		if (stopped) return;
+		onStatus({ state: 'syncing' });
+		dirtyMemberIds.add(memberId);
+		if (saveTimer) clearTimeout(saveTimer);
+		if (saveDebounceMs <= 0) {
+			void requestReconcile();
+			return;
+		}
+		saveTimer = setTimeout(() => void requestReconcile(dirtyMemberIds), saveDebounceMs);
+	}
+
+	async function removePathsWhileLocked(paths: Iterable<string>): Promise<void> {
+		const unique = [...new Set(paths)];
+		if (!unique.length) return;
+		await Promise.all(unique.map((path) => removeFile(fs, path)));
+		const directories = new Set<string>();
+		for (const path of unique) {
+			const parts = path.split('/');
+			while (parts.length > 2) {
+				parts.pop();
+				directories.add(parts.join('/'));
+			}
+		}
+		for (const path of [...directories].sort((left, right) => right.length - left.length)) {
+			const entries = await fs.list(path);
+			if (entries.error?.name === 'NotFoundError' || (!entries.error && entries.data.length))
+				continue;
+			if (entries.error) throw new Error(entries.error.message, { cause: entries.error });
+			await removeFile(fs, path);
+		}
+	}
+
+	async function removePaths(paths: Iterable<string>): Promise<void> {
+		const unique = [...new Set(paths)];
+		if (!unique.length) return;
+		onStatus({ state: 'syncing' });
+		await withProjectLock(initialConfig.historyUrl, async () => {
+			const latest = await readProjectConfig(fs);
+			if (!latest || latest.historyUrl !== initialConfig.historyUrl) {
+				throw new Error('Automerge project configuration changed while the project was open.');
+			}
+			await removePathsWhileLocked(unique);
+		});
+		if (!lastError) onStatus({ state: 'idle' });
+	}
+
+	return {
+		async start(reconcile = true): Promise<void> {
+			replaceMembers(members, config);
+			if (reconcile) {
+				await requestReconcile();
+				return;
+			}
+			onStatus({ state: 'idle' });
+		},
+		async reconcileOrThrow(): Promise<void> {
+			if (saveTimer) {
+				clearTimeout(saveTimer);
+				saveTimer = undefined;
+				dirty = true;
+			}
+			do {
+				if (runPromise) await runPromise;
+				if (dirty) await requestReconcile();
+			} while (dirty && !stopped);
+			if (lastError) throw lastError;
+		},
+		async stop(): Promise<void> {
+			stopped = true;
+			if (saveTimer) clearTimeout(saveTimer);
+			saveTimer = undefined;
+			for (const { member, listener } of listeners.values()) member.handle.off('change', listener);
+			listeners.clear();
+			await runPromise;
+		},
+		getConfig(): ProjectConfig {
+			return config;
+		},
+		requestReconcile,
+		removePaths,
+		removePathsWhileLocked,
+		replaceMembers
+	};
+}
+
+export type ProjectReconciler = ReturnType<typeof createProjectReconciler>;

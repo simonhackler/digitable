@@ -6,9 +6,12 @@
 		ChangeEvent,
 		ChangeSvgEmission,
 		ReadyEvent,
+		RemoteSvgInteraction,
 		SelectionChangeEvent,
+		SvgClaim,
 		SvgCanvasConfig,
-		SvgEditorApi
+		SvgEditorApi,
+		SvgInteractionEvent
 	} from '../core/types';
 	import { createEditorController } from '../svelte/createEditorController.svelte.ts';
 	import SvgCanvasHost from '../svelte/SvgCanvasHost.svelte';
@@ -32,6 +35,8 @@
 		assetBasePath?: string;
 		activePanel?: string;
 		api?: SvgEditorApi | null;
+		remoteInteractions?: RemoteSvgInteraction[];
+		blockedClaims?: SvgClaim[];
 		controller?: EditorController;
 		showActionToolbar?: boolean;
 		toolbarActions?: () => ReturnType<Snippet>;
@@ -61,6 +66,8 @@
 		assetBasePath,
 		activePanel = $bindable('inspector'),
 		api = $bindable(null),
+		remoteInteractions = [],
+		blockedClaims = [],
 		controller = createEditorController(),
 		showActionToolbar = true,
 		toolbarActions,
@@ -74,6 +81,7 @@
 	const dispatch = createEventDispatcher<{
 		change: ChangeEvent;
 		selectionchange: SelectionChangeEvent;
+		interaction: SvgInteractionEvent;
 	}>();
 	const keys = new PressedKeys();
 
@@ -98,6 +106,10 @@
 		controller.handleSelectionChange(event);
 		dispatch('selectionchange', event.detail);
 	};
+
+	$effect(() => {
+		controller.setInteractionPresence(remoteInteractions, blockedClaims);
+	});
 
 	const shouldExposeE2E = () => {
 		if (typeof window === 'undefined') return false;
@@ -420,10 +432,13 @@
 								{emitChangeSvg}
 								{initialZoom}
 								{assetBasePath}
+								{remoteInteractions}
+								{blockedClaims}
 								on:ready={handleReady}
 								on:change={handleChange}
 								on:selectionchange={handleSelectionChange}
 								on:modechange={controller.handleModeChange}
+								on:interaction={(event) => dispatch('interaction', event.detail)}
 								on:error={controller.handleError}
 							/>
 						</div>
