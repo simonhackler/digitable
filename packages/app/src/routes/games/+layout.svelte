@@ -12,6 +12,7 @@
 		type ActiveProjectState
 	} from './context';
 	import { generateAgentFiles } from '$lib/utils/agent-generator.js';
+	import { DevProjectsAdapter } from '$lib/dev-projects/adapter';
 	import { isPlaytestImportFolderName } from '$lib/playtests/project-transfer';
 	import { Button } from '$lib/components/ui/button';
 	import {
@@ -265,7 +266,7 @@
 		return projects;
 	}
 
-	async function onSetOpfsAdapter(adapter: FsDir) {
+	async function onSetProjectsAdapter(adapter: FsDir) {
 		await closeActiveProject();
 		migrationError = '';
 		projectsToMigrate = null;
@@ -273,7 +274,7 @@
 		isInspectingProjects = true;
 		fileSystemState.adapter = adapter;
 		viewFileSystemState.adapter = adapter;
-		await generateAgentFiles(adapter);
+		if (!(adapter instanceof DevProjectsAdapter)) await generateAgentFiles(adapter);
 		const marker = await readProjectsRootMarker(adapter);
 		migrationDigitableVersion = marker.error ? undefined : marker.data.digitableVersion;
 		const pendingMigrations = projectMigrationsForVersion(migrationDigitableVersion);
@@ -299,7 +300,7 @@
 				return;
 			}
 
-			await onSetOpfsAdapter(root.data);
+			await onSetProjectsAdapter(root.data);
 			await goto(resolve('/games'));
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -366,7 +367,7 @@
 		<AppSidebar
 			{games}
 			{fileSystem}
-			{onSetOpfsAdapter}
+			{onSetProjectsAdapter}
 			projectSession={activeProjectState.current?.session ?? null}
 			peers={activeProjectState.current?.presence.peers ?? []}
 		/>
@@ -382,7 +383,7 @@
 		{/if}
 		{#if !fileSystem}
 			<div class="mt-12 flex w-full flex-col items-center justify-center gap-4 text-xl">
-				<PickFolder {onSetOpfsAdapter}></PickFolder>
+				<PickFolder {onSetProjectsAdapter}></PickFolder>
 			</div>
 		{:else if isInspectingProjects || projectsToMigrate === null}
 			<p class="text-muted-foreground p-6 text-sm">Loading projects...</p>

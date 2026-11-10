@@ -3,7 +3,7 @@ import { del, get, set } from 'idb-keyval';
 const SAVED_FOLDER_KEY = 'saved-folder';
 const STORAGE_PREFERENCE_KEY = 'storage-preference';
 
-export type StoragePreference = 'directory' | 'opfs';
+export type StoragePreference = 'directory' | 'opfs' | 'dev-projects';
 
 export async function saveFolderHandle(handle: FileSystemDirectoryHandle) {
 	await set(SAVED_FOLDER_KEY, handle);
@@ -22,10 +22,16 @@ export async function saveOpfsPreference() {
 	await set(STORAGE_PREFERENCE_KEY, 'opfs');
 }
 
+export async function saveDevProjectsPreference() {
+	localStorage.setItem(STORAGE_PREFERENCE_KEY, 'dev-projects');
+	await del(SAVED_FOLDER_KEY);
+	await set(STORAGE_PREFERENCE_KEY, 'dev-projects');
+}
+
 export async function loadStoragePreference(): Promise<StoragePreference | null> {
 	const preference =
 		(await get(STORAGE_PREFERENCE_KEY)) ?? localStorage.getItem(STORAGE_PREFERENCE_KEY);
-	if (preference === 'directory' || preference === 'opfs') {
+	if (preference === 'directory' || preference === 'opfs' || preference === 'dev-projects') {
 		return preference;
 	}
 	return null;

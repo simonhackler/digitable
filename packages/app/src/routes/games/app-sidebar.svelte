@@ -2,7 +2,10 @@
 	import { resolve } from '$app/paths';
 	import { env } from '$env/dynamic/public';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import { pickProjectsRoot } from '$lib/workspace/projects-root';
+	import { pickProjectsRoot, readProjectsRootMarker } from '$lib/workspace/projects-root';
+	import { saveDevProjectsPreference } from '$lib/components/file-browser/adapters/opfs/storage-preference';
+	import { DevProjectsAdapter } from '$lib/dev-projects/adapter';
+	import { dev } from '$app/environment';
 	import CreateMenu from './create-menu.svelte';
 	import ExportMenu from './export-menu.svelte';
 	import ProjectSwitcher from './project-switcher.svelte';
@@ -12,7 +15,6 @@
 	import PlaySidebarMenu from './play-sidebar-menu.svelte';
 	import { FsError, type FsDir } from '$lib/components/file-browser/adapters/adapter';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { OPFSAdapter } from '$lib/components/file-browser/adapters/opfs/opdfs-adapter';
 	import { UserRound } from '@lucide/svelte';
 	import type { ProjectSession, RemotePresenceState } from '$lib/collaboration';
 	import ProjectBranches from './project-branches.svelte';
@@ -21,13 +23,13 @@
 	let {
 		games,
 		fileSystem,
-		onSetOpfsAdapter,
+		onSetProjectsAdapter,
 		projectSession,
 		peers
 	}: {
 		games: Game[];
 		fileSystem: FsDir;
-		onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => Promise<void>;
+		onSetProjectsAdapter: (adapter: FsDir) => Promise<void>;
 		projectSession: ProjectSession | null;
 		peers: RemotePresenceState[];
 	} = $props();
@@ -57,7 +59,20 @@
 			return;
 		}
 
-		await onSetOpfsAdapter(root.data);
+		await onSetProjectsAdapter(root.data);
+		await goto(resolve('/games'));
+	}
+
+	async function useWorktreeProjects() {
+		projectsRootError = '';
+		const adapter = new DevProjectsAdapter();
+		const root = await readProjectsRootMarker(adapter);
+		if (root.error) {
+			projectsRootError = root.error.message;
+			return;
+		}
+		await saveDevProjectsPreference();
+		await onSetProjectsAdapter(adapter);
 		await goto(resolve('/games'));
 	}
 
@@ -135,6 +150,9 @@
 			{/if}
 		</Sidebar.Menu>
 		<Button onclick={pickFolder}>Change Projects Folder</Button>
+		{#if dev && env.PUBLIC_DEV_PROJECTS === 'true' && !(fileSystem instanceof DevProjectsAdapter)}
+			<Button variant="outline" onclick={useWorktreeProjects}>Use worktree projects</Button>
+		{/if}
 		{#if projectsRootError}
 			<p role="alert" class="px-2 text-sm text-red-600">{projectsRootError}</p>
 		{/if}

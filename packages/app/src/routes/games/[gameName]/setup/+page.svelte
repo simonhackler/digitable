@@ -412,6 +412,11 @@
 		};
 		if (typeof DOMParser === 'undefined') return emptyTableSvg(table.table);
 		const linkedDecks = linkedDeckLibrary();
+		const savedSvg = project.session.member('table-setup', TABLE_SVG_PATH)?.handle.doc()?.content;
+		const savedDoc = savedSvg ? new DOMParser().parseFromString(savedSvg, SVG_MIME_TYPE) : null;
+		const savedPlacements = Array.from(
+			savedDoc?.querySelectorAll('[data-digitable-kind="placement"]') ?? []
+		);
 
 		const doc = new DOMParser().parseFromString(emptyTableSvg(table.table), SVG_MIME_TYPE);
 		const root = doc.documentElement;
@@ -434,6 +439,20 @@
 			);
 		}
 		for (const placement of table.placements) {
+			const savedPlacement = savedPlacements.find(
+				(element) => element.getAttribute('id') === placement.id
+			);
+			const livePlacement = editorApi?.getElementById(placement.id);
+			if (savedPlacement && livePlacement) {
+				const retained = doc.importNode(savedPlacement, true);
+				for (const name of ['transform', 'data-label', 'data-card-ids', 'data-initial-shuffle']) {
+					const value = livePlacement.getAttribute(name);
+					if (value === null) retained.removeAttribute(name);
+					else retained.setAttribute(name, value);
+				}
+				layer.appendChild(retained);
+				continue;
+			}
 			appendSvgJson(
 				layer,
 				withCurrentTransform(

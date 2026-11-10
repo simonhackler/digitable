@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
+import { openSeededProjects, readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
 
 type SvgEditorWindow = Window & {
 	__svgEditorApi?: {
@@ -20,6 +20,41 @@ type SvgEditorWindow = Window & {
 	};
 	__setupEditorControllerBefore?: unknown;
 };
+
+test('map table setup remains usable after moving a card', async ({ page }) => {
+	test.setTimeout(90_000);
+	await openSeededProjects(page, { projectNames: ['map'] });
+	await page.goto('/app/games/map/setup?e2e');
+	await expect(page.getByRole('heading', { name: 'Table' })).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByRole('status')).toContainText('Loaded', { timeout: 30_000 });
+	const card = page.locator('[data-digitable-kind="placement"]').first();
+	await expect(card).toBeVisible();
+	const id = await card.getAttribute('id');
+	const before = await card.getAttribute('transform');
+	const original = await readOpfsText(page, '/map/setup/table.svg');
+	await page.evaluate((id) => {
+		const controller = (window as SvgEditorWindow).__svgEditorController!;
+		controller.selectTreeElement(id!);
+		controller.api!._unsafe!.rawCanvas()!.moveSelectedElements!(60, 60, true);
+	}, id);
+	await expect(page.getByRole('status')).toContainText('Autosaved', { timeout: 30_000 });
+	const moved = await card.getAttribute('transform');
+	expect(moved).not.toBe(before);
+	const saved = await readOpfsText(page, '/map/setup/table.svg');
+	expect(saved.length).toBeLessThan(original.length * 2);
+	expect(
+		await page.evaluate((svg) => {
+			const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+			return doc.querySelector('[data-digitable-kind="placement"]')?.getAttribute('transform');
+		}, saved)
+	).toBe(moved);
+	await page.getByRole('button', { name: 'Add slot' }).click();
+	await expect(page.getByLabel('Slot layout')).toBeVisible();
+	await expect(page.getByRole('status')).toContainText('Autosaved', { timeout: 30_000 });
+	await page.reload();
+	await expect(page.getByRole('status')).toContainText('Loaded', { timeout: 30_000 });
+	await expect(page.locator(`[id="${id}"]`)).toHaveAttribute('transform', moved!);
+});
 
 async function expectSelectedOverlayAligned(
 	page: Page,

@@ -3,11 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { devices, defineConfig } from '@playwright/test';
 
 const envPath = fileURLToPath(new URL('./.env', import.meta.url));
-const devenvPlaywrightEnvPath = fileURLToPath(new URL('./.devenv/playwright.env', import.meta.url));
-const hasExplicitPlaywrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL !== undefined;
-const hasDevenvPlaywrightEnv = existsSync(devenvPlaywrightEnvPath);
 
-const loadEnvFile = (path: string, { override = false } = {}) => {
+const loadEnvFile = (path: string) => {
 	if (!existsSync(path)) {
 		return;
 	}
@@ -24,7 +21,7 @@ const loadEnvFile = (path: string, { override = false } = {}) => {
 		}
 
 		const [, key, rawValue] = match;
-		if (!override && process.env[key] !== undefined) {
+		if (process.env[key] !== undefined) {
 			continue;
 		}
 
@@ -34,11 +31,10 @@ const loadEnvFile = (path: string, { override = false } = {}) => {
 };
 
 loadEnvFile(envPath);
-loadEnvFile(devenvPlaywrightEnvPath, { override: !hasExplicitPlaywrightBaseUrl });
 
-if (!hasExplicitPlaywrightBaseUrl && !hasDevenvPlaywrightEnv) {
+if (!process.env.PLAYWRIGHT_BASE_URL) {
 	throw new Error(
-		'PLAYWRIGHT_BASE_URL is not set and .devenv/playwright.env does not exist. Start devenv before running Playwright.'
+		'PLAYWRIGHT_BASE_URL is not set. Run Playwright inside devenv or set it explicitly.'
 	);
 }
 

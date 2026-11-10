@@ -14,7 +14,6 @@ import {
 	type PointGeometry,
 	type PointId,
 	type Presentation,
-	type RawProjection,
 	type RectGeometry,
 	type ResourceId,
 	type Stroke,
