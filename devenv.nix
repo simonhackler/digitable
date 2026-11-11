@@ -300,7 +300,7 @@ in {
   tasks."test:lint" = {
     exec = ''
       git ls-files -co --exclude-standard -z -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.svelte' |
-        xargs -0r bunx eslint --max-warnings 0
+        xargs -0r bunx eslint --max-warnings 0 --cache --cache-location .devenv/state/eslintcache
     '';
     before = [ "test:check" ];
   };
