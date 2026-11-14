@@ -33,7 +33,7 @@ type CommandRoomOptions<Metadata = Record<string, unknown>, Auth = unknown> = {
 export class CommandRoom<Metadata = Record<string, unknown>, Auth = unknown> extends Room<
 	CommandRoomOptions<Metadata, Auth>
 > {
-	dispatcher = new Dispatcher(this);
+	dispatcher = new Dispatcher<Room<any>>(this);
 	roomCommands = new Map<string, new () => Command<CommandRoom, unknown>>([
 		['ready', ReadyCommand],
 		['flip', FlipCommand],
@@ -427,126 +427,123 @@ export class PlayCommand extends Command<
 	}
 }
 
+// Stack Command has to be reworked like this:
+// - Support dropping a stack onto a stack
+// - Support dropping a stack onto a card
+// - Support grouping multiple/cards stack into one stack
+// This means we take in a list of ids and combine them into one stack, we have to check for exisiting stacks and combine them
+// It should be the orientation of the first card/stack
 export class StackCommand extends Command<
 	CommandRoom,
 	{
 		sessionId: string;
-		sourceId: string;
-		targetId: string;
+		ids: string[];
 		x: number;
 		y: number;
 	}
 > {
 	execute(payload: this['payload']) {
-		const sourceComponent = this.state.components.get(payload.sourceId);
-		const targetComponent = this.state.components.get(payload.targetId);
-		if (!sourceComponent || !targetComponent) return;
+		const ids = payload.ids;
+		if (ids.length < 2) return;
 
-		const player = this.state.players.get(payload.sessionId);
-		if (player && player.hand.has(payload.sourceId)) {
-			player.hand.delete(payload.sourceId);
-		}
-
-		const sourcePosition = this.state.positions.get(payload.sourceId);
-		const targetPosition = this.state.positions.get(payload.targetId);
-		const sourceFlippable = this.state.flippable.get(payload.sourceId);
+		const sourceId = ids[0];
+		const sourceComponent = this.state.components.get(sourceId);
+		const sourceFlippable = this.state.flippable.get(sourceId);
 		const sourceFaceUp = sourceFlippable?.isFaceUp ?? false;
+		const sourcePosition = this.state.positions.get(sourceId);
+		if (!sourceComponent) return;
 
-		const targetStack = this.state.stacks.get(payload.targetId);
-		if (targetStack) {
-			const targetFlippable = this.state.flippable.get(payload.targetId);
-			const targetFaceUp = targetFlippable?.isFaceUp ?? sourceFaceUp;
-			if (sourceFlippable) {
-				sourceFlippable.isFaceUp = targetFaceUp;
-			}
-			if (targetFaceUp) {
-				targetStack.componentIds.unshift(payload.sourceId);
+		const forStackIds: string[] = [];
+		const consumedStackIds: string[] = [];
+		const player = this.state.players.get(payload.sessionId);
+		if (!player) return;
+
+		for (const [index, id] of ids.entries()) {
+			const targetStack = this.state.stacks.get(id);
+			if (targetStack) {
+				if (index == 0) {
+					continue;
+				}
+				forStackIds.push(...targetStack.componentIds);
+				if (id !== sourceId) consumedStackIds.push(id);
 			} else {
-				targetStack.componentIds.push(payload.sourceId);
+				forStackIds.push(id);
 			}
-			if (sourcePosition) {
-				sourcePosition.visible = false;
-				clearNodeParent(this.state, payload.sourceId);
-			}
-			sourceComponent.owner = '';
-			return;
 		}
 
-		const stackId = randomUUID();
-		const componentName =
-			sourceComponent.componentName === targetComponent.componentName
-				? sourceComponent.componentName
-				: '';
-		const targetParentId = targetPosition?.parentId ?? '';
-		const stackComponent = new Component(stackId, '', 'stack', componentName);
+		const stackId = this.state.stacks.has(sourceId) ? sourceId : randomUUID();
+		const componentName = sourceComponent.componentName;
+		const stackComponent =
+			this.state.components.get(stackId) ?? new Component(stackId, '', 'stack', componentName);
 		const stackPosition = createPositionNode(
 			stackId,
 			'stack',
-			targetPosition?.x ?? payload.x,
-			targetPosition?.y ?? payload.y,
+			sourcePosition?.x ?? payload.x,
+			sourcePosition?.y ?? payload.y,
 			true,
-			targetParentId
+			sourcePosition?.parentId ?? ''
 		);
-		stackPosition.rotation = normalizeRotation(targetPosition?.rotation ?? 0);
+		stackPosition.rotation = normalizeRotation(sourcePosition?.rotation ?? 0);
 		const stackFlippable = new Flippable(sourceFaceUp);
-		const stack = new Stack(
-			sourceFaceUp ? [payload.sourceId, payload.targetId] : [payload.targetId, payload.sourceId]
-		);
+		const stack = this.state.stacks.get(stackId) ?? new Stack();
+		stack.componentIds.splice(0, stack.componentIds.length);
+		stack.componentIds.push(...forStackIds);
+		stackComponent.componentName = componentName;
 
-		this.state.components.set(stackId, stackComponent);
+		for (const id of forStackIds) {
+			const position = this.state.positions.get(id);
+			if (position) {
+				position.visible = false;
+				clearNodeParent(this.state, id);
+			}
+			const component = this.state.components.get(id);
+			if (component) component.owner = '';
+			if (player.hand.has(id)) player.hand.delete(id);
+		}
+
+		for (const id of consumedStackIds) {
+			this.state.stacks.delete(id);
+			this.state.positions.delete(id);
+			this.state.flippable.delete(id);
+			this.state.components.delete(id);
+		}
+
 		this.state.positions.set(stackId, stackPosition);
 		this.state.flippable.set(stackId, stackFlippable);
 		this.state.stacks.set(stackId, stack);
-
-		if (sourcePosition) {
-			sourcePosition.visible = false;
-			clearNodeParent(this.state, payload.sourceId);
-		}
-		if (targetPosition) {
-			targetPosition.visible = false;
-			clearNodeParent(this.state, payload.targetId);
-		}
-		sourceComponent.owner = '';
-		targetComponent.owner = '';
+		this.state.components.set(stackId, stackComponent);
 	}
 
 	validate(payload: this['payload']) {
-		if (payload.sourceId === payload.targetId) return false;
-
-		const source = getValidComponent(this.state, payload.sourceId, payload.sessionId, false);
-		const target = getValidComponent(this.state, payload.targetId, payload.sessionId, false);
-		if (!source || !target) return false;
-		if (source.type !== 'card') return false;
-		const sourcePosition = this.state.positions.get(payload.sourceId);
-		const targetPosition = this.state.positions.get(payload.targetId);
-		if (!sourcePosition || !targetPosition || sourcePosition.locked || targetPosition.locked)
-			return false;
-
 		const player = this.state.players.get(payload.sessionId);
 		if (!player) {
 			console.error('Player not found:', payload.sessionId);
 			return false;
 		}
 
-		const sourceFlip = this.state.flippable.get(payload.sourceId);
-		const targetFlip = this.state.flippable.get(payload.targetId);
+		if (!Array.isArray(payload.ids) || payload.ids.length < 2) return false;
+		if (!isFiniteCoordinate(payload.x) || !isFiniteCoordinate(payload.y)) return false;
 
-		if (player.hand.has(payload.targetId)) {
-			console.warn(`Cannot stack onto card ${payload.targetId} in hand`);
-			return false;
+		const cardIds: string[] = [];
+		for (const [index, id] of payload.ids.entries()) {
+			if (typeof id !== 'string' || id.trim() === '' || payload.ids.indexOf(id) !== index)
+				return false;
+
+			const component = getValidComponent(this.state, id, payload.sessionId, false);
+			const position = this.state.positions.get(id);
+			if (!component || !position || position.locked) return false;
+			if (index === 0 && player.hand.has(id)) return false;
+
+			if (component.type === 'stack') {
+				const stack = this.state.stacks.get(id);
+				if (!stack || stack.componentIds.length === 0) return false;
+				cardIds.push(...stack.componentIds);
+			} else {
+				cardIds.push(id);
+			}
 		}
 
-		const targetStack = this.state.stacks.get(payload.targetId);
-		if (!targetStack && sourceFlip && targetFlip && sourceFlip.isFaceUp !== targetFlip.isFaceUp) {
-			console.warn(`Cannot stack ${payload.sourceId} onto ${payload.targetId}: face mismatch`);
-			return false;
-		}
-
-		if (targetStack && targetStack.componentIds.includes(payload.sourceId)) {
-			console.warn(`Card ${payload.sourceId} is already in stack ${payload.targetId}`);
-			return false;
-		}
-		return true;
+		return cardIds.length >= 2 && new Set(cardIds).size === cardIds.length;
 	}
 }
 
