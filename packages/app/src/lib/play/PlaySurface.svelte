@@ -681,7 +681,7 @@
 		item.clientPosition?.applyLocalPlacement(tableItemPlacement(item, TABLE_NODE_ID));
 		const targetPosition = tableItemCommandPosition(target);
 		sendCmd(room, 'stack', {
-            ids: [target.id, item.id],
+			ids: [target.id, item.id],
 			x: targetPosition.x,
 			y: targetPosition.y
 		});
