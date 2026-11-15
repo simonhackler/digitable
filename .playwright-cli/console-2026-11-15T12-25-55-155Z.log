@@ -1,0 +1,3 @@
+[    1727ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://automerge.digitable.localhost/app/api/dev-projects?operation=read&path=.agents%2Fgame.json:0
+[    1735ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://automerge.digitable.localhost/app/api/dev-projects?operation=read&path=.devenv%2Fgame.json:0
+[    1742ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://automerge.digitable.localhost/app/api/dev-projects?operation=read&path=.opencode%2Fgame.json:0

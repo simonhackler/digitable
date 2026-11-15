@@ -8,6 +8,7 @@ const MULTILINE_ATTR = 'data-svgedit-multiline';
 const OVERFLOW_ATTR = 'data-svgedit-text-overflow';
 const EMPTY_LINE_ATTR = 'data-svgedit-empty-line';
 const EMPTY_LINE_PLACEHOLDER = ' ';
+const FRAME_ORIGIN_ATTR = 'data-svgedit-frame-origin';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const FONT_SIZE_STYLE_REGEX = /font-size\s*:\s*([^;]+)/i;
 const LINE_HEIGHT_STYLE_REGEX = /line-height\s*:\s*([^;]+)/i;
@@ -34,6 +35,9 @@ const getStyleValue = (textElem: SVGTextElement, regex: RegExp) => {
 	const styleAttr = textElem.getAttribute('style') || '';
 	return styleAttr.match(regex)?.[1]?.trim() || '';
 };
+
+const getDirectTspans = (textElem: SVGTextElement) =>
+	Array.from(textElem.querySelectorAll<SVGTSpanElement>('tspan'));
 
 export const getTextFontSize = (textElem: SVGTextElement) => {
 	const attrSize = toNumber(textElem.getAttribute('font-size'));
@@ -75,12 +79,32 @@ const buildFontShorthand = (textElem: SVGTextElement) => {
 	return `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`;
 };
 
+const getTextLineWidth = (textElem: SVGTextElement, line: SVGTSpanElement) => {
+	const context = new OffscreenCanvas(1, 1).getContext('2d');
+	if (!context) return 0;
+	context.font = buildFontShorthand(textElem);
+	return context.measureText(line.textContent ?? '').width;
+};
+
 const getTextAlign = (textElem: SVGTextElement) => {
 	const inlineAlign = getStyleValue(textElem, TEXT_ALIGN_STYLE_REGEX);
 	if (inlineAlign) return inlineAlign;
 
 	const attrAlign = textElem.getAttribute('text-align');
 	if (attrAlign) return attrAlign;
+
+	const frameX = toNumber(textElem.getAttribute('x'));
+	const frameWidth = toNumber(textElem.getAttribute(WRAP_WIDTH_ATTR));
+	const line = getDirectTspans(textElem)[0];
+	const lineX = toNumber(line?.getAttribute('x'));
+	if (Number.isFinite(frameX) && Number.isFinite(frameWidth) && frameWidth > 0 && line) {
+		const offset = lineX - frameX;
+		if (offset <= 1) return 'left';
+		const lineWidth = getTextLineWidth(textElem, line);
+		const availableOffset = Math.max(0, frameWidth - lineWidth);
+		if (availableOffset <= 1) return 'left';
+		return offset >= availableOffset * 0.75 ? 'right' : 'center';
+	}
 
 	return window.getComputedStyle(textElem).textAlign || 'left';
 };
@@ -124,6 +148,9 @@ export const applyPretextSvgText = (textElem: SVGTextElement, rawText: string) =
 	const baseX = toNumber(textElem.getAttribute('x'), 0);
 	const y = toNumber(textElem.getAttribute('y'), getTextLineHeight(textElem));
 	const textAlign = getTextAlign(textElem);
+	const baseline =
+		textElem.getAttribute(FRAME_ORIGIN_ATTR) === 'top' ? y + getTextFontSize(textElem) : y;
+	textElem.setAttribute('text-align', textAlign);
 
 	for (const [index, line] of renderedLines.entries()) {
 		const tspan = textElem.ownerDocument.createElementNS(SVG_NS, 'tspan');
@@ -134,7 +161,7 @@ export const applyPretextSvgText = (textElem: SVGTextElement, rawText: string) =
 					? Math.max(0, wrapWidth - line.width)
 					: 0;
 		tspan.setAttribute('x', String(baseX + lineOffset));
-		tspan.setAttribute('y', String(y + index * lineHeight));
+		tspan.setAttribute('y', String(baseline + index * lineHeight));
 		if (line.text === '') {
 			tspan.setAttribute(EMPTY_LINE_ATTR, 'true');
 			tspan.setAttribute('xml:space', 'preserve');

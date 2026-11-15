@@ -13,10 +13,10 @@
   docsPort = config.processes.docs.ports.http.value;
   studioPort = config.processes.studio.ports.http.value;
   serverPort = config.processes.game-server.ports.http.value;
+  syncServerPort = config.processes.sync-server.ports.http.value;
   postgresPort = config.processes.postgres.ports.main.value;
   databaseUrl = "postgres://${dbUser}:${dbPass}@127.0.0.1:${toString postgresPort}/${dbName}";
-  minioApiPort = config.processes.minio.ports.console.value;
-  studioOrigin = "http://localhost:${toString sitePort}";
+  garageS3Port = config.processes.garage.ports.s3.value;
   worktreePath = let
     devenvRoot = builtins.getEnv "DEVENV_ROOT";
     pwd = builtins.getEnv "PWD";
@@ -27,6 +27,30 @@
     then pwd
     else toString ./.;
   worktreeId = builtins.substring 0 8 (builtins.hashString "sha256" worktreePath);
+  gitDir =
+    if builtins.pathExists "${worktreePath}/.git/HEAD"
+    then "${worktreePath}/.git"
+    else let
+      path = lib.removeSuffix "\n" (lib.removePrefix "gitdir: " (builtins.readFile "${worktreePath}/.git"));
+    in
+      if lib.hasPrefix "/" path then path else "${worktreePath}/${path}";
+  head = lib.removeSuffix "\n" (builtins.readFile "${gitDir}/HEAD");
+  branch =
+    if lib.hasPrefix "ref: refs/heads/" head
+    then lib.removePrefix "ref: refs/heads/" head
+    else "detached-${worktreeId}";
+  branchSlug = let
+    slug = lib.concatMapStrings (char: if builtins.match "[a-z0-9-]" char != null then char else "-") (lib.stringToCharacters (lib.toLower branch));
+  in
+    if lib.hasPrefix "-" slug then "branch${slug}" else slug;
+  branchLabel =
+    if branchSlug == branch && builtins.stringLength branchSlug <= 63
+    then branchSlug
+    else "${builtins.substring 0 50 branchSlug}-${builtins.substring 0 8 (builtins.hashString "sha256" branch)}";
+  siteHost = "${branchLabel}.digitable.localhost";
+  docsHost = "docs.${siteHost}";
+  studioOrigin = "http://${siteHost}";
+  docsOrigin = "http://${docsHost}";
   googleClientId = builtins.getEnv "GOOGLE_CLIENT_ID";
   googleClientSecret = builtins.getEnv "GOOGLE_CLIENT_SECRET";
   discordClientId = builtins.getEnv "DISCORD_CLIENT_ID";
@@ -48,13 +72,17 @@
       admin off
     }
 
-    http://docs.localhost:${toString sitePort} {
-        encode zstd gzip
-        reverse_proxy 127.0.0.1:${toString docsPort}
-    }
-
-    http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
+    http://${siteHost}:${toString sitePort}, http://127.0.0.1:${toString sitePort}, http://localhost:${toString sitePort} {
       encode zstd gzip
+
+      handle /app/sync {
+        forward_auth 127.0.0.1:${toString appPort} {
+          uri /app/api/sync-auth
+          header_up Connection ""
+          header_up Upgrade ""
+        }
+        reverse_proxy 127.0.0.1:${toString syncServerPort}
+      }
 
       handle /app* {
         reverse_proxy 127.0.0.1:${toString appPort}
@@ -80,6 +108,7 @@
   '';
 in {
   dotenv.disableHint = true;
+  process.proxy.enable = true;
 
   git-hooks = {
     excludes = [
@@ -115,7 +144,7 @@ in {
       "99-bun-test" = {
         enable = true;
         name = "Playwright E2E Tests";
-        entry = "bun run playwright test --reporter=dot";
+        entry = "bun run playwright test --reporter=list";
         language = "system";
         files = "\\.(js|ts|jsx|tsx|svelte)$";
         pass_filenames = false;
@@ -150,17 +179,16 @@ in {
     DISCORD_CLIENT_SECRET = discordClientSecret;
     WEB_ORIGIN = studioOrigin;
     SECOND_WEB_ORIGIN = "";
-    PUBLIC_DOCS_URL = "http://docs.localhost:${toString sitePort}";
+    PUBLIC_DOCS_URL = docsOrigin;
     AUTH_COOKIE_DOMAIN = "";
     REPLICATE_API_TOKEN = "tmp";
 
-    S3_ENDPOINT = "http://127.0.0.1:${toString minioApiPort}";
+    S3_ENDPOINT = "http://127.0.0.1:${toString garageS3Port}";
     S3_REGION = "us-east-1";
     S3_BUCKET = "digitable-playtests";
-    S3_ACCESS_KEY_ID = "minioadmin";
-    S3_SECRET_ACCESS_KEY = "minioadmin";
     S3_FORCE_PATH_STYLE = "true";
 
+    PLAYWRIGHT_BASE_URL = studioOrigin;
     PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
@@ -182,8 +210,24 @@ in {
     ];
   };
 
-  services.minio = {
+  services.garage = {
     enable = true;
+    buckets = ["digitable-playtests"];
+    afterStart = ''
+      if ! garage key info playtests >/dev/null 2>&1; then
+        garage key create playtests >/dev/null
+      fi
+      garage bucket allow --read --write digitable-playtests --key playtests
+
+      key_info="$(garage key info --show-secret playtests)"
+      access_key="$(printf '%s\n' "$key_info" | sed -n 's/^Key ID:[[:space:]]*//p')"
+      secret_key="$(printf '%s\n' "$key_info" | sed -n 's/^Secret key:[[:space:]]*//p')"
+      test -n "$access_key" && test -n "$secret_key"
+
+      umask 077
+      printf 'export S3_ACCESS_KEY_ID=%s\nexport S3_SECRET_ACCESS_KEY=%s\n' \
+        "$access_key" "$secret_key" > "${config.env.DEVENV_STATE}/garage/playtests.env"
+    '';
   };
 
   processes.postgres.ready = lib.mkForce null;
@@ -243,7 +287,12 @@ in {
     exec = ''
       git ls-files -co --exclude-standard -z -- \
         '*.js' '*.ts' '*.jsx' '*.tsx' '*.svelte' '*.json' '*.css' '*.scss' '*.md' '*.yaml' '*.yml' |
-        xargs -0r bunx prettier --write
+        while IFS= read -r -d ''' file; do
+          if [ ! -L "$file" ]; then
+            printf '%s\0' "$file"
+          fi
+        done |
+        xargs -0r bunx prettier --write --log-level warn
     '';
     before = [ "test:lint" ];
   };
@@ -251,18 +300,20 @@ in {
   tasks."test:lint" = {
     exec = ''
       git ls-files -co --exclude-standard -z -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.svelte' |
-        xargs -0r bunx eslint --max-warnings 0
+        xargs -0r bunx eslint --max-warnings 0 --cache --cache-location .devenv/state/eslintcache
     '';
     before = [ "test:check" ];
   };
 
   tasks."test:check" = {
     exec = "bun run check";
+    showOutput = true;
     before = [ "test:e2e" ];
   };
 
   tasks."test:e2e" = {
-    exec = "bun run playwright test --reporter=dot";
+    exec = "bun run playwright test --reporter=list";
+    showOutput = true;
     before = [ "devenv:enterTest" ];
   };
 
@@ -271,19 +322,26 @@ in {
       ports.http.allocate = 5174;
       exec = "bun run --filter=studio dev -- --host 127.0.0.1 --port ${toString studioPort} --strictPort";
       env.ORIGIN = studioOrigin;
-      env.PUBLIC_DOCS_URL = "http://docs.localhost:${toString sitePort}";
+      env.PUBLIC_DOCS_URL = docsOrigin;
     };
 
     app = {
       ports.http.allocate = 5173;
-      exec = "bun run --filter=@svg-table/app dev -- --host 127.0.0.1 --port ${toString appPort} --strictPort";
+      exec = ''
+        . "${config.env.DEVENV_STATE}/garage/playtests.env"
+        exec bun run --filter=@svg-table/app dev -- --host 127.0.0.1 --port ${toString appPort} --strictPort
+      '';
+      after = ["devenv:garage:configure"];
       env.PORT = toString appPort;
+      env.DEV_PROJECTS_ROOT = "${worktreePath}/projects";
+      env.PUBLIC_DEV_PROJECTS = "true";
       env.ORIGIN = studioOrigin;
       env.PUBLIC_GAME_SERVER_URL = "ws://localhost:${toString serverPort}";
     };
 
     docs = {
       ports.http.allocate = 4321;
+      proxy.hostname = docsHost;
       exec = "bun run --filter=@digitable/docs dev -- --host 127.0.0.1 --port ${toString docsPort} --strictPort";
     };
 
@@ -293,20 +351,25 @@ in {
       env.PORT = toString serverPort;
     };
 
+    sync-server = {
+      ports.http.allocate = 3030;
+      exec = ''
+        mkdir -p .devenv/state/automerge-sync
+        exec bun run --filter=@svg-table/sync-server start
+      '';
+      env.PORT = toString syncServerPort;
+      env.AUTOMERGE_DATA_DIR = "${worktreePath}/.devenv/state/automerge-sync";
+      env.AUTOMERGE_SYNC_ORIGIN = studioOrigin;
+    };
+
     proxy = {
       ports.http.allocate = 5180;
-      exec = ''
-        mkdir -p .devenv
-        {
-          printf 'PORT=%s\n' '${toString sitePort}'
-          printf 'PLAYWRIGHT_BASE_URL=%s\n' 'http://localhost:${toString sitePort}'
-        } > .devenv/playwright.env
-        trap 'rm -f .devenv/playwright.env' EXIT
-        exec ${pkgs.caddy}/bin/caddy run --config ${caddyfile} --adapter caddyfile
-      '';
+      proxy.hostname = siteHost;
+      exec = "exec ${pkgs.caddy}/bin/caddy run --config ${caddyfile} --adapter caddyfile";
       after = [
         "devenv:processes:studio@started"
         "devenv:processes:app@started"
+        "devenv:processes:sync-server@started"
       ];
     };
   };

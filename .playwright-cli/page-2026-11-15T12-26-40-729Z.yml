@@ -1,0 +1,119 @@
+- generic [ref=e2]:
+    - generic [ref=e3]:
+        - generic [ref=e6]:
+            - generic [ref=e7]:
+                - list [ref=e8]:
+                    - listitem [ref=e9]:
+                        - button "1card-game" [ref=e10]:
+                            - generic [ref=e13]: 1card-game
+                            - img [ref=e14]
+                        - button "Create Game" [ref=e15]:
+                            - img
+                            - text: Create Game
+                - list [ref=e16]:
+                    - listitem [ref=e17]:
+                        - button "Main" [ref=e18]:
+                            - img [ref=e19]
+                            - generic [ref=e20]: Main
+                    - listitem [ref=e21]:
+                        - button "History" [ref=e22]:
+                            - img [ref=e23]
+                            - generic [ref=e24]: History
+            - generic [ref=e25]:
+                - generic [ref=e26]:
+                    - generic [ref=e27]: Create
+                    - list [ref=e28]:
+                        - listitem [ref=e29]:
+                            - link "Rules" [ref=e30] [cursor=pointer]:
+                                - /url: /app/games/1card-game/rules
+                                - img [ref=e31]
+                                - generic [ref=e32]: Rules
+                        - listitem [ref=e34]:
+                            - button "Decks" [ref=e35]:
+                                - img [ref=e36]
+                                - generic [ref=e37]: Decks
+                                - img [ref=e38]
+                - generic [ref=e39]:
+                    - generic [ref=e40]: Actions
+                    - list [ref=e41]:
+                        - listitem [ref=e43]:
+                            - button "Export" [ref=e44]:
+                                - img [ref=e45]
+                                - generic [ref=e46]: Export
+                                - img [ref=e47]
+                - generic [ref=e48]:
+                    - generic [ref=e49]: Play
+                    - list [ref=e50]:
+                        - listitem [ref=e51]:
+                            - link "Setup" [ref=e52] [cursor=pointer]:
+                                - /url: /app/games/1card-game/setup
+                                - img [ref=e53]
+                                - generic [ref=e54]: Setup
+                        - listitem [ref=e55]:
+                            - link "Local Test" [ref=e56] [cursor=pointer]:
+                                - /url: /app/games/1card-game/play
+                                - img [ref=e57]
+                                - generic [ref=e58]: Local Test
+                        - listitem [ref=e59]:
+                            - link "Playtests" [ref=e60] [cursor=pointer]:
+                                - /url: /app/games/1card-game/playtests
+                                - img [ref=e61]
+                                - generic [ref=e62]: Playtests
+            - generic [ref=e64]:
+                - list [ref=e65]:
+                    - listitem [ref=e66]:
+                        - link "Sign up" [ref=e67] [cursor=pointer]:
+                            - /url: /app/sign-up
+                            - img [ref=e68]
+                            - generic [ref=e69]: Sign up
+                    - listitem [ref=e70]:
+                        - link "Sign in" [ref=e71] [cursor=pointer]:
+                            - /url: /app/sign-in
+                            - img [ref=e72]
+                            - generic [ref=e73]: Sign in
+                - button "Change Projects Folder" [ref=e74]
+        - main [ref=e75]:
+            - main [ref=e197]:
+                - toolbar "Spreadsheet editor toolbar" [ref=e198]:
+                    - button "Toggle Sidebar" [ref=e199]:
+                        - img
+                        - generic [ref=e200]: Toggle Sidebar
+                    - separator [ref=e201]
+                    - link "Layout" [ref=e202] [cursor=pointer]:
+                        - /url: /app/games/1card-game/decks/the_card/editor
+                        - img
+                        - text: Layout
+                    - separator [ref=e203]
+                    - generic [ref=e204]:
+                        - button "Back" [ref=e205]:
+                            - img
+                            - text: Back
+                        - button "Add SVG data" [ref=e206]
+                        - button "Generate Images" [disabled]
+                        - button "Select Image" [disabled]:
+                            - img
+                            - text: Select Image
+                    - status [ref=e207]: Saved
+                - generic [ref=e208]:
+                    - img [ref=e212]:
+                        - generic "Layer 1" [ref=e213]
+                    - generic [ref=e218]:
+                        - region "Tab Panels" [ref=e221]:
+                            - generic [ref=e223]:
+                                - table [ref=e224]:
+                                    - rowgroup [ref=e229]:
+                                        - row "background back_background" [ref=e230]:
+                                            - cell [ref=e231] [cursor=pointer]
+                                            - cell "background" [ref=e232] [cursor=pointer]
+                                            - cell "back_background" [ref=e233] [cursor=pointer]
+                                    - rowgroup [ref=e234]:
+                                        - row "1 /placeholder.svg /placeholder.svg" [ref=e235]:
+                                            - cell "1" [ref=e236]
+                                            - cell "/placeholder.svg" [ref=e237]
+                                            - cell "/placeholder.svg" [ref=e238]
+                                - textbox [ref=e240]
+                        - button "Append column" [ref=e241]:
+                            - img
+                        - button "Append row" [ref=e242]:
+                            - img
+    - generic [ref=e196]: untitled page

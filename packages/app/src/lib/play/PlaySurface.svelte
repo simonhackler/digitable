@@ -33,6 +33,7 @@
 	import { initComponent } from './initComponent';
 	import { installPlayE2EBridge } from './e2e-bridge';
 	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import type { ProjectSnapshot } from '$lib/collaboration';
 	import { StrokeLayer, currentStrokeStyle, type PlayTool } from './strokes';
 	import type { Table, TableSlot } from '../../routes/games/[gameName]/setup/table';
 	import {
@@ -64,6 +65,7 @@
 		configureTableViewport,
 		drawPreviewRect,
 		loadRequiredTable,
+		loadRequiredTableSnapshot,
 		normalizeRotation,
 		setTableItemPose,
 		setTableItemRotation,
@@ -104,17 +106,24 @@
 
 	let {
 		projectName,
-		fileSystem,
+		fileSystem = undefined,
+		snapshot = undefined,
 		roomConnection = defaultRoomConnection,
 		playtestFeedback = null,
 		e2e = false
 	}: {
 		projectName: string;
-		fileSystem: FsDir;
+		fileSystem?: FsDir;
+		snapshot?: ProjectSnapshot;
 		roomConnection?: PlayRoomConnection;
 		playtestFeedback?: { playtestId: string } | null;
 		e2e?: boolean;
 	} = $props();
+	function projectSource(): FsDir | ProjectSnapshot {
+		const source = snapshot ?? fileSystem;
+		if (!source) throw new Error('PlaySurface requires a project snapshot or filesystem.');
+		return source;
+	}
 
 	const gameServerUrl = env.PUBLIC_GAME_SERVER_URL;
 	if (!gameServerUrl) {
@@ -1146,7 +1155,7 @@
 				.sort((a, b) => a.localeCompare(b))
 				.map(async (deckName) => ({
 					deckName,
-					cards: await loadAndProcessCards(projectName, deckName, fileSystem)
+					cards: await loadAndProcessCards(projectName, deckName, projectSource())
 				}))
 		);
 		const allComponentsParsed = loadedDecks.flatMap((deck) => deck.cards);
@@ -1239,11 +1248,17 @@
 	let localTable: LocalTable;
 	let room: PlayRoom;
 
-	const loadedTable = await loadRequiredTable({ fileSystem, projectName });
+	async function loadTable() {
+		const source = projectSource();
+		return 'rootUrl' in source
+			? loadRequiredTableSnapshot(source)
+			: loadRequiredTable({ fileSystem: source, projectName });
+	}
+	const loadedTable = await loadTable();
 	const tableData = loadedTable.data;
 	const tableBlockMessage = loadedTable.error?.message;
 	const app = $state(await initApp());
-	const previewer = $derived(new PreviewHelper(app));
+	const previewer = new PreviewHelper(app);
 	const viewport = $derived(
 		createViewport(app, {
 			worldWidth: tableData?.table.table.width ?? 1,

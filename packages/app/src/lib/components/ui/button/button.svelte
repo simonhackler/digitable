@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	/* eslint-disable svelte/no-navigation-without-resolve -- Dynamic hrefs are resolved by resolvePath. */
 	import { cn, type WithElementRef } from '$lib/utils/utils.js';
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 	import { type VariantProps, tv } from 'tailwind-variants';
@@ -50,8 +51,8 @@
 </script>
 
 <script lang="ts">
-	import type { Pathname } from '$app/types';
 	import { resolve } from '$app/paths';
+	const resolvePath = resolve as unknown as (path: string) => string;
 
 	let {
 		class: className,
@@ -84,7 +85,7 @@
 			bind:this={ref}
 			data-slot="button"
 			class={cn(buttonVariants({ variant, size }), className)}
-			href={resolve(href as Pathname)}
+			href={resolvePath(href)}
 			aria-disabled={undefined}
 			role={undefined}
 			tabindex={undefined}

@@ -6,10 +6,13 @@
 		loadStoragePreference,
 		saveOpfsPreference
 	} from '$lib/components/file-browser/adapters/opfs/storage-preference';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
+	import { dev } from '$app/environment';
 	import {
 		isMissingProjectsRootMarkerError,
 		pickProjectsRoot,
 		prepareSavedProjectsRoot,
+		readProjectsRootMarker,
 		PROJECTS_ROOT_MARKER,
 		projectsRootMarkerJson,
 		type ProjectsRootError
@@ -19,19 +22,19 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Check, Copy } from '@lucide/svelte';
 
-	let { onSetOpfsAdapter }: { onSetOpfsAdapter: (opfsAdapter: OPFSAdapter) => Promise<void> } =
+	let { onSetProjectsAdapter }: { onSetProjectsAdapter: (adapter: FsDir) => Promise<void> } =
 		$props();
 
-	let opfsAdapter: OPFSAdapter | null = $state(null);
+	let projectsAdapter: FsDir | null = $state(null);
 	let dirPicker: boolean | null = $state(null);
 	let projectsRootError: ProjectsRootError | null = $state(null);
 	let missingMarkerJson = $state('');
 	let markerJsonCopied = $state(false);
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 
-	async function applyAdapter(adapter: OPFSAdapter) {
-		opfsAdapter = adapter;
-		await onSetOpfsAdapter(adapter);
+	async function applyAdapter(adapter: FsDir) {
+		projectsAdapter = adapter;
+		await onSetProjectsAdapter(adapter);
 	}
 
 	async function pickFolder() {
@@ -52,12 +55,27 @@
 
 	onMount(async () => {
 		dirPicker = 'showDirectoryPicker' in window;
+		const storagePreference = await loadStoragePreference();
+		if (
+			dev &&
+			env.PUBLIC_DEV_PROJECTS === 'true' &&
+			(storagePreference === null || storagePreference === 'dev-projects')
+		) {
+			const { DevProjectsAdapter } = await import('$lib/dev-projects/adapter');
+			const adapter = new DevProjectsAdapter();
+			const root = await readProjectsRootMarker(adapter);
+			if (root.error) {
+				setProjectsRootError(root.error);
+				return;
+			}
+			await applyAdapter(adapter);
+			return;
+		}
 		if (!dirPicker) {
 			await applyAdapter(await OPFSAdapter.create());
 			return;
 		}
 
-		const storagePreference = await loadStoragePreference();
 		if (storagePreference === 'opfs') {
 			await applyAdapter(await OPFSAdapter.create());
 			return;
@@ -120,7 +138,7 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 
-	{#if dirPicker === true && !opfsAdapter}
+	{#if dirPicker === true && !projectsAdapter}
 		<div class="flex w-full flex-col items-center justify-center gap-4">
 			<p>Get started by picking a folder to store your projects</p>
 			<div class="flex flex-row gap-2">
@@ -159,7 +177,7 @@
 				</div>
 			{/if}
 		</div>
-	{:else if dirPicker === false && !opfsAdapter}
+	{:else if dirPicker === false && !projectsAdapter}
 		<div class="flex flex-col items-center gap-2">
 			<p>Your browser does not support picking a local folder</p>
 			<p>Use Chrome if you want to use a local folder</p>

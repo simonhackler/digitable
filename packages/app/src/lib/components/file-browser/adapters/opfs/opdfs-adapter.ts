@@ -1,4 +1,5 @@
 import { Ok } from 'wellcrafted/result';
+import { observeDirectory } from '../watch';
 import {
 	FsError,
 	basename,
@@ -13,6 +14,7 @@ import {
 	type FsResult,
 	type FsWriteData
 } from '../adapter';
+import type { FsChanges, FsWatchOptions } from '../adapter';
 
 /**
  * Adapter implementation for the Origin Private File System (OPFS) and picked
@@ -28,6 +30,12 @@ export class OPFSAdapter implements FsDir {
 	static async create(): Promise<OPFSAdapter> {
 		const root = await navigator.storage.getDirectory();
 		return new OPFSAdapter(root);
+	}
+
+	watch(onChange: (paths: FsChanges) => void, options?: FsWatchOptions) {
+		return wrapFs({ operation: 'watch' }, () =>
+			observeDirectory(this.root, this, onChange, options)
+		);
 	}
 
 	private splitPath(path: string): { parent: string; name: string } {

@@ -1,0 +1,55 @@
+name: Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Configure devenv cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+
+      - name: Install dependencies
+        run: devenv shell -- bun install --frozen-lockfile
+
+      - name: Start services
+        run: |
+          sudo -v
+          devenv up -d
+          devenv processes wait --timeout 300
+
+      - name: Test
+        run: devenv test
+
+      - name: Check formatting
+        run: git diff --exit-code -- . ':!projects/'
+
+      - name: Show process logs on failure
+        if: failure()
+        run: |
+          devenv processes list || true
+          for process in postgres garage studio app docs game-server sync-server proxy; do
+            devenv processes logs "$process" --lines 100 || true
+          done
+
+      - name: Stop services
+        if: always()
+        run: devenv processes down || true

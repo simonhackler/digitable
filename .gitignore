@@ -35,6 +35,9 @@ storybook-static
 .devmode.json
 .devenv
 
+# Local Automerge storage for game projects
+projects/**/.automerge/
+
 # Nix VM artifacts
 infrastructure/nix/result
 infrastructure/nix/*.qcow2

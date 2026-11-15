@@ -13,6 +13,7 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$svgeditor/components/ui/card/index.js';
 	import { Input } from '$svgeditor/components/ui/input/index.js';
 	import { Label } from '$svgeditor/components/ui/label/index.js';
+	import type { Paint, Stroke } from '../crdt/model';
 
 	type EditorController = ReturnType<typeof createEditorController>;
 
@@ -309,7 +310,6 @@
 	const getRawCanvas = () =>
 		controller.api?._unsafe?.rawCanvas?.() as {
 			getStrokedBBox?: (elems: Element[]) => BBox | null;
-			getRotationAngle?: (elem: Element) => number;
 			getOpacity?: () => number;
 			getBlur?: (elem: Element) => number | string;
 			getFontSize?: () => number;
@@ -317,7 +317,6 @@
 			getBold?: () => boolean;
 			getItalic?: () => boolean;
 			setOpacity?: (value: number) => void;
-			setRotationAngle?: (value: number, preventUndo?: boolean) => void;
 			setBlur?: (value: number, complete?: boolean) => void;
 			setBlurNoUndo?: (value: number) => void;
 			setRectRadius?: (value: number) => void;
@@ -384,6 +383,22 @@
 	const canEditBlur = $derived(hasSingleSelection);
 	const canEditOpacity = $derived(hasSelection);
 	const canEditStroke = $derived(hasSelection);
+	const fillInteractionBlocked = $derived.by(() => {
+		void controller.blockedClaims;
+		return controller.isInteractionBlocked('fill');
+	});
+	const strokeInteractionBlocked = $derived.by(() => {
+		void controller.blockedClaims;
+		return controller.isInteractionBlocked('stroke');
+	});
+	const transformInteractionBlocked = $derived.by(() => {
+		void controller.blockedClaims;
+		return controller.isInteractionBlocked('move');
+	});
+	const resizeInteractionBlocked = $derived.by(() => {
+		void controller.blockedClaims;
+		return controller.isInteractionBlocked('resize');
+	});
 	const canEditText = $derived(hasTextSelection);
 	const canEditImage = $derived(
 		hasSingleSelection && selectedElement?.tagName.toLowerCase() === 'image'
@@ -565,14 +580,10 @@
 			height = roundTo(geometry.height);
 		}
 
-		const rawCanvas = getRawCanvas();
-		if (primary && rawCanvas?.getRotationAngle) {
-			rotation = roundTo(rawCanvas.getRotationAngle(primary));
-		} else {
-			rotation = 0;
-		}
+		rotation = primary ? roundTo(controller.getSelectionRotation()) : 0;
 
 		if (primary) {
+			const rawCanvas = getRawCanvas();
 			const computedStyle = typeof window !== 'undefined' ? window.getComputedStyle(primary) : null;
 			const fillAttr = primary.getAttribute('fill');
 			const strokeAttr = primary.getAttribute('stroke');
@@ -655,7 +666,7 @@
 	};
 
 	const moveSelectionBy = (dx: number, dy: number) => {
-		if (!hasSelection) return;
+		if (!hasSelection || transformInteractionBlocked) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.moveSelectedElements) return;
 		const elements = selectedElements;
@@ -677,7 +688,7 @@
 	};
 
 	const applyWidth = () => {
-		if (!canEditSize || !selectedElement) return;
+		if (!canEditSize || resizeInteractionBlocked || !selectedElement) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.changeSelectedAttribute) return;
 		const tag = selectedElement.tagName.toLowerCase();
@@ -708,7 +719,7 @@
 	};
 
 	const applyHeight = () => {
-		if (!canEditSize || !selectedElement) return;
+		if (!canEditSize || resizeInteractionBlocked || !selectedElement) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.changeSelectedAttribute) return;
 		const tag = selectedElement.tagName.toLowerCase();
@@ -738,11 +749,10 @@
 		changeSelectedAttribute(rawCanvas, 'height', nextHeight);
 	};
 
-	const applyRotation = () => {
-		if (!canEditRotation || !selectedElement) return;
-		const rawCanvas = getRawCanvas();
-		if (!rawCanvas?.setRotationAngle) return;
-		rawCanvas.setRotationAngle(toNumber(rotation, 0), false);
+	const applyRotation = (value = rotation) => {
+		if (!canEditRotation || transformInteractionBlocked || !selectedElement) return;
+		controller.setSelectionRotation(toNumber(value, 0));
+		rotation = roundTo(controller.getSelectionRotation());
 	};
 
 	const applyOpacity = () => {
@@ -762,7 +772,7 @@
 	};
 
 	const applyRoundness = () => {
-		if (!canEditRoundness || !selectedElement) return;
+		if (!canEditRoundness || resizeInteractionBlocked || !selectedElement) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.setRectRadius) return;
 		const next = Math.max(0, toNumber(roundness, 0));
@@ -770,26 +780,48 @@
 	};
 
 	const applyStrokeWidth = () => {
-		if (!canEditStroke) return;
+		if (!canEditStroke || strokeInteractionBlocked) return;
 		const next = Math.max(0, toNumber(strokeWidth, 0));
 		controller.setStrokeWidth(next);
 	};
 
 	const applyStrokeDash = () => {
-		if (!canEditStroke) return;
+		if (!canEditStroke || strokeInteractionBlocked) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.changeSelectedAttribute) return;
 		changeSelectedAttribute(rawCanvas, 'stroke-dasharray', dashToAttr(strokeDash));
 	};
 
-	const applyFillColor = () => {
-		if (!hasSelection) return;
-		controller.setFill(fillColor);
+	const colorPaint = (value: string): Paint => ({ kind: 'color', value });
+	const colorStroke = (value: string): Stroke => ({
+		paint: colorPaint(value),
+		width: Math.max(0, toNumber(strokeWidth, 0)),
+		dashArray: strokeDash === 'solid' ? 'none' : strokeDash === 'dash' ? [5, 5] : [2, 2]
+	});
+	const previewFillColor = () => {
+		if (!hasSelection || !controller.previewFill(colorPaint(fillColor))) syncFromSelection();
 	};
 
-	const applyStrokeColor = () => {
-		if (!canEditStroke) return;
-		controller.setStroke(strokeColor);
+	const commitFillColor = () => {
+		if (!hasSelection || !controller.commitFill(colorPaint(fillColor))) syncFromSelection();
+	};
+
+	const previewStrokeColor = () => {
+		if (!canEditStroke || !controller.previewStroke(colorStroke(strokeColor))) syncFromSelection();
+	};
+
+	const commitStrokeColor = () => {
+		if (!canEditStroke || !controller.commitStroke(colorStroke(strokeColor))) syncFromSelection();
+	};
+
+	const cancelColorInteraction = () => {
+		if (controller.cancelInteraction()) syncFromSelection();
+	};
+
+	const handleColorKeydown = (event: KeyboardEvent) => {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		cancelColorInteraction();
 	};
 
 	const getCurrentFontSize = () => {
@@ -915,7 +947,7 @@
 	};
 
 	const alignSelection = (mode: string) => {
-		if (!hasSelection) return;
+		if (!hasSelection || transformInteractionBlocked) return;
 		const rawCanvas = getRawCanvas();
 		if (!rawCanvas?.alignSelectedElements) return;
 		rawCanvas.alignSelectedElements(mode, 'page');
@@ -944,7 +976,7 @@
 						type="number"
 						bind:value={posX}
 						class="text-lg font-semibold"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						oninput={(event) => handleDeferredNumberInput(event, applyPosition)}
 						onkeydown={(event) => handleNumberCommit(event, applyPosition)}
 						onblur={handleNumberBlur}
@@ -957,7 +989,7 @@
 						type="number"
 						bind:value={posY}
 						class="text-lg font-semibold"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						oninput={(event) => handleDeferredNumberInput(event, applyPosition)}
 						onkeydown={(event) => handleNumberCommit(event, applyPosition)}
 						onblur={handleNumberBlur}
@@ -970,7 +1002,7 @@
 						type="number"
 						bind:value={width}
 						class="text-lg font-semibold"
-						disabled={!canEditSize}
+						disabled={!canEditSize || resizeInteractionBlocked}
 						oninput={(event) => handleDeferredNumberInput(event, applyWidth)}
 						onkeydown={(event) => handleNumberCommit(event, applyWidth)}
 						onblur={handleNumberBlur}
@@ -983,7 +1015,7 @@
 						type="number"
 						bind:value={height}
 						class="text-lg font-semibold"
-						disabled={!canEditSize}
+						disabled={!canEditSize || resizeInteractionBlocked}
 						oninput={(event) => handleDeferredNumberInput(event, applyHeight)}
 						onkeydown={(event) => handleNumberCommit(event, applyHeight)}
 						onblur={handleNumberBlur}
@@ -998,28 +1030,15 @@
 						id="inspector-rotation"
 						type="number"
 						class="border-input bg-background ring-offset-background focus-visible:ring-ring h-11 w-full rounded-md border px-3 text-lg font-semibold shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-						bind:value={rotation}
-						disabled={!canEditRotation}
-						oninput={applyRotation}
+						value={rotation}
+						disabled={!canEditRotation || transformInteractionBlocked}
+						oninput={(event) => {
+							applyRotation(event.currentTarget.valueAsNumber);
+							event.currentTarget.value = String(rotation);
+						}}
 						onkeydown={(event) => handleNumberCommit(event, applyRotation)}
 						onblur={handleNumberBlur}
 					/>
-					<div class="bg-muted/30 flex h-11 items-center justify-center rounded-lg border">
-						<div
-							class="bg-background relative flex size-11 items-center justify-center rounded-full border"
-							style={`transform: rotate(${rotation}deg);`}
-						>
-							<span
-								class="bg-primary absolute top-1 left-1/2 size-1.5 -translate-x-1/2 rounded-full"
-							></span>
-							<span
-								class="text-foreground text-sm font-semibold"
-								style={`transform: rotate(${-rotation}deg);`}
-							>
-								{rotation}
-							</span>
-						</div>
-					</div>
 				</div>
 				<div class="grid gap-1.5">
 					<Label for="inspector-opacity">Opacity</Label>
@@ -1059,7 +1078,7 @@
 						step="1"
 						bind:value={roundness}
 						class="text-lg font-semibold"
-						disabled={!canEditRoundness}
+						disabled={!canEditRoundness || resizeInteractionBlocked}
 						oninput={applyRoundness}
 					/>
 				</div>
@@ -1075,7 +1094,7 @@
 						variant="outline"
 						class="h-10 w-10"
 						aria-label="Align left"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						onclick={() => alignSelection('l')}
 					>
 						<svg viewBox="0 0 24 24" class="size-4">
@@ -1088,7 +1107,7 @@
 						variant="outline"
 						class="h-10 w-10"
 						aria-label="Align center"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						onclick={() => alignSelection('c')}
 					>
 						<svg viewBox="0 0 24 24" class="size-4">
@@ -1101,7 +1120,7 @@
 						variant="outline"
 						class="h-10 w-10"
 						aria-label="Align right"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						onclick={() => alignSelection('r')}
 					>
 						<svg viewBox="0 0 24 24" class="size-4">
@@ -1114,7 +1133,7 @@
 						variant="outline"
 						class="h-10 w-10"
 						aria-label="Align top"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						onclick={() => alignSelection('t')}
 					>
 						<svg viewBox="0 0 24 24" class="size-4">
@@ -1127,7 +1146,7 @@
 						variant="outline"
 						class="h-10 w-10"
 						aria-label="Align middle"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						onclick={() => alignSelection('m')}
 					>
 						<svg viewBox="0 0 24 24" class="size-4">
@@ -1140,7 +1159,7 @@
 						variant="outline"
 						class="h-10 w-10"
 						aria-label="Align bottom"
-						disabled={!hasSelection}
+						disabled={!hasSelection || transformInteractionBlocked}
 						onclick={() => alignSelection('b')}
 					>
 						<svg viewBox="0 0 24 24" class="size-4">
@@ -1369,8 +1388,11 @@
 							type="color"
 							class="h-10 w-full p-1"
 							bind:value={fillColor}
-							disabled={!hasSelection}
-							oninput={applyFillColor}
+							disabled={!hasSelection || fillInteractionBlocked}
+							oninput={previewFillColor}
+							onchange={commitFillColor}
+							onpointercancel={cancelColorInteraction}
+							onkeydown={handleColorKeydown}
 						/>
 					</div>
 					<div class="grid gap-1.5">
@@ -1380,8 +1402,11 @@
 							type="color"
 							class="h-10 w-full p-1"
 							bind:value={strokeColor}
-							disabled={!canEditStroke}
-							oninput={applyStrokeColor}
+							disabled={!canEditStroke || strokeInteractionBlocked}
+							oninput={previewStrokeColor}
+							onchange={commitStrokeColor}
+							onpointercancel={cancelColorInteraction}
+							onkeydown={handleColorKeydown}
 						/>
 					</div>
 				</div>
@@ -1398,7 +1423,7 @@
 							min="0"
 							step="1"
 							bind:value={strokeWidth}
-							disabled={!canEditStroke}
+							disabled={!canEditStroke || strokeInteractionBlocked}
 							oninput={applyStrokeWidth}
 							class="text-lg font-semibold"
 						/>
@@ -1409,7 +1434,7 @@
 							id="inspector-stroke-dash"
 							class="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm font-medium shadow-xs focus-visible:ring-[3px]"
 							bind:value={strokeDash}
-							disabled={!canEditStroke}
+							disabled={!canEditStroke || strokeInteractionBlocked}
 							onchange={applyStrokeDash}
 						>
 							<option value="solid">Solid</option>

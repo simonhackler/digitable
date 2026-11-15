@@ -1,12 +1,21 @@
 <script lang="ts">
+	/* eslint-disable svelte/no-navigation-without-resolve -- projectViewHref preserves query parameters on resolved paths. */
 	import { resolve } from '$app/paths';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { Download, Gamepad2, Printer } from '@lucide/svelte';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { Game } from './types.js';
+	import { peersOnProjectPages, type RemotePresenceState } from '$lib/collaboration';
+	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
+	import { page } from '$app/state';
+	import { projectViewHref } from './project-view-url';
 
-	let { activeGame }: { activeGame: Game | null } = $props();
+	let { activeGame, peers }: { activeGame: Game | null; peers: RemotePresenceState[] } = $props();
+
+	function pagePeers(routeId: string): RemotePresenceState[] {
+		return peersOnProjectPages(peers, routeId, { gameName: activeGame?.name });
+	}
 </script>
 
 <Sidebar.Group>
@@ -30,9 +39,19 @@
 						<Sidebar.MenuSubItem>
 							<Sidebar.MenuSubButton>
 								{#snippet child({ props })}
-									<a href={resolve(`/games/${activeGame?.name}/export/tts`)} {...props}>
+									<a
+										href={projectViewHref(
+											resolve(`/games/${activeGame?.name}/export/tts`),
+											page.url
+										)}
+										{...props}
+									>
 										<Gamepad2 class="mr-2 h-4 w-4" />
-										TTS
+										<span class="flex-1">TTS</span>
+										<SidebarPresenceAvatars
+											peers={pagePeers('/games/[gameName]/export/tts')}
+											pageLabel="TTS"
+										/>
 									</a>
 								{/snippet}
 							</Sidebar.MenuSubButton>
@@ -40,9 +59,19 @@
 						<Sidebar.MenuSubItem>
 							<Sidebar.MenuSubButton>
 								{#snippet child({ props })}
-									<a href={resolve(`/games/${activeGame?.name}/export/paper`)} {...props}>
+									<a
+										href={projectViewHref(
+											resolve(`/games/${activeGame?.name}/export/paper`),
+											page.url
+										)}
+										{...props}
+									>
 										<Printer class="mr-2 h-4 w-4" />
-										Paper
+										<span class="flex-1">Paper</span>
+										<SidebarPresenceAvatars
+											peers={pagePeers('/games/[gameName]/export/paper')}
+											pageLabel="Paper"
+										/>
 									</a>
 								{/snippet}
 							</Sidebar.MenuSubButton>

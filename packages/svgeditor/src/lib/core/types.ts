@@ -1,3 +1,5 @@
+import type { NodeId, Paint, Stroke, Vec2 } from '../crdt/model';
+
 export type SvgString = string;
 
 export type SvgCanvasConfig = {
@@ -24,6 +26,67 @@ export type SvgCanvasBBox = {
 	height: number;
 };
 
+export type Bounds = SvgCanvasBBox;
+
+export type SvgInteractionKind = 'move' | 'resize' | 'rotate' | 'fill' | 'stroke';
+
+export type SvgClaimDomain = 'transform' | 'geometry' | 'placement' | 'fill' | 'stroke' | 'path';
+
+export type SvgClaim = {
+	nodeId: NodeId;
+	domain: SvgClaimDomain;
+};
+
+const SVG_INTERACTION_KINDS: SvgInteractionKind[] = ['move', 'resize', 'rotate', 'fill', 'stroke'];
+
+const SVG_CLAIM_DOMAINS: SvgClaimDomain[] = [
+	'transform',
+	'geometry',
+	'placement',
+	'fill',
+	'stroke',
+	'path'
+];
+
+export function isSvgInteractionKind(value: unknown): value is SvgInteractionKind {
+	return typeof value === 'string' && SVG_INTERACTION_KINDS.some((kind) => kind === value);
+}
+
+export function isSvgClaimDomain(value: unknown): value is SvgClaimDomain {
+	return typeof value === 'string' && SVG_CLAIM_DOMAINS.some((domain) => domain === value);
+}
+
+export function svgInteractionClaimDomains(kind: SvgInteractionKind): SvgClaimDomain[] {
+	if (kind === 'fill' || kind === 'stroke') return [kind];
+	if (kind === 'resize') return ['geometry', 'transform'];
+	return ['transform'];
+}
+
+export function svgInteractionClaims(kind: SvgInteractionKind, nodeIds: NodeId[]): SvgClaim[] {
+	return nodeIds.flatMap((nodeId) =>
+		svgInteractionClaimDomains(kind).map((domain) => ({ nodeId, domain }))
+	);
+}
+
+export type SvgInteractionPreview =
+	| { kind: 'move'; delta: Vec2; bounds?: Bounds }
+	| { kind: 'resize'; baseBounds: Bounds; bounds: Bounds }
+	| { kind: 'rotate'; angle: number; pivot: Vec2; bounds?: Bounds }
+	| { kind: 'fill'; paint: Paint }
+	| { kind: 'stroke'; stroke: Stroke };
+
+export type RemoteSvgInteraction = {
+	interactionId: string;
+	nodeIds: NodeId[];
+	claims: SvgClaim[];
+	preview: SvgInteractionPreview;
+	color?: string;
+};
+
+export type SvgInteractionEvent = RemoteSvgInteraction & {
+	phase: 'start' | 'update' | 'commit' | 'cancel';
+};
+
 export type SvgElementJson =
 	| string
 	| {
@@ -48,6 +111,7 @@ export type SvgCanvasRawApi = {
 	bind?: (event: string, callback: (...args: unknown[]) => void) => void;
 	call?: (event: string, args: unknown[]) => void;
 	changeSelectedAttribute?: (attr: string, val: string | number, elems?: Element[]) => void;
+	changeSelectedAttributeNoUndo?: (attr: string, val: string | number, elems?: Element[]) => void;
 	clear?: () => void;
 	clearSelection?: (noUndo?: boolean) => void;
 	cloneSelectedElements?: (x: number, y: number) => void;
@@ -61,7 +125,9 @@ export type SvgCanvasRawApi = {
 	getItalic?: () => boolean;
 	getMode: () => string;
 	getOpacity?: () => number;
+	getRotationAngle?: (elem?: Element, toRadians?: boolean) => number;
 	getSelectedElements?: () => Element[];
+	getStarted?: () => boolean;
 	getStrokedBBox?: (elems: Element[]) => SvgCanvasBBox | null;
 	getSvgContent?: () => SVGSVGElement;
 	getSvgRoot?: () => SVGSVGElement;
@@ -69,8 +135,8 @@ export type SvgCanvasRawApi = {
 	getZoom: () => number;
 	getNextId?: () => string;
 	moveSelectedElements?: (
-		dx: number,
-		dy: number,
+		dx: number | number[],
+		dy: number | number[],
 		undoable?: boolean,
 		snapToPageBorder?: boolean
 	) => void;
@@ -98,6 +164,15 @@ export type SvgCanvasRawApi = {
 		setMultilineInputElem?: (elem: HTMLTextAreaElement) => void;
 	};
 	undoMgr?: {
+		beginUndoableChange?: (attrName: string, elems: Element[]) => void;
+		finishUndoableChange?: () => {
+			apply: HistoryCommand['apply'];
+			elements: HistoryCommand['elements'];
+			getText: HistoryCommand['getText'];
+			isEmpty: () => boolean;
+			type: HistoryCommand['type'];
+			unapply: HistoryCommand['unapply'];
+		};
 		addCommandToHistory?: (command: {
 			apply: (handler?: {
 				handleHistoryEvent?: (eventType: string, command: unknown) => void;
@@ -163,6 +238,7 @@ export type EditorError = {
 
 export type SvgEditorApi = {
 	loadSvg(svg: string, opts?: { preventUndo?: boolean; center?: boolean }): boolean;
+	applySvgProjection(svg: string, opts?: { center?: boolean }): boolean;
 	getSvg(): string;
 	setResolution(width: number, height: number): boolean;
 
@@ -181,6 +257,18 @@ export type SvgEditorApi = {
 	setFill(color: string): void;
 	setStroke(color: string): void;
 	setStrokeWidth(value: number): void;
+	getSelectionRotation(): number;
+	setSelectionRotation(value: number): void;
+	beginColorInteraction(kind: 'fill' | 'stroke'): boolean;
+	updateColorInteraction(
+		preview: Extract<SvgInteractionPreview, { kind: 'fill' | 'stroke' }>
+	): boolean;
+	commitColorInteraction(
+		preview?: Extract<SvgInteractionPreview, { kind: 'fill' | 'stroke' }>
+	): boolean;
+	cancelInteraction(): boolean;
+	setRemoteInteractions(interactions: RemoteSvgInteraction[], blockedClaims?: SvgClaim[]): void;
+	isInteractionBlocked(kind: SvgInteractionKind, nodeIds?: NodeId[]): boolean;
 	getFontSize(): number;
 	setFontSize(value: number): void;
 	getFontFamily(): string;
@@ -275,3 +363,13 @@ export type ModeChangeEvent = {
 };
 
 export type ErrorEvent = EditorError;
+
+type HistoryCommand = {
+	apply: (handler?: { handleHistoryEvent?: (eventType: string, command: unknown) => void }) => void;
+	elements: () => Element[];
+	getText: () => string;
+	type: () => string;
+	unapply: (handler?: {
+		handleHistoryEvent?: (eventType: string, command: unknown) => void;
+	}) => void;
+};

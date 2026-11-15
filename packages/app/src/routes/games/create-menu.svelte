@@ -1,4 +1,5 @@
 <script lang="ts">
+	/* eslint-disable svelte/no-navigation-without-resolve -- projectViewHref preserves query parameters on resolved paths. */
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { resolve } from '$app/paths';
 	import * as Collapsible from '$lib/components/ui/collapsible/index.js';
@@ -16,40 +17,43 @@
 	import RenameDeckDialog from './rename-deck-dialog.svelte';
 	import NewDeckDialog from './new-deck-dialog.svelte';
 	import { goto } from '$app/navigation';
-	import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter.js';
+	import type { FsDir } from '$lib/components/file-browser/adapters/adapter.js';
 	import { BookOpenText } from '@lucide/svelte';
-	import { COMPONENTS_DIR } from '$lib/workspace/project-layout';
+	import {
+		peersOnProjectPages,
+		type ProjectSession,
+		type RemotePresenceState
+	} from '$lib/collaboration';
+	import SidebarPresenceAvatars from './sidebar-presence-avatars.svelte';
+	import { page } from '$app/state';
+	import { projectViewHref } from './project-view-url';
 
-	let { activeGame, fileSystem }: { activeGame: Game | null; fileSystem: FsDir } = $props();
+	let {
+		activeGame,
+		fileSystem,
+		projectSession,
+		peers
+	}: {
+		activeGame: Game | null;
+		fileSystem: FsDir;
+		projectSession: ProjectSession;
+		peers: RemotePresenceState[];
+	} = $props();
 
-	function onDeckRenamed(oldName: string, newName: string) {
-		if (!activeGame) return;
-
-		activeGame.decks = activeGame.decks.map((deck) =>
-			deck.name === oldName ? { name: newName } : deck
-		);
+	function pagePeers(routeIds: string | string[], deckName?: string): RemotePresenceState[] {
+		return peersOnProjectPages(peers, routeIds, {
+			gameName: activeGame?.name,
+			deckName
+		});
 	}
 
-	function onDeckCreated(deckName: string) {
-		if (!activeGame) return;
-
-		activeGame.decks = [...activeGame.decks, { name: deckName }];
-	}
-
-	async function deleteDeck(
-		fileSystem: FsDir,
-		projectName: string,
-		component: ComponentFileStructure
-	) {
-		const fullFolderPath = joinFsPath(COMPONENTS_DIR, component.name);
-		console.log('deleting for', fullFolderPath);
-		const removed = await fileSystem.remove(fullFolderPath, { recursive: true });
+	async function deleteDeck(projectName: string, component: ComponentFileStructure) {
+		const removed = await projectSession.deleteComponent(component.name);
 		if (removed.error) {
 			console.error(removed.error);
-		} else {
-			activeGame!.decks = activeGame!.decks.filter((x) => x.name !== component.name);
-			await goto(resolve(`/games/${projectName}`));
+			return;
 		}
+		await goto(resolve(`/games/${projectName}`));
 	}
 </script>
 
@@ -59,9 +63,17 @@
 		<Sidebar.MenuItem>
 			<Sidebar.MenuButton tooltipContent="Rules">
 				{#snippet child({ props })}
-					<a href={resolve(`/games/${activeGame?.name}/rules`)} {...props}>
+					<a
+						href={projectViewHref(resolve(`/games/${activeGame?.name}/rules`), page.url)}
+						{...props}
+					>
 						<BookOpenText />
 						<span>Rules</span>
+						<SidebarPresenceAvatars
+							peers={pagePeers('/games/[gameName]/rules')}
+							pageLabel="Rules"
+							class="ml-auto"
+						/>
 					</a>
 				{/snippet}
 			</Sidebar.MenuButton>
@@ -81,18 +93,34 @@
 				</Collapsible.Trigger>
 				<Collapsible.Content>
 					<Sidebar.MenuSub>
-						<Sidebar.MenuSubItem>
-							<NewDeckDialog {activeGame} {fileSystem} {onDeckCreated} />
-						</Sidebar.MenuSubItem>
+						{#if projectSession.canEditStructure}
+							<Sidebar.MenuSubItem>
+								<NewDeckDialog {activeGame} {projectSession} />
+							</Sidebar.MenuSubItem>
+						{/if}
 						{#each activeGame?.decks ?? [] as deck (deck.name)}
 							<Sidebar.MenuSubItem>
 								<Sidebar.MenuSubButton>
 									{#snippet child({ props })}
 										<a
-											href={resolve(`/games/${activeGame?.name}/decks/${deck.name}/editor`)}
+											href={projectViewHref(
+												resolve(`/games/${activeGame?.name}/decks/${deck.name}/editor`),
+												page.url
+											)}
 											{...props}
 										>
-											<span class="text-muted-foreground">{deck.name}</span>
+											<span class="text-muted-foreground min-w-0 flex-1 truncate">{deck.name}</span>
+											<SidebarPresenceAvatars
+												peers={pagePeers(
+													[
+														'/games/[gameName]/decks/[deckName]/editor',
+														'/games/[gameName]/decks/[deckName]/data'
+													],
+													deck.name
+												)}
+												pageLabel={deck.name}
+												class="mr-5"
+											/>
 										</a>
 									{/snippet}
 								</Sidebar.MenuSubButton>
@@ -112,7 +140,7 @@
 										{@const path = `/games/${activeGame!.name}/decks/${deck.name}`}
 										{/* @ts-expect-error paths*/ null}
 										<DropdownMenu.Item
-											onSelect={() => goto(resolve(`${path}/editor`))}
+											onSelect={() => goto(projectViewHref(resolve(`${path}/editor`), page.url))}
 											class="flex w-full justify-start gap-2"
 										>
 											<LayoutTemplate />
@@ -120,33 +148,35 @@
 										</DropdownMenu.Item>
 										{/* @ts-expect-error paths*/ null}
 										<DropdownMenu.Item
-											onSelect={() => goto(resolve(`${path}/data`))}
+											onSelect={() => goto(projectViewHref(resolve(`${path}/data`), page.url))}
 											class="flex w-full justify-start gap-2"
 										>
 											<Table2 />
 											<span>Spreadsheet</span>
 										</DropdownMenu.Item>
-										<RenameDeckDialog projectFolder={fileSystem} {deck} onRenamed={onDeckRenamed}>
-											{#snippet trigger({ props })}
-												<DropdownMenu.Item
-													{...props}
-													onSelect={(event) => event.preventDefault()}
-													class="flex w-full justify-start gap-2"
-												>
-													<TextCursorInput />
-													<span>Rename</span>
-												</DropdownMenu.Item>
-											{/snippet}
-										</RenameDeckDialog>
-										<DropdownMenu.Separator />
-										<DropdownMenu.Item
-											variant="destructive"
-											onSelect={() => deleteDeck(fileSystem, activeGame!.name, deck)}
-											class="flex w-full justify-start gap-2"
-										>
-											<Trash2 />
-											<span>Delete</span>
-										</DropdownMenu.Item>
+										{#if projectSession.canEditStructure}
+											<RenameDeckDialog projectFolder={fileSystem} {projectSession} {deck}>
+												{#snippet trigger({ props })}
+													<DropdownMenu.Item
+														{...props}
+														onSelect={(event) => event.preventDefault()}
+														class="flex w-full justify-start gap-2"
+													>
+														<TextCursorInput />
+														<span>Rename</span>
+													</DropdownMenu.Item>
+												{/snippet}
+											</RenameDeckDialog>
+											<DropdownMenu.Separator />
+											<DropdownMenu.Item
+												variant="destructive"
+												onSelect={() => deleteDeck(activeGame!.name, deck)}
+												class="flex w-full justify-start gap-2"
+											>
+												<Trash2 />
+												<span>Delete</span>
+											</DropdownMenu.Item>
+										{/if}
 									</DropdownMenu.Content>
 								</DropdownMenu.Root>
 							</Sidebar.MenuSubItem>
