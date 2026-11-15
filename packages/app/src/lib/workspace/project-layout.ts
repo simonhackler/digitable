@@ -1,4 +1,10 @@
-import { type FsDir, type FsResult } from '$lib/components/file-browser/adapters/adapter';
+import { FsError, type FsDir, type FsResult } from '$lib/components/file-browser/adapters/adapter';
+import {
+	readProjectsRootMarker,
+	writeProjectsRootMarker,
+	PROJECTS_ROOT_MARKER
+} from './projects-root';
+import { withProjectLock } from '$lib/collaboration/project-lock';
 import { DIGITABLE_VERSION } from './digitable-version';
 import { migrateLegacyProjectLayout } from './migrations/legacy-project-layout';
 
@@ -35,14 +41,43 @@ export function projectMigrationsForVersion(digitableVersion?: string) {
 export async function migrateProjectLayout(
 	fileSystem: FsDir,
 	projectName: string,
-	digitableVersion?: string
+	appVersion = 'dev'
 ): Promise<FsResult<void>> {
-	for (const migration of projectMigrationsForVersion(digitableVersion)) {
-		const migrated = await migration.migrate(fileSystem, projectName);
-		if (migrated.error) return migrated;
-	}
-
-	return { data: undefined, error: null };
+	return withProjectLock(`migration:${projectName}`, async () => {
+		const project = await fileSystem.openDir(projectName);
+		if (project.error) return project;
+		const marker = await project.data.readText(PROJECTS_ROOT_MARKER);
+		if (marker.error && marker.error.name !== 'NotFoundError') return marker;
+		const version = marker.error ? undefined : await readProjectsRootMarker(project.data);
+		if (version?.error)
+			return FsError.Failed({
+				operation: 'readText',
+				path: PROJECTS_ROOT_MARKER,
+				cause: version.error
+			});
+		const current = version?.data?.digitableVersion;
+		if (current === DIGITABLE_VERSION) return { data: undefined, error: null };
+		if (current && !projectMigrations.some((migration) => migration.targetVersion === current)) {
+			return FsError.Failed({
+				operation: 'readText',
+				path: PROJECTS_ROOT_MARKER,
+				cause: new Error(`Unsupported project version ${current}.`)
+			});
+		}
+		// Unmarked projects run the idempotent migration, even inside an already migrated workspace.
+		for (const migration of projectMigrationsForVersion(current)) {
+			const migrated = await migration.migrate(fileSystem, projectName);
+			if (migrated.error) return migrated;
+		}
+		const written = await writeProjectsRootMarker(project.data, { appVersion });
+		if (written.error)
+			return FsError.Failed({
+				operation: 'write',
+				path: PROJECTS_ROOT_MARKER,
+				cause: written.error
+			});
+		return { data: undefined, error: null };
+	});
 }
 
 export async function listProjectComponents(projectDir: FsDir) {

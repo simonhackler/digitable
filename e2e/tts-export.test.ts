@@ -245,7 +245,7 @@ test('local TTS export inlines image refs and creates distinct timestamped folde
 	await page.goto('/app/games');
 	await seedTtsLocalProject(page);
 
-	await useBrowserStorage(page, 1);
+	await useBrowserStorage(page);
 	await page.goto(`/app/games/${projectName}/export/tts`);
 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({
@@ -309,7 +309,7 @@ test('exports the full western cards TTS package', async ({ page }, testInfo) =>
 	await page.goto('/app/games');
 	await seedProjectFiles(page, westernProjectName);
 
-	await useBrowserStorage(page, 1);
+	await useBrowserStorage(page);
 	await page.goto(`/app/games/${westernProjectName}/export/tts`);
 
 	await expect(page.getByText('TTS export finished successfully!')).toBeVisible({

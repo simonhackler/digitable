@@ -12,13 +12,11 @@
 	const project = getActiveProjectContext();
 	const useDataUrls = $derived(page.route.id !== '/games/[gameName]/export/paper');
 
-	const { children } = $props();
+	let { children, data }: import('./$types').LayoutProps = $props();
 
 	async function getFoldersToExport(projectName: string, useDataUrls: boolean) {
 		const projectData = new ProjectData();
-		const captured = await project.session.snapshot();
-		if (captured.error) throw new Error(captured.error.message);
-		const snapshot = captured.data;
+		const { snapshot } = await project.session.require(data.exportNeeds);
 		for (const front of snapshot
 			.members('component-svg')
 			.filter((member) => member.path.endsWith('/front.svg'))) {

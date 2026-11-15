@@ -95,7 +95,9 @@ export async function createProjectMemberHandle(
 
 export async function resolveProjectGraph(
 	repo: Repo,
-	projectHandle: DocHandle<unknown>
+	projectHandle: DocHandle<unknown>,
+	/** Omit for a complete graph. A map resolves only metadata and retained/explicitly loaded members. */
+	loaded?: ReadonlyMap<string, DocHandle<ProjectMemberDocument>>
 ): Promise<ProjectGraph> {
 	while (true) {
 		const heads = projectHandle.heads();
@@ -106,19 +108,27 @@ export async function resolveProjectGraph(
 		const errors = validateProjectStructure(project);
 		if (errors.length) throw new Error(errors[0]);
 		const resolved = await Promise.all(
-			Object.entries(project.members).map(async ([id, member]) => {
-				const classification = classifyProjectFile(member.path);
-				if (!classification || classification.kind !== member.kind) {
-					throw new Error(
-						`Automerge project member ${member.path} is not a recognized ${member.kind} file.`
-					);
-				}
-				const handle = await repo.find<ProjectMemberDocument>(member.url);
-				if (!isProjectMemberDocument(member.kind, handle.doc())) {
-					throw new Error(`Automerge project member ${member.path} has an unsupported format.`);
-				}
-				return [id, handle] as const;
-			})
+			Object.entries(project.members)
+				.filter(
+					([id, member]) =>
+						!loaded || id === GAME_METADATA_MEMBER_ID || loaded.get(id)?.url === member.url
+				)
+				.map(async ([id, member]) => {
+					const classification = classifyProjectFile(member.path);
+					if (!classification || classification.kind !== member.kind) {
+						throw new Error(
+							`Automerge project member ${member.path} is not a recognized ${member.kind} file.`
+						);
+					}
+					const handle =
+						loaded?.get(id)?.url === member.url
+							? loaded.get(id)!
+							: await repo.find<ProjectMemberDocument>(member.url);
+					if (!isProjectMemberDocument(member.kind, handle.doc())) {
+						throw new Error(`Automerge project member ${member.path} has an unsupported format.`);
+					}
+					return [id, handle] as const;
+				})
 		);
 		if (!sameHeads(heads, projectHandle.heads())) continue;
 		return graphFromHandles(
@@ -131,7 +141,8 @@ export async function resolveProjectGraph(
 
 export async function resolveProjectGraphAtCheckpoint(
 	repo: Repo,
-	checkpoint: ProjectCheckpoint
+	checkpoint: ProjectCheckpoint,
+	partial = false
 ): Promise<ProjectGraph> {
 	const root = await repo.find<ProjectDocument>(checkpoint.rootUrl);
 	const projectHandle = root.view(checkpoint.rootHeads);
@@ -142,18 +153,20 @@ export async function resolveProjectGraphAtCheckpoint(
 	const errors = validateProjectStructure(project);
 	if (errors.length) throw new Error(errors[0]);
 	const resolved = await Promise.all(
-		Object.entries(project.members).map(async ([id, member]) => {
-			const version = checkpoint.members[id];
-			if (!version || version.url !== member.url) {
-				throw new Error(`Checkpoint is missing project member ${member.path}.`);
-			}
-			const source = await repo.find<ProjectMemberDocument>(version.url);
-			const handle = source.view(version.heads);
-			if (!isProjectMemberDocument(member.kind, handle.doc())) {
-				throw new Error(`Project member ${member.path} is unavailable at the checkpoint.`);
-			}
-			return [id, handle] as const;
-		})
+		Object.entries(project.members)
+			.filter(([id]) => !partial || id === GAME_METADATA_MEMBER_ID)
+			.map(async ([id, member]) => {
+				const version = checkpoint.members[id];
+				if (!version || version.url !== member.url) {
+					throw new Error(`Checkpoint is missing project member ${member.path}.`);
+				}
+				const source = await repo.find<ProjectMemberDocument>(version.url);
+				const handle = source.view(version.heads);
+				if (!isProjectMemberDocument(member.kind, handle.doc())) {
+					throw new Error(`Project member ${member.path} is unavailable at the checkpoint.`);
+				}
+				return [id, handle] as const;
+			})
 	);
 	return graphFromHandles(projectHandle, project, new Map(resolved));
 }

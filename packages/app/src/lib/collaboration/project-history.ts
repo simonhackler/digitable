@@ -52,7 +52,8 @@ export async function createProjectHistory(
 export async function resolveBranchGraph(
 	repo: Repo,
 	historyHandle: DocHandle<ProjectHistoryDocument>,
-	branchId = historyHandle.doc()?.checkedOutBranchId
+	branchId = historyHandle.doc()?.checkedOutBranchId,
+	partial = false
 ): Promise<{ branchId: ProjectBranchId; branch: ProjectBranch; graph: ProjectGraph }> {
 	assert(branchId, 'Project history has no checked-out branch.');
 	const branch = historyHandle.doc()?.branches[branchId];
@@ -60,7 +61,11 @@ export async function resolveBranchGraph(
 	if (branch.deletedAt !== undefined)
 		throw new Error(`Project branch "${branch.name}" was deleted.`);
 	const root = await repo.find<ProjectDocument>(branch.rootUrl);
-	return { branchId, branch, graph: await resolveProjectGraph(repo, root) };
+	return {
+		branchId,
+		branch,
+		graph: await resolveProjectGraph(repo, root, partial ? new Map() : undefined)
+	};
 }
 
 export async function recordProjectCheckpoint(

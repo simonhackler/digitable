@@ -1,7 +1,7 @@
 <script lang="ts">
 	import MarkdownEditor from '$lib/components/markdown/MarkdownEditor.svelte';
 	import MarkdownToolbar from '$lib/components/markdown/MarkdownToolbar.svelte';
-	import { assert, requireParam } from '$lib/utils/assert';
+	import { requireParam } from '$lib/utils/assert';
 	import type { EditorState } from 'prosemirror-state';
 	import type { EditorView } from 'prosemirror-view';
 	import { getActiveProjectContext, getActiveProjectState } from '../../context.js';
@@ -10,8 +10,9 @@
 	const project = getActiveProjectContext();
 	const projectState = getActiveProjectState();
 	const gameName = requireParam('gameName');
-	const handle = project.session.member('rules', 'rules.md')?.handle;
-	assert(handle, 'The project session is missing its rules document.');
+	let { data }: import('./$types').PageProps = $props();
+	const documents = $derived(await project.session.require(data.projectNeeds));
+	const handle = $derived(documents.rules.handle);
 
 	let view = $state<EditorView>();
 	let editorState = $state<EditorState>();

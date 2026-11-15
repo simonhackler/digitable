@@ -58,11 +58,13 @@
 	const ORIGINAL_HREF_ATTR = 'data-digitable-original-href';
 
 	const project = getActiveProjectContext();
+	let { data }: import('./$types').PageProps = $props();
 	const game = $derived(requireParam('gameName'));
 	const deck = $derived(requireParam('deckName'));
 	const dataPath = $derived(`/games/${game}/decks/${deck}/data`);
 	const maxSvgUploadSize = 12 * 1024 * 1024;
 	const deckSideIndex = getDeckSideIndexContext();
+	const documents = $derived(await project.session.require(data.componentNeeds));
 
 	const roundTo = (value: number, precision = 2) => {
 		const factor = 10 ** precision;
@@ -182,15 +184,8 @@
 	const editorController = createEditorController();
 
 	$effect(() => {
-		const componentName = deck;
-		const frontHandle = project.session.member(
-			'component-svg',
-			`components/${componentName}/front.svg`
-		)?.handle;
-		const backHandle = project.session.member(
-			'component-svg',
-			`components/${componentName}/back.svg`
-		)?.handle;
+		const frontHandle = documents.front?.handle;
+		const backHandle = documents.back?.handle;
 		const nextFrontBinding = frontHandle ? createSvgDocumentBinding(frontHandle) : null;
 		const nextBackBinding = backHandle ? createSvgDocumentBinding(backHandle) : null;
 		frontBinding = nextFrontBinding;
@@ -204,12 +199,8 @@
 	});
 
 	$effect(() => {
-		const componentName = deck;
 		const currentSide = side;
-		const handle = project.session.member(
-			'component-svg',
-			`components/${componentName}/${currentSide}.svg`
-		)?.handle;
+		const handle = documents[currentSide]?.handle;
 		const pageId = projectPresencePage(page.route.id, page.params).id;
 		if (!handle) {
 			interactionChannel = null;

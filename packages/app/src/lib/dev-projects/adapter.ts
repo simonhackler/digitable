@@ -13,12 +13,39 @@ import {
 	type FsResult,
 	type FsWriteData
 } from '$lib/components/file-browser/adapters/adapter';
+import type { FsChanges, FsWatchOptions } from '$lib/components/file-browser/adapters/adapter';
 
 export class DevProjectsAdapter implements FsDir {
 	readonly name: string;
 
 	constructor(private readonly root = '') {
 		this.name = basename(root) || 'projects';
+	}
+
+	watch(onChange: (paths: FsChanges) => void, options: FsWatchOptions = {}) {
+		return wrapFs(
+			{ operation: 'watch', path: this.root },
+			() =>
+				new Promise<() => void>((resolveWatch, reject) => {
+					const url = new URL(resolve('/api/dev-projects'), window.location.origin);
+					url.searchParams.set('operation', 'watch');
+					url.searchParams.set('path', this.root);
+					for (const path of options.ignore ?? []) url.searchParams.append('ignore', path);
+					const events = new EventSource(url);
+					let connected = false;
+					events.onopen = () => {
+						if (connected) onChange(null);
+						connected = true;
+						resolveWatch(() => events.close());
+					};
+					events.onmessage = (event) => onChange(JSON.parse(event.data) as FsChanges);
+					events.onerror = () => {
+						if (connected) return; // EventSource reconnects; onopen requests recovery.
+						events.close();
+						reject(new Error('Could not observe the worktree project.'));
+					};
+				})
+		);
 	}
 
 	private async request(operation: FsOperation, path: string, init?: RequestInit) {
@@ -32,6 +59,8 @@ export class DevProjectsAdapter implements FsDir {
 		if (response.data.status === 404) {
 			return FsError.NotFound({ operation, path: joinFsPath(this.root, path) });
 		}
+		if (response.data.status === 409 && operation === 'list')
+			return FsError.WrongKind({ operation, path });
 		if (!response.data.ok) {
 			return fsFailed(operation, new Error(await response.data.text()), path);
 		}
@@ -101,6 +130,8 @@ export class DevProjectsAdapter implements FsDir {
 				: data;
 		const response = await this.request('write', path, {
 			method: 'POST',
+			// SvelteKit's Node adapter ignores bodies without a Content-Type header.
+			headers: { 'content-type': 'application/octet-stream' },
 			body: typeof chunk === 'string' ? chunk : new Blob([chunk as BlobPart])
 		});
 		if (response.error) return response;

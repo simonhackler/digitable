@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { openSeededProjects, readOpfsText, writeOpfsText } from './helpers/opfs';
+import { seedProjects, readOpfsText, writeOpfsText } from './helpers/opfs';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -18,7 +18,7 @@ test.beforeAll(async ({ browser }, testInfo) => {
 	});
 	const page = await rulesContext.newPage();
 	try {
-		await openSeededProjects(page, { projectNames: ['western-cards', 'map'] });
+		await seedProjects(page, { projectNames: ['western-cards', 'map'] });
 	} finally {
 		await page.close();
 	}
@@ -95,7 +95,10 @@ test('shows collaborators moving their pointer on the same rules page', async ()
 		await expect(otherRoute.getByLabel('Collaborator cursor')).toHaveCount(0);
 
 		await otherRoute.goto('/app/games/western-cards/play');
-		await expect(otherRoute.getByRole('toolbar', { name: 'Play tools' })).toBeVisible();
+		// Play awaits a complete reconciled snapshot, unlike the metadata/rules views above.
+		await expect(otherRoute.getByRole('toolbar', { name: 'Play tools' })).toBeVisible({
+			timeout: 15000
+		});
 		await expect(otherRoute.locator('[data-collaborative-cursor-layer]')).toHaveCount(0);
 		await expect(
 			peer

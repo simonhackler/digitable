@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openSeededProjects, readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
+import { readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
 
 type SvgEditorWindow = Window & {
 	__svgEditorApi?: {
@@ -23,7 +23,7 @@ type SvgEditorWindow = Window & {
 
 test('map table setup remains usable after moving a card', async ({ page }) => {
 	test.setTimeout(90_000);
-	await openSeededProjects(page, { projectNames: ['map'] });
+	await seedProjects(page, { projectNames: ['map'] });
 	await page.goto('/app/games/map/setup?e2e');
 	await expect(page.getByRole('heading', { name: 'Table' })).toBeVisible({ timeout: 30_000 });
 	await expect(page.getByRole('status')).toContainText('Loaded', { timeout: 30_000 });

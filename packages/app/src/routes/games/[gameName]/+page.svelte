@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onDestroy, untrack } from 'svelte';
+	import { createDocumentState } from '$lib/collaboration';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -22,11 +24,16 @@
 	const games = getGamesContext();
 	const projectState = getActiveProjectState();
 	const project = getActiveProjectContext();
+	let { data }: import('./$types').PageProps = $props();
+	// The project boundary remounts this page when its route or checkpoint changes.
+	const documents = await project.session.require(untrack(() => data.projectNeeds));
+	const document = createDocumentState(documents.metadata.handle);
+	onDestroy(document.destroy);
 	const readOnly = project.session.readOnly;
-	const initial = project.metadata.current;
+	const initial = document.current;
 	assert(initial, 'Game metadata document is unavailable');
 
-	const metadata = $derived(project.metadata.current);
+	const metadata = $derived(document.current);
 	let errors = $state<Partial<Record<keyof CreateGameForm, string>>>({});
 	let saveError = $state<string | null>(null);
 	let successMessage = $state('');
@@ -47,13 +54,13 @@
 		}
 		errors[field] = undefined;
 
-		project.metadata.change((document) => {
+		document.change((document) => {
 			if (document[field] !== value) updateText(document, [field], value);
 		});
 	}
 
 	function changePlayers(field: 'minPlayers' | 'maxPlayers', value: number) {
-		const current = project.metadata.current;
+		const current = document.current;
 		if (!current) return;
 		const minPlayers = field === 'minPlayers' ? value : current.players.min;
 		const maxPlayers = field === 'maxPlayers' ? value : current.players.max;
@@ -72,7 +79,7 @@
 		errors.minPlayers = undefined;
 		errors.maxPlayers = undefined;
 
-		project.metadata.change((document) => {
+		document.change((document) => {
 			document.players = { min: minPlayers, max: maxPlayers };
 		});
 	}
@@ -80,7 +87,7 @@
 	async function saveGame(event: SubmitEvent) {
 		event.preventDefault();
 		if (Object.values(errors).some(Boolean)) return;
-		const current = project.metadata.current;
+		const current = document.current;
 		if (!current) return;
 		const parsed = createGameSchema.safeParse({
 			name: current.name,

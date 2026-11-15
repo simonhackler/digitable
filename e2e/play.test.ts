@@ -1,10 +1,11 @@
 import { expect, test, type Page, type Request, type Response } from '@playwright/test';
+import { signUp as createUser } from './helpers/auth';
 import {
 	openOpfsSeedPage,
 	saveOpfsStoragePreference,
 	seedProjectFiles,
-	useBrowserStorage,
 	writeBufferToOPFS,
+	writeOpfsFiles,
 	writeOpfsText
 } from './helpers/opfs';
 import {
@@ -48,9 +49,6 @@ async function seedPixiProject(page: Page, projectSlug: string) {
 	await seedProjectFiles(page, projectSlug);
 	await writeCurrentWorkspaceMarker(page);
 	await saveOpfsStoragePreference(page);
-	await page.goto('/app/games');
-	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
-	await expect(page.getByRole('main').getByText(projectSlug)).toBeVisible();
 }
 
 async function setProjectPlayerLimits(
@@ -315,10 +313,8 @@ async function writeSharedSetupPlayProject(page: Page) {
 	const cardRows = Object.entries(setupPlayCards).map(
 		([label, id]) => `${id},${label.replace(/[A-Z]/g, (match) => ` ${match}`).trim()}`
 	);
-	await writeOpfsText(
-		page,
-		`/${setupPlayProjectSlug}/game.json`,
-		JSON.stringify(
+	await writeOpfsFiles(page, {
+		[`/${setupPlayProjectSlug}/game.json`]: JSON.stringify(
 			{
 				name: 'Setup Play Smoke',
 				minPlayers: 1,
@@ -328,42 +324,30 @@ async function writeSharedSetupPlayProject(page: Page) {
 			},
 			null,
 			'\t'
-		)
-	);
-	await writeOpfsText(page, `/${setupPlayProjectSlug}/rules.md`, '# Setup Play Smoke\n');
-	await writeOpfsText(
-		page,
-		`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/front.svg`,
-		[
+		),
+		[`/${setupPlayProjectSlug}/rules.md`]: '# Setup Play Smoke\n',
+		[`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/front.svg`]: [
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">',
 			' <rect width="63" height="88" fill="#f7efd9"/>',
 			' <rect x="4" y="4" width="55" height="80" rx="4" fill="#fffdf7" stroke="#2f2419" stroke-width="2"/>',
 			' <text id="label" x="31.5" y="44" text-anchor="middle" font-family="sans-serif" font-size="6" fill="#2f2419">Card</text>',
 			'</svg>'
-		].join('\n')
-	);
-	await writeOpfsText(
-		page,
-		`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/back.svg`,
-		[
+		].join('\n'),
+		[`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/back.svg`]: [
 			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88">',
 			' <rect width="63" height="88" fill="#2f2419"/>',
 			' <rect x="4" y="4" width="55" height="80" rx="4" fill="#5a4633" stroke="#f7efd9" stroke-width="2"/>',
 			' <text id="label" x="31.5" y="44" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#f7efd9">Back</text>',
 			'</svg>'
-		].join('\n')
-	);
-	await writeOpfsText(
-		page,
-		`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/data.csv`,
-		['id,label', ...cardRows].join('\n')
-	);
-	await writeOpfsText(page, `/${setupPlayProjectSlug}/setup/table.svg`, sharedSetupTableSvg());
+		].join('\n'),
+		[`/${setupPlayProjectSlug}/components/${setupPlayDeckName}/data.csv`]: [
+			'id,label',
+			...cardRows
+		].join('\n'),
+		[`/${setupPlayProjectSlug}/setup/table.svg`]: sharedSetupTableSvg()
+	});
 	await writeCurrentWorkspaceMarker(page);
 	await saveOpfsStoragePreference(page);
-	await page.goto('/app/games');
-	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
-	await expect(page.getByRole('main').getByText(setupPlayProjectSlug)).toBeVisible();
 }
 
 async function withSetupPlayProject(page: Page, run: (page: Page) => Promise<void>) {
@@ -421,21 +405,16 @@ async function writeSetupShuffleProject(page: Page) {
 		{ name: 'table-deck', ids: ['table-a', 'table-b'] },
 		{ name: 'slot-deck', ids: ['slot-a', 'slot-b'] }
 	]) {
-		await writeOpfsText(
-			page,
-			`/${setupShuffleProjectSlug}/components/${deck.name}/front.svg`,
-			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#f7efd9"/></svg>'
-		);
-		await writeOpfsText(
-			page,
-			`/${setupShuffleProjectSlug}/components/${deck.name}/back.svg`,
-			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#2f2419"/></svg>'
-		);
-		await writeOpfsText(
-			page,
-			`/${setupShuffleProjectSlug}/components/${deck.name}/data.csv`,
-			['id,label', ...deck.ids.map((id) => `${id},${id}`)].join('\n')
-		);
+		await writeOpfsFiles(page, {
+			[`/${setupShuffleProjectSlug}/components/${deck.name}/front.svg`]:
+				'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#f7efd9"/></svg>',
+			[`/${setupShuffleProjectSlug}/components/${deck.name}/back.svg`]:
+				'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#2f2419"/></svg>',
+			[`/${setupShuffleProjectSlug}/components/${deck.name}/data.csv`]: [
+				'id,label',
+				...deck.ids.map((id) => `${id},${id}`)
+			].join('\n')
+		});
 	}
 	await writeOpfsText(page, `/${setupShuffleProjectSlug}/setup/table.svg`, setupShuffleTableSvg());
 	await writeCurrentWorkspaceMarker(page);
@@ -447,10 +426,8 @@ async function writeSetupShuffleProject(page: Page) {
 test('local play blocks when table setup is missing', async ({ page }) => {
 	const projectSlug = 'missing-setup-play';
 	await openOpfsSeedPage(page);
-	await writeOpfsText(
-		page,
-		`/${projectSlug}/game.json`,
-		JSON.stringify(
+	await writeOpfsFiles(page, {
+		[`/${projectSlug}/game.json`]: JSON.stringify(
 			{
 				name: 'Missing Setup Play',
 				minPlayers: 1,
@@ -460,24 +437,14 @@ test('local play blocks when table setup is missing', async ({ page }) => {
 			},
 			null,
 			'\t'
-		)
-	);
-	await writeOpfsText(page, `/${projectSlug}/rules.md`, '# Missing Setup Play\n');
-	await writeOpfsText(
-		page,
-		`/${projectSlug}/components/western/front.svg`,
-		'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#f7efd9"/></svg>'
-	);
-	await writeOpfsText(
-		page,
-		`/${projectSlug}/components/western/back.svg`,
-		'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#2f2419"/></svg>'
-	);
-	await writeOpfsText(
-		page,
-		`/${projectSlug}/components/western/data.csv`,
-		'id,label\ncard-1,Card\n'
-	);
+		),
+		[`/${projectSlug}/rules.md`]: '# Missing Setup Play\n',
+		[`/${projectSlug}/components/western/front.svg`]:
+			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#f7efd9"/></svg>',
+		[`/${projectSlug}/components/western/back.svg`]:
+			'<svg xmlns="http://www.w3.org/2000/svg" width="63mm" height="88mm" viewBox="0 0 63 88"><rect width="63" height="88" fill="#2f2419"/></svg>',
+		[`/${projectSlug}/components/western/data.csv`]: 'id,label\ncard-1,Card\n'
+	});
 	await writeCurrentWorkspaceMarker(page);
 	await saveOpfsStoragePreference(page);
 
@@ -1015,21 +982,11 @@ async function readFeedbackMarkdownFilePaths(page: Page, projectSlug: string) {
 }
 
 async function signUp(page: Page) {
-	const email = `playtest-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
-
-	await page.goto(appPath('/sign-up'), { waitUntil: 'networkidle' });
-	await page.getByLabel('Name').fill('Playtest E2E');
-	await page.getByLabel('Email').fill(email);
-	await page.getByLabel('Password', { exact: true }).fill('correct-horse-battery-staple');
-	await page.getByLabel('Confirm password').fill('correct-horse-battery-staple');
-	await page.getByRole('checkbox').check();
-	await page.getByRole('button', { name: 'Create account' }).click();
-	await expect(page).toHaveURL(/\/app\/games$/, { timeout: 20_000 });
+	await createUser(page.request, 'Playtest E2E', playtestAppOrigin);
 }
 
 async function startPlaytestAndGetInvite(page: Page, projectSlug: string, password = '') {
-	await page.goto(appPath(`/games/${projectSlug}`));
-	await page.getByRole('link', { name: 'Playtests' }).click();
+	await page.goto(appPath(`/games/${projectSlug}/playtests`));
 	await expect(page).toHaveURL(new RegExp(`/app/games/${projectSlug}/playtests`));
 	await expect(page.getByRole('heading', { name: 'Playtests' })).toBeVisible();
 	await page.getByRole('button', { name: 'Create Playtest' }).click();
@@ -1654,11 +1611,7 @@ test('anonymous playtest invitee accepts legal terms and reopens the invite', as
 
 	try {
 		await signUp(page);
-		await page.goto(appPath('/games'));
-		await seedProjectFiles(page, 'pixi-play-smoke');
-		await writeCurrentWorkspaceMarker(page);
-		await useBrowserStorage(page);
-		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
+		await seedPixiProject(page, 'pixi-play-smoke');
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 
@@ -1687,11 +1640,8 @@ test('playtest room list hides full lobbies based on game player limits', async 
 
 	try {
 		await signUp(page);
-		await page.goto(appPath('/games'));
-		await seedProjectFiles(page, 'pixi-play-smoke');
-		await useBrowserStorage(page);
+		await seedPixiProject(page, 'pixi-play-smoke');
 		await setProjectPlayerLimits(page, 'pixi-play-smoke', 2, 2);
-		await expect(page.getByRole('main').getByText('pixi-play-smoke')).toBeVisible();
 
 		const inviteUrl = await startPlaytestAndGetInvite(page, 'pixi-play-smoke');
 

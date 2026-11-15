@@ -8,9 +8,8 @@
 	const project = getActiveProjectContext();
 	const projectName = $derived(requireParam('gameName'));
 	const e2e = $derived(page.url.searchParams.has('e2e'));
-	const captured = await project.session.snapshot();
-	if (captured.error) throw new Error(captured.error.message);
-	const snapshot = captured.data;
+	let { data }: import('./$types').PageProps = $props();
+	const { snapshot } = $derived(await project.session.require(data.projectNeeds));
 </script>
 
 <main class="flex h-svh min-h-0 w-full flex-col overflow-hidden">

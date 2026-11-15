@@ -1,5 +1,71 @@
 import { expect, test } from '@playwright/test';
 
+test('observes external project edits without rereading idle project files', async ({ page }) => {
+	const project = `dev-projects-e2e-${crypto.randomUUID()}`;
+	await page.goto('/app/games');
+	const metadata = {
+		name: project,
+		minPlayers: 1,
+		maxPlayers: 4,
+		description: 'Before external edit',
+		tags: []
+	};
+	await page.evaluate(
+		async ({ project, metadata }) => {
+			const response = await fetch(
+				`/app/api/dev-projects?operation=write&path=${project}/game.json`,
+				{
+					method: 'POST',
+					body: JSON.stringify(metadata)
+				}
+			);
+			if (!response.ok) throw new Error(await response.text());
+		},
+		{ project, metadata }
+	);
+	try {
+		await page.goto(`/app/games/${project}`);
+		await expect(page.getByLabel('Game Description')).toHaveValue(metadata.description);
+		await page.evaluate(
+			async ({ project, metadata }) => {
+				const response = await fetch(
+					`/app/api/dev-projects?operation=write&path=${project}/game.json`,
+					{
+						method: 'POST',
+						body: JSON.stringify({ ...metadata, description: 'After external edit' })
+					}
+				);
+				if (!response.ok) throw new Error(await response.text());
+			},
+			{ project, metadata }
+		);
+		await expect(page.getByLabel('Game Description')).toHaveValue('After external edit');
+		// Let the completed save settle, then measure an interval spanning two old polling ticks.
+		await page.waitForTimeout(1000);
+		const reads: string[] = [];
+		page.on('request', (request) => {
+			const url = new URL(request.url());
+			if (
+				url.pathname === '/app/api/dev-projects' &&
+				url.searchParams.get('operation') === 'read' &&
+				url.searchParams.get('path') === `${project}/game.json`
+			)
+				reads.push(request.url());
+		});
+		await page.waitForTimeout(4500);
+		expect(reads).toEqual([]);
+	} finally {
+		await page.goto('/app/games');
+		await page.evaluate(async (project) => {
+			const response = await fetch(`/app/api/dev-projects?path=${project}`, {
+				method: 'DELETE',
+				headers: { 'X-Recursive': 'true' }
+			});
+			if (!response.ok) throw new Error(await response.text());
+		}, project);
+	}
+});
+
 test('opens the worktree projects folder without asking for a folder', async ({ page }) => {
 	await page.goto('/app/games');
 	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
@@ -47,6 +113,13 @@ test('opens a worktree project without optional Automerge files', async ({ page 
 	try {
 		await page.goto(`/app/games/${name}`);
 		await expect(page.locator('main')).toContainText('Edit Board Game');
+		await page.getByLabel('Game Description').fill('Persisted across a worktree project reload');
+		await page.getByRole('button', { name: 'Update', exact: true }).click();
+		await expect(page.getByText('Game updated successfully!')).toBeVisible();
+		await page.reload();
+		await expect(page.getByLabel('Game Description')).toHaveValue(
+			'Persisted across a worktree project reload'
+		);
 	} finally {
 		await page.goto('/app/games');
 		await page.evaluate(async (name) => {

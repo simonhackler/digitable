@@ -16,13 +16,11 @@
 		projectFolder,
 		projectSession,
 		deck,
-		onRenamed,
 		trigger
 	}: {
 		projectFolder: FsDir;
 		projectSession: ProjectSession;
 		deck: ComponentFileStructure;
-		onRenamed: (oldName: string, newName: string) => void;
 		trigger: Snippet<[{ props: Record<string, unknown> }]>;
 	} = $props();
 
@@ -65,13 +63,7 @@
 			return;
 		}
 
-		const targetPrefix = `components/${newName}/`;
-		if (
-			[
-				...projectSession.members('component-svg'),
-				...projectSession.members('component-data')
-			].some((member) => member.path.startsWith(targetPrefix))
-		) {
+		if (projectSession.components().some((component) => component.name === newName)) {
 			error = `Deck "${newName}" already exists.`;
 			return;
 		}
@@ -84,7 +76,6 @@
 			submitting = false;
 			return;
 		}
-		onRenamed(oldName, newName);
 		const destination = renamedRoute(projectName, oldName, newName);
 		// @ts-expect-error Dynamic route with preserved suffix and query.
 		if (destination) await goto(resolve(destination));

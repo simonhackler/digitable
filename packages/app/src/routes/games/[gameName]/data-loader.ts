@@ -1,4 +1,5 @@
 import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+import { collection, member, optional } from '$lib/collaboration/dependencies';
 import { ASSETS_DIR, COMPONENTS_DIR } from '$lib/workspace/project-layout';
 import type { Column } from 'jspreadsheet-ce';
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
@@ -154,7 +155,8 @@ export async function resolveSessionImageReference(
 	const filePath = getProjectFilePath(projectName, img);
 	if (!filePath) return TRANSPARENT_IMAGE;
 	const path = filePath.replace(new RegExp(`^/${projectName}/`), '') as `assets/${string}`;
-	const document = session.member('asset', path)?.handle.doc();
+	const { image } = await session.require({ image: optional(member('asset', path)) });
+	const document = image?.handle.doc();
 	if (!isBinaryFileDocument(document)) return TRANSPARENT_IMAGE;
 	const blob = new Blob([Uint8Array.from(document.content)], { type: imageMimeType(path) });
 	return useDataUrls ? await blobToDataUrl(blob) : URL.createObjectURL(blob);
@@ -178,9 +180,9 @@ export async function resolveSnapshotImageReference(
 	return useDataUrls ? await blobToDataUrl(blob) : URL.createObjectURL(blob);
 }
 
-export function listSessionImageFiles(session: ProjectSession) {
-	return session
-		.members('asset')
+export async function listSessionImageFiles(session: ProjectSession) {
+	const { images } = await session.require({ images: collection('asset', 'assets') });
+	return images
 		.map((member) => member.path.slice(`${ASSETS_DIR}/`.length))
 		.filter(isImageFileName)
 		.sort((a, b) => a.localeCompare(b));

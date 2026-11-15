@@ -1,7 +1,6 @@
 export * from './component-data';
 export * from './checkpoint-title';
 export * from './document-state.svelte';
-export * from './file-observer';
 export * from './filesystem';
 export * from './game-metadata';
 export * from './materializer';

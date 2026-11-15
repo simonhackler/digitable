@@ -9,7 +9,11 @@
 	import type { Snippet } from 'svelte';
 	import { getFileSystemContext, getGamesContext } from './context.js';
 	import { parseFsPath } from '$lib/components/file-browser/adapters/adapter';
-	import { gameMetadataMaterializer, type GameMetadataDocument } from '$lib/collaboration';
+	import {
+		createProject,
+		gameMetadataMaterializer,
+		type GameMetadataDocument
+	} from '$lib/collaboration';
 	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
 	import { withProjectLock } from '$lib/collaboration/project-lock';
 
@@ -59,10 +63,9 @@
 
 			const project = await fileSystem.ensureDir(folderName);
 			if (project.error) return project;
-			const written = await project.data.write(
-				'game.json',
-				gameMetadataMaterializer.serialize(metadata)
-			);
+			const written = await createProject(project.data, [
+				{ path: 'game.json', data: gameMetadataMaterializer.serialize(metadata) }
+			]);
 			if (written.error) await fileSystem.remove(folderName, { recursive: true });
 			return written;
 		});

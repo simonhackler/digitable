@@ -235,7 +235,13 @@
 			return;
 		}
 
-		const instance = jspreadsheet(el, {
+		const host = document.createElement('div');
+		el.replaceChildren(host);
+		let disposed = false;
+		const instance = jspreadsheet(host, {
+			onload() {
+				if (disposed) jspreadsheet.destroy(host as JspreadsheetInstanceElement);
+			},
 			worksheets: [
 				{
 					data,
@@ -369,9 +375,9 @@
 		}
 
 		return () => {
-			if (instance) {
-				jspreadsheet.destroy(el as JspreadsheetInstanceElement);
-			}
+			disposed = true;
+			jspreadsheet.destroy(host as JspreadsheetInstanceElement);
+			host.remove();
 		};
 	}
 

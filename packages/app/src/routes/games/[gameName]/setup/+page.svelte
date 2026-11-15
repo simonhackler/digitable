@@ -18,7 +18,7 @@
 		type SvgEditorApi
 	} from '@svg-table/svgeditor';
 	import { Maximize2, Plus, SquareDashedMousePointer, Trash2 } from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { createPresenceRegionAttachment } from '$lib/collaboration/presence-surfaces';
 	import { useDebounce } from 'runed';
@@ -83,6 +83,8 @@
 		| { kind: 'card'; deckName: string; cardId: string; label: string };
 
 	const project = getActiveProjectContext();
+	let { data }: import('./$types').PageProps = $props();
+	const documents = await project.session.require(untrack(() => data.projectNeeds));
 	const projectName = $derived(requireParam('gameName'));
 
 	function sortedUniqueStrings(values: string[]) {
@@ -187,8 +189,8 @@
 	async function loadDeckEntry(deckName: string, frontSvgText: string): Promise<DeckEntry> {
 		const frontTemplate = loadSvgTemplate(frontSvgText);
 		const svgData = getSvgDataMapForSides([{ template: frontTemplate }]);
-		const dataDocument = project.session
-			.member('component-data', `components/${deckName}/data.csv`)
+		const dataDocument = documents.data
+			.find((member) => member.path === `components/${deckName}/data.csv`)
 			?.handle.doc();
 		const loadedSpreadsheetData = loadSpreadsheetDataFromDocument(svgData, deckName, dataDocument);
 		if (loadedSpreadsheetData.error) throw new Error(loadedSpreadsheetData.error.message);
@@ -225,8 +227,7 @@
 
 	async function loadDeckLibrary(): Promise<DeckEntry[]> {
 		const decks = await Promise.all(
-			project.session
-				.members('component-svg')
+			documents.svgs
 				.filter((member) => member.path.endsWith('/front.svg'))
 				.sort((a, b) => a.path.localeCompare(b.path))
 				.map(async (member) => {
@@ -243,7 +244,7 @@
 	}
 
 	async function loadEditorSvg(): Promise<string> {
-		const document = project.session.member('table-setup', TABLE_SVG_PATH)?.handle.doc();
+		const document = documents.table?.handle.doc();
 		if (!document) return emptyTableSvg(createDefaultTable().table);
 		return resolveSvgImagesForEditor(
 			decodeText(serializeProjectMember('table-setup', document)),

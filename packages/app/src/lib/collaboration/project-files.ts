@@ -1,15 +1,7 @@
-import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
-import { componentDataMaterializer } from './component-data';
-import { decodeText, hashBytes, readFile } from './filesystem';
-import { gameMetadataMaterializer } from './game-metadata';
-import { svgFileMaterializer } from './svg-file';
-import type {
-	BinaryFileDocument,
-	MarkdownFileDocument,
-	ProjectMemberDocument,
-	ProjectMemberKind,
-	TextFileDocument
-} from './model';
+import { joinFsPath, parseFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+import { hashBytes, readFile } from './filesystem';
+import { seedProjectMember } from './project-member-codec';
+import type { ProjectMemberDocument, ProjectMemberKind } from './model';
 
 export type ProjectFileSource = {
 	path: string;
@@ -34,86 +26,69 @@ export function projectComponentId(): string {
 
 export async function scanProjectFiles(
 	project: FsDir,
-	requestedPaths?: string[]
+	requestedPaths?: readonly string[]
 ): Promise<{
 	files: ProjectFileSource[];
-	components: string[];
+	components?: string[];
+	scope: readonly string[] | null;
 }> {
-	const paths = requestedPaths ?? (await walkKnownFiles(project));
-	const components = new Set(await listComponents(project));
+	const paths = requestedPaths
+		? [
+				...new Set(
+					(
+						await Promise.all(
+							requestedPaths.map((path) =>
+								classifyProjectFile(path) ? [path] : walkKnownFiles(project, path)
+							)
+						)
+					).flat()
+				)
+			]
+		: await walkKnownFiles(project);
+	const components =
+		!requestedPaths ||
+		requestedPaths.some(
+			(path) =>
+				path === 'components' || (path.startsWith('components/') && !classifyProjectFile(path))
+		)
+			? await listComponents(project)
+			: undefined;
 	const files: ProjectFileSource[] = [];
 	for (let index = 0; index < paths.length; index += 4) {
 		files.push(
-			...(await Promise.all(
-				paths.slice(index, index + 4).map(async (path): Promise<ProjectFileSource> => {
-					const classification = classifyProjectFile(path);
-					if (!classification) throw new Error(`Unsupported project file path ${path}.`);
-					const file = await readFileRequired(project, path);
-					const bytes = new Uint8Array(await file.arrayBuffer());
-					const snapshot = {
-						hash: await hashBytes(bytes)
-					};
-					if (classification.componentName) components.add(classification.componentName);
-					return {
-						path,
-						...classification,
-						snapshot,
-						async document() {
-							const current = new Uint8Array(
-								await (await readFileRequired(project, path)).arrayBuffer()
-							);
-							if ((await hashBytes(current)) !== snapshot.hash) {
-								throw new Error(`${path} changed while it was being imported.`);
-							}
-							if (classification.kind === 'game-metadata') {
-								return gameMetadataMaterializer.parse(decodeText(current), {
-									hash: snapshot.hash
-								});
-							}
-							if (classification.kind === 'component-data') {
-								return componentDataMaterializer.parse(decodeText(current), {
-									hash: snapshot.hash,
-									allowMissingIds: true
-								});
-							}
-							if (classification.kind === 'component-svg') {
-								return svgFileMaterializer.parse(decodeText(current), {
-									hash: snapshot.hash
-								});
-							}
-							if (classification.kind === 'asset') {
-								return {
-									type: 'binary-file',
-									schemaVersion: 1,
-									content: current
-								} satisfies BinaryFileDocument;
-							}
-							if (classification.kind === 'rules') {
-								return {
-									type: 'markdown-file',
-									schemaVersion: 1,
-									dialect: 'commonmark',
-									content: decodeText(current)
-								} satisfies MarkdownFileDocument;
-							}
-							return {
-								type: 'text-file',
-								schemaVersion: 1,
-								content: decodeText(current)
-							} satisfies TextFileDocument;
-						}
-					};
-				})
-			))
+			...(
+				await Promise.all(
+					paths.slice(index, index + 4).map(async (path) => {
+						const file = await readFile(project, path);
+						return file
+							? [await projectFileSource(path, new Uint8Array(await file.arrayBuffer()))]
+							: [];
+					})
+				)
+			).flat()
 		);
 	}
-	return { files, components: [...components].sort() };
+	return { files, components, scope: requestedPaths ?? null };
 }
 
-async function readFileRequired(project: FsDir, path: string): Promise<File> {
-	const file = await readFile(project, path);
-	if (!file) throw new Error(`Project file ${path} disappeared while it was being scanned.`);
-	return file;
+export async function projectFileSource(
+	path: string,
+	bytes: Uint8Array
+): Promise<ProjectFileSource> {
+	const parsed = parseFsPath('read', path);
+	if (parsed.error) throw new Error(parsed.error.message);
+	const classification = classifyProjectFile(path);
+	if (!classification) throw new Error(`Unsupported project file path ${path}.`);
+	const hash = await hashBytes(bytes);
+	return {
+		path,
+		...classification,
+		snapshot: { hash },
+		async document() {
+			return seedProjectMember(classification.kind, bytes, { hash, allowMissingIds: true })
+				.document;
+		}
+	};
 }
 
 async function listComponents(project: FsDir): Promise<string[]> {
@@ -148,16 +123,18 @@ export function classifyProjectFile(path: string):
 	};
 }
 
-async function walkKnownFiles(project: FsDir, path = ''): Promise<string[]> {
+export async function walkKnownFiles(project: FsDir, path = ''): Promise<string[]> {
 	const listed = path ? await project.list(path) : await project.list();
+	if (listed.error?.name === 'NotFoundError') return [];
+	if (listed.error?.name === 'WrongKindError') return classifyProjectFile(path) ? [path] : [];
 	if (listed.error) throw new Error(listed.error.message, { cause: listed.error });
-	const paths = await Promise.all(
-		listed.data.map(async (entry): Promise<string[]> => {
-			if (!path && (entry.name === '.automerge' || entry.name === 'tts-export')) return [];
-			const child = path ? joinFsPath(path, entry.name) : entry.name;
-			if (entry.kind === 'directory') return walkKnownFiles(project, child);
-			return classifyProjectFile(child) ? [child] : [];
-		})
-	);
-	return paths.flat().sort();
+	const paths: string[] = [];
+	// Discovery yields between directories instead of flooding the filesystem with background reads.
+	for (const entry of listed.data) {
+		if (entry.name.startsWith('.') || (!path && entry.name === 'tts-export')) continue;
+		const child = path ? joinFsPath(path, entry.name) : entry.name;
+		if (entry.kind === 'directory') paths.push(...(await walkKnownFiles(project, child)));
+		if (entry.kind === 'file' && classifyProjectFile(child)) paths.push(child);
+	}
+	return paths.sort();
 }

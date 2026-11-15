@@ -1,8 +1,10 @@
 import { expect, test, type BrowserContext } from '@playwright/test';
+import { signUp } from './helpers/auth';
 import {
 	openOpfsSeedPage,
 	readOpfsBytes,
 	readOpfsText,
+	opfsEntryExists,
 	saveOpfsStoragePreference,
 	migrateProjectsIfPrompted,
 	useBrowserStorage,
@@ -17,20 +19,7 @@ async function createAuthenticatedContext(
 	baseURL: string
 ) {
 	const context = await browser.newContext({ baseURL });
-	const page = await context.newPage();
-	const email = `automerge-sync-${Date.now()}@example.com`;
-	const signUp = await page.request.post('/app/api/auth/sign-up/email', {
-		data: {
-			name: 'Automerge Sync E2E',
-			email,
-			password: 'correct-horse-battery-staple'
-		}
-	});
-	expect(signUp.ok()).toBe(true);
-
-	const accepted = await page.request.post('/app/api/legal/accept-current');
-	expect(accepted.ok()).toBe(true);
-	await page.close();
+	await signUp(context.request, 'Automerge Sync E2E');
 	return context;
 }
 
@@ -80,14 +69,11 @@ test('syncs an authenticated project between isolated browser contexts', async (
 				tags: []
 			})}\n`
 		);
-		await saveOpfsStoragePreference(firstPage);
-		await firstPage.goto('/app/games');
 		await useBrowserStorage(firstPage);
 		await expectSyncSocket(firstPage);
 		await firstPage.goto(`/app/games/${project}`);
 		await expect(firstPage.getByText('Edit Board Game')).toBeVisible();
 		const config = await readOpfsText(firstPage, `/${project}/.automerge/config.json`);
-		await firstPage.waitForTimeout(1_000);
 
 		const second = await browser.newContext({
 			baseURL,
@@ -108,8 +94,6 @@ test('syncs an authenticated project between isolated browser contexts', async (
 			})}\n`
 		);
 		await writeOpfsText(secondPage, `/${project}/.automerge/config.json`, config);
-		await saveOpfsStoragePreference(secondPage);
-		await secondPage.goto('/app/games');
 		await useBrowserStorage(secondPage);
 		await expectSyncSocket(secondPage);
 		await secondPage.goto(`/app/games/${project}`);
@@ -118,9 +102,9 @@ test('syncs an authenticated project between isolated browser contexts', async (
 		const description = 'Synchronized through the authenticated WebSocket server.';
 		await firstPage.getByLabel('Game Description').fill(description);
 		await firstPage.getByRole('main').getByRole('button', { name: 'Update', exact: true }).click();
-		await expect
-			.poll(() => readOpfsText(secondPage, `/${project}/game.json`))
-			.toContain(description);
+		await expect(async () => {
+			expect(await readOpfsText(secondPage, `/${project}/game.json`)).toContain(description);
+		}).toPass({ timeout: 5000 });
 	} finally {
 		await closeContexts(contexts);
 	}
@@ -148,8 +132,13 @@ test('shares and joins a project between different signed-in users', async ({
 				tags: ['shared']
 			})}\n`
 		);
-		await saveOpfsStoragePreference(ownerPage);
-		await ownerPage.goto('/app/games');
+		for (const side of ['front', 'back']) {
+			await writeOpfsText(
+				ownerPage,
+				`/${project}/components/cards/${side}.svg`,
+				'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100"/></svg>'
+			);
+		}
 		await useBrowserStorage(ownerPage);
 		await ownerPage.goto(`/app/games/${project}`);
 		await expect(ownerPage.getByText('Edit Board Game')).toBeVisible();
@@ -159,12 +148,9 @@ test('shares and joins a project between different signed-in users', async ({
 		expect(invitation).toContain('/app/games/join#automerge:');
 
 		const collaboratorPage = await collaborator.newPage();
+		await openOpfsSeedPage(collaboratorPage);
+		await saveOpfsStoragePreference(collaboratorPage);
 		await collaboratorPage.goto(invitation);
-		await collaboratorPage
-			.getByRole('button', { name: 'Use Browser', exact: true })
-			.first()
-			.click();
-		await collaboratorPage.getByRole('button', { name: 'Use Browser storage' }).click();
 		await expect(
 			collaboratorPage.getByRole('heading', { name: 'Join Project' }).last()
 		).toBeVisible();
@@ -187,6 +173,26 @@ test('shares and joins a project between different signed-in users', async ({
 		await expect
 			.poll(() => readOpfsText(ownerPage, `/${project}/game.json`))
 			.toContain(description);
+
+		// Load the component, then return to details without discarding its session handles.
+		await collaboratorPage.goto('/app/games/joined-shared-project/decks/cards/editor');
+		await expect(
+			collaboratorPage.getByRole('toolbar', { name: 'Layout editor toolbar' })
+		).toBeVisible();
+		await collaboratorPage.getByRole('button', { name: /^joined-shared-project/ }).click();
+		await collaboratorPage.getByRole('menuitem', { name: /joined-shared-project/ }).click();
+		await expect(collaboratorPage.getByLabel('Game Description')).toHaveValue(description);
+		await ownerPage.keyboard.press('Escape');
+		await ownerPage.getByRole('button', { name: 'Decks', exact: true }).click();
+		await ownerPage.getByRole('button', { name: 'More for cards' }).click();
+		await ownerPage.getByRole('menuitem', { name: 'Rename' }).click();
+		await ownerPage.getByRole('textbox', { name: 'Deck name' }).fill('renamed');
+		await ownerPage.getByRole('button', { name: 'Rename deck' }).click();
+		await expect
+			.poll(() =>
+				opfsEntryExists(collaboratorPage, '/joined-shared-project/components/renamed/front.svg')
+			)
+			.toBe(true);
 	} finally {
 		await closeContexts(contexts);
 	}

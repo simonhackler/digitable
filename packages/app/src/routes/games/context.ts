@@ -37,6 +37,7 @@ export type ActiveProjectState = {
 	phase: 'idle' | 'opening' | 'ready' | 'error';
 	current: ActiveProject | null;
 	reconciliation: ReconciliationStatus;
+	background: { state: 'loading' | 'idle' | 'error'; message?: string };
 	error: string | null;
 };
 

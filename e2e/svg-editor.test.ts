@@ -1,47 +1,27 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
+import { readOpfsText, seedProjects, writeOpfsFiles, writeOpfsText } from './helpers/opfs';
 
 test.describe.configure({ mode: 'serial' });
 
 let svgEditorContext: BrowserContext | null = null;
-let svgEditorBaseline: {
-	westernFront: string;
-	westernBack: string;
-	westernData: string;
-	westernOneBack: string;
-} | null = null;
+let svgEditorBaseline: Record<string, string> | null = null;
 
 async function captureSvgEditorBaseline(page: Page) {
-	svgEditorBaseline = {
-		westernFront: await readOpfsText(page, '/western-cards/components/western/front.svg'),
-		westernBack: await readOpfsText(page, '/western-cards/components/western/back.svg'),
-		westernData: await readOpfsText(page, '/western-cards/components/western/data.csv'),
-		westernOneBack: await readOpfsText(page, '/western-cards/components/western_1/back.svg')
-	};
+	svgEditorBaseline = Object.fromEntries(
+		await Promise.all(
+			['western/front.svg', 'western/back.svg', 'western/data.csv', 'western_1/back.svg'].map(
+				async (file) => {
+					const path = `/western-cards/components/${file}`;
+					return [path, await readOpfsText(page, path)];
+				}
+			)
+		)
+	);
 }
 
 async function resetSvgEditorProject(page: Page) {
 	if (!svgEditorBaseline) throw new Error('SVG editor baseline was not initialized');
-	await writeOpfsText(
-		page,
-		'/western-cards/components/western/front.svg',
-		svgEditorBaseline.westernFront
-	);
-	await writeOpfsText(
-		page,
-		'/western-cards/components/western/back.svg',
-		svgEditorBaseline.westernBack
-	);
-	await writeOpfsText(
-		page,
-		'/western-cards/components/western/data.csv',
-		svgEditorBaseline.westernData
-	);
-	await writeOpfsText(
-		page,
-		'/western-cards/components/western_1/back.svg',
-		svgEditorBaseline.westernOneBack
-	);
+	await writeOpfsFiles(page, svgEditorBaseline);
 }
 
 async function withSvgEditorPage(run: (page: Page) => Promise<void>) {
@@ -63,8 +43,6 @@ function svgEditorTest(name: string, run: (page: Page) => Promise<void>) {
 }
 
 async function openWesternSvgEditor(page: Page) {
-	await page.getByRole('main').getByText('western-cards').click();
-	await page.getByRole('button', { name: 'Decks' }).click();
 	await page.goto('/app/games/western-cards/decks/western/editor?e2e');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
 	await page.waitForFunction(() => {
@@ -698,8 +676,6 @@ svgEditorTest(
 		await expect(page.getByText('Saved')).toBeVisible();
 		await page.goto('/app/games/western-cards/decks/western/editor?e2e');
 		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
-		await page.waitForTimeout(1000);
-
 		const roundTrippedEditorFront = await editorSvg(page);
 		expect(roundTrippedEditorFront).toContain('data-svgedit-multiline="true"');
 		expect(roundTrippedEditorFront).toContain('data-svgedit-raw-text="Sfds f"');
@@ -723,6 +699,9 @@ svgEditorTest('navigation preserves text alignment and top-origin text frames', 
 		.toBe('right');
 	const baseline = await page.locator('#effect_zone tspan').first().getAttribute('y');
 	expect(baseline).not.toBeNull();
+	await expect
+		.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+		.toContain('text-align="right"');
 
 	await page.goto('/app/games/western-cards/decks/western/data');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
@@ -770,7 +749,7 @@ svgEditorTest('typing text in layout editor persists front svg', async (page) =>
 		textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
 	}, nextText);
 	await expect.poll(() => editorSvg(page)).toContain(nextText);
-	await page.waitForTimeout(1000);
+	await expect.poll(() => readOpfsText(page, frontPath)).toContain(nextText);
 
 	const savedFront = await readOpfsText(page, frontPath);
 	expect(savedFront).toContain(nextText);
@@ -865,7 +844,9 @@ svgEditorTest(
 			textarea.value = 'image preview save e2e';
 			textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
 		});
-		await page.waitForTimeout(1000);
+		await expect
+			.poll(() => readOpfsText(page, '/western-cards/components/western/front.svg'))
+			.toContain('save e2e');
 
 		const savedFront = await readOpfsText(page, '/western-cards/components/western/front.svg');
 		const diceImageTag = savedFront.match(/<image\b(?=[^>]*\bid="dice_image")[^>]*>/)?.[0] ?? '';

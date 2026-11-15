@@ -11,7 +11,7 @@
 		type LoadedSvgTemplates
 	} from './svg-context.svelte';
 
-	let { children } = $props();
+	let { children, data }: import('./$types').LayoutProps = $props();
 
 	const currentProject = $derived(requireParam('gameName'));
 	const currentCard = $derived(requireParam('deckName'));
@@ -19,16 +19,9 @@
 	const deckSideIndex = createDeckSideIndexState();
 
 	async function loadSvgTemplates(): Promise<LoadedSvgTemplates> {
-		const frontMember = project.session.member(
-			'component-svg',
-			`components/${currentCard}/front.svg`
-		);
-		const backMember = project.session.member(
-			'component-svg',
-			`components/${currentCard}/back.svg`
-		);
-		const frontDocument = frontMember?.handle.doc();
-		const backDocument = backMember?.handle.doc();
+		const loaded = await project.session.require(data.componentNeeds);
+		const frontDocument = loaded.front?.handle.doc();
+		const backDocument = loaded.back?.handle.doc();
 		const frontText = frontDocument
 			? decodeText(serializeProjectMember('component-svg', frontDocument))
 			: '';
@@ -45,6 +38,7 @@
 
 	setToLoadSvgsContext(loadSvgTemplates);
 	setDeckSideIndexContext(deckSideIndex);
+	const documents = $derived(await project.session.require(data.componentNeeds));
 
 	$effect(() => {
 		if (currentProject && currentCard) {
@@ -53,4 +47,6 @@
 	});
 </script>
 
-{@render children()}
+{#if documents}
+	{@render children()}
+{/if}

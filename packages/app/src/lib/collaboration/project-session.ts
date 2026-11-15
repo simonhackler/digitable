@@ -1,4 +1,7 @@
-import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
+import type { FsChanges, FsDir } from '$lib/components/file-browser/adapters/adapter';
+import { createProjectLoader } from './project-loader';
+import type { ProjectDependencies, RequiredDocuments } from './dependencies';
+import { includesFsPath, pollDirectory } from '$lib/components/file-browser/adapters/watch';
 import {
 	Repo,
 	type AutomergeUrl,
@@ -15,10 +18,10 @@ import {
 } from './project-svg-interactions';
 import { defineErrors, extractErrorMessage, type InferErrors } from 'wellcrafted/error';
 import { tryAsync, type Result } from 'wellcrafted/result';
-import { createProjectFileObserver } from './file-observer';
 import {
 	createProjectGraph,
 	createProjectMemberHandle,
+	isProjectMemberDocument,
 	resolveProjectGraph,
 	resolveProjectGraphAtCheckpoint,
 	type ProjectGraph
@@ -42,7 +45,7 @@ import {
 	type ManagedMember,
 	type ReconciliationStatus
 } from './reconciler';
-import { encodeText, hashBytes, snapshotFile, writeFile } from './filesystem';
+import { encodeText, hashBytes, readFile, snapshotFile } from './filesystem';
 import { FsDirStorageAdapter } from './storage-adapter';
 import { withProjectLock } from './project-lock';
 import {
@@ -63,7 +66,9 @@ import {
 	classifyProjectFile,
 	projectComponentId,
 	projectMemberId,
+	projectFileSource,
 	scanProjectFiles,
+	walkKnownFiles,
 	type ProjectFileSource
 } from './project-files';
 import {
@@ -140,6 +145,9 @@ export type ProjectSession = {
 	branchId: ProjectBranchId;
 	readOnly: boolean;
 	canEditStructure: boolean;
+	require<D extends ProjectDependencies>(dependencies: D): Promise<RequiredDocuments<D>>;
+	releasePage(): void;
+	components(): ReadonlyArray<{ id: string; name: string }>;
 	member<K extends ProjectMemberKind>(
 		kind: K,
 		path: ProjectMemberPathFor<K>
@@ -183,7 +191,8 @@ export type OpenProjectSessionOptions = {
 	network?: NetworkAdapterInterface[];
 	joinHistoryUrl?: AutomergeUrl;
 	onStatus?: (status: ReconciliationStatus) => void;
-	pollIntervalMs?: number;
+	onBackground?: (status: { state: 'loading' | 'idle' | 'error'; message?: string }) => void;
+	initial?: ProjectInput[];
 	saveDebounceMs?: number;
 	checkpointId?: ProjectCheckpointId;
 	onBranchCheckout?: (branchId: ProjectBranchId) => void;
@@ -269,11 +278,25 @@ async function inputBytes(data: ProjectInputData): Promise<Uint8Array> {
 	return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
 }
 
+/** Creates authoritative documents first; the normal reconciler materializes their files. */
+export async function createProject(
+	project: FsDir,
+	inputs: ProjectInput[]
+): Promise<Result<void, CollaborationError>> {
+	const initial = inputs.some((input) => input.path === 'rules.md')
+		? inputs
+		: [...inputs, { path: 'rules.md' as const, data: '' }];
+	const opened = await openProjectSession(project, { initial, saveDebounceMs: 0 });
+	if (opened.error) return opened;
+	return opened.data.close();
+}
+
 export async function openProjectSession(
 	project: FsDir,
 	options: OpenProjectSessionOptions = {}
 ): Promise<Result<ProjectSession, CollaborationError>> {
 	let repo: Repo | undefined;
+	let stopWatching: (() => void) | undefined;
 	const opened = await tryAsync({
 		try: async () => {
 			const storage = await project.ensureDir(AUTOMERGE_STORAGE_DIR);
@@ -283,6 +306,52 @@ export async function openProjectSession(
 				throw new Error(storageEntries.error.message, { cause: storageEntries.error });
 			}
 			const hadStoredData = storageEntries.data.length > 0;
+			const pendingPaths = new Set<string>();
+			const checked = new Map<string, string>();
+			const revisions = new Map<string, number>();
+			let revision = 0;
+			let unknownRevision = 0;
+			function fileRevision(path: string): number {
+				let latest = unknownRevision;
+				const parts = path.split('/');
+				for (let index = 1; index <= parts.length; index++)
+					latest = Math.max(latest, revisions.get(parts.slice(0, index).join('/')) ?? 0);
+				return latest;
+			}
+			let rescan = hadStoredData;
+			let wake: (() => void) | undefined;
+			const changed = (paths: FsChanges) => {
+				revision += 1;
+				for (const path of checked.keys())
+					if (paths === null || includesFsPath(paths, path)) checked.delete(path);
+				if (paths === null) {
+					rescan = true;
+					unknownRevision = revision;
+				}
+				for (const path of paths ?? []) {
+					if (path.split('/').some((part) => part.startsWith('.'))) continue;
+					if (
+						classifyProjectFile(path) ||
+						['components', 'assets', 'feedback', 'setup'].some(
+							(root) => path === root || path.startsWith(`${root}/`)
+						)
+					) {
+						pendingPaths.add(path);
+						revisions.set(path, revision);
+					}
+				}
+				if (rescan || pendingPaths.size) wake?.();
+			};
+			if (!options.checkpointId) {
+				const observation = { ignore: ['.automerge', 'tts-export'] };
+				if (project.watch) {
+					const watched = await project.watch(changed, observation);
+					if (watched.error) throw new Error(watched.error.message);
+					stopWatching = watched.data;
+				} else {
+					stopWatching = await pollDirectory(project, changed, observation);
+				}
+			}
 			const projectRepo = new Repo({
 				storage: new FsDirStorageAdapter(storage.data, project.name),
 				network: options.network ?? [new BroadcastChannelNetworkAdapter()],
@@ -290,22 +359,35 @@ export async function openProjectSession(
 			});
 			repo = projectRepo;
 
+			let imported: ProjectGraph | undefined;
 			const restored = await withProjectLock(`bootstrap:${project.name}`, () =>
-				restoreOrCreateProject(project, projectRepo, hadStoredData, options.joinHistoryUrl)
+				restoreOrCreateProject(
+					project,
+					projectRepo,
+					hadStoredData,
+					options.joinHistoryUrl,
+					options.initial,
+					(graph) => {
+						imported = graph;
+					}
+				)
 			);
 			const historyHandle = await projectRepo.find<ProjectHistoryDocument>(restored.historyUrl);
 			if (!isProjectHistoryDocument(historyHandle.doc())) {
 				throw new Error('The Automerge project history document is invalid.');
 			}
 			const lockId = restored.historyUrl;
-			const activeBranch = await resolveBranchGraph(projectRepo, historyHandle);
-			const branchId = activeBranch.branchId;
 			if (options.checkpointId) {
+				const branchId = historyHandle.doc()!.checkedOutBranchId;
 				const checkpoint = historyHandle.doc()?.checkpoints[options.checkpointId];
 				if (!checkpoint || checkpoint.branchId !== branchId) {
 					throw new Error('The selected checkpoint does not belong to the checked-out branch.');
 				}
-				const checkpointGraph = await resolveProjectGraphAtCheckpoint(projectRepo, checkpoint);
+				const checkpointGraph = await resolveProjectGraphAtCheckpoint(
+					projectRepo,
+					checkpoint,
+					true
+				);
 				return createHistoricalProjectSession({
 					project,
 					repo: projectRepo,
@@ -315,7 +397,12 @@ export async function openProjectSession(
 					options
 				});
 			}
+			const activeBranch = await resolveBranchGraph(projectRepo, historyHandle, undefined, true);
+			const branchId = activeBranch.branchId;
 			const rootHandle = activeBranch.graph.projectHandle;
+			// A branch checkout replaces the working tree. Finish that transaction before publishing
+			// the new session, so background materialization cannot overwrite a subsequent external edit.
+			const checkingOut = restored.branchId !== branchId || restored.rootUrl !== rootHandle.url;
 			const branchConfig: ProjectConfig = {
 				...restored,
 				version: 3,
@@ -331,7 +418,8 @@ export async function openProjectSession(
 				) {
 					await waitForRootHeads(rootHandle, latestConfig.rootHeads);
 				}
-				let graph = activeBranch.graph;
+				let graph = imported?.projectHandle.url === rootHandle.url ? imported : activeBranch.graph;
+				if (checkingOut) graph = await resolveProjectGraph(projectRepo, rootHandle);
 				const ensured = await ensureRulesDocument(
 					project,
 					projectRepo,
@@ -350,6 +438,7 @@ export async function openProjectSession(
 			const repaired = openedGraph.repaired;
 			let config = repaired.config;
 			let closed = false;
+			let closePromise: Promise<Result<void, CollaborationError>> | undefined;
 			let checkpointTimer: ReturnType<typeof setTimeout> | undefined;
 			let checkpointPromise: Promise<void> | undefined;
 			let checkpointDirty = false;
@@ -371,7 +460,11 @@ export async function openProjectSession(
 				}
 				for (const handle of handles) {
 					if (checkpointListeners.has(handle)) continue;
-					const listener = () => scheduleCheckpoint();
+					const listener = () => {
+						for (const member of Object.values(graph.project.members))
+							if (member.url === handle.url) checked.delete(member.path);
+						scheduleCheckpoint();
+					};
 					checkpointListeners.set(handle, listener);
 					handle.on('change', listener);
 				}
@@ -404,8 +497,7 @@ export async function openProjectSession(
 				}
 				checkpointDirty = false;
 				checkpointPromise = (async () => {
-					await refresh();
-					await reconciler.reconcileOrThrow();
+					await synchronize();
 					await recordProjectCheckpoint(projectRepo, historyHandle, branchId, graph);
 				})().finally(() => {
 					checkpointPromise = undefined;
@@ -419,6 +511,7 @@ export async function openProjectSession(
 				repo: projectRepo,
 				initialConfig: config,
 				members,
+				onExternalChange: changed,
 				onStatus: (status) => {
 					const nextBranchId = historyHandle.doc()?.checkedOutBranchId;
 					if (status.state === 'error' && nextBranchId && nextBranchId !== branchId) {
@@ -429,9 +522,92 @@ export async function openProjectSession(
 				},
 				saveDebounceMs: options.saveDebounceMs
 			});
+			const handles = new Map<string, Promise<DocHandle<ProjectMemberDocument>>>();
+			const loader = createProjectLoader(async (path) => {
+				const started = fileRevision(path);
+				const inventory = graph.project;
+				// File reads and document loading happen outside the project lock.
+				const listed = path === '@components' ? await project.list('components') : undefined;
+				if (listed?.error && listed.error.name !== 'NotFoundError')
+					throw new Error(listed.error.message);
+				const scanned = listed
+					? {
+							files: [],
+							scope: [],
+							components: listed.error
+								? []
+								: listed.data
+										.filter((entry) => entry.kind === 'directory')
+										.map((entry) => entry.name)
+						}
+					: await scanProjectFiles(project, [path]);
+				const entry = Object.entries(graph.projectHandle.doc()!.members).find(
+					([, member]) => member.path === path
+				);
+				const loaded = new Map<string, DocHandle<ProjectMemberDocument>>();
+				if (entry) {
+					const [id, member] = entry;
+					let promise = handles.get(member.url);
+					if (!promise) {
+						promise = projectRepo.find<ProjectMemberDocument>(member.url);
+						handles.set(member.url, promise);
+						void promise.catch(() => handles.delete(member.url));
+					}
+					loaded.set(id, await promise);
+				}
+				await withProjectLock(lockId, async () => {
+					if (historyHandle.doc()?.checkedOutBranchId !== branchId)
+						throw new Error('The checked-out project branch changed.');
+					const latestConfig = await readProjectConfig(project);
+					if (latestConfig?.rootHeads)
+						await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
+					graph = await resolveProjectGraph(
+						projectRepo,
+						graph.projectHandle,
+						new Map([...graph.memberHandles, ...loaded])
+					);
+					const refreshed = await refreshProjectInventory(
+						project,
+						projectRepo,
+						graph,
+						latestConfig?.branchId === branchId ? latestConfig : reconciler.getConfig(),
+						scanned
+					);
+					graph = refreshed.graph;
+					config = refreshed.config;
+					await reconciler.removePathsWhileLocked(refreshed.removedPaths);
+					replaceCheckpointListeners();
+					reconciler.replaceMembers(managedMembers(graph, config), config);
+					// Reconcile only this bounded unit, including journal recovery, before declaring it ready.
+					await reconciler.reconcilePathsWhileLocked([path], config);
+					config = reconciler.getConfig();
+					for (const retry of refreshed.retryPaths) pendingPaths.add(retry);
+					for (const id of refreshed.reconcileMemberIds) {
+						const member = graph.project.members[id];
+						if (member && member.path !== path) pendingPaths.add(member.path);
+					}
+				});
+				const current = Object.entries(graph.project.members).find(
+					([, member]) => member.path === path
+				);
+				if (
+					started === fileRevision(path) &&
+					(!current || graph.memberHandles.get(current[0])?.url === current[1].url)
+				)
+					checked.set(path, current?.[1].url ?? 'absent');
+				if (inventory !== graph.project) notifyInventory();
+				if (rescan || pendingPaths.size) requestRefresh();
+			});
 			let refreshPromise: Promise<void> | undefined;
 			let refreshAgain = false;
-			function refresh(): Promise<void> {
+			let refreshPriority = false;
+			let backgroundStarted = false;
+			let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+			function refresh(priority = false): Promise<void> {
+				refreshPriority ||= priority;
+				if (priority) loader.promote();
+				if (refreshTimer) clearTimeout(refreshTimer);
+				refreshTimer = undefined;
 				if (refreshPromise) {
 					refreshAgain = true;
 					return refreshPromise;
@@ -439,60 +615,66 @@ export async function openProjectSession(
 				refreshPromise = (async () => {
 					do {
 						refreshAgain = false;
-						const refreshed = await withProjectLock(lockId, async () => {
-							const scanned = await scanProjectFiles(project);
-							const latestConfig = await readProjectConfig(project);
-							if (historyHandle.doc()?.checkedOutBranchId !== branchId) {
-								throw new Error('The checked-out project branch changed.');
-							}
-							if (latestConfig?.rootHeads) {
-								await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
-							}
-							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
-							config = latestConfig?.branchId === branchId ? latestConfig : reconciler.getConfig();
-							const refreshed = await refreshProjectInventory(
-								project,
-								projectRepo,
-								graph,
-								config,
-								scanned
+						const full = rescan;
+						rescan = false;
+						const paths = [...pendingPaths];
+						pendingPaths.clear();
+						if (full)
+							paths.push(
+								...(await walkKnownFiles(project)),
+								...Object.values(graph.projectHandle.doc()!.members).map((member) => member.path)
 							);
-							await reconciler.removePathsWhileLocked(refreshed.removedPaths);
-							return refreshed;
-						});
-						graph = refreshed.graph;
-						config = refreshed.config;
-						replaceCheckpointListeners();
-						reconciler.replaceMembers(managedMembers(graph, config), config);
-						notifyInventory();
-						if (refreshed.reconcileMemberIds.length) {
-							void reconciler.requestReconcile(refreshed.reconcileMemberIds);
+						const expanded = new Set<string>();
+						if (
+							full ||
+							paths.some((path) => path === 'components' || path.startsWith('components/'))
+						)
+							expanded.add('@components');
+						for (const path of paths) {
+							if (classifyProjectFile(path)) expanded.add(path);
+							if (!classifyProjectFile(path)) {
+								for (const file of await walkKnownFiles(project, path)) expanded.add(file);
+								for (const member of Object.values(graph.projectHandle.doc()!.members))
+									if (includesFsPath([path], member.path)) expanded.add(member.path);
+							}
 						}
-						if (refreshed.scanChanged) refreshAgain = true;
-					} while (refreshAgain);
+						// Root notifications also bring remote additions/replacements into the background queue.
+						for (const [id, member] of Object.entries(graph.projectHandle.doc()!.members))
+							if (graph.memberHandles.get(id)?.url !== member.url) expanded.add(member.path);
+						const components = expanded.delete('@components');
+						await Promise.all([...expanded].map((path) => loader.request(path, refreshPriority)));
+						if (components) await loader.request('@components', refreshPriority);
+					} while (refreshAgain || rescan || pendingPaths.size);
 				})().finally(() => {
 					refreshPromise = undefined;
+					refreshPriority = false;
+					if (rescan || pendingPaths.size) requestRefresh();
 				});
 				return refreshPromise;
 			}
 			function requestRefresh(): void {
-				void refresh().catch((cause) => {
-					const nextBranchId = historyHandle.doc()?.checkedOutBranchId;
-					if (nextBranchId && nextBranchId !== branchId) {
-						options.onBranchCheckout?.(nextBranchId);
-						return;
-					}
-					options.onStatus?.({
-						state: 'error',
-						scope: 'project',
-						path: '.automerge/config.json',
-						message: cause instanceof Error ? cause.message : String(cause)
-					});
-				});
+				if (!backgroundStarted || closed || !wake || refreshTimer) return;
+				refreshTimer = setTimeout(() => {
+					refreshTimer = undefined;
+					options.onBackground?.({ state: 'loading' });
+					void refresh().then(
+						() => {
+							if (!closed) options.onBackground?.({ state: 'idle' });
+						},
+						(cause) => {
+							const nextBranchId = historyHandle.doc()?.checkedOutBranchId;
+							if (nextBranchId && nextBranchId !== branchId) {
+								options.onBranchCheckout?.(nextBranchId);
+								return;
+							}
+							options.onBackground?.({
+								state: 'error',
+								message: cause instanceof Error ? cause.message : String(cause)
+							});
+						}
+					);
+				}, 50);
 			}
-			const observer = createProjectFileObserver(requestRefresh, {
-				pollIntervalMs: options.pollIntervalMs
-			});
 			const started = await tryAsync({
 				try: () => reconciler.start(false),
 				catch: (cause) => CollaborationError.ProjectOpenFailed({ project: project.name, cause })
@@ -502,14 +684,34 @@ export async function openProjectSession(
 				throw started.error;
 			}
 			await reconciler.removePaths(repaired.removedPaths);
-			await refresh();
-			if (repaired.reconcileMemberIds.length) {
+			if (checkingOut) {
 				await reconciler.requestReconcile(repaired.reconcileMemberIds);
 				await reconciler.reconcileOrThrow();
 			}
-			const rootListener = requestRefresh;
+			for (const id of repaired.reconcileMemberIds)
+				pendingPaths.add(graph.project.members[id].path);
+			const rootListener = () => {
+				const current = graph.projectHandle.doc()!;
+				for (const [id, member] of Object.entries(current.members)) {
+					if (
+						graph.project.members[id]?.url === member.url &&
+						graph.project.members[id]?.path === member.path
+					)
+						continue;
+					checked.delete(member.path);
+					pendingPaths.add(member.path);
+				}
+				for (const [id, member] of Object.entries(graph.project.members)) {
+					if (current.members[id]?.url === member.url && current.members[id]?.path === member.path)
+						continue;
+					checked.delete(member.path);
+					pendingPaths.add(member.path);
+				}
+				requestRefresh();
+			};
 			graph.projectHandle.on('change', rootListener);
-			observer.start();
+			wake = requestRefresh;
+			requestRefresh();
 			const presence = createProjectPresence(graph.projectHandle);
 			const svgInteractions = createProjectSvgInteractions(graph.projectHandle);
 			let localBranchChange = false;
@@ -523,9 +725,67 @@ export async function openProjectSession(
 			historyHandle.on('change', historyListener);
 
 			replaceCheckpointListeners();
-			async function synchronize(): Promise<void> {
-				await refresh();
-				await reconciler.reconcileOrThrow();
+			async function synchronize(priority = false): Promise<void> {
+				do {
+					await refresh(priority);
+					await reconciler.reconcileOrThrow();
+				} while (rescan || pendingPaths.size);
+			}
+			async function requireDocuments<D extends ProjectDependencies>(
+				dependencies: D
+			): Promise<RequiredDocuments<D>> {
+				if (closed || closePromise) throw new Error('The project session is closing.');
+				const resolved = await Promise.all(
+					Object.entries(dependencies).map(async ([key, dependency]) => {
+						if (dependency.type === 'snapshot') {
+							await synchronize(true);
+							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+							return [key, snapshotGraph(graph)];
+						}
+						const paths =
+							dependency.type === 'member'
+								? [dependency.path]
+								: [
+										...(await walkKnownFiles(project, dependency.scope)),
+										...Object.values(graph.projectHandle.doc()!.members)
+											.filter((member) => includesFsPath([dependency.scope], member.path))
+											.map((member) => member.path)
+									];
+						await Promise.all(
+							[...new Set(paths)]
+								.filter(
+									(path) =>
+										dependency.type === 'member' ||
+										classifyProjectFile(path)?.kind === dependency.kind
+								)
+								.map(async (path) => {
+									while (true) {
+										const current = Object.values(graph.projectHandle.doc()!.members).find(
+											(member) => member.path === path
+										);
+										if (checked.get(path) === (current?.url ?? 'absent')) return;
+										await loader.request(path, true);
+									}
+								})
+						);
+						if (dependency.type === 'collection')
+							return [
+								key,
+								graphMembers(graph, dependency.kind).filter((member) =>
+									includesFsPath([dependency.scope], member.path)
+								)
+							];
+						const ref = graphMember(graph, dependency.kind, dependency.path);
+						if (!ref && !dependency.optional)
+							throw new Error(`Required project file ${dependency.path} is unavailable.`);
+						return [key, ref];
+					})
+				).finally(() => {
+					// Let the first view establish readiness before spending I/O on unrelated members.
+					backgroundStarted = true;
+					requestRefresh();
+				});
+				return Object.fromEntries(resolved) as RequiredDocuments<D>;
 			}
 			async function explicitCheckpointOperation<T>(operation: () => Promise<T>): Promise<T> {
 				checkpointPaused = true;
@@ -611,6 +871,7 @@ export async function openProjectSession(
 				);
 				const changedIds = new Set<string>();
 				const removedPaths = new Set<string>();
+				await Promise.all(prepared.map((item) => loader.request(item.path, true)));
 				await withProjectLock(lockId, async () => {
 					const latestConfig = await readProjectConfig(project);
 					if (!latestConfig || latestConfig.branchId !== branchId) {
@@ -619,7 +880,7 @@ export async function openProjectSession(
 					if (latestConfig.rootHeads) {
 						await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
 					}
-					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle, graph.memberHandles);
 					config = latestConfig;
 
 					const components = new Map(
@@ -660,6 +921,7 @@ export async function openProjectSession(
 								continue;
 							}
 							const handle = projectRepo.create<ProjectMemberDocument>(item.seed.document);
+							graph.memberHandles.set(existing[0], handle);
 							if (item.seed.initialize) {
 								handle.change((document) => item.seed.initialize!(document), { message });
 							}
@@ -677,6 +939,7 @@ export async function openProjectSession(
 							throw new Error('The project already has game metadata.');
 						}
 						const handle = projectRepo.create<ProjectMemberDocument>(item.seed.document);
+						graph.memberHandles.set(id, handle);
 						if (item.seed.initialize) {
 							handle.change((document) => item.seed.initialize!(document), { message });
 						}
@@ -725,7 +988,7 @@ export async function openProjectSession(
 					}
 
 					await projectRepo.flush([...flushIds]);
-					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle, graph.memberHandles);
 					const repaired = await repairProjectConfig(project, graph, config);
 					config = repaired.config;
 					for (const id of repaired.reconcileMemberIds) changedIds.add(id);
@@ -753,7 +1016,7 @@ export async function openProjectSession(
 					if (latestConfig.rootHeads) {
 						await waitForRootHeads(graph.projectHandle, latestConfig.rootHeads);
 					}
-					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle, graph.memberHandles);
 					const ids = Object.entries(graph.project.members)
 						.filter(([, member]) => paths.has(member.path as ProjectInputPath))
 						.map(([id]) => id);
@@ -773,7 +1036,7 @@ export async function openProjectSession(
 						{ message }
 					);
 					await projectRepo.flush([graph.projectHandle.documentId]);
-					graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+					graph = await resolveProjectGraph(projectRepo, graph.projectHandle, graph.memberHandles);
 					const repaired = await repairProjectConfig(project, graph, latestConfig);
 					config = repaired.config;
 					for (const removedPath of repaired.removedPaths) removedPaths.add(removedPath);
@@ -820,6 +1083,16 @@ export async function openProjectSession(
 				branchId,
 				readOnly: false,
 				canEditStructure: true,
+				require: requireDocuments,
+				releasePage: () => {
+					refreshPriority = false;
+					loader.demote();
+				},
+				components: () =>
+					Object.entries(graph.projectHandle.doc()!.components).map(([id, component]) => ({
+						id,
+						name: component.name
+					})),
 				member: <K extends ProjectMemberKind>(kind: K, path: ProjectMemberPathFor<K>) =>
 					graphMember(graph, kind, path),
 				members: <K extends ProjectMemberKind>(kind: K) => graphMembers(graph, kind),
@@ -830,7 +1103,11 @@ export async function openProjectSession(
 				},
 				snapshot: () =>
 					tryAsync({
-						try: async () => snapshotGraph(graph),
+						try: async () => {
+							await synchronize(true);
+							graph = await resolveProjectGraph(projectRepo, graph.projectHandle);
+							return snapshotGraph(graph);
+						},
 						catch: (cause) =>
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
@@ -1005,19 +1282,24 @@ export async function openProjectSession(
 							CollaborationError.SynchronizationFailed({ project: project.name, cause })
 					}),
 				close: async () => {
+					if (closePromise) return closePromise;
 					if (closed) return { data: undefined, error: null };
+					stopWatching?.();
+					wake = undefined;
+					if (refreshTimer) clearTimeout(refreshTimer);
 					checkpointPaused = true;
 					if (checkpointTimer) {
 						clearTimeout(checkpointTimer);
 						checkpointTimer = undefined;
 					}
-					const closedSession = await tryAsync({
+					closePromise = tryAsync({
 						try: async () => {
 							await branchOperationPromise;
 							await checkpointPromise;
 							presence.close();
 							svgInteractions.close();
 							if (historyHandle.doc()?.checkedOutBranchId !== branchId) {
+								await loader.close();
 								await reconciler.stop();
 								await projectRepo.shutdown();
 								return;
@@ -1028,20 +1310,23 @@ export async function openProjectSession(
 								await recordProjectCheckpoint(projectRepo, historyHandle, branchId, graph);
 							} while (checkpointDirty);
 							await reconciler.stop();
+							await loader.close();
 							await projectRepo.shutdown();
 						},
 						catch: (cause) =>
 							CollaborationError.ProjectCloseFailed({ project: project.name, cause })
 					});
+					const closedSession = await closePromise;
 					closed = true;
 					presence.close();
 					svgInteractions.close();
 					for (const [handle, listener] of checkpointListeners) handle.off('change', listener);
 					checkpointListeners.clear();
+					inventoryListeners.clear();
 					historyHandle.off('change', historyListener);
-					observer.stop();
 					graph.projectHandle.off('change', rootListener);
 					if (closedSession.error) {
+						await loader.close();
 						await reconciler.stop();
 						await projectRepo.shutdown().catch(() => undefined);
 					}
@@ -1051,6 +1336,7 @@ export async function openProjectSession(
 		},
 		catch: (cause) => CollaborationError.ProjectOpenFailed({ project: project.name, cause })
 	});
+	if (opened.error) stopWatching?.();
 
 	if (opened.error && repo) await repo.shutdown().catch(() => undefined);
 	return opened;
@@ -1073,6 +1359,38 @@ function createHistoricalProjectSession({
 }): ProjectSession {
 	const presence = createProjectPresence(graph.projectHandle);
 	const svgInteractions = createProjectSvgInteractions(graph.projectHandle);
+	const checkpoint = historyHandle.doc()!.checkpoints[options.checkpointId!];
+	const loader = createProjectLoader(async (id) => {
+		const member = graph.project.members[id];
+		const version = checkpoint.members[id];
+		if (!member || !version || version.url !== member.url)
+			throw new Error(`Checkpoint is missing member ${id}.`);
+		const source = await repo.find<ProjectMemberDocument>(version.url);
+		const handle = source.view(version.heads);
+		if (!isProjectMemberDocument(member.kind, handle.doc()))
+			throw new Error(`Checkpoint member ${member.path} is unavailable.`);
+		graph.memberHandles.set(id, handle);
+	});
+	async function loadMembers(ids: string[], priority = false): Promise<void> {
+		await Promise.all(
+			ids.filter((id) => !graph.memberHandles.has(id)).map((id) => loader.request(id, priority))
+		);
+	}
+	const background = setTimeout(() => {
+		options.onBackground?.({ state: 'loading' });
+		void loadMembers(Object.keys(graph.project.members)).then(
+			() => {
+				if (!closed) options.onBackground?.({ state: 'idle' });
+			},
+			(cause) => {
+				if (!closed)
+					options.onBackground?.({
+						state: 'error',
+						message: cause instanceof Error ? cause.message : String(cause)
+					});
+			}
+		);
+	}, 50);
 	let closed = false;
 	let localBranchChange = false;
 	const historyListener = () => {
@@ -1106,6 +1424,49 @@ function createHistoricalProjectSession({
 		branchId,
 		readOnly: true,
 		canEditStructure: false,
+		releasePage: loader.demote,
+		components: () =>
+			Object.entries(graph.project.components).map(([id, component]) => ({
+				id,
+				name: component.name
+			})),
+		require: async <D extends ProjectDependencies>(
+			dependencies: D
+		): Promise<RequiredDocuments<D>> => {
+			if (closed) throw new Error('The project session is closed.');
+			const entries = await Promise.all(
+				Object.entries(dependencies).map(async ([key, dependency]) => {
+					if (dependency.type === 'snapshot') {
+						await loadMembers(Object.keys(graph.project.members), true);
+						return [key, snapshotGraph(graph)];
+					}
+					const ids = Object.entries(graph.project.members)
+						.filter(
+							([, member]) =>
+								member.kind === dependency.kind &&
+								(dependency.type === 'member'
+									? member.path === dependency.path
+									: includesFsPath([dependency.scope], member.path))
+						)
+						.map(([id]) => id);
+					await loadMembers(ids, true);
+					if (dependency.type === 'collection')
+						return [
+							key,
+							graphMembers(graph, dependency.kind).filter((member) =>
+								includesFsPath([dependency.scope], member.path)
+							)
+						];
+					const ref = graphMember(graph, dependency.kind, dependency.path);
+					if (!ref && !dependency.optional)
+						throw new Error(
+							`Required project file ${dependency.path} is unavailable at this checkpoint.`
+						);
+					return [key, ref];
+				})
+			);
+			return Object.fromEntries(entries) as RequiredDocuments<D>;
+		},
 		member: <K extends ProjectMemberKind>(kind: K, path: ProjectMemberPathFor<K>) =>
 			graphMember(graph, kind, path),
 		members: <K extends ProjectMemberKind>(kind: K) => graphMembers(graph, kind),
@@ -1115,7 +1476,10 @@ function createHistoricalProjectSession({
 		},
 		snapshot: () =>
 			tryAsync({
-				try: async () => snapshotGraph(graph),
+				try: async () => {
+					await loadMembers(Object.keys(graph.project.members), true);
+					return snapshotGraph(graph);
+				},
 				catch: (cause) => CollaborationError.SynchronizationFailed({ project: project.name, cause })
 			}),
 		put: () => readOnly<void>(),
@@ -1163,6 +1527,8 @@ function createHistoricalProjectSession({
 		close: async () => {
 			if (closed) return { data: undefined, error: null };
 			closed = true;
+			clearTimeout(background);
+			await loader.close();
 			historyHandle.off('change', historyListener);
 			presence.close();
 			svgInteractions.close();
@@ -1178,9 +1544,13 @@ async function restoreOrCreateProject(
 	project: FsDir,
 	repo: Repo,
 	hadStoredData: boolean,
-	joinHistoryUrl?: AutomergeUrl
+	joinHistoryUrl?: AutomergeUrl,
+	initial?: ProjectInput[],
+	onCreate?: (graph: ProjectGraph) => void
 ): Promise<ProjectConfig> {
 	const existing = await readProjectConfig(project);
+	if (initial && (existing || hadStoredData))
+		throw new Error('Project already has Automerge documents.');
 	const pending = await readPendingBootstrap(project);
 	const pendingJoin = await readPendingJoin(project);
 	if (existing) {
@@ -1216,12 +1586,13 @@ async function restoreOrCreateProject(
 		);
 	}
 
-	const bootstrapPaths = pending
-		? Object.keys(pending.sources)
-		: (await snapshotFile(project, 'rules.md'))
-			? ['game.json', 'rules.md']
-			: ['game.json'];
-	const sources = await scanProjectFiles(project, bootstrapPaths);
+	const sources = initial
+		? {
+				files: await Promise.all(
+					initial.map(async (input) => projectFileSource(input.path, await inputBytes(input.data)))
+				)
+			}
+		: await scanProjectFiles(project, pending ? Object.keys(pending.sources) : undefined);
 	const sourceHashes = Object.fromEntries(
 		sources.files.map(({ path, snapshot }) => [path, snapshot.hash])
 	);
@@ -1231,10 +1602,11 @@ async function restoreOrCreateProject(
 	if (!pending) await writePendingBootstrap(project, { version: 1, sources: sourceHashes });
 
 	const graph = await createProjectGraph(repo, sources.files);
+	onCreate?.(graph);
 	const history = await createProjectHistory(repo, graph);
 	const config = configFromGraph(
 		graph,
-		sources.files.map(({ path, snapshot }) => ({ path, snapshot })),
+		initial ? [] : sources.files.map(({ path, snapshot }) => ({ path, snapshot })),
 		history.url,
 		history.doc()!.checkedOutBranchId
 	);
@@ -1332,7 +1704,8 @@ function configFromGraph(
 					path: member.path,
 					url: member.url,
 					heads: handle.heads(),
-					hash: hashes.get(member.path) ?? null
+					hash: hashes.get(member.path) ?? null,
+					...(hashes.has(member.path) ? {} : { materializeOnly: true })
 				}
 			];
 		})
@@ -1349,18 +1722,17 @@ function configFromGraph(
 
 function managedMembers(graph: ProjectGraph, config: ProjectConfig): ManagedMember[] {
 	const project = graph.project;
-	const members = Object.entries(project.members).map(([memberId, member]) => {
-		const projection = config.projections[memberId];
-		if (!projection || projection.path !== member.path || projection.url !== member.url) {
-			throw new Error(`Project configuration does not match member ${memberId}.`);
-		}
-		const handle = graph.memberHandles.get(memberId);
-		if (!handle) throw new Error(`Automerge project member ${memberId} has no document handle.`);
-		return managedMember(memberId, member, handle);
-	});
-	if (Object.keys(config.projections).length !== members.length) {
-		throw new Error('Project configuration contains projections not present in the project graph.');
-	}
+	const members = Object.entries(project.members)
+		.filter(([id]) => graph.memberHandles.has(id))
+		.map(([memberId, member]) => {
+			const projection = config.projections[memberId];
+			if (!projection || projection.path !== member.path || projection.url !== member.url) {
+				throw new Error(`Project configuration does not match member ${memberId}.`);
+			}
+			const handle = graph.memberHandles.get(memberId);
+			if (!handle) throw new Error(`Automerge project member ${memberId} has no document handle.`);
+			return managedMember(memberId, member, handle);
+		});
 	return members;
 }
 
@@ -1373,10 +1745,8 @@ async function ensureRulesDocument(
 	if (Object.values(graph.project.members).some((member) => member.kind === 'rules')) {
 		return { graph, config };
 	}
-	if (!(await snapshotFile(project, 'rules.md'))) await writeFile(project, 'rules.md', '');
-	const scanned = await scanProjectFiles(project, ['rules.md']);
-	const source = scanned.files[0];
-	if (!source) throw new Error('Could not read rules.md.');
+	const existing = await snapshotFile(project, 'rules.md');
+	const source = await projectFileSource('rules.md', existing?.bytes ?? encodeText(''));
 	const id = projectMemberId();
 	const handle = await createProjectMemberHandle(repo, source);
 	await repo.flush([handle.documentId]);
@@ -1388,7 +1758,11 @@ async function ensureRulesDocument(
 		{ message: 'Add rules.md to project' }
 	);
 	await repo.flush([graph.projectHandle.documentId]);
-	const latest = await resolveProjectGraph(repo, graph.projectHandle);
+	const latest = await resolveProjectGraph(
+		repo,
+		graph.projectHandle,
+		new Map([...graph.memberHandles, [id, handle]])
+	);
 	const member = latest.project.members[id];
 	const memberHandle = latest.memberHandles.get(id);
 	if (!member || !memberHandle) throw new Error('The rules document was not added to the project.');
@@ -1401,7 +1775,8 @@ async function ensureRulesDocument(
 				path: member.path,
 				url: member.url,
 				heads: memberHandle.heads(),
-				hash: source.snapshot.hash
+				hash: existing?.hash ?? null,
+				...(!existing ? { materializeOnly: true } : {})
 			}
 		}
 	};
@@ -1453,6 +1828,7 @@ async function repairProjectConfig(
 					if (existing.materializeOnly) reconcileMemberIds.push(id);
 					return [id, existing] as const;
 				}
+				if (!graph.memberHandles.has(id)) return [id, existing] as const;
 				const snapshot = await snapshotFile(project, member.path);
 				reconcileMemberIds.push(id);
 				return [
@@ -1466,6 +1842,11 @@ async function repairProjectConfig(
 					}
 				] as const;
 			})
+		).then((entries) =>
+			entries.filter(
+				(entry): entry is readonly [string, NonNullable<(typeof entry)[1]>] =>
+					entry[1] !== undefined
+			)
 		)
 	);
 	const repaired: ProjectConfig = {
@@ -1491,13 +1872,12 @@ async function refreshProjectInventory(
 	repo: Repo,
 	graph: ProjectGraph,
 	config: ProjectConfig,
-	scanned: Awaited<ReturnType<typeof scanProjectFiles>>,
-	partial = false
+	scanned: Awaited<ReturnType<typeof scanProjectFiles>>
 ): Promise<{
 	graph: ProjectGraph;
 	config: ProjectConfig;
 	reconcileMemberIds: string[];
-	scanChanged: boolean;
+	retryPaths: string[];
 	removedPaths: string[];
 }> {
 	const root = graph.projectHandle;
@@ -1517,19 +1897,13 @@ async function refreshProjectInventory(
 		handle: DocHandle<ProjectMemberDocument>;
 	}> = [];
 	const deletions = new Set<string>();
-	let scanChanged = false;
-	let structuralChanges = 0;
-	const maxStructuralChanges = 4;
+	const retryPaths: string[] = [];
 
 	for (const source of scanned.files) {
 		const existing = memberByPath.get(source.path);
 		if (!existing) {
-			if (structuralChanges >= maxStructuralChanges) {
-				scanChanged = true;
-				continue;
-			}
 			if ((await snapshotFile(project, source.path))?.hash !== source.snapshot.hash) {
-				scanChanged = true;
+				retryPaths.push(source.path);
 				continue;
 			}
 			const id = source.kind === 'game-metadata' ? GAME_METADATA_MEMBER_ID : projectMemberId();
@@ -1538,7 +1912,6 @@ async function refreshProjectInventory(
 				source,
 				handle: await createProjectMemberHandle(repo, source)
 			});
-			structuralChanges += 1;
 			continue;
 		}
 		if (existing.member.kind !== 'asset' || source.kind !== 'asset') continue;
@@ -1548,12 +1921,8 @@ async function refreshProjectInventory(
 			projection.url !== existing.member.url ||
 			projection.path !== existing.member.path;
 		if (rootChanged || source.snapshot.hash === projection.hash) continue;
-		if (structuralChanges >= maxStructuralChanges) {
-			scanChanged = true;
-			continue;
-		}
 		if ((await snapshotFile(project, source.path))?.hash !== source.snapshot.hash) {
-			scanChanged = true;
+			retryPaths.push(source.path);
 			continue;
 		}
 		replacements.push({
@@ -1561,10 +1930,10 @@ async function refreshProjectInventory(
 			source,
 			handle: await createProjectMemberHandle(repo, source)
 		});
-		structuralChanges += 1;
 	}
 
-	for (const [id, member] of partial ? [] : Object.entries(current.members)) {
+	for (const [id, member] of Object.entries(current.members)) {
+		if (scanned.scope && !includesFsPath(scanned.scope, member.path)) continue;
 		if (member.kind === 'game-metadata' || member.kind === 'rules' || sourceByPath.has(member.path))
 			continue;
 		const projection = config.projections[id];
@@ -1574,25 +1943,26 @@ async function refreshProjectInventory(
 			projection.url === member.url &&
 			projection.hash !== null
 		) {
-			if (structuralChanges >= maxStructuralChanges) {
-				scanChanged = true;
-				continue;
-			}
-			if (await snapshotFile(project, member.path)) {
-				scanChanged = true;
+			if (await readFile(project, member.path)) {
+				retryPaths.push(member.path);
 				continue;
 			}
 			deletions.add(id);
-			structuralChanges += 1;
 		}
 	}
 
 	const componentNames = new Set(
 		Object.values(current.components).map((component) => component.name)
 	);
+	const components = scanned.components ?? [
+		...new Set([
+			...componentNames,
+			...scanned.files.flatMap((source) => (source.componentName ? [source.componentName] : []))
+		])
+	];
 	const componentsChanged =
-		componentNames.size !== scanned.components.length ||
-		scanned.components.some((name) => !componentNames.has(name));
+		componentNames.size !== components.length ||
+		components.some((name) => !componentNames.has(name));
 	if (additions.length || replacements.length || deletions.size || componentsChanged) {
 		await repo.flush([
 			...additions.map(({ handle }) => handle.documentId),
@@ -1603,7 +1973,7 @@ async function refreshProjectInventory(
 				const componentIds = new Map(
 					Object.entries(document.components).map(([id, component]) => [component.name, id])
 				);
-				for (const name of scanned.components) {
+				for (const name of components) {
 					if (componentIds.has(name)) continue;
 					const id = projectComponentId();
 					componentIds.set(name, id);
@@ -1638,7 +2008,7 @@ async function refreshProjectInventory(
 					};
 				}
 				for (const [id, component] of Object.entries(document.components)) {
-					if (scanned.components.includes(component.name)) continue;
+					if (components.includes(component.name)) continue;
 					if (Object.values(document.members).some((member) => member.componentId === id)) continue;
 					delete document.components[id];
 				}
@@ -1648,7 +2018,9 @@ async function refreshProjectInventory(
 		await repo.flush([root.documentId]);
 	}
 
-	const latest = await resolveProjectGraph(repo, root);
+	const loaded = new Map(graph.memberHandles);
+	for (const { id, handle } of [...additions, ...replacements]) loaded.set(id, handle);
+	const latest = await resolveProjectGraph(repo, root, loaded);
 	const latestProject = latest.project;
 	const latestPaths = new Set(Object.values(latestProject.members).map((member) => member.path));
 	const removedPaths = Object.entries(config.projections).flatMap(([id, projection]) =>
@@ -1663,9 +2035,10 @@ async function refreshProjectInventory(
 	]);
 	const reconcileMemberIds = new Set<string>();
 	const projections = Object.fromEntries(
-		Object.entries(latestProject.members).map(([id, member]) => {
-			const handle = memberHandle(latest, id);
+		Object.entries(latestProject.members).flatMap(([id, member]) => {
+			const handle = latest.memberHandles.get(id);
 			const existing = config.projections[id];
+			if (!handle) return existing ? [[id, existing]] : [];
 			const unchanged = existing?.path === member.path && existing.url === member.url;
 			const filesystemIsCurrent =
 				localMemberIds.has(id) || (existing?.url === member.url && sourceHashes.has(member.path));
@@ -1673,6 +2046,7 @@ async function refreshProjectInventory(
 			if (unchanged && existing.materializeOnly) reconcileMemberIds.add(id);
 			if (
 				unchanged &&
+				(!scanned.scope || includesFsPath(scanned.scope, member.path)) &&
 				(sourceHashes.get(member.path) ?? null) !== existing.hash &&
 				member.kind !== 'asset'
 			) {
@@ -1686,16 +2060,20 @@ async function refreshProjectInventory(
 				reconcileMemberIds.add(id);
 			}
 			return [
-				id,
-				unchanged
-					? existing
-					: {
-							path: member.path,
-							url: member.url,
-							heads: handle.heads(),
-							hash: sourceHashes.get(member.path) ?? null,
-							...(filesystemIsCurrent ? {} : { materializeOnly: true })
-						}
+				[
+					id,
+					unchanged
+						? existing
+						: {
+								path: member.path,
+								url: member.url,
+								heads: handle.heads(),
+								hash:
+									sourceHashes.get(member.path) ??
+									(existing?.path === member.path ? existing.hash : null),
+								...(filesystemIsCurrent ? {} : { materializeOnly: true })
+							}
+				]
 			];
 		})
 	);
@@ -1707,12 +2085,13 @@ async function refreshProjectInventory(
 		rootHeads: latest.projectHandle.heads(),
 		projections
 	};
-	await writeProjectConfig(project, nextConfig);
+	if (JSON.stringify(nextConfig) !== JSON.stringify(config))
+		await writeProjectConfig(project, nextConfig);
 	return {
 		graph: latest,
 		config: nextConfig,
 		reconcileMemberIds: [...reconcileMemberIds],
-		scanChanged,
+		retryPaths,
 		removedPaths
 	};
 }

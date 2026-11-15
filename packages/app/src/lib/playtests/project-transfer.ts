@@ -1,6 +1,11 @@
-import { joinFsPath, type FsDir } from '$lib/components/file-browser/adapters/adapter';
+import type { FsDir } from '$lib/components/file-browser/adapters/adapter';
 import {
 	serializeProjectMember,
+	createProject,
+	openProjectSession,
+	readProjectConfig,
+	withProjectLock,
+	type ProjectInputPath,
 	type ProjectMemberKind,
 	type ProjectSnapshot
 } from '$lib/collaboration';
@@ -96,23 +101,33 @@ export async function importPlaytestProject(
 	folderName: string,
 	files: PlaytestDownloadFile[]
 ) {
-	const existing = await fsDir.remove(folderName, { recursive: true });
-	if (existing.error && existing.error.name !== 'NotFoundError') {
-		throw new Error(existing.error.message);
-	}
-
-	const projectDir = await fsDir.ensureDir(folderName);
-	if (projectDir.error) {
-		throw new Error(projectDir.error.message);
-	}
-
-	for (const file of files) {
-		const write = await fsDir.write(
-			joinFsPath(folderName, file.path),
-			bytesToArrayBuffer(base64ToBytes(file.contentBase64))
-		);
-		if (write.error) {
-			throw new Error(write.error.message);
+	return withProjectLock(`import:${folderName}`, async () => {
+		const directory = await fsDir.openDir(folderName);
+		// Tabs visiting the same immutable playtest share one import; never remove a live project.
+		if (!directory.error && (await readProjectConfig(directory.data))) {
+			const opened = await openProjectSession(directory.data);
+			if (opened.error) throw new Error(opened.error.message);
+			const closed = await opened.data.close();
+			if (closed.error) throw new Error(closed.error.message);
+			return;
 		}
-	}
+		const existing = await fsDir.remove(folderName, { recursive: true });
+		if (existing.error && existing.error.name !== 'NotFoundError') {
+			throw new Error(existing.error.message);
+		}
+
+		const projectDir = await fsDir.ensureDir(folderName);
+		if (projectDir.error) {
+			throw new Error(projectDir.error.message);
+		}
+
+		const created = await createProject(
+			projectDir.data,
+			files.map((file) => ({
+				path: file.path as ProjectInputPath,
+				data: bytesToArrayBuffer(base64ToBytes(file.contentBase64))
+			}))
+		);
+		if (created.error) throw new Error(created.error.message);
+	});
 }

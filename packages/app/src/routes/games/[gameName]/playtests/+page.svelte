@@ -14,7 +14,7 @@
 	import { exportProjectSnapshotForPlaytest } from '$lib/playtests/project-transfer';
 	import { requireParam } from '$lib/utils/assert';
 	import { Clipboard, ExternalLink } from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { Err, tryAsync } from 'wellcrafted/result';
 	import { getActiveProjectContext } from '../../context';
 	import CreateRoomModal from '../../../playtests/[playtestId]/create-room-modal.svelte';
@@ -22,6 +22,8 @@
 	type RegisteredPlaytest = PlaytestFeedbackRegistry['playtests'][number];
 
 	const project = getActiveProjectContext();
+	let { data }: import('./$types').PageProps = $props();
+	const loading = project.session.require(untrack(() => data.projectNeeds));
 	const projectName = $derived(requireParam('gameName'));
 	const dateFormatter = new Intl.DateTimeFormat(undefined, {
 		dateStyle: 'medium',
@@ -104,6 +106,7 @@
 	}
 
 	async function loadPlaytests() {
+		await loading;
 		errorMessage = null;
 		const registry = readPlaytestFeedbackRegistry(project.session);
 		playtests = registry.playtests;

@@ -302,12 +302,14 @@ export function createHighlightRect(
 ): SVGRectElement | null {
 	const rootToScreen = svg.getScreenCTM();
 	const elemToScreen = el.getScreenCTM();
-	if (!rootToScreen || !elemToScreen) return null;
+	if (!rootToScreen || !elemToScreen || !Number.isFinite(scale) || !Number.isFinite(pad))
+		return null;
 
 	const screenToRoot = rootToScreen.inverse();
 
 	// element's bbox in its own coord-sys
 	const bb = getHighlightBounds(svg, el);
+	if (![bb.x, bb.y, bb.width, bb.height].every(Number.isFinite)) return null;
 	const p1 = svg.createSVGPoint();
 	const p2 = svg.createSVGPoint();
 	p1.x = bb.x - pad; // top-left (with padding)

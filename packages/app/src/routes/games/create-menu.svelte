@@ -47,28 +47,13 @@
 		});
 	}
 
-	function onDeckRenamed(oldName: string, newName: string) {
-		if (!activeGame) return;
-
-		activeGame.decks = activeGame.decks.map((deck) =>
-			deck.name === oldName ? { name: newName } : deck
-		);
-	}
-
-	function onDeckCreated(deckName: string) {
-		if (!activeGame) return;
-
-		activeGame.decks = [...activeGame.decks, { name: deckName }];
-	}
-
 	async function deleteDeck(projectName: string, component: ComponentFileStructure) {
 		const removed = await projectSession.deleteComponent(component.name);
 		if (removed.error) {
 			console.error(removed.error);
-		} else {
-			activeGame!.decks = activeGame!.decks.filter((x) => x.name !== component.name);
-			await goto(resolve(`/games/${projectName}`));
+			return;
 		}
+		await goto(resolve(`/games/${projectName}`));
 	}
 </script>
 
@@ -110,7 +95,7 @@
 					<Sidebar.MenuSub>
 						{#if projectSession.canEditStructure}
 							<Sidebar.MenuSubItem>
-								<NewDeckDialog {activeGame} {projectSession} {onDeckCreated} />
+								<NewDeckDialog {activeGame} {projectSession} />
 							</Sidebar.MenuSubItem>
 						{/if}
 						{#each activeGame?.decks ?? [] as deck (deck.name)}
@@ -170,12 +155,7 @@
 											<span>Spreadsheet</span>
 										</DropdownMenu.Item>
 										{#if projectSession.canEditStructure}
-											<RenameDeckDialog
-												projectFolder={fileSystem}
-												{projectSession}
-												{deck}
-												onRenamed={onDeckRenamed}
-											>
+											<RenameDeckDialog projectFolder={fileSystem} {projectSession} {deck}>
 												{#snippet trigger({ props })}
 													<DropdownMenu.Item
 														{...props}

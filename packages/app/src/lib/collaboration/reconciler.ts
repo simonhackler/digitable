@@ -181,6 +181,7 @@ export function createProjectReconciler({
 	initialConfig,
 	members: initialMembers,
 	onStatus = () => undefined,
+	onExternalChange,
 	saveDebounceMs = 400
 }: {
 	fs: FsDir;
@@ -188,6 +189,7 @@ export function createProjectReconciler({
 	initialConfig: ProjectConfig;
 	members: ManagedMember[];
 	onStatus?: (status: ReconciliationStatus) => void;
+	onExternalChange: (paths: string[]) => void;
 	saveDebounceMs?: number;
 }) {
 	let config = initialConfig;
@@ -252,7 +254,7 @@ export function createProjectReconciler({
 		materializer: MemberMaterializer<T, Source>;
 	}): Promise<void> {
 		await recoverMember(member as ManagedMember);
-		const projection = config.projections[member.id];
+		let projection = config.projections[member.id];
 		if (!projection) throw new Error(`Missing projection configuration for ${member.id}.`);
 		if (projection.path !== member.path || projection.url !== member.handle.url) {
 			throw new Error(`Projection configuration does not match ${member.id}.`);
@@ -269,6 +271,18 @@ export function createProjectReconciler({
 		const actual = await snapshotFile(fs, member.path);
 		const actualHash = actual?.hash ?? null;
 		if (
+			!actual &&
+			projection.hash !== null &&
+			!projection.materializeOnly &&
+			member.materializer.kind !== 'game-metadata' &&
+			member.materializer.kind !== 'rules'
+		) {
+			// An observer may still be queuing the deletion while a document change is saving.
+			// Inventory owns deletions; never resurrect a projected file from a queued write.
+			onExternalChange([member.path]);
+			return;
+		}
+		if (
 			!projection.materializeOnly &&
 			materializedStatesEqual(
 				{ heads: member.handle.heads(), hash: actualHash },
@@ -279,11 +293,17 @@ export function createProjectReconciler({
 		}
 		if (!projection.materializeOnly && actual && actualHash !== projection.hash) {
 			const incoming = member.materializer.parse(decodeText(actual.bytes), { hash: actual.hash });
-			member.handle.changeAt(
+			const imported = member.handle.changeAt(
 				projection.heads,
 				(document) => member.materializer.apply(document, incoming),
 				{ message: `Import external ${member.path}` }
 			);
+			// Record the accepted external revision even if another edit interrupts materialization.
+			// Using its branch heads preserves concurrent Automerge edits on the next import.
+			await repo.flush([member.handle.documentId]);
+			projection = { ...projection, heads: imported ?? projection.heads, hash: actual.hash };
+			config = { ...config, projections: { ...config.projections, [member.id]: projection } };
+			await writeProjectConfig(fs, config);
 		}
 
 		const document = member.handle.doc();
@@ -324,6 +344,7 @@ export function createProjectReconciler({
 			if (writtenHash !== desiredHash) {
 				await removePendingMaterialization(fs, member.id);
 				dirty = true;
+				dirtyMemberIds.add(member.id);
 				return;
 			}
 		}
@@ -380,6 +401,11 @@ export function createProjectReconciler({
 			throw new Error(`Automerge binary document for ${member.path} failed hash verification.`);
 		}
 		const actualHash = (await snapshotFile(fs, member.path))?.hash ?? null;
+		if (actualHash !== projection.hash) {
+			// Import an external replacement/deletion before materializing a binary document.
+			onExternalChange([member.path]);
+			return;
+		}
 		const desired: MaterializedState = { heads: member.handle.heads(), hash: desiredHash };
 		if (
 			!projection.materializeOnly &&
@@ -424,48 +450,49 @@ export function createProjectReconciler({
 		await removePendingMaterialization(fs, member.id);
 	}
 
-	async function runUnlocked(): Promise<void> {
+	async function run(): Promise<void> {
 		onStatus({ state: 'syncing' });
 		lastError = undefined;
-		while (dirty && !stopped) {
-			dirty = false;
-			const ids = new Set(dirtyMemberIds);
-			dirtyMemberIds.clear();
-			for (const member of members) {
-				if (ids.size && !ids.has(member.id)) continue;
-				try {
-					await reconcileMember(member);
-				} catch (cause) {
-					const error = cause instanceof Error ? cause : new Error(String(cause));
-					lastError ??= error;
-					onStatus({
-						state: 'error',
-						scope: 'member',
-						memberId: member.id,
-						path: member.path,
-						message: error.message
+		try {
+			while (dirty && !stopped) {
+				dirty = false;
+				const ids = [...dirtyMemberIds];
+				dirtyMemberIds.clear();
+				for (const id of ids) {
+					if (stopped) break;
+					// Release the lock between files so a page request can interrupt a large save batch.
+					await withProjectLock(initialConfig.historyUrl, async () => {
+						const latest = await readProjectConfig(fs);
+						if (
+							!latest ||
+							latest.rootUrl !== initialConfig.rootUrl ||
+							latest.historyUrl !== initialConfig.historyUrl ||
+							latest.branchId !== initialConfig.branchId
+						) {
+							throw new Error(
+								'Automerge project configuration changed while the project was open.'
+							);
+						}
+						config = latest;
+						const member = members.find((member) => member.id === id);
+						if (!member) return;
+						try {
+							await reconcileMember(member);
+						} catch (cause) {
+							const error = cause instanceof Error ? cause : new Error(String(cause));
+							lastError ??= error;
+							onStatus({
+								state: 'error',
+								scope: 'member',
+								memberId: member.id,
+								path: member.path,
+								message: error.message
+							});
+						}
 					});
 				}
 			}
-		}
-		if (!stopped && !lastError) onStatus({ state: 'idle' });
-	}
-
-	async function run(): Promise<void> {
-		try {
-			await withProjectLock(initialConfig.historyUrl, async () => {
-				const latest = await readProjectConfig(fs);
-				if (
-					!latest ||
-					latest.rootUrl !== initialConfig.rootUrl ||
-					latest.historyUrl !== initialConfig.historyUrl ||
-					latest.branchId !== initialConfig.branchId
-				) {
-					throw new Error('Automerge project configuration changed while the project was open.');
-				}
-				config = latest;
-				await runUnlocked();
-			});
+			if (!stopped && !lastError) onStatus({ state: 'idle' });
 		} catch (cause) {
 			dirty = false;
 			lastError = cause instanceof Error ? cause : new Error(String(cause));
@@ -483,15 +510,11 @@ export function createProjectReconciler({
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = undefined;
 		dirty = true;
-		if (memberIds) {
-			for (const id of memberIds) dirtyMemberIds.add(id);
-		} else {
-			dirtyMemberIds.clear();
-		}
+		for (const id of memberIds ?? members.map((member) => member.id)) dirtyMemberIds.add(id);
 		if (!runPromise) {
 			runPromise = run().finally(() => {
 				runPromise = undefined;
-				if (dirty && !stopped) void requestReconcile();
+				if (dirty && !stopped) void requestReconcile(dirtyMemberIds);
 			});
 		}
 		return runPromise;
@@ -503,7 +526,7 @@ export function createProjectReconciler({
 		dirtyMemberIds.add(memberId);
 		if (saveTimer) clearTimeout(saveTimer);
 		if (saveDebounceMs <= 0) {
-			void requestReconcile();
+			void requestReconcile(dirtyMemberIds);
 			return;
 		}
 		saveTimer = setTimeout(() => void requestReconcile(dirtyMemberIds), saveDebounceMs);
@@ -545,6 +568,16 @@ export function createProjectReconciler({
 	}
 
 	return {
+		async reconcilePathsWhileLocked(
+			paths: readonly string[],
+			latest: ProjectConfig
+		): Promise<void> {
+			config = latest;
+			for (const member of members) {
+				if (!paths.includes(member.path)) continue;
+				await reconcileMember(member);
+			}
+		},
 		async start(reconcile = true): Promise<void> {
 			replaceMembers(members, config);
 			if (reconcile) {
@@ -561,7 +594,7 @@ export function createProjectReconciler({
 			}
 			do {
 				if (runPromise) await runPromise;
-				if (dirty) await requestReconcile();
+				if (dirty) await requestReconcile(dirtyMemberIds);
 			} while (dirty && !stopped);
 			if (lastError) throw lastError;
 		},

@@ -9,7 +9,12 @@ export type FsOperation =
 	| 'readText'
 	| 'write'
 	| 'remove'
-	| 'move';
+	| 'move'
+	| 'watch';
+
+/** null means the watcher lost detail and the directory must be rescanned. */
+export type FsChanges = readonly string[] | null;
+export type FsWatchOptions = { ignore?: readonly string[] };
 
 export type FsEntry = {
 	name: string;
@@ -99,6 +104,10 @@ export const FsError = {
 
 export interface FsDir {
 	name: string;
+	watch?(
+		onChange: (paths: FsChanges) => void,
+		options?: FsWatchOptions
+	): Promise<FsResult<() => void>>;
 	list(path?: string): Promise<FsResult<FsEntry[]>>;
 	openDir(path: string): Promise<FsResult<FsDir>>;
 	ensureDir(path: string): Promise<FsResult<FsDir>>;

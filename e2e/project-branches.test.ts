@@ -7,6 +7,7 @@ import {
 	readOpfsText,
 	saveOpfsStoragePreference,
 	writeBufferToOPFS,
+	writeOpfsFiles,
 	writeOpfsText
 } from './helpers/opfs';
 
@@ -15,30 +16,30 @@ test.setTimeout(60_000);
 async function seedProject(
 	page: import('@playwright/test').Page,
 	project: string,
-	files: Record<string, string> = {}
+	files: Record<string, string> = {},
+	metadata: { name?: string; description?: string } = {}
 ) {
 	await openOpfsSeedPage(page);
-	await writeOpfsText(
-		page,
-		`/${project}/game.json`,
-		`${JSON.stringify({
+	await writeOpfsFiles(page, {
+		[`/${project}/game.json`]: `${JSON.stringify({
 			name: project,
 			minPlayers: 1,
 			maxPlayers: 4,
 			description: 'Initial description',
-			tags: []
-		})}\n`
-	);
-	await writeOpfsText(page, `/${project}/rules.md`, '# Initial rules\n');
-	for (const [path, content] of Object.entries(files)) {
-		await writeOpfsText(page, `/${project}/${path}`, content);
-	}
+			tags: [],
+			...metadata
+		})}\n`,
+		[`/${project}/rules.md`]: '# Initial rules\n',
+		...Object.fromEntries(
+			Object.entries(files).map(([path, content]) => [`/${project}/${path}`, content])
+		)
+	});
 	await saveOpfsStoragePreference(page);
 	await page.goto('/app/games');
 	await migrateProjectsIfPrompted(page);
 	await page.goto(`/app/games/${project}`);
 	await expect(page.getByText('Edit Board Game')).toBeVisible();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Main', exact: true })).toBeEnabled();
 }
 
 async function expectCheckpoint(page: import('@playwright/test').Page, message: string) {
@@ -99,6 +100,7 @@ test('names member edits from exact checkpoint documents', async ({ page }) => {
 		'feedback/session-one.md': '# Session one\n',
 		'assets/token.png': 'initial token'
 	});
+	await expectCheckpoint(page, 'Initial project');
 
 	await writeOpfsText(page, `/${project}/rules.md`, '# Edited rules\n');
 	await expectCheckpoint(page, 'Edited rules');
@@ -188,24 +190,12 @@ test('keeps branch edits isolated and opens complete historical checkpoints read
 	page
 }) => {
 	const project = 'branch-checkpoints';
-	await openOpfsSeedPage(page);
-	await writeOpfsText(
+	await seedProject(
 		page,
-		`/${project}/game.json`,
-		`${JSON.stringify({
-			name: 'Branch checkpoints',
-			minPlayers: 1,
-			maxPlayers: 4,
-			description: 'Main description',
-			tags: []
-		})}\n`
+		project,
+		{ 'rules.md': '# Original rules\n' },
+		{ name: 'Branch checkpoints', description: 'Main description' }
 	);
-	await writeOpfsText(page, `/${project}/rules.md`, '# Original rules\n');
-	await saveOpfsStoragePreference(page);
-	await page.goto('/app/games');
-	await migrateProjectsIfPrompted(page);
-	await page.goto(`/app/games/${project}`);
-	await expect(page.getByText('Edit Board Game')).toBeVisible();
 
 	await page.getByLabel('Game Name').fill('Branch checkpoints edited');
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
@@ -238,23 +228,7 @@ test('keeps branch edits isolated and opens complete historical checkpoints read
 
 test('merges a branch into its parent and checks the parent out', async ({ page }) => {
 	const project = 'branch-merge';
-	await openOpfsSeedPage(page);
-	await writeOpfsText(
-		page,
-		`/${project}/game.json`,
-		`${JSON.stringify({
-			name: 'Branch merge',
-			minPlayers: 1,
-			maxPlayers: 4,
-			description: 'Before merge',
-			tags: []
-		})}\n`
-	);
-	await saveOpfsStoragePreference(page);
-	await page.goto('/app/games');
-	await migrateProjectsIfPrompted(page);
-	await page.goto(`/app/games/${project}`);
-	await expect(page.getByText('Edit Board Game')).toBeVisible();
+	await seedProject(page, project, {}, { name: 'Branch merge', description: 'Before merge' });
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
@@ -344,7 +318,7 @@ test('keeps branch content through a parent rename and preserves the Base files'
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Branch 1', exact: true })).toBeEnabled();
 	await writeOpfsText(
 		page,
 		`/${project}/components/cards/front.svg`,
@@ -400,7 +374,7 @@ test('previews delete-modify conflicts and keeps the parent component', async ({
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Branch 1', exact: true })).toBeEnabled();
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await page.getByRole('button', { name: 'More for cards' }).click();
 	await page.getByRole('menuitem', { name: 'Delete' }).click();
@@ -408,7 +382,7 @@ test('previews delete-modify conflicts and keeps the parent component', async ({
 
 	await page.getByRole('button', { name: 'Branch 1', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Main', exact: true }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Main', exact: true })).toBeEnabled();
 	await writeOpfsText(
 		page,
 		`/${project}/components/cards/front.svg`,
@@ -446,7 +420,7 @@ test('applies a one-sided member deletion without a conflict', async ({ page }) 
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Branch 1', exact: true })).toBeEnabled();
 	await page.evaluate(async (projectName) => {
 		const root = await (
 			navigator.storage as StorageManager & {
@@ -482,7 +456,7 @@ test('merges a branch asset replacement with an unrelated parent edit', async ({
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Branch 1', exact: true })).toBeEnabled();
 	await writeBufferToOPFS(page, `/${project}/assets/token.png`, Buffer.from([1, 2, 3, 4]));
 	await expectCheckpoint(page, 'Replaced asset "token.png"');
 
@@ -516,13 +490,13 @@ test('previews different asset replacements and applies the selected branch byte
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Branch 1', exact: true })).toBeEnabled();
 	await writeBufferToOPFS(page, `/${project}/assets/token.png`, Buffer.from([1, 2, 3]));
 	await expectCheckpoint(page, 'Replaced asset "token.png"');
 
 	await page.getByRole('button', { name: 'Branch 1', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Main', exact: true }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Main', exact: true })).toBeEnabled();
 	await writeBufferToOPFS(page, `/${project}/assets/token.png`, Buffer.from([9, 8, 7, 6]));
 	await expectCheckpoint(page, 'Replaced asset "token.png"');
 
@@ -547,13 +521,13 @@ test('merges identical asset replacements without a conflict', async ({ page }) 
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Branch 1', exact: true })).toBeEnabled();
 	await writeBufferToOPFS(page, `/${project}/assets/token.png`, replacement);
 	await expectCheckpoint(page, 'Replaced asset "token.png"');
 
 	await page.getByRole('button', { name: 'Branch 1', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Main', exact: true }).click();
-	await page.waitForTimeout(1_000);
+	await expect(page.getByRole('button', { name: 'Main', exact: true })).toBeEnabled();
 	await writeBufferToOPFS(page, `/${project}/assets/token.png`, replacement);
 	await expectCheckpoint(page, 'Replaced asset "token.png"');
 
@@ -625,6 +599,7 @@ test('renames colliding additions and converges both tabs on the merged structur
 
 	await page.getByRole('button', { name: 'Main', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Create branch' }).click();
+	await expect(page.getByRole('button', { name: 'Branch 1', exact: true })).toBeEnabled();
 	await page.getByRole('button', { name: 'Decks' }).click();
 	await page.getByRole('button', { name: 'New' }).click();
 	await page.getByPlaceholder('deck name').fill('cards');
@@ -684,23 +659,7 @@ test('renames colliding additions and converges both tabs on the merged structur
 
 test('uses one project-global checkout across tabs', async ({ context, page }) => {
 	const project = 'branch-multi-tab';
-	await openOpfsSeedPage(page);
-	await writeOpfsText(
-		page,
-		`/${project}/game.json`,
-		`${JSON.stringify({
-			name: 'Branch multi tab',
-			minPlayers: 1,
-			maxPlayers: 4,
-			description: 'Shared main',
-			tags: []
-		})}\n`
-	);
-	await saveOpfsStoragePreference(page);
-	await page.goto('/app/games');
-	await migrateProjectsIfPrompted(page);
-	await page.goto(`/app/games/${project}`);
-	await expect(page.getByText('Edit Board Game')).toBeVisible();
+	await seedProject(page, project, {}, { name: 'Branch multi tab', description: 'Shared main' });
 
 	const peer = await context.newPage();
 	await peer.goto(`/app/games/${project}`);
@@ -723,26 +682,17 @@ test('uses one project-global checkout across tabs', async ({ context, page }) =
 
 test('forks a writable branch from a historical project checkpoint', async ({ page }) => {
 	const project = 'branch-from-history';
-	await openOpfsSeedPage(page);
-	await writeOpfsText(
+	await seedProject(
 		page,
-		`/${project}/game.json`,
-		`${JSON.stringify({
+		project,
+		{},
+		{
 			name: 'Branch from history',
-			minPlayers: 1,
-			maxPlayers: 4,
-			description: 'Historical value',
-			tags: []
-		})}\n`
+			description: 'Historical value'
+		}
 	);
-	await saveOpfsStoragePreference(page);
-	await page.goto('/app/games');
-	await migrateProjectsIfPrompted(page);
-	await page.goto(`/app/games/${project}`);
-	await expect(page.getByText('Edit Board Game')).toBeVisible();
 
 	await page.getByLabel('Game Description').fill('Latest value');
-	await page.waitForTimeout(1_000);
 	await page.getByRole('button', { name: 'History', exact: true }).click();
 	const latest = page.getByRole('group', { name: 'Checkpoint Updated game description' }).first();
 	await expect(latest).toBeVisible();

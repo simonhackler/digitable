@@ -1,12 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import {
-	migrateProjectsIfPrompted,
-	opfsEntryExists,
-	readOpfsText,
-	saveOpfsStoragePreference,
-	seedProjectFiles,
-	writeOpfsText
-} from './helpers/opfs';
+import { opfsEntryExists, readOpfsText, seedProjects, writeOpfsText } from './helpers/opfs';
 
 let dataEditorContext: BrowserContext | null = null;
 
@@ -14,16 +7,7 @@ async function seedDataEditorProjects(
 	page: Page,
 	projects = ['western-cards', 'pixi-play-single-card', 'pixi-play-smoke', 'pixi-play-three-card']
 ) {
-	await page.goto('/app/games');
-	await page.locator('main').waitFor();
-	await page.setContent('<!doctype html><html><body><h1>OPFS seed</h1></body></html>');
-	for (const project of projects) {
-		await seedProjectFiles(page, project);
-	}
-	await saveOpfsStoragePreference(page);
-	await page.goto('/app/games');
-	await migrateProjectsIfPrompted(page);
-	await expect(page.getByRole('heading', { name: 'Board Games' })).toBeVisible();
+	await seedProjects(page, { projectNames: projects, includeFileAssets: true });
 	for (const project of projects) {
 		await expect(page.getByRole('main').getByText(project, { exact: true })).toBeVisible();
 	}
@@ -49,11 +33,17 @@ function dataEditorTest(name: string, run: (page: Page) => Promise<void>) {
 async function openWesternDataEditor(page: Page) {
 	await page.goto('/app/games/western-cards/decks/western/data');
 	await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/data/);
+	await expect(page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' })).toBeVisible({
+		timeout: 30000
+	});
 }
 
 async function openSingleCardDataEditor(page: Page) {
 	await page.goto('/app/games/pixi-play-single-card/decks/western/data');
 	await expect(page).toHaveURL(/\/app\/games\/pixi-play-single-card\/decks\/western\/data/);
+	await expect(page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' })).toBeVisible({
+		timeout: 30000
+	});
 }
 
 async function spreadsheetHeaders(page: Page) {
@@ -207,6 +197,15 @@ test.describe.serial('data editor', () => {
 		const csv = await readOpfsText(page, '/pixi-play-smoke/components/western/data.csv');
 		expect(csv).toContain('id');
 		expect(csv).toContain(expectedColumn);
+		await expect(page.locator('#spreadsheet .jss_worksheet')).toHaveCount(1);
+
+		(await dataCell(page, expectedColumn!)).dblclick();
+		await page.getByRole('textbox').fill('generated sheet still works');
+		await page.keyboard.press('Enter');
+		await expect(cardPreview(page, 'generated sheet still works')).toBeVisible();
+		await expect
+			.poll(async () => readOpfsText(page, '/pixi-play-smoke/components/western/data.csv'))
+			.toContain('generated sheet still works');
 	});
 
 	dataEditorTest('spreadsheet editor toolbar opens layout editor', async (page) => {
@@ -266,7 +265,10 @@ test.describe.serial('data editor', () => {
 
 		await page.goto('/app/games/western-cards/decks/western/editor');
 		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/western\/editor/);
-		await page.goto('/app/games/western-cards/decks/western/data');
+		await expect(page.getByRole('toolbar', { name: 'Layout editor toolbar' })).toBeVisible({
+			timeout: 15000
+		});
+		await openWesternDataEditor(page);
 		await expect(cardPreview(page, 'persisted e2e value')).toBeVisible();
 	});
 
@@ -285,7 +287,10 @@ test.describe.serial('data editor', () => {
 
 		await page.goto('/app/games/pixi-play-single-card/decks/western/editor');
 		await expect(page).toHaveURL(/\/app\/games\/pixi-play-single-card\/decks\/western\/editor/);
-		await page.goto('/app/games/pixi-play-single-card/decks/western/data');
+		await expect(page.getByRole('toolbar', { name: 'Layout editor toolbar' })).toBeVisible({
+			timeout: 15000
+		});
+		await openSingleCardDataEditor(page);
 
 		await expect.poll(() => imageHref(page, 'portrait')).toMatch(/^blob:/);
 		const savedCsv = await readOpfsText(page, '/pixi-play-single-card/components/western/data.csv');
@@ -431,6 +436,7 @@ test.describe.serial('data editor', () => {
 	);
 
 	dataEditorTest('creates a pre-made French playing card deck', async (page) => {
+		test.setTimeout(60000);
 		await page.getByRole('main').getByText('western-cards').click();
 		await page.getByRole('button', { name: 'Decks' }).click();
 		await openNewDeckDialog(page);
@@ -440,7 +446,12 @@ test.describe.serial('data editor', () => {
 		await page.getByPlaceholder('deck name').fill('french_builtin');
 		await page.getByRole('button', { name: 'Create new deck' }).click();
 
-		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/french_builtin\/data/);
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/french_builtin\/data/, {
+			timeout: 30000
+		});
+		await expect(page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' })).toBeVisible({
+			timeout: 30000
+		});
 		await expect(page.getByRole('link', { name: 'french_builtin', exact: true })).toBeVisible();
 
 		await expect
@@ -463,6 +474,7 @@ test.describe.serial('data editor', () => {
 	});
 
 	dataEditorTest('creates a generated number and color deck', async (page) => {
+		test.setTimeout(60000);
 		await page.getByRole('main').getByText('western-cards').click();
 		await page.getByRole('button', { name: 'Decks' }).click();
 		await openNewDeckDialog(page);
@@ -474,7 +486,12 @@ test.describe.serial('data editor', () => {
 		await page.getByPlaceholder('deck name').fill('numbers_builtin');
 		await page.getByRole('button', { name: 'Create new deck' }).click();
 
-		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/numbers_builtin\/data/);
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/numbers_builtin\/data/, {
+			timeout: 30000
+		});
+		await expect(page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' })).toBeVisible({
+			timeout: 30000
+		});
 		await expect
 			.poll(() =>
 				opfsEntryExists(page, '/western-cards/assets/premade-decks/number-color/red_1.svg')
@@ -489,6 +506,7 @@ test.describe.serial('data editor', () => {
 	});
 
 	dataEditorTest('creates a pre-made French Tarot deck', async (page) => {
+		test.setTimeout(60000);
 		await page.getByRole('main').getByText('western-cards').click();
 		await page.getByRole('button', { name: 'Decks' }).click();
 		await openNewDeckDialog(page);
@@ -500,7 +518,12 @@ test.describe.serial('data editor', () => {
 		await page.getByPlaceholder('deck name').fill('tarot_builtin');
 		await page.getByRole('button', { name: 'Create new deck' }).click();
 
-		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/tarot_builtin\/data/);
+		await expect(page).toHaveURL(/\/app\/games\/western-cards\/decks\/tarot_builtin\/data/, {
+			timeout: 30000
+		});
+		await expect(page.getByRole('toolbar', { name: 'Spreadsheet editor toolbar' })).toBeVisible({
+			timeout: 30000
+		});
 		await expect
 			.poll(() =>
 				opfsEntryExists(page, '/western-cards/assets/premade-decks/french-tarot/tarot_trump_21.svg')

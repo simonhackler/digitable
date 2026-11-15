@@ -26,12 +26,10 @@
 
 	let {
 		activeGame,
-		projectSession,
-		onDeckCreated
+		projectSession
 	}: {
 		activeGame: Game | null;
 		projectSession: ProjectSession;
-		onDeckCreated: (deckName: string) => void;
 	} = $props();
 
 	let open = $state(false);
@@ -123,7 +121,6 @@
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
 		await goto(resolve(path));
-		onDeckCreated(deckName);
 
 		resetCreateDeckForm();
 		return true;
@@ -145,7 +142,6 @@
 		await tick();
 		// @ts-expect-error Weird sveltekit typing
 		await goto(resolve(path));
-		onDeckCreated(deckName);
 
 		resetCreateDeckForm();
 		return true;

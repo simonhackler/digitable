@@ -39,11 +39,10 @@
 		return game ?? null;
 	});
 
-	// TODO why have this bs be null?
-	// TODO does this even make sense? I like always having the correct folders ready on the correct paths. Seems to simplify things
+	const activeName = $derived(page.params.gameName);
 	let projectFolderResult = $derived(
-		activeProject
-			? await fileSystem.openDir(activeProject.name)
+		activeName
+			? await fileSystem.openDir(activeName)
 			: FsError.NotFound({ operation: 'openDir', path: '' })
 	);
 
@@ -89,9 +88,7 @@
 			{#key projectSession.rootUrl}
 				<ProjectBranches session={projectSession} />
 				{#if user}
-					<div class="px-2 pb-2">
-						<ShareProjectPopover session={projectSession} />
-					</div>
+					<ShareProjectPopover session={projectSession} />
 				{/if}
 			{/key}
 		{/if}

@@ -15,20 +15,9 @@
 	import { DevProjectsAdapter } from '$lib/dev-projects/adapter';
 	import { isPlaytestImportFolderName } from '$lib/playtests/project-transfer';
 	import { Button } from '$lib/components/ui/button';
-	import {
-		listProjectComponents,
-		migrateProjectLayout,
-		projectMigrationsForVersion
-	} from '$lib/workspace/project-layout';
-	import {
-		pickProjectsRoot,
-		readProjectsRootMarker,
-		writeProjectsRootMarker
-	} from '$lib/workspace/projects-root';
-	import { DIGITABLE_VERSION } from '$lib/workspace/digitable-version';
-	import { onDestroy, onMount } from 'svelte';
+	import { migrateProjectLayout } from '$lib/workspace/project-layout';
+	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
 	import {
 		createPresenceSurfaceRegistry,
 		createProjectNetwork,
@@ -55,16 +44,11 @@
 		phase: 'idle',
 		current: null,
 		reconciliation: { state: 'idle' },
+		background: { state: 'idle' },
 		error: null
 	});
 	setActiveProjectState(activeProjectState);
-	let projectsToMigrate = $state<string[] | null>(null);
-	let migrationError = $state('');
-	let isMigrating = $state(false);
-	let isInspectingProjects = $state(false);
-	let isPickingProjectsFolder = $state(false);
-	let canPickProjectsFolder = $state(false);
-	let migrationDigitableVersion = $state<string | undefined>();
+	let discoveryError = $state('');
 	const appVersion = env.PUBLIC_APP_VERSION || 'dev';
 	const activeGameName = $derived(page.params.gameName);
 	const activeCheckpointId = $derived(page.url.searchParams.get('checkpoint') ?? undefined);
@@ -74,6 +58,10 @@
 	const presenceSurface = surfaces.surface({ id: 'project-page' });
 	setPresenceSurfaceRegistry(surfaces);
 	let projectGeneration = 0;
+	let workspaceGeneration = 0;
+	let closing = Promise.resolve<Awaited<ReturnType<ProjectSession['close']>>>(Ok(undefined));
+	let opening: Promise<void> = Promise.resolve();
+	let openingTarget: { adapter: FsDir | null; view: string } | undefined;
 
 	function configurePresence(session: ProjectSession): void {
 		session.presence.setParticipant({ displayName: page.data.user?.name || 'Collaborator' });
@@ -87,11 +75,13 @@
 		activeProjectState.phase = 'idle';
 		activeProjectState.error = null;
 		activeProjectState.reconciliation = { state: 'idle' };
+		activeProjectState.background = { state: 'idle' };
 		viewFileSystemState.adapter = fileSystem;
 		if (!active) return;
 		active.metadata.destroy();
 		active.presence.destroy();
-		await active.session.close();
+		closing = active.session.close();
+		await closing;
 	}
 
 	async function openActiveProject(
@@ -99,6 +89,13 @@
 		gameName: string | undefined,
 		force = false
 	) {
+		if (
+			!force &&
+			activeProjectState.phase === 'opening' &&
+			openingTarget?.adapter === fileSystem &&
+			openingTarget.view === activeViewKey
+		)
+			return;
 		const active = activeProjectState.current;
 		if (
 			!force &&
@@ -112,23 +109,35 @@
 			return;
 		}
 		const generation = ++projectGeneration;
+		openingTarget = { adapter: fileSystem, view: activeViewKey };
 		const previous = activeProjectState.current;
 		activeProjectState.current = null;
 		activeProjectState.error = null;
 		activeProjectState.reconciliation = { state: 'idle' };
 		activeProjectState.phase = fileSystem && gameName ? 'opening' : 'idle';
+		activeProjectState.background = { state: 'idle' };
 
 		if (previous) {
 			previous.metadata.destroy();
 			previous.presence.destroy();
-			const closed = await previous.session.close();
-			if (closed.error && generation === projectGeneration) {
-				activeProjectState.phase = 'error';
-				activeProjectState.error = closed.error.message;
-				return;
-			}
+			closing = previous.session.close();
 		}
+		await opening;
+		const closed = await closing;
 		if (generation !== projectGeneration || !fileSystem || !gameName) return;
+		if (closed.error) {
+			closing = Promise.resolve(Ok(undefined));
+			activeProjectState.phase = 'error';
+			activeProjectState.error = closed.error.message;
+			return;
+		}
+		const migrated = await migrateProjectLayout(fileSystem, gameName, appVersion);
+		if (generation !== projectGeneration) return;
+		if (migrated.error) {
+			activeProjectState.phase = 'error';
+			activeProjectState.error = migrated.error.message;
+			return;
+		}
 
 		const projectDir = await fileSystem.openDir(gameName);
 		if (generation !== projectGeneration) return;
@@ -139,10 +148,13 @@
 		}
 
 		let openingError: string | null = null;
-		const opened = await openProjectSession(projectDir.data, {
+		const pending = openProjectSession(projectDir.data, {
 			network: createProjectNetwork(window.location.href, Boolean(page.data.user)),
 			saveDebounceMs: 0,
 			checkpointId: activeCheckpointId,
+			onBackground: (status) => {
+				if (generation === projectGeneration) activeProjectState.background = status;
+			},
 			onBranchCheckout: () => {
 				if (generation !== projectGeneration) return;
 				const target = new URL(page.url);
@@ -164,8 +176,15 @@
 				}
 			}
 		});
+		const completion = pending.then(async (opened) => {
+			if (generation === projectGeneration || opened.error) return;
+			closing = opened.data.close();
+			await closing;
+		});
+		opening = completion;
+		const opened = await pending;
 		if (generation !== projectGeneration) {
-			if (!opened.error) await opened.data.close();
+			await completion;
 			return;
 		}
 		if (opened.error) {
@@ -178,6 +197,16 @@
 			return;
 		}
 
+		const metadata = opened.data.metadataHandle.doc()!;
+		gamesState.existingGames = [
+			...(gamesState.existingGames ?? []).filter((game) => game.name !== gameName),
+			{
+				name: gameName,
+				description: metadata.description,
+				tags: [...metadata.tags],
+				decks: opened.data.components().map(({ name }) => ({ name }))
+			}
+		];
 		activeProjectState.current = {
 			key: gameName,
 			viewKey: activeViewKey,
@@ -194,14 +223,33 @@
 		};
 		viewFileSystemState.adapter = fileSystem;
 		configurePresence(opened.data);
+		opened.data.subscribeInventory(() => {
+			if (generation !== projectGeneration || !gamesState.existingGames) return;
+			const decks = opened.data.components().map(({ name }) => ({ name }));
+			const current = gamesState.existingGames.find((game) => game.name === gameName);
+			if (
+				current &&
+				current.decks.length === decks.length &&
+				current.decks.every((deck, index) => deck.name === decks[index].name)
+			)
+				return;
+			gamesState.existingGames = gamesState.existingGames.map((game) =>
+				game.name === gameName ? { ...game, decks } : game
+			);
+		});
 		activeProjectState.phase = 'ready';
 	}
-	async function getGames(fileSystem: Readonly<FsDir>) {
+	async function getGames(fileSystem: Readonly<FsDir>, generation: number) {
 		const root = await fileSystem.list();
-		if (root.error) return [];
+		if (root.error) {
+			if (generation !== workspaceGeneration) return;
+			discoveryError = root.error.message;
+			gamesState.existingGames ??= [];
+			return;
+		}
 
-		const games: Game[] = [];
 		for (const entry of root.data) {
+			if (generation !== workspaceGeneration) return;
 			if (entry.kind !== 'directory') continue;
 			if (isPlaytestImportFolderName(entry.name)) continue;
 
@@ -209,154 +257,55 @@
 			const projectDir = await fileSystem.openDir(projectPath);
 			if (projectDir.error) continue;
 
-			const projectEntries = await projectDir.data.list();
-			if (projectEntries.error) continue;
-			if (!projectEntries.data.some((file) => file.name === 'game.json')) continue;
-
 			const gameFile = await projectDir.data.readText('game.json');
-			let description = '';
-			let tags: string[] = [];
-			if (!gameFile.error) {
-				const { data: metadata } = trySync({
-					try: () => gameMetadataMaterializer.parse(gameFile.data, { hash: '' }),
-					catch: () => Ok(null)
-				});
-				if (metadata) {
-					description = metadata.description;
-					tags = metadata.tags;
-				}
-			}
-
-			const componentEntries = await listProjectComponents(projectDir.data);
-			const decks = componentEntries.error
-				? []
-				: componentEntries.data
-						.filter((deck) => deck.kind === 'directory')
-						.map((deck) => ({ name: deck.name }));
-
-			games.push({
-				name: entry.name,
-				decks,
-				description,
-				tags
+			if (gameFile.error) continue;
+			const { data: metadata } = trySync({
+				try: () => gameMetadataMaterializer.parse(gameFile.data, { hash: '' }),
+				catch: () => Ok(null)
 			});
+
+			if (generation !== workspaceGeneration) return;
+			if (gamesState.existingGames?.some((game) => game.name === entry.name)) continue;
+			gamesState.existingGames = [
+				...(gamesState.existingGames ?? []),
+				{
+					name: entry.name,
+					decks: [],
+					description: metadata?.description ?? '',
+					tags: metadata?.tags ?? []
+				}
+			];
 		}
-		return games;
-	}
-
-	async function getProjectNames(fileSystem: FsDir) {
-		const root = await fileSystem.list();
-		if (root.error) return [];
-
-		const projects: string[] = [];
-		for (const entry of root.data) {
-			if (entry.kind !== 'directory') continue;
-			if (isPlaytestImportFolderName(entry.name)) continue;
-
-			const projectDir = await fileSystem.openDir(entry.name);
-			if (projectDir.error) continue;
-
-			const projectEntries = await projectDir.data.list();
-			if (projectEntries.error) continue;
-			if (!projectEntries.data.some((file) => file.name === 'game.json')) continue;
-
-			projects.push(entry.name);
-		}
-
-		return projects;
+		if (generation === workspaceGeneration) gamesState.existingGames ??= [];
 	}
 
 	async function onSetProjectsAdapter(adapter: FsDir) {
+		const generation = ++workspaceGeneration;
 		await closeActiveProject();
-		migrationError = '';
-		projectsToMigrate = null;
+		if (generation !== workspaceGeneration) return;
+		discoveryError = '';
 		gamesState.existingGames = null;
-		isInspectingProjects = true;
 		fileSystemState.adapter = adapter;
 		viewFileSystemState.adapter = adapter;
-		if (!(adapter instanceof DevProjectsAdapter)) await generateAgentFiles(adapter);
-		const marker = await readProjectsRootMarker(adapter);
-		migrationDigitableVersion = marker.error ? undefined : marker.data.digitableVersion;
-		const pendingMigrations = projectMigrationsForVersion(migrationDigitableVersion);
-		const migrations = pendingMigrations.length ? await getProjectNames(adapter) : [];
-		if (!migrations.length && pendingMigrations.length) {
-			await writeProjectsRootMarker(adapter, { appVersion });
-		}
-		projectsToMigrate = migrations;
-		gamesState.existingGames = migrations.length ? null : await getGames(adapter);
-		isInspectingProjects = false;
-		if (!migrations.length) await openActiveProject(adapter, page.params.gameName);
-	}
-
-	async function selectDifferentProjectsFolder() {
-		if (isPickingProjectsFolder || isMigrating) return;
-
-		isPickingProjectsFolder = true;
-		migrationError = '';
-		try {
-			const root = await pickProjectsRoot({ appVersion });
-			if (root.error) {
-				migrationError = root.error.message;
-				return;
-			}
-
-			await onSetProjectsAdapter(root.data);
-			await goto(resolve('/games'));
-		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') return;
-			migrationError = error instanceof Error ? error.message : 'Could not select projects folder.';
-		} finally {
-			isPickingProjectsFolder = false;
-		}
-	}
-
-	async function migrateProjects() {
-		if (!fileSystem || !projectsToMigrate?.length || isMigrating) return;
-
-		isMigrating = true;
-		migrationError = '';
-		for (const projectName of projectsToMigrate) {
-			const migrated = await migrateProjectLayout(
-				fileSystem,
-				projectName,
-				migrationDigitableVersion
-			);
-			if (migrated.error) {
-				migrationError = `${projectName}: ${migrated.error.message}`;
-				isMigrating = false;
-				return;
-			}
-		}
-
-		const marked = await writeProjectsRootMarker(fileSystem, { appVersion });
-		if (marked.error) {
-			migrationError = marked.error.message;
-			isMigrating = false;
-			return;
-		}
-
-		projectsToMigrate = [];
-		gamesState.existingGames = await getGames(fileSystem);
-		isMigrating = false;
-		await openActiveProject(fileSystem, page.params.gameName);
+		void getGames(adapter, generation);
+		if (!(adapter instanceof DevProjectsAdapter)) void generateAgentFiles(adapter);
+		await openActiveProject(adapter, page.params.gameName);
 	}
 
 	let { children } = $props();
 
-	onMount(() => {
-		canPickProjectsFolder = 'showDirectoryPicker' in window;
-	});
-
 	afterNavigate(() => {
-		if (isInspectingProjects || projectsToMigrate === null || projectsToMigrate.length) return;
+		if (!fileSystem) return;
 		void openActiveProject(fileSystem, page.params.gameName);
 	});
 
 	beforeNavigate(({ cancel, willUnload }) => {
 		if (willUnload && activeProjectState.reconciliation.state === 'syncing') cancel();
+		if (!willUnload) activeProjectState.current?.session.releasePage();
 	});
 
 	onDestroy(() => {
+		workspaceGeneration += 1;
 		surfaces.close();
 		void closeActiveProject();
 	});
@@ -373,6 +322,9 @@
 		/>
 	{/if}
 	<main class="relative min-w-0 flex-1" {@attach presenceSurface}>
+		{#if discoveryError}<p role="alert" class="text-destructive p-4 text-sm">
+				{discoveryError}
+			</p>{/if}
 		{#if activeProjectState.current?.session.readOnly}
 			<div
 				class="border-primary/20 bg-primary/10 text-primary absolute top-2 right-3 z-40 rounded-full border px-3 py-1 text-xs font-medium shadow-sm"
@@ -385,44 +337,6 @@
 			<div class="mt-12 flex w-full flex-col items-center justify-center gap-4 text-xl">
 				<PickFolder {onSetProjectsAdapter}></PickFolder>
 			</div>
-		{:else if isInspectingProjects || projectsToMigrate === null}
-			<p class="text-muted-foreground p-6 text-sm">Loading projects...</p>
-		{:else if projectsToMigrate.length}
-			<div class="flex min-h-screen items-center justify-center p-6">
-				<div class="border-border bg-background max-w-lg space-y-4 rounded-lg border p-6 shadow-sm">
-					<div class="space-y-2">
-						<h1 class="text-xl font-semibold">Migrate Projects</h1>
-						<p class="text-muted-foreground text-sm">
-							Digitable will migrate {projectsToMigrate.length}
-							{projectsToMigrate.length === 1 ? 'project' : 'projects'} to the latest project layout,
-							then save version {DIGITABLE_VERSION} in .digitable.json.
-						</p>
-					</div>
-					<div class="text-muted-foreground max-h-32 overflow-auto rounded-md border p-2 text-sm">
-						{projectsToMigrate.join(', ')}
-					</div>
-					{#if migrationError}
-						<p class="text-destructive text-sm" role="alert">{migrationError}</p>
-					{/if}
-					<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-						{#if canPickProjectsFolder}
-							<Button
-								type="button"
-								variant="outline"
-								onclick={selectDifferentProjectsFolder}
-								disabled={isPickingProjectsFolder || isMigrating}
-							>
-								{isPickingProjectsFolder ? 'Selecting...' : 'Select different folder'}
-							</Button>
-						{:else}
-							<span class="hidden sm:block"></span>
-						{/if}
-						<Button onclick={migrateProjects} disabled={isMigrating || isPickingProjectsFolder}>
-							{isMigrating ? 'Migrating...' : 'Migrate projects'}
-						</Button>
-					</div>
-				</div>
-			</div>
 		{:else if activeGameName && activeProjectState.phase === 'opening'}
 			<p class="text-muted-foreground p-6 text-sm">Opening project...</p>
 		{:else if activeGameName && activeProjectState.phase === 'error'}
@@ -430,17 +344,26 @@
 				<div class="border-border bg-background max-w-lg space-y-4 rounded-lg border p-6 shadow-sm">
 					<p class="text-destructive text-sm" role="alert">{activeProjectState.error}</p>
 					<Button onclick={() => openActiveProject(fileSystem, activeGameName)}>Retry</Button>
+					<Button variant="outline" href="/games">Back to games</Button>
 				</div>
 			</div>
 		{:else if !activeGameName || activeProjectState.current?.key === activeGameName}
-			<svelte:boundary>
-				{#snippet pending()}
-					<p>loading...</p>
-				{/snippet}
-				{#key activeProjectState.current?.viewKey}
+			{#key activeProjectState.current?.viewKey}
+				<svelte:boundary>
+					{#snippet pending()}
+						<p role="status" class="text-muted-foreground p-6 text-sm">Loading page...</p>
+					{/snippet}
+					{#snippet failed(error, reset)}
+						<div class="space-y-3 p-6">
+							<p role="alert">
+								{error instanceof Error ? error.message : 'Could not load this page.'}
+							</p>
+							<Button onclick={reset}>Retry</Button>
+						</div>
+					{/snippet}
 					{@render children?.()}
-				{/key}
-			</svelte:boundary>
+				</svelte:boundary>
+			{/key}
 		{/if}
 		{#if activeProjectState.current && !activeProjectState.current.session.readOnly && presencePage.pointerEnabled}
 			{#key activeProjectState.current.session.rootUrl}

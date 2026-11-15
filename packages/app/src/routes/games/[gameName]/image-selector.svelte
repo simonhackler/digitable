@@ -72,7 +72,7 @@
 		loading = true;
 		errorMessage = '';
 		try {
-			const paths = listSessionImageFiles(project.session);
+			const paths = await listSessionImageFiles(project.session);
 			const nextChoices = await Promise.all(
 				paths.map(async (path) => ({
 					path,
@@ -159,7 +159,7 @@
 		loading = true;
 		try {
 			const existingNames = new Set(
-				listSessionImageFiles(project.session)
+				(await listSessionImageFiles(project.session))
 					.filter((path) => path.startsWith('uploads/'))
 					.map((path) => path.slice('uploads/'.length))
 			);

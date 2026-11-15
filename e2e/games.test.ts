@@ -75,7 +75,9 @@ gamesTest('create new game and delete it', async (page) => {
 	await page.getByRole('textbox', { name: 'Enter "Create Game Test" to' }).fill(gameName);
 	await page.getByRole('button', { name: 'Delete' }).nth(1).click();
 	await expect(page).toHaveURL(/\/app\/games$/);
-	await page.waitForTimeout(1000);
+	await expect(page.getByRole('main').getByText('Create_Game_Test', { exact: true })).toHaveCount(
+		0
+	);
 });
 
 gamesTest('created game appears in the games overview and can create a deck', async (page) => {
